@@ -59,6 +59,40 @@ export function drawAbilityIcon(g: Phaser.GameObjects.Graphics, icon: AbilityIco
     g.fillStyle(C.outline).fillCircle(-R * 0.08, R * 0.16, R * 0.36);
     g.fillStyle(0xd7f53a).fillCircle(-R * 0.08, R * 0.16, R * 0.29);
     g.lineStyle(3, 0xffffff, 0.9).beginPath().arc(-R * 0.37, R * 0.16, R * 0.27, -0.9, 0.9).strokePath();
+  } else if (icon === 'serveRacket') {
+    // raqueta inclinada con la pelota (saque normal)
+    const rot = (x: number, y: number) => {
+      const a = -0.7;
+      return new Phaser.Math.Vector2(x * Math.cos(a) - y * Math.sin(a), x * Math.sin(a) + y * Math.cos(a));
+    };
+    // mango
+    const h0 = rot(0, R * 0.12);
+    const h1 = rot(0, R * 0.78);
+    g.lineStyle(R * 0.2 + 6, C.outline).lineBetween(h0.x, h0.y, h1.x, h1.y);
+    g.lineStyle(R * 0.2, 0x7a3b12).lineBetween(h0.x, h0.y, h1.x, h1.y);
+    // marco y cuerdas
+    const pts2: Phaser.Math.Vector2[] = [];
+    for (let i = 0; i < 24; i++) {
+      const a = (i / 24) * Math.PI * 2;
+      const p = rot(Math.cos(a) * R * 0.38, -R * 0.2 + Math.sin(a) * R * 0.5);
+      pts2.push(p);
+    }
+    g.fillStyle(C.outline).fillPoints(pts2.map((p) => new Phaser.Math.Vector2(p.x * 1.12, p.y * 1.12 - R * 0.02)), true);
+    g.fillStyle(0xffffff).fillPoints(pts2.map((p) => new Phaser.Math.Vector2(p.x * 1.0, p.y * 1.0)), true);
+    g.fillStyle(0xfff0c2).fillPoints(pts2.map((p) => new Phaser.Math.Vector2(p.x * 0.82, p.y * 0.82)), true);
+    g.lineStyle(2, 0xc9a45a, 0.9);
+    for (let k = -2; k <= 2; k++) {
+      const a = rot(k * R * 0.11, -R * 0.62);
+      const b = rot(k * R * 0.11, R * 0.2);
+      g.lineBetween(a.x, a.y, b.x, b.y);
+      const c1 = rot(-R * 0.3, -R * 0.2 + k * R * 0.14);
+      const c2 = rot(R * 0.3, -R * 0.2 + k * R * 0.14);
+      g.lineBetween(c1.x, c1.y, c2.x, c2.y);
+    }
+    // pelota
+    g.fillStyle(C.outline).fillCircle(R * 0.5, R * 0.46, R * 0.25);
+    g.fillStyle(0xd7f53a).fillCircle(R * 0.5, R * 0.46, R * 0.19);
+    g.fillStyle(0xffffff, 0.7).fillCircle(R * 0.44, R * 0.4, R * 0.05);
   } else if (icon === 'servePower') {
     // pelota con líneas de velocidad (saque fuerte)
     for (let i = 0; i < 3; i++) {

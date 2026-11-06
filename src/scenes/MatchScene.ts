@@ -1,9 +1,8 @@
-﻿import Phaser from 'phaser';
+import Phaser from 'phaser';
 import {
   ALLEY,
   COURT,
   DASH_COOLDOWN,
-  GAME_NAME,
   GAMES_TO_WIN,
   HIT_MAX_Z,
   HIT_RANGE,
@@ -13,7 +12,9 @@ import {
   LUNGE_RECOVER,
   NET_HEIGHT,
   NET_X,
+  GRAVITY,
   PLAYER_SPEED,
+  SERVE,
   SERVE_SPEED,
   SHOT_SPEED,
   SIDE_MARGIN,
@@ -22,17 +23,26 @@ import {
   STUN_DURATION,
 } from '../config';
 import { Ball, type BallState, type ShotKind, aimShot, isInCourt, predictIntercept, stepBall } from '../objects/Ball';
-import { BOT_LOOK, Character, PLAYER_LOOK } from '../objects/Character';
+import { Character, PLAYER_LOOK, playerLook, rivalLook } from '../objects/Character';
 import { BotAI } from '../logic/BotAI';
+import { type ServeKind, ServeController } from '../logic/ServeController';
+import { type BotServePlan, ServeAI } from '../logic/ServeAI';
+import { NEON, ServeButton } from '../ui/ServeButton';
+import { ChargeMeter } from '../ui/ChargeMeter';
+import { BUTTON_ART, queueButtonArt } from '../ui/buttonArt';
+import { ChargeAura, TIER_TRAIL, playImpact } from '../fx/shotFx';
+import { getProfile } from '../logic/Profile';
 import { HyperAura } from '../objects/HyperAura';
 import { Score } from '../logic/Score';
 import { ABILITIES } from '../logic/Abilities';
 import { Joystick } from '../ui/Joystick';
+import { ScoreBoard } from '../ui/ScoreBoard';
+import { showConfirm } from '../ui/ConfirmDialog';
 import { AbilityButton } from '../ui/AbilityButton';
-import { Button } from '../ui/Button';
 import { C, textStyle } from '../ui/theme';
 import { VIEW, project } from '../view/projection';
-import type { ResultData } from './ResultScene';
+import { drawCourtView } from '../view/CourtView';
+import { playMatchEnd } from '../fx/matchEnd';
 
 type Who = 'player' | 'bot';
 type Phase = 'intro' | 'serve' | 'toss' | 'rally' | 'pointover' | 'over';
@@ -59,6 +69,11 @@ const B_X = [NET_X + 45, COURT.right + 130];
 
 const rand = Phaser.Math.FloatBetween;
 const clamp = Phaser.Math.Clamp;
+
+/** Solo animación: altura de pelota desde la que el golpe del jugador se muestra como remate. */
+const OVERHEAD_Z = 116;
+/** Solo animación: distancia (suelo) a la que el jugador se pone en guardia esperando la pelota. */
+const READY_DIST = 200;
 
 export class MatchScene extends Phaser.Scene {
   private botName = 'Bot';
@@ -90,27 +105,48 @@ export class MatchScene extends Phaser.Scene {
   private faults = 0;
   private serveBox = { x0: 0, x1: 0, y0: 0, y1: 0 };
   private serveHint?: Phaser.GameObjects.Graphics;
+  // saque manual: estado, IA del rival y controles propios (sustituyen a DASH/SMASH mientras se saca)
+  private serveCtl = new ServeController();
+  private serveAI = new ServeAI();
+  private botPlan!: BotServePlan;
+  private botWait = 0;
+  private botServeY = 0;
+  /** tramo permitido (y) de la línea de fondo para colocarse al sacar: la mitad del lado de servicio */
+  private serveZone: [number, number] = [0, 0];
+  private serveLet = false;
+  /** golpe con la pelota muy baja: va a la red y el punto se pierde (no es una simple falta) */
+  private serveNetLoss = false;
+  /** segundos que le quedan al jugador para sacar (0 = sin cuenta) */
+  private serveClock = 0;
+  private serveClockText!: Phaser.GameObjects.Text;
+  private serveNormalBtn!: ServeButton;
+  private serveSpinBtn!: ServeButton;
+  private serveAim!: Phaser.GameObjects.Graphics;
+  private secondTag!: Phaser.GameObjects.Text;
   private aura!: HyperAura;
   // tiro cargado (tocar la mitad derecha de la pantalla)
   private charging = false;
   /** 0..1 */
   private charge = 0;
   private chargeFull = false;
+  private ringGold = false;
   private chargeRing!: Phaser.GameObjects.Ellipse;
-  private chargeBar!: Phaser.GameObjects.Graphics;
-  private chargeLabel!: Phaser.GameObjects.Text;
-  private chargeLabelKey = '';
+  /** indicador semicircular único de potencia + dirección (ui/ChargeMeter) y brillo del personaje */
+  private chargeMeter!: ChargeMeter;
+  private chargeAura!: ChargeAura;
   private dizzy!: Phaser.GameObjects.Container;
 
   // HUD
   private hud!: Phaser.GameObjects.Container;
-  private pointsText!: Phaser.GameObjects.Text;
-  private gameText!: Phaser.GameObjects.Text;
-  private pips: Phaser.GameObjects.Arc[][] = [[], []];
-  private serveIcons: Phaser.GameObjects.Arc[] = [];
+  /** marcador visual (ui/ScoreBoard): solo dibuja, los datos salen de this.score */
+  private board!: ScoreBoard;
 
   constructor() {
     super('Match');
+  }
+
+  preload() {
+    queueButtonArt(this.load); // imágenes de DASH, SMASH y los dos saques (si faltan, se dibujan como antes)
   }
 
   init(data: { botName?: string }) {
@@ -129,11 +165,8 @@ export class MatchScene extends Phaser.Scene {
     this.charging = false;
     this.charge = 0;
     this.chargeFull = false;
-    this.chargeLabelKey = '';
     this.paused = false;
     this.dialog = [];
-    this.pips = [[], []];
-    this.serveIcons = [];
 
     this.cameras.main.fadeIn(250, 0, 0, 0);
     this.drawCourt();
@@ -147,16 +180,16 @@ export class MatchScene extends Phaser.Scene {
       warp: 1,
       vanished: false,
     });
-    this.player = mk(PLAYER_LOOK, 'back', COURT.left - 40, 1);
-    this.bot = mk(BOT_LOOK, 'front', COURT.right + 40, -1);
+    this.player = mk(playerLook(getProfile().skin), 'back', COURT.left - 40, 1);
+    this.bot = mk(rivalLook(getProfile().skin), 'front', COURT.right + 40, -1);
     this.aura = new HyperAura(this, this.player.ch);
     this.chargeRing = this.add
       .ellipse(0, 0, 120, 40, 0x6ec1ff, 0.25)
       .setStrokeStyle(5, 0xd6f0ff, 0.9)
       .setBlendMode(Phaser.BlendModes.ADD)
       .setVisible(false);
-    this.chargeBar = this.add.graphics().setDepth(4400).setVisible(false);
-    this.chargeLabel = this.add.text(0, 0, '', textStyle(20, '#d6f0ff')).setOrigin(0.5).setDepth(4401).setVisible(false);
+    this.chargeMeter = new ChargeMeter(this);
+    this.chargeAura = new ChargeAura(this);
     this.dizzy = this.makeDizzy();
     this.ball = new Ball(this);
     this.ai = new BotAI();
@@ -168,15 +201,34 @@ export class MatchScene extends Phaser.Scene {
     const s = ABILITIES.smash;
     this.dashBtn = new AbilityButton(this, 0, 0, 54, DASH_COOLDOWN, d.color, d.colorDark, d.icon, 'DASH', () => this.activateDash());
     this.smashBtn = new AbilityButton(this, 0, 0, 64, SMASH_COOLDOWN, s.color, s.colorDark, s.icon, 'SMASH', () => this.activateSmash());
+    this.dashBtn.setArt(BUTTON_ART.dash.key);
+    this.smashBtn.setArt(BUTTON_ART.smash.key);
     this.surrenderBtn = this.makeSurrenderIcon();
+
+    // controles de saque: raqueta dorada = normal, pelota girando violeta = con efecto
+    this.serveCtl = new ServeController();
+    this.serveAI = new ServeAI();
+    this.serveLet = false;
+    this.serveNormalBtn = new ServeButton(this, 0, 0, 64, 'serveRacket', 0xffb020, 0xc46a00, () => this.onServeButton('normal'));
+    this.serveSpinBtn = new ServeButton(this, 0, 0, 58, 'serveSpin', 0x8a6bff, 0x4a35b8, () => this.onServeButton('spin'));
+    this.serveNormalBtn.setArt(BUTTON_ART.serve.key);
+    this.serveSpinBtn.setArt(BUTTON_ART.spin.key);
+    this.serveNormalBtn.show(false);
+    this.serveSpinBtn.show(false);
+    this.serveAim = this.add.graphics().setDepth(0.8).setVisible(false);
+    this.secondTag = this.add.text(0, 0, '2º SAQUE', textStyle(20, '#ffd23f')).setOrigin(0.5).setScrollFactor(0).setDepth(5500).setVisible(false);
+    this.serveClockText = this.add.text(0, 0, '', textStyle(40, '#ffd23f')).setOrigin(0.5).setScrollFactor(0).setDepth(5500).setVisible(false);
+    this.serveClock = 0;
+    this.serveNetLoss = false;
 
     const kb = this.input.keyboard;
     if (kb) {
       this.keys = kb.addKeys('W,A,S,D,UP,DOWN,LEFT,RIGHT,Q,E,J,K') as Record<string, Phaser.Input.Keyboard.Key>;
-      kb.on('keydown-Q', () => this.dashBtn.tryActivate());
-      kb.on('keydown-J', () => this.dashBtn.tryActivate());
-      kb.on('keydown-E', () => this.smashBtn.tryActivate());
-      kb.on('keydown-K', () => this.smashBtn.tryActivate());
+      // al sacar, E/K = saque normal y Q/J = saque con efecto; el resto del tiempo, SMASH y DASH
+      kb.on('keydown-Q', () => (this.serveUiOn() ? this.serveSpinBtn.press() : this.dashBtn.tryActivate()));
+      kb.on('keydown-J', () => (this.serveUiOn() ? this.serveSpinBtn.press() : this.dashBtn.tryActivate()));
+      kb.on('keydown-E', () => (this.serveUiOn() ? this.serveNormalBtn.press() : this.smashBtn.tryActivate()));
+      kb.on('keydown-K', () => (this.serveUiOn() ? this.serveNormalBtn.press() : this.smashBtn.tryActivate()));
       kb.on('keydown-SPACE', () => this.toggleCharge());
       kb.on('keydown-L', () => this.toggleCharge());
     }
@@ -184,6 +236,7 @@ export class MatchScene extends Phaser.Scene {
     // un botón (SMASH, DASH, rendirse...) gana el botón y aquí no se hace nada.
     const onTap = (p: Phaser.Input.Pointer, over: Phaser.GameObjects.GameObject[]) => {
       if (over.length > 0) return;
+      if (this.serveUiOn()) return; // mientras el jugador saca, la mitad derecha no carga tiro
       if (p.x < this.scale.width * 0.55) return; // la izquierda es del joystick
       this.toggleCharge();
     };
@@ -217,6 +270,10 @@ export class MatchScene extends Phaser.Scene {
     this.smashBtn.setPosition(W - 110, H - 225);
     this.dashBtn.setPosition(W - 250, H - 115);
     this.surrenderBtn.setPosition(W - 46, 150);
+    this.serveNormalBtn.setPosition(W - 110, H - 225);
+    this.serveSpinBtn.setPosition(W - 250, H - 115);
+    this.serveClockText.setPosition(W / 2, 200);
+    this.secondTag.setPosition(W / 2, 144); // bajo el marcador (ScoreBoard mide ~120 px con la píldora JUEGO)
   }
 
   // ---------------------------------------------------------------- rendirse
@@ -257,28 +314,18 @@ export class MatchScene extends Phaser.Scene {
     this.joy.release();
     this.joy.enabled = false;
 
-    const W = this.scale.width;
-    const H = this.scale.height;
-    const cy = Math.min(H, VIEW.H) * 0.45;
-    const shade = this.add.rectangle(0, 0, W, H, 0x000000, 0.6).setOrigin(0).setScrollFactor(0).setDepth(8000).setInteractive();
-    const panel = this.add.container(W / 2, cy).setScrollFactor(0).setDepth(8001);
-    const g = this.add.graphics();
-    const pw = Math.min(600, W - 60);
-    const ph = 330;
-    g.fillStyle(C.outline).fillRoundedRect(-pw / 2 - 6, -ph / 2 - 6, pw + 12, ph + 20, 30);
-    g.fillStyle(C.blueDark).fillRoundedRect(-pw / 2, -ph / 2 + 8, pw, ph, 24);
-    g.fillStyle(C.blue).fillRoundedRect(-pw / 2, -ph / 2, pw, ph, 24);
-    g.fillStyle(0xffffff, 0.22).fillRoundedRect(-pw / 2 + 14, -ph / 2 + 10, pw - 28, 44, 16);
-    panel.add(g);
-    panel.add(this.add.text(0, -88, '¿Seguro que quieres rendirte?', { ...textStyle(40), wordWrap: { width: pw - 60 } }).setOrigin(0.5));
-    panel.add(this.add.text(0, -14, 'El partido contará como derrota', textStyle(22, '#e6f2ff')).setOrigin(0.5));
-    panel.setScale(0.6);
-    this.tweens.add({ targets: panel, scale: 1, duration: 260, ease: 'Back.easeOut' });
-
-    const quit = new Button(this, W / 2 - 140, cy + 85, 230, 84, 'Rendirse', C.red, C.redDark, () => this.surrender(), 34);
-    const keep = new Button(this, W / 2 + 140, cy + 85, 230, 84, 'Seguir', C.green, C.greenDark, () => this.closeSurrender(), 34);
-    for (const b of [quit, keep]) b.setScrollFactor(0).setDepth(8002);
-    this.dialog = [shade, panel, quit, keep];
+    // diálogo (diseño en ui/ConfirmDialog.ts): RENDIRSE se habilita tras 6 s de cuenta atrás
+    this.dialog = showConfirm(this, {
+      title: '¿RENDIRSE?',
+      message: '¿Seguro que quieres rendirte?',
+      detail: 'El partido contará como derrota',
+      confirmLabel: 'RENDIRSE',
+      cancelLabel: 'SEGUIR',
+      onConfirm: () => this.surrender(),
+      onCancel: () => this.closeSurrender(),
+      lockSeconds: 6,
+      depth: 8000,
+    });
   }
 
   private closeSurrender() {
@@ -311,103 +358,111 @@ export class MatchScene extends Phaser.Scene {
     const ax1 = COURT.right + 140;
     const ay0 = COURT.top - ALLEY - 85;
     const ay1 = COURT.bottom + ALLEY + 85;
-    const WALL_Z = 46; // altura de las vallas
-    const SHIRTS = [0xff4f5e, 0xffcc2e, 0x3aa6ff, 0x62d935, 0xffffff, 0x9b5cff, 0xff9a2e, 0x2fd6c8];
-    const SKINS = [0xffcf9e, 0xe0a878, 0xb57a50, 0x8a5634];
-    const pick = <T,>(arr: T[], seed: number) => arr[Math.abs(Math.floor(Math.sin(seed) * 10000)) % arr.length];
+    const WALL_Z = 70; // altura de los muros/valla
 
-    // fondo general (suelo exterior)
-    g.fillStyle(0x1d5e86).fillRect(-1500, -1000, VIEW.W + 3000, VIEW.H + 3000);
+    // --- fondo: cielo urbano (atardecer suave) + asfalto
+    g.fillGradientStyle(0x3a4a7a, 0x3a4a7a, 0x5a6aa0, 0x5a6aa0, 1);
+    g.fillRect(-1500, -1000, VIEW.W + 3000, VIEW.H + 1200);
 
-    // --- grada del fondo (en pantalla, detrás de la valla del fondo)
+    // --- skyline: siluetas de edificios detrás del muro del fondo
     const backWall = this.P(ax1, LAT_C, WALL_Z).y;
-    const standTop = -60;
-    g.fillGradientStyle(0x0f1d52, 0x0f1d52, 0x1f3a8f, 0x1f3a8f, 1);
-    g.fillRect(-1500, standTop, VIEW.W + 3000, backWall - standTop);
-    const rowH = 26;
-    for (let row = 0, y = backWall - 12; y > standTop + 40; row++, y -= rowH) {
-      g.fillStyle(0x000000, 0.18).fillRect(-1500, y + 6, VIEW.W + 3000, 6); // escalón
-      for (let x = -400 + (row % 2) * 13; x < VIEW.W + 400; x += 26) {
-        const seed = x * 3.1 + row * 17.3;
-        g.fillStyle(pick(SHIRTS, seed), 0.95).fillRoundedRect(x - 10, y - 8, 20, 14, 6);
-        g.fillStyle(pick(SKINS, seed + 1)).fillCircle(x, y - 13, 7);
-      }
-    }
-    // techo con focos
-    g.fillStyle(C.outline).fillRect(-1500, standTop - 400, VIEW.W + 3000, 520);
-    g.fillStyle(0x24245a).fillRect(-1500, 96, VIEW.W + 3000, 22);
-    for (let x = -300; x < VIEW.W + 300; x += 120) {
-      g.fillStyle(0xfff7c2, 0.18).fillCircle(x, 108, 34);
-      g.fillStyle(C.outline).fillCircle(x, 108, 13);
-      g.fillStyle(0xfff7c2).fillCircle(x, 108, 9);
+    const sky = [0x272c4a, 0x2f355a, 0x242843];
+    let bx = -400;
+    let i = 0;
+    while (bx < VIEW.W + 400) {
+      const bw2 = 80 + ((i * 53) % 90);
+      const bh2 = 120 + ((i * 97) % 260);
+      g.fillStyle(sky[i % sky.length]).fillRect(bx, backWall - bh2, bw2, bh2);
+      // ventanas iluminadas
+      g.fillStyle(0xffd97a, 0.5);
+      for (let wy = backWall - bh2 + 16; wy < backWall - 14; wy += 24)
+        for (let wx = bx + 10; wx < bx + bw2 - 10; wx += 20) if ((wx * 7 + wy * 3) % 5 < 2) g.fillRect(wx, wy, 8, 12);
+      bx += bw2 + 14;
+      i++;
     }
 
-    // --- gradas laterales en perspectiva (suben alejándose de la pista)
-    for (const side of [-1, 1]) {
-      const wallY = side < 0 ? ay0 : ay1;
-      const far = wallY + side * 330;
-      g.fillStyle(0x1a2f78);
-      g.fillPoints([this.P(ax0 - 300, wallY, WALL_Z), this.P(ax1, wallY, WALL_Z), this.P(ax1, far, 260), this.P(ax0 - 300, far, 260)], true);
-      // público: filas paralelas a la pista
-      for (let r = 0; r < 9; r++) {
-        const yy = wallY + side * (28 + r * 34);
-        const zz = WALL_Z + 12 + r * 24;
-        for (let x = ax0 - 280 + (r % 2) * 18; x < ax1 - 10; x += 36) {
-          const seed = x * 1.7 + r * 31 + side * 7;
-          const body = project(x, yy, zz);
-          const head = project(x, yy, zz + 26);
-          g.fillStyle(pick(SHIRTS, seed), 0.95).fillCircle(body.sx, body.sy, 9 * body.s);
-          g.fillStyle(pick(SKINS, seed + 2)).fillCircle(head.sx, head.sy, 6.5 * head.s);
-        }
-      }
+    // --- muro de ladrillo del fondo con graffiti
+    const wallTop = backWall;
+    const wallBot = this.P(ax1, LAT_C, 0).y;
+    g.fillStyle(0x6b7a9a).fillRect(-1500, wallTop, VIEW.W + 3000, wallBot - wallTop);
+    g.fillStyle(0x5a6788).fillRect(-1500, wallTop, VIEW.W + 3000, 8);
+    g.lineStyle(2, 0x4a5572, 0.6);
+    const brickH = 22;
+    for (let r = 0, y = wallTop + brickH; y < wallBot; r++, y += brickH) {
+      g.lineBetween(-1500, y, VIEW.W + 1500, y);
+      for (let x = -1500 + (r % 2) * 40; x < VIEW.W + 1500; x += 80) g.lineBetween(x, y - brickH, x, y);
     }
+    // graffiti azul/amarillo con corona (identidad del juego)
+    const gcx = VIEW.W / 2;
+    const gcy = (wallTop + wallBot) / 2;
+    g.fillStyle(0x1b5fc2, 0.9).fillEllipse(gcx, gcy, 360, 150);
+    g.fillStyle(0x3aa6ff, 0.9).fillEllipse(gcx, gcy - 6, 330, 128);
+    for (let k = -1; k <= 1; k++) {
+      g.fillStyle(C.yellow).fillTriangle(gcx + k * 60 - 26, gcy - 10, gcx + k * 60 + 26, gcy - 10, gcx + k * 60, gcy - 56);
+    }
+    g.fillStyle(C.yellow).fillRect(gcx - 86, gcy - 10, 172, 26);
 
-    // --- suelo exterior de la pista
-    g.fillStyle(0x2a66cc);
+    // --- asfalto exterior de la cancha (gris urbano con textura)
+    g.fillStyle(0x4b5168);
     this.quad(g, ax0 - 400, ay0, ax1, ay1);
+    g.fillStyle(0x454b60, 0.6);
+    for (let x = ax0 - 380; x < ax1; x += 150) this.quad(g, x, ay0, x + 4, ay1);
 
-    // --- vallas publicitarias (laterales y fondo)
-    const panel = (pts: Phaser.Math.Vector2[], col: number) => {
-      g.fillStyle(col).fillPoints(pts, true);
-      g.lineStyle(4, C.outline).strokePoints(pts, true);
-    };
-    const AD = [C.red, C.yellow, C.purple, C.green];
-    const step = 120;
-    for (const wallY of [ay0, ay1]) {
-      for (let x = ax0 - 400, i = 0; x < ax1; x += step, i++) {
-        const x2 = Math.min(ax1, x + step);
-        panel([this.P(x, wallY, 0), this.P(x2, wallY, 0), this.P(x2, wallY, WALL_Z), this.P(x, wallY, WALL_Z)], AD[i % AD.length]);
-        const a = this.P(x + 14, wallY, WALL_Z * 0.62);
-        const b = this.P(x2 - 14, wallY, WALL_Z * 0.62);
-        g.lineStyle(Math.max(2, 6 * project(x, wallY).s), 0xffffff, 0.75).lineBetween(a.x, a.y, b.x, b.y);
+    // --- valla metálica (malla) en los lados y el fondo: postes + alambrado translúcido
+    const mesh = (pts: Phaser.Math.Vector2[]) => {
+      // sombra de la malla
+      g.fillStyle(0x20263d, 0.28).fillPoints(pts, true);
+      g.lineStyle(2, 0xaab2cc, 0.33);
+      const [tl, bl, br, tr] = pts;
+      const STEP = 0.07;
+      for (let t = 0; t <= 1.001; t += STEP) {
+        g.lineBetween(tl.x + (tr.x - tl.x) * t, tl.y + (tr.y - tl.y) * t, bl.x + (br.x - bl.x) * t, bl.y + (br.y - bl.y) * t);
+        g.lineBetween(tl.x + (bl.x - tl.x) * t, tl.y + (bl.y - tl.y) * t, tr.x + (br.x - tr.x) * t, tr.y + (br.y - tr.y) * t);
       }
+      g.lineStyle(5, C.outline).strokePoints(pts, true);
+    };
+    const post = (x: number, y: number) => {
+      const b = this.P(x, y, 0);
+      const t = this.P(x, y, WALL_Z);
+      g.lineStyle(10, C.outline).lineBetween(b.x, b.y, t.x, t.y);
+      g.lineStyle(5, 0x9aa4bf).lineBetween(b.x, b.y, t.x, t.y);
+      g.fillStyle(0xcfd6e6).fillCircle(t.x, t.y - 2, 5);
+    };
+    // fondo
+    mesh([this.P(ax1, ay0, WALL_Z), this.P(ax1, ay0, 0), this.P(ax1, ay1, 0), this.P(ax1, ay1, WALL_Z)]);
+    // laterales
+    for (const wallY of [ay0, ay1]) {
+      mesh([this.P(ax0 - 300, wallY, WALL_Z), this.P(ax0 - 300, wallY, 0), this.P(ax1, wallY, 0), this.P(ax1, wallY, WALL_Z)]);
+      for (let x = ax0 - 200; x <= ax1; x += 240) post(x, wallY);
     }
-    panel([this.P(ax1, ay0, 0), this.P(ax1, ay1, 0), this.P(ax1, ay1, WALL_Z), this.P(ax1, ay0, WALL_Z)], C.red);
-    const bw = this.P(ax1, LAT_C, WALL_Z * 0.5);
-    for (const off of [-1, 0, 1]) {
-      const p = this.P(ax1, LAT_C + off * 170, WALL_Z * 0.5);
-      this.add.text(p.x, bw.y, GAME_NAME, textStyle(18)).setOrigin(0.5).setDepth(0);
-    }
+    for (let y = ay0; y <= ay1; y += 220) post(ax1, y);
 
-    // --- pista: borde grueso, superficie con degradado suave (más clara cerca)
+    // --- pista: borde grueso, superficie urbana azul/amarillo que combina con los personajes
     g.lineStyle(10, C.outline, 1);
     const dT = COURT.top - ALLEY;
     const dB = COURT.bottom + ALLEY;
     g.strokePoints([this.P(COURT.left - 6, dT - 6), this.P(COURT.left - 6, dB + 6), this.P(COURT.right + 6, dB + 6), this.P(COURT.right + 6, dT - 6)], true);
+    // pasillos (dobles) en un azul más apagado; zona de individuales más viva
+    g.fillStyle(0x2456a8);
+    this.quad(g, COURT.left, dT, COURT.right + 1, dB);
     const bands = 10;
-    for (let i = 0; i < bands; i++) {
-      const x0 = COURT.left + ((COURT.right - COURT.left) * i) / bands;
-      const x1 = COURT.left + ((COURT.right - COURT.left) * (i + 1)) / bands;
-      const t = i / (bands - 1);
+    for (let b = 0; b < bands; b++) {
+      const x0 = COURT.left + ((COURT.right - COURT.left) * b) / bands;
+      const x1 = COURT.left + ((COURT.right - COURT.left) * (b + 1)) / bands;
+      const t = b / (bands - 1);
       const col = Phaser.Display.Color.Interpolate.ColorWithColor(
-        Phaser.Display.Color.ValueToColor(0x4a9cff),
-        Phaser.Display.Color.ValueToColor(0x2f78dc),
+        Phaser.Display.Color.ValueToColor(0x3f8be8),
+        Phaser.Display.Color.ValueToColor(0x2a63c0),
         1,
         t,
       );
       g.fillStyle(Phaser.Display.Color.GetColor(col.r, col.g, col.b));
-      this.quad(g, x0, dT, x1 + 1, dB);
+      this.quad(g, x0, COURT.top, x1 + 1, COURT.bottom);
     }
+    // corona central tenue en el suelo (marca de la casa)
+    const mc = this.P(NET_X, LAT_C);
+    g.fillStyle(C.yellow, 0.1);
+    for (let k = -1; k <= 1; k++) g.fillTriangle(mc.x + k * 34 - 16, mc.y, mc.x + k * 34 + 16, mc.y, mc.x + k * 34, mc.y - 30);
 
     // líneas
     g.lineStyle(5, 0xffffff, 1);
@@ -431,10 +486,13 @@ export class MatchScene extends Phaser.Scene {
     line(COURT.left, LAT_C, COURT.left + 14, LAT_C);
     line(COURT.right - 14, LAT_C, COURT.right, LAT_C);
 
-    const BX = -1000;
-    const BY = 0;
-    const baked = this.add.renderTexture(BX, BY, 2720, 1800).setOrigin(0).setDepth(-10);
-    baked.draw(g, -BX, -BY);
+    // ambiente-1 + cancha nueva (view/CourtView.ts); si falta la imagen, se usa este dibujo de siempre
+    if (!drawCourtView(this)) {
+      const BX = -1000;
+      const BY = 0;
+      const baked = this.add.renderTexture(BX, BY, 2720, 1800).setOrigin(0).setDepth(-10);
+      baked.draw(g, -BX, -BY);
+    }
     g.destroy();
 
     // red: banda vertical en perspectiva (profundidad = su línea en el suelo)
@@ -472,55 +530,18 @@ export class MatchScene extends Phaser.Scene {
 
   // ---------------------------------------------------------------- HUD
   private createHud() {
-    this.hud = this.add.container(0, 0).setScrollFactor(0).setDepth(5500);
-    const w = 560;
-    const h = 82;
-    const g = this.add.graphics();
-    g.fillStyle(C.outline).fillRoundedRect(-w / 2 - 6, -6, w + 12, h + 18, 22);
-    g.fillStyle(0x2a1f4d).fillRoundedRect(-w / 2, 6, w, h, 18);
-    g.fillStyle(0x3a2d66).fillRoundedRect(-w / 2, 0, w, h, 18);
-    g.fillStyle(C.blueDark).fillRoundedRect(-w / 2 + 8, 8, 180, h - 16, 14);
-    g.fillStyle(C.blue).fillRoundedRect(-w / 2 + 8, 8, 180, h - 22, 14);
-    g.fillStyle(C.redDark).fillRoundedRect(w / 2 - 188, 8, 180, h - 16, 14);
-    g.fillStyle(C.red).fillRoundedRect(w / 2 - 188, 8, 180, h - 22, 14);
-    g.fillStyle(0xffffff, 0.25).fillRoundedRect(-w / 2 + 16, 12, 164, 14, 7).fillRoundedRect(w / 2 - 180, 12, 164, 14, 7);
-    this.hud.add(g);
-
-    this.hud.add(this.add.text(-w / 2 + 98, 28, 'TÚ', textStyle(28)).setOrigin(0.5));
-    this.hud.add(this.add.text(w / 2 - 98, 28, this.botName, textStyle(this.botName.length > 8 ? 20 : 26)).setOrigin(0.5));
-
-    for (let side = 0; side < 2; side++) {
-      for (let i = 0; i < GAMES_TO_WIN; i++) {
-        const x = side === 0 ? -w / 2 + 70 + i * 34 : w / 2 - 126 + i * 34;
-        const o = this.add.circle(x, 60, 12, C.outline);
-        const p = this.add.circle(x, 60, 8, 0x1a1033);
-        this.hud.add([o, p]);
-        this.pips[side].push(p);
-      }
-    }
-    for (let side = 0; side < 2; side++) {
-      const x = side === 0 ? -w / 2 + 26 : w / 2 - 26;
-      const ic = this.add.circle(x, 28, 9, 0xd7f53a).setStrokeStyle(3, C.outline);
-      this.hud.add(ic);
-      this.serveIcons.push(ic);
-    }
-
-    this.pointsText = this.add.text(0, 36, '0 - 0', textStyle(44)).setOrigin(0.5);
-    this.gameText = this.add.text(0, 76, 'JUEGO 1', textStyle(16, '#cfc4ff')).setOrigin(0.5);
-    this.hud.add([this.pointsText, this.gameText]);
+    // marcador nuevo (diseño en ui/ScoreBoard.ts); misma posición/profundidad que el anterior
+    this.board = new ScoreBoard(this, { player: 'TÚ', rival: this.botName, gamesToWin: GAMES_TO_WIN });
+    this.hud = this.board.setDepth(5500);
   }
 
   private updateHud() {
-    const [a, b] = this.score.labels();
-    this.pointsText.setText(`${a} - ${b}`);
-    this.gameText.setText(`JUEGO ${Math.min(this.score.gameIndex + 1, GAMES_TO_WIN * 2 - 1)}`);
-    for (let side = 0; side < 2; side++) {
-      this.pips[side].forEach((p, i) => (p.fillColor = i < this.score.games[side] ? C.yellow : 0x1a1033));
-    }
-    const s = this.score.server;
-    this.serveIcons[0].setVisible(s === 0);
-    this.serveIcons[1].setVisible(s === 1);
-    this.tweens.add({ targets: this.pointsText, scale: { from: 1.4, to: 1 }, duration: 300, ease: 'Back.easeOut' });
+    this.board.setScore({
+      labels: this.score.labels(),
+      games: this.score.games,
+      gameIndex: this.score.gameIndex,
+      server: this.score.server,
+    });
   }
 
   private banner(text: string, color = '#ffffff', size = 64, hold = 900) {
@@ -688,7 +709,9 @@ export class MatchScene extends Phaser.Scene {
       this.setActor(this.player, COURT.left - 45, LAT_C + side * 40);
     }
     this.player.ch.facing = 1;
+    this.player.ch.resetPose();
     this.bot.ch.facing = -1;
+    this.bot.ch.resetPose();
     this.ai.reset(this.bot.x, this.bot.y);
     this.holdBall();
   }
@@ -750,61 +773,270 @@ export class MatchScene extends Phaser.Scene {
     this.ball.setPower(false);
     this.ball.setIgnited(this.smashArmed);
     this.ball.clearTrail();
+    this.serveLet = false;
+    this.serveNetLoss = false;
+    this.serveCtl.reset();
     this.placeForServe();
     this.phase = 'serve';
+    this.serveClock = this.server === 'player' ? SERVE.timeLimit : 0; // 5 s para sacar (solo el jugador)
+    this.serveClockText.setVisible(false);
     this.computeServeBox();
     this.showServeHint();
+    // zona de colocación: la mitad de la línea de fondo del lado desde el que se saca
+    const srvA = this.srvActor();
+    this.serveZone = srvA.y > LAT_C ? [LAT_C + 10, COURT.bottom] : [COURT.top, LAT_C - 10];
     if (this.server === 'player') this.joy.release();
+    else {
+      // el rival decide ya su saque (tipo, destino y momento) y se coloca antes de lanzar
+      this.botPlan = this.serveAI.plan(this.faults, this.ai.d);
+      this.botWait = this.botPlan.wait;
+      this.botServeY = clamp(LAT_C + Math.sign(srvA.y - LAT_C) * rand(40, 150), this.serveZone[0], this.serveZone[1]);
+    }
+    this.setServeUi(this.server === 'player');
+    this.secondTag.setVisible(this.faults > 0);
     const st = this.score.status();
     if (secondServe) this.banner('2º saque', '#ffd23f', 54, 500);
     else if (st) this.banner(st, '#ffd23f', 54, 600);
     else if (this.score.points[0] + this.score.points[1] === 0)
       this.banner(this.server === 'player' ? '¡Tu saque!' : `Saca ${this.botName}`, '#ffffff', 48, 500);
-    this.time.delayedCall(950, () => {
-      if (this.phase !== 'serve') return;
-      this.phase = 'toss';
-      this.ball.s.vz = 430;
-    });
   }
 
-  private serveHit() {
-    const who = this.server;
-    const srv = who === 'player' ? this.player : this.bot;
-    srv.ch.swing();
-    this.hideServeHint();
-    const s = this.ball.s;
+  // ---------------------------------------------------------------- saque manual
+  private srvActor() {
+    return this.server === 'player' ? this.player : this.bot;
+  }
+
+  /** ¿Se muestran los botones de saque? (turno de saque del jugador, hasta que golpea) */
+  private serveUiOn() {
+    return this.serveNormalBtn?.visible === true;
+  }
+
+  /** Cambia entre los botones de saque y DASH/SMASH. */
+  private setServeUi(on: boolean) {
+    this.serveNormalBtn.show(on);
+    this.serveSpinBtn.show(on);
+    this.dashBtn.setVisible(!on);
+    this.smashBtn.setVisible(!on);
+    this.dashBtn.enabled = !on;
+    this.smashBtn.enabled = !on;
+  }
+
+  /** Pulsación de un botón de saque del jugador: 1ª lanza la pelota, 2ª (mismo botón) golpea. */
+  private onServeButton(kind: ServeKind) {
+    if (this.paused || this.server !== 'player') return;
+    const ctl = this.serveCtl;
+    if (ctl.state === 'POSITIONING' && this.phase === 'serve') this.beginToss(kind);
+    else if (ctl.state === 'AIMING' && ctl.kind === kind && this.phase === 'toss') this.beginSwing();
+  }
+
+  /** Lanza la pelota en vertical y empieza la animación de saque (queda a la espera con el brazo arriba). */
+  private beginToss(kind: ServeKind) {
+    if (!this.serveCtl.startToss(kind)) return;
+    this.phase = 'toss';
+    this.ball.s.vz = SERVE.tossVz;
+    this.srvActor().ch.serve();
+    if (this.server === 'player') {
+      const [mine, other] = kind === 'normal' ? [this.serveNormalBtn, this.serveSpinBtn] : [this.serveSpinBtn, this.serveNormalBtn];
+      mine.setChosen(true);
+      other.setLocked(true); // no se puede cambiar de tipo de saque a mitad del lanzamiento
+    }
+  }
+
+  /** Segunda pulsación: la raqueta viaja hasta la pelota; el contacto llega con el retardo de la animación. */
+  private beginSwing() {
+    const srv = this.srvActor();
+    if (!this.serveCtl.pressHit(srv.ch.serveContactDelay())) return;
+    srv.ch.serveRelease();
+    this.serveNormalBtn.setCue(false);
+    this.serveSpinBtn.setCue(false);
+  }
+
+  /** Destino (en el cuadro de saque) para un punto de apuntado y un error de ejecución. */
+  private serveSpot(who: Who, kind: ServeKind, aimT: number, errLat = 0, errDepth = 0) {
     const b = this.serveBox;
-    const first = this.faults === 0;
-
-    // ¿falla este saque? (el primero es más rápido y más arriesgado)
-    const faultChance = who === 'player' ? (first ? 0.22 : 0.05) : (first ? 0.3 * (1 - this.ai.d) + 0.12 : 0.05);
-    const willFault = Math.random() < faultChance;
-
-    // punto dentro del cuadro: el jugador puede orientarlo con el joystick
     const inset = 14;
-    let t = rand(0.3, 0.7);
-    if (who === 'player') {
-      const dx = this.inputVector().x;
-      if (Math.abs(dx) > 0.3) t = 0.5 + 0.42 * clamp(dx, -1, 1);
+    const f = clamp((kind === 'spin' ? SERVE.depth.spin : SERVE.depth.normal) + errDepth, 0.12, 1.4);
+    const tx = who === 'player' ? b.x0 + (b.x1 - b.x0) * f : b.x1 - (b.x1 - b.x0) * f;
+    const ty = b.y0 + inset + (b.y1 - b.y0 - inset * 2) * clamp(aimT + errLat, -0.6, 1.6);
+    return { tx, ty };
+  }
+
+  /** Apuntado del jugador: izquierda / centro / derecha del cuadro según el joystick. */
+  private playerAimT() {
+    const d = this.shotDir();
+    const x = Math.abs(d.x) < 0.2 ? 0 : clamp(d.x, -1, 1);
+    return 0.5 + 0.45 * x;
+  }
+
+  /** Contacto de la raqueta con la pelota: calidad según el momento y salida de la pelota con la física normal. */
+  private executeServe() {
+    const who = this.server;
+    const srv = this.srvActor();
+    const s = this.ball.s;
+    const ctl = this.serveCtl;
+    const kind = ctl.kind ?? 'normal';
+    const quality = ctl.evaluate(s.z, s.vz);
+    srv.ch.swing(); // asegura que la animación termina el golpe
+    this.hideServeHint();
+    this.serveAim.setVisible(false);
+    this.setServeUi(false); // se restauran DASH y SMASH...
+    this.lockAbilities(); // ...pero bloqueados un momento para no pulsarlos por error
+    this.serveClock = 0;
+    this.serveClockText.setVisible(false);
+    this.serveNetLoss = false;
+    if (quality === 'miss') {
+      // golpe en vacío: la pelota sigue cayendo y será falta al botar
+      const p = project(s.x, s.y, s.z);
+      this.popText(p.sx, p.sy - 30, '¡Al aire!', '#ffd23f', 30);
+      return;
     }
-    const inY = who === 'player' ? t : 1 - t;
-    let tx = who === 'player' ? b.x0 + (b.x1 - b.x0) * rand(0.6, 0.92) : b.x1 - (b.x1 - b.x0) * rand(0.6, 0.92);
-    let ty = b.y0 + inset + (b.y1 - b.y0 - inset * 2) * inY;
-    if (willFault) {
-      const dirX = who === 'player' ? 1 : -1;
-      if (Math.random() < 0.6) tx += dirX * rand(25, 55); // larga
-      else ty = b.y0 < LAT_C - 1 ? b.y1 + rand(20, 45) : b.y0 - rand(20, 45); // cruza la línea central
+
+    const second = this.faults > 0 ? 1 : 0;
+    if (quality === 'low') {
+      // la pelota está demasiado baja: sale casi plana contra la red y el punto se pierde
+      const tn = 0.55;
+      s.vx = (NET_X - s.x) / tn;
+      s.vz = (12 - s.z + 0.5 * GRAVITY * tn * tn) / tn; // llega a la red a ~12 de altura (la red mide NET_HEIGHT)
+      s.vy = (LAT_C - s.y) / (tn * 1.6);
+      s.ay = undefined;
+      this.ball.setKind('normal');
+      this.lastHitter = who;
+      this.bounces = 0;
+      this.serving = true;
+      this.serveNetLoss = true;
+      this.phase = 'rally';
+      if (who === 'player') this.ai.onPlayerHit(false);
+      else this.ai.onBotHit();
+      this.hitFx(s.x, s.y, s.z, false, 0.1);
+      return;
     }
-    const speed = first ? SERVE_SPEED * 1.12 : SERVE_SPEED * 0.85;
-    aimShot(s, tx, ty, speed);
-    this.ball.setKind('normal');
+    const g = () => (Math.random() + Math.random() + Math.random() - 1.5) * 2; // ~ N(0,1)
+    const [eLat, eDep] = SERVE.error[quality];
+    const aimT = who === 'player' ? this.playerAimT() : this.botPlan.aimT;
+    const { tx, ty } = this.serveSpot(who, kind, aimT, g() * eLat, g() * eDep);
+    const speed = SERVE_SPEED * SERVE.speed[quality][second] * (kind === 'spin' ? SERVE.spinSpeedMult : 1);
+    const margin = quality === 'perfect' ? 22 : quality === 'normal' ? rand(8, 20) : rand(-4, 10);
+
+    aimShot(s, tx, ty, speed, margin);
+    if (kind === 'spin') {
+      // curva hacia el lado al que se apunta: se apunta antes para que la pelota bote donde se eligió.
+      // El tiempo de vuelo cambia al desplazar el punto de apuntado, así que se itera hasta que converge.
+      const ay = SERVE.spinAy * (aimT > 0.55 ? 1 : aimT < 0.45 ? -1 : Math.random() < 0.5 ? 1 : -1);
+      let aimY = ty;
+      for (let i = 0; i < 4; i++) {
+        const T = (tx - s.x) / s.vx;
+        aimY = ty - 0.5 * ay * T * T;
+        aimShot(s, tx, aimY, speed, margin);
+      }
+      s.ay = ay;
+    }
+    // golpe defectuoso: la pelota sale más baja y puede ir a la red (falta), rozar la cinta (let) o quedarse corta
+    if (Math.random() < SERVE.flawChance[quality]) s.vz -= rand(SERVE.flawDrop[0], SERVE.flawDrop[1]);
+    this.ball.setKind(kind === 'spin' ? 'side' : 'normal', quality === 'perfect');
     this.lastHitter = who;
     this.bounces = 0;
     this.serving = true;
+    this.serveLet = false;
     this.phase = 'rally';
-    if (who === 'player') this.ai.onPlayerHit(false);
+    if (who === 'player') this.ai.onPlayerHit(quality === 'perfect');
     else this.ai.onBotHit();
-    this.hitFx(s.x, s.y, s.z, false);
+    // potencia real del saque (la velocidad que lleva) para el efecto de impacto
+    const mult = SERVE.speed[quality][second] * (kind === 'spin' ? SERVE.spinSpeedMult : 1);
+    this.hitFx(s.x, s.y, s.z, false, clamp((mult - 0.8) / 0.6, 0, 1));
+    if (quality === 'perfect') this.perfectFx(s.x, s.y, s.z);
+  }
+
+  /** Efecto del saque perfecto: anillo azul neón y texto. */
+  private perfectFx(bx: number, by: number, bz: number) {
+    const p = project(bx, by, bz);
+    const ring = this.add.circle(p.sx, p.sy, 16, NEON, 0).setStrokeStyle(7, NEON).setDepth(3500).setBlendMode(Phaser.BlendModes.ADD);
+    this.tweens.add({ targets: ring, scale: 4.2, alpha: 0, duration: 420, onComplete: () => ring.destroy() });
+    if (this.server !== 'player') return; // el rival solo muestra el anillo
+    this.cameras.main.flash(100, 120, 230, 255);
+    this.popText(p.sx, p.sy - 50, '¡SAQUE PERFECTO!', '#7ff0ff', 38);
+  }
+
+  /** DASH y SMASH visibles pero bloqueados un momento tras sacar (evita pulsarlos sin querer). */
+  private lockAbilities() {
+    this.dashBtn.setEnabled(false);
+    this.smashBtn.setEnabled(false);
+    this.time.delayedCall(SERVE.abilityLock * 1000, () => {
+      if (this.serveUiOn()) return; // ya se está sacando otra vez: los controla setServeUi
+      this.dashBtn.setEnabled(true);
+      this.smashBtn.setEnabled(true);
+    });
+  }
+
+  /** El jugador tiene SERVE.timeLimit segundos para sacar; los últimos 3 se muestran. Al agotarse: falta. */
+  private tickServeClock(dt: number) {
+    const st = this.serveCtl.state;
+    const counting = this.serveClock > 0 && this.server === 'player' && (this.phase === 'serve' || this.phase === 'toss') && st !== 'SWING' && st !== 'SERVE_RESULT';
+    if (!counting) {
+      this.serveClockText.setVisible(false);
+      return;
+    }
+    this.serveClock -= dt;
+    if (this.serveClock <= 0) {
+      this.serveClock = 0;
+      this.serveClockText.setVisible(false);
+      const h = this.headPos(this.player);
+      this.popText(h.x, h.y - 30, '¡TIEMPO!', '#ff7a85', 34);
+      this.tossFault();
+      return;
+    }
+    if (this.serveClock <= 3) {
+      const n = Math.ceil(this.serveClock);
+      this.serveClockText.setVisible(true).setText(String(n)).setColor(n <= 1 ? '#ff7a85' : '#ffd23f');
+    }
+  }
+
+  /** La pelota lanzada baja sin que se golpee: el servidor la atrapa y puede lanzarla de nuevo (sin falta). */
+  private catchBall() {
+    this.serveCtl.reset();
+    this.phase = 'serve';
+    this.srvActor().ch.resetPose();
+    this.serveAim.setVisible(false);
+    if (this.server === 'player') this.setServeUi(true);
+    else {
+      this.botPlan = this.serveAI.plan(this.faults, this.ai.d);
+      this.botWait = 0.5;
+    }
+    this.holdBall();
+  }
+
+  /** Falta de saque sin golpe válido: la pelota cae sin golpearse (golpe en vacío) o se acabó el tiempo. */
+  private tossFault() {
+    this.setServeUi(false);
+    this.hideServeHint();
+    this.serveAim.setVisible(false);
+    this.serveCtl.state = 'SERVE_RESULT';
+    this.serving = true;
+    this.lastHitter = this.server;
+    this.phase = 'rally';
+    this.serviceFault();
+  }
+
+  /** Let: la pelota rozó la cinta de la red y cayó en el cuadro. Se repite el saque sin falta. */
+  private serveLetCall() {
+    this.serveLet = false;
+    this.phase = 'pointover';
+    const g = project(this.ball.s.x, this.ball.s.y, 0);
+    this.popText(g.sx, g.sy - 40, 'LET', '#ffd23f', 40);
+    this.time.delayedCall(1000, () => this.startPoint(this.faults > 0));
+  }
+
+  /** Indicador discreto del destino mientras se apunta (solo el jugador). */
+  private renderServeAim() {
+    const g = this.serveAim;
+    const ctl = this.serveCtl;
+    const on = this.server === 'player' && this.phase === 'toss' && (ctl.state === 'TOSS' || ctl.state === 'AIMING');
+    g.clear();
+    g.setVisible(on);
+    if (!on || !ctl.kind) return;
+    const { tx, ty } = this.serveSpot('player', ctl.kind, this.playerAimT());
+    const p = project(tx, ty);
+    g.lineStyle(4 * p.s, 0xffffff, 0.9).strokeEllipse(p.sx, p.sy, 54 * p.s, 24 * p.s);
+    g.fillStyle(0xffd23f, 0.9).fillEllipse(p.sx, p.sy, 16 * p.s, 7 * p.s);
   }
 
   /** Falta de saque: segundo saque, o doble falta = punto del rival. */
@@ -833,6 +1065,7 @@ export class MatchScene extends Phaser.Scene {
 
     if (res.matchWinner !== null) {
       const win = res.matchWinner === 0;
+      (win ? this.player : this.bot).ch.victory();
       this.time.delayedCall(500, () => this.banner(win ? '¡PARTIDO GANADO!' : 'PARTIDO PERDIDO', win ? '#ffd23f' : '#ff7a85', 68, 1300));
       this.time.delayedCall(2400, () => this.endMatch(win));
       return;
@@ -848,9 +1081,20 @@ export class MatchScene extends Phaser.Scene {
 
   private endMatch(win: boolean, surrendered = false) {
     this.phase = 'over';
-    const data: ResultData = { win, playerGames: this.score.games[0], botGames: this.score.games[1], botName: this.botName, surrendered };
-    this.cameras.main.fadeOut(300, 0, 0, 0);
-    this.cameras.main.once('camerafadeoutcomplete', () => this.scene.start('Result', data));
+    // final cinematográfico sobre el mismo mapa (fx/matchEnd.ts + scenes/MatchEndScene.ts)
+    playMatchEnd(this, {
+      winner: (win ? this.player : this.bot).ch,
+      loser: (win ? this.bot : this.player).ch,
+      data: {
+        win,
+        surrendered,
+        playerName: getProfile().name,
+        rivalName: this.botName,
+        playerGames: this.score.games[0],
+        rivalGames: this.score.games[1],
+        botName: this.botName,
+      },
+    });
   }
 
   // ---------------------------------------------------------------- tiro cargado
@@ -872,78 +1116,64 @@ export class MatchScene extends Phaser.Scene {
     this.charging = true;
     this.charge = 0;
     this.chargeFull = false;
+    this.ringGold = false;
     this.player.ch.setCharging(true);
     this.chargeRing.setVisible(true);
-    this.chargeBar.setVisible(true);
-    this.chargeLabel.setVisible(true);
-    this.chargeLabelKey = '';
+    this.chargeMeter.begin();
   }
 
-  private stopCharge() {
+  /** Termina la carga: oculta el indicador (con desvanecido suave) y apaga el brillo del personaje. */
+  private stopCharge(soft = true) {
     if (!this.charging) return;
     this.charging = false;
     this.charge = 0;
+    this.chargeFull = false;
     this.player.ch.setCharging(false);
     this.chargeRing.setVisible(false);
-    this.chargeBar.setVisible(false).clear();
-    this.chargeLabel.setVisible(false);
+    this.chargeMeter.end(soft);
+    this.chargeAura.hide();
   }
 
   private updateCharge(dt: number) {
     if (!this.charging) return;
     this.charge = Math.min(1, this.charge + dt / 1.1);
-    if (this.charge >= 1 && !this.chargeFull) {
-      this.chargeFull = true;
-      const h = this.headPos(this.player);
-      this.popText(h.x, h.y - 30, '¡MÁX!', '#d6f0ff', 30);
-      this.cameras.main.flash(80, 160, 210, 255);
-    }
+    this.chargeFull = this.charge >= 1;
   }
 
-  /** Nombre del tiro cargado que saldría con la dirección actual del joystick. */
-  private chargedShotName() {
-    switch (this.shotFromJoystick()) {
-      case 'drop':
-        return '▼ CORTITA';
-      case 'lob':
-        return '▲ POTENTE';
-      case 'left':
-        return '◀ CRUZADA';
-      case 'right':
-        return 'CRUZADA ▶';
-      default:
-        return 'CARGADO';
-    }
+  /**
+   * Lado al que irá realmente el golpe cargado: -1 izquierda, 1 derecha, 0 sin dirección.
+   * Sale de la misma lectura del joystick que usa playerHit (cruzado a esa esquina), no del movimiento crudo.
+   */
+  private chargedSide(): -1 | 0 | 1 {
+    const shot = this.shotFromJoystick();
+    return shot === 'left' ? -1 : shot === 'right' ? 1 : 0;
   }
 
   private renderCharge() {
     if (!this.charging) return;
+    const dt = this.game.loop.delta / 1000;
     const p = project(this.player.x, this.player.y);
-    const pulse = 0.5 + 0.5 * Math.sin(this.time.now / (this.chargeFull ? 45 : 90));
+    const k = p.s * VIEW.CHAR_K;
+    const pulse = 0.5 + 0.5 * Math.sin(this.time.now / (this.chargeFull ? 70 : 140));
+    // aro en el suelo: azul y, al máximo, dorado
+    if (this.chargeFull !== this.ringGold) {
+      this.ringGold = this.chargeFull;
+      this.chargeRing.setFillStyle(this.ringGold ? 0xffc72e : 0x6ec1ff, 0.25).setStrokeStyle(5, this.ringGold ? 0xfff2a8 : 0xd6f0ff, 0.9);
+    }
     this.chargeRing
       .setPosition(p.sx, p.sy)
-      .setScale(p.s * (0.55 + 0.55 * this.charge + pulse * 0.08))
-      .setAlpha(0.5 + pulse * 0.5)
+      .setScale(p.s * (0.55 + 0.55 * this.charge + pulse * 0.06))
+      .setAlpha(0.45 + pulse * 0.4)
       .setDepth(p.sy - 0.8);
-    // barra de carga sobre la cabeza
+    // indicador único sobre la cabeza: potencia + dirección real
     const h = this.headPos(this.player);
-    const bw = 84;
-    const bh = 12;
-    const x = h.x - bw / 2;
-    const y = h.y - 34;
-    const g = this.chargeBar.clear();
-    g.fillStyle(C.outline, 0.85).fillRoundedRect(x - 4, y - 4, bw + 8, bh + 8, 8);
-    const col = this.chargeFull ? (pulse > 0.5 ? 0xffffff : 0x9ad8ff) : 0x6ec1ff;
-    g.fillStyle(col, 1).fillRoundedRect(x, y, Math.max(6, bw * this.charge), bh, 5);
-    g.fillStyle(0xffffff, 0.35).fillRect(x + 3, y + 2, Math.max(0, bw * this.charge - 6), 3);
-    const key = this.chargedShotName();
-    if (key !== this.chargeLabelKey) {
-      this.chargeLabelKey = key;
-      this.chargeLabel.setText(key);
-    }
-    this.chargeLabel.setPosition(h.x, y - 16);
+    this.chargeMeter.setValue(this.charge);
+    this.chargeMeter.setDirection(this.chargedSide());
+    this.chargeMeter.place(h.x, h.y - 10, Phaser.Math.Clamp(p.s / 1.45, 0.8, 1));
+    this.chargeMeter.tick(dt);
+    // brillo alrededor del personaje y su raqueta
+    this.chargeAura.update(dt, p.sx, p.sy, k, this.player.ch.facing, this.charge, p.sy);
   }
-
   // ---------------------------------------------------------------- golpes
   private handleBounce() {
     const s = this.ball.s;
@@ -953,6 +1183,8 @@ export class MatchScene extends Phaser.Scene {
       if (this.inServiceBox(s.x, s.y)) {
         this.serving = false;
         this.bounces = 1;
+        this.serveCtl.startRally();
+        if (this.serveLet) this.serveLetCall();
       } else {
         this.outMark(s.x, s.y);
         this.serviceFault();
@@ -1090,7 +1322,8 @@ export class MatchScene extends Phaser.Scene {
       this.smashBtn.setArmed(false);
       this.aura.stop();
     }
-    this.player.ch.swing(power || charged);
+    // remate (animación 'smash'): con el SMASH o con una pelota alta
+    this.player.ch.swing(power || charged, power || s.z > OVERHEAD_Z);
 
     const depth = (a: number, b: number) => NET_X + (COURT.right - NET_X) * rand(a, b);
     const lat = (k: number) => LAT_C + clamp(k, -1, 1) * (HALF_W - 30);
@@ -1098,7 +1331,6 @@ export class MatchScene extends Phaser.Scene {
     let ty: number;
     let speed = SHOT_SPEED;
     let margin = 18;
-    let label: string | null = null;
     let kind: ShotKind = 'normal';
     let dead = false;
 
@@ -1117,7 +1349,6 @@ export class MatchScene extends Phaser.Scene {
         ty = lat(d.x * 0.9 + rand(-0.15, 0.15));
         speed = SHOT_SPEED * (1.4 + 0.35 * c);
         margin = 6;
-        label = '¡VOLEA!';
         kind = Math.abs(d.x) > 0.3 ? 'side' : 'normal';
       } else if (shot === 'drop') {
         // cortita muerta: casi no bota
@@ -1126,7 +1357,6 @@ export class MatchScene extends Phaser.Scene {
         speed = SHOT_SPEED * (0.85 + 0.15 * c);
         margin = 5;
         dead = true;
-        label = '¡CORTITA!';
         kind = 'drop';
       } else if (shot === 'lob') {
         // arriba: drive potente y profundo
@@ -1134,20 +1364,17 @@ export class MatchScene extends Phaser.Scene {
         ty = lat(d.x * 0.5 + rand(-0.3, 0.3));
         speed = SHOT_SPEED * (1.45 + 0.4 * c);
         margin = 8;
-        label = '¡POTENTE!';
       } else if (shot === 'left' || shot === 'right') {
         tx = depth(0.55, 0.85);
         ty = lat((shot === 'left' ? -1 : 1) * rand(0.85, 1));
         speed = SHOT_SPEED * (1.3 + 0.3 * c);
         margin = 10;
-        label = '¡CRUZADA!';
         kind = 'side';
       } else {
         tx = depth(0.65, 0.9);
         ty = lat(rand(-0.4, 0.4));
         speed = SHOT_SPEED * (1.25 + 0.3 * c);
         margin = 12;
-        label = '¡CARGADO!';
       }
     } else {
       // tipo de golpe según el joystick JUSTO al golpear (o su última dirección reciente)
@@ -1159,7 +1386,6 @@ export class MatchScene extends Phaser.Scene {
           ty = lat(d.x * 0.6 + rand(-0.2, 0.2));
           speed = SHOT_SPEED * 0.8;
           margin = 8;
-          label = '¡Corta!';
           kind = 'drop';
           break;
         case 'lob': // arriba: globo alto y profundo
@@ -1167,19 +1393,16 @@ export class MatchScene extends Phaser.Scene {
           ty = lat(d.x * 0.6 + rand(-0.2, 0.2));
           speed = SHOT_SPEED * 0.85;
           margin = 75;
-          label = '¡Globo!';
           kind = 'lob';
           break;
         case 'left': // izquierda de la pantalla = y menor
           tx = depth(0.6, 0.88);
           ty = lat(-rand(0.75, 1));
-          label = '◀';
           kind = 'side';
           break;
         case 'right':
           tx = depth(0.6, 0.88);
           ty = lat(rand(0.75, 1));
-          label = '▶';
           kind = 'side';
           break;
         default: // neutro: golpe normal
@@ -1193,23 +1416,12 @@ export class MatchScene extends Phaser.Scene {
       s.damp = 0.22;
       s.fric = 0.5;
     }
-    if (label && label.startsWith('¡')) {
-      const h = this.headPos(this.player);
-      this.popText(h.x, h.y, label, charged ? '#9ad8ff' : '#ffffff', charged ? 32 : 28);
-    }
-    if (charged) {
-      // destello azul del impacto cargado
-      const ap = project(s.x, s.y, s.z);
-      const fl = this.add.image(ap.sx, ap.sy, 'fx-glow').setTint(0x6ec1ff).setBlendMode(Phaser.BlendModes.ADD).setDepth(3600).setScale(0.6);
-      this.tweens.add({ targets: fl, scale: 2.5 + 2 * c, alpha: 0, duration: 260, onComplete: () => fl.destroy() });
-      this.cameras.main.shake(90, 0.004 + 0.006 * c);
-    }
     this.ball.setPower(power);
     this.ball.setKind(kind, charged);
     this.lastHitter = 'player';
     this.bounces = 0;
     this.ai.onPlayerHit(power);
-    this.hitFx(s.x, s.y, s.z, power);
+    this.hitFx(s.x, s.y, s.z, power, charged ? c : 0.15);
   }
 
   private botHit() {
@@ -1236,25 +1448,30 @@ export class MatchScene extends Phaser.Scene {
   }
 
   // ---------------------------------------------------------------- efectos
-  private hitFx(bx: number, by: number, bz: number, power: boolean) {
+  /**
+   * Efecto del golpe sobre la pelota. `level` es la potencia real (0..1) y elige el tramo
+   * (suave / medio / fuerte / máximo) del destello, las ondas y la estela. Con SMASH sale el fuego de siempre.
+   */
+  private hitFx(bx: number, by: number, bz: number, power: boolean, level = 0.15) {
     const p = project(bx, by, bz);
     const x = p.sx;
     const y = p.sy;
-    const ring = this.add.circle(x, y, 14, 0xffffff, 0).setStrokeStyle(power ? 8 : 5, power ? 0xff8a1e : 0xffffff).setDepth(3500);
-    this.tweens.add({ targets: ring, scale: power ? 4 : 2.4, alpha: 0, duration: power ? 380 : 240, onComplete: () => ring.destroy() });
-    for (let i = 0; i < (power ? 10 : 5); i++) {
-      const a = Math.random() * Math.PI * 2;
-      const d = rand(30, power ? 90 : 50);
-      const st = this.add.star(x, y, 4, 3, 8, power ? 0xffd23f : 0xffffff).setDepth(3500);
-      this.tweens.add({ targets: st, x: x + Math.cos(a) * d, y: y + Math.sin(a) * d, alpha: 0, angle: 180, duration: 320, onComplete: () => st.destroy() });
-    }
     if (power) {
+      const ring = this.add.circle(x, y, 14, 0xffffff, 0).setStrokeStyle(8, 0xff8a1e).setDepth(3500);
+      this.tweens.add({ targets: ring, scale: 4, alpha: 0, duration: 380, onComplete: () => ring.destroy() });
+      for (let i = 0; i < 10; i++) {
+        const a = Math.random() * Math.PI * 2;
+        const d = rand(30, 90);
+        const st = this.add.star(x, y, 4, 3, 8, 0xffd23f).setDepth(3500);
+        this.tweens.add({ targets: st, x: x + Math.cos(a) * d, y: y + Math.sin(a) * d, alpha: 0, angle: 180, duration: 320, onComplete: () => st.destroy() });
+      }
       this.cameras.main.shake(160, 0.012);
       this.cameras.main.flash(120, 255, 200, 120);
-      this.popText(x, y - 40, '¡SMASH!', '#ffb347', 44);
+      return;
     }
+    const tier = playImpact(this, x, y, level);
+    this.ball.setImpactTrail(TIER_TRAIL[tier].boost, TIER_TRAIL[tier].color);
   }
-
   private bounceFx(x: number, y: number) {
     const p = project(x, y);
     const e = this.add.ellipse(p.sx, p.sy, 20 * p.s, 8 * p.s, 0xffffff, 0.5).setDepth(1);
@@ -1334,10 +1551,13 @@ export class MatchScene extends Phaser.Scene {
       pl.vanished ||
       this.phase === 'over' ||
       this.phase === 'intro' ||
-      ((this.phase === 'serve' || this.phase === 'toss') && this.server === 'player');
+      (this.server === 'player' && this.phase === 'toss') ||
+      (this.server === 'player' && this.phase === 'serve' && this.serveCtl.state !== 'POSITIONING');
+    // al sacar (antes de lanzar) solo hay desplazamiento lateral dentro de la mitad de la línea de fondo
+    const positioning = this.server === 'player' && this.phase === 'serve' && this.serveCtl.state === 'POSITIONING';
     if (pl.stun > 0) pl.stun -= dt;
     const raw = this.inputVector();
-    const v = frozen ? new Phaser.Math.Vector2() : raw;
+    const v = frozen ? new Phaser.Math.Vector2() : positioning ? new Phaser.Math.Vector2(raw.x, 0) : raw;
     // la dirección para apuntar se lee aunque el jugador esté quieto cargando
     if (raw.lengthSq() > 0.09) {
       this.lastDir.copy(raw);
@@ -1345,17 +1565,34 @@ export class MatchScene extends Phaser.Scene {
     }
     this.updateCharge(dt);
     // pantalla -> cancha: arriba = hacia la red (+x), derecha = +y
-    pl.x = clamp(pl.x - v.y * PLAYER_SPEED * dt, P_X[0], P_X[1]);
-    pl.y = clamp(pl.y + v.x * PLAYER_SPEED * dt, Y_MIN, Y_MAX);
+    if (positioning) {
+      pl.y = clamp(pl.y + v.x * PLAYER_SPEED * SERVE.positionSpeed * dt, this.serveZone[0], this.serveZone[1]);
+    } else {
+      pl.x = clamp(pl.x - v.y * PLAYER_SPEED * dt, P_X[0], P_X[1]);
+      pl.y = clamp(pl.y + v.x * PLAYER_SPEED * dt, Y_MIN, Y_MAX);
+    }
     pl.ch.setMoving(v.lengthSq() > 0.01);
     this.updateFacing(pl);
+    // guardia con la raqueta atrás cuando la pelota viene hacia el jugador y ya está cerca
+    const sb = this.ball.s;
+    pl.ch.setReady(
+      this.phase === 'rally' && this.lastHitter !== 'player' && sb.x < NET_X && sb.vx < 0 && !pl.vanished && sb.z < HIT_MAX_Z * 1.6 && this.reachDist(pl, sb) < READY_DIST,
+    );
 
     // --- bot
     const bt = this.bot;
     if (bt.stun > 0) bt.stun -= dt;
     const botFrozen = bt.stun > 0 || this.phase === 'over' || this.phase === 'intro' || ((this.phase === 'serve' || this.phase === 'toss') && this.server === 'bot');
     if (this.phase === 'rally') this.ai.update(dt, this.ball.s);
-    if (!botFrozen) {
+    if (this.server === 'bot' && this.phase === 'serve' && this.serveCtl.state === 'POSITIONING') {
+      // el rival se coloca sobre su línea de fondo y, pasado un momento, lanza la pelota
+      const dy = this.botServeY - bt.y;
+      const step = Math.min(Math.abs(dy), PLAYER_SPEED * 0.35 * dt);
+      bt.y += Math.sign(dy) * step;
+      bt.ch.setMoving(Math.abs(dy) > 3);
+      this.botWait -= dt;
+      if (this.botWait <= 0 && Math.abs(dy) <= 3) this.beginToss(this.botPlan.kind);
+    } else if (!botFrozen) {
       const dx = this.ai.target.x - bt.x;
       const dy = this.ai.target.y - bt.y;
       const dist = Math.hypot(dx, dy);
@@ -1370,23 +1607,42 @@ export class MatchScene extends Phaser.Scene {
     } else bt.ch.setMoving(false);
     this.updateFacing(bt);
 
+    // --- tiempo para sacar (solo el jugador): si se agota, falta
+    this.tickServeClock(dt);
+
     // --- pelota
     if (this.phase === 'serve' || this.phase === 'intro') {
       this.holdBall();
       this.ball.s.z = 62 + Math.sin(this.time.now / 150) * 4;
     } else if (this.phase === 'toss') {
-      const srv = this.server === 'player' ? this.player : this.bot;
+      const srv = this.srvActor();
       const s = this.ball.s;
+      const ctl = this.serveCtl;
       s.x = srv.x + srv.dir * 10;
       s.y = srv.y + srv.ch.facing * 28;
-      stepBall(s, dt);
-      if (s.vz < 0 && s.z < 150) this.serveHit();
+      const ev = stepBall(s, dt);
+      if (ev === 'bounce') this.tossFault(); // golpe en vacío: la pelota cayó al suelo
+      else if (ctl.state === 'AIMING' && s.vz < 0 && s.z <= SERVE.catchZ) this.catchBall(); // no la golpeó: la atrapa y reintenta
+      else {
+        const tev = ctl.tick(dt);
+        if (this.server === 'bot' && ctl.state === 'AIMING' && ctl.t >= this.botPlan.pressAt) this.beginSwing();
+        // el botón elegido se ilumina en azul neón mientras dura la ventana de saque perfecto
+        if (this.server === 'player' && ctl.kind) (ctl.kind === 'normal' ? this.serveNormalBtn : this.serveSpinBtn).setCue(ctl.windowOpen());
+        if (tev === 'contact') this.executeServe();
+      }
     } else if (this.phase === 'rally' || this.phase === 'pointover') {
       const sub = 3;
       for (let i = 0; i < sub; i++) {
+        const px = this.ball.s.x;
         const ev = stepBall(this.ball.s, dt / sub);
+        // saque que roza la cinta de la red por encima: si cae en el cuadro es let
+        if (this.serving && this.phase === 'rally' && (px - NET_X) * (this.ball.s.x - NET_X) < 0 && this.ball.s.z >= NET_HEIGHT && this.ball.s.z <= NET_HEIGHT + SERVE.letBand) this.serveLet = true;
         if (this.phase !== 'rally') continue;
-        if (ev === 'net' && this.serving) this.serviceFault();
+        if (ev === 'net' && this.serving && this.serveNetLoss) {
+          this.serveNetLoss = false;
+          this.serving = false;
+          this.pointTo(this.lastHitter === 'player' ? 'bot' : 'player', '¡RED!', '#ff7a85');
+        } else if (ev === 'net' && this.serving) this.serviceFault();
         else if (ev === 'net' && this.lastHitter) {
           const rec: Who = this.lastHitter === 'player' ? 'bot' : 'player';
           this.pointTo(rec, '¡RED!', '#ff7a85');
@@ -1397,6 +1653,7 @@ export class MatchScene extends Phaser.Scene {
 
     this.ball.render(dt);
     this.renderActors();
+    this.renderServeAim();
 
     // cámara: sigue un poco al jugador en lateral (tipo Mario Tennis)
     const cam = this.cameras.main;
@@ -1405,6 +1662,8 @@ export class MatchScene extends Phaser.Scene {
     cam.scrollX += (target - cam.scrollX) * Math.min(1, dt * 5);
   }
 }
+
+
 
 
 

@@ -55,6 +55,20 @@ export class AbilityButton extends Phaser.GameObjects.Container {
     this.redraw();
   }
 
+  /** Sustituye el dibujo por una imagen (si la textura no existe, se queda el dibujo). */
+  setArt(key: string) {
+    if (!this.scene.textures.exists(key)) return;
+    this.face.removeAll(true);
+    const d = this.radius * 2 + 16; // mismo tamaño que el disco dibujado (con su borde)
+    this.face.add(this.scene.add.image(0, 0, key).setDisplaySize(d, d));
+  }
+
+  /** Bloquea / libera el botón (se ve atenuado y vibra si se pulsa mientras está bloqueado). */
+  setEnabled(on: boolean) {
+    this.enabled = on;
+    this.redraw();
+  }
+
   get ready() {
     return this.remaining <= 0 && this.enabled;
   }

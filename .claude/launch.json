@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "dev",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["vite", "--port", "5173"],
+      "port": 5173
+    },
+    {
+      "name": "static",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["vite", "preview", "--outDir", "C:\\Users\\IAGUIL~1\\AppData\\Local\\Temp\\claude\\6a37ad8c87ac523c\\c53b9d18-8077-4b84-889a-dba994506e33\\scratchpad\\dist", "--port", "5180"],
+      "port": 5180
+    }
+  ]
+}

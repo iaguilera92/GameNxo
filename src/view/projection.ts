@@ -15,8 +15,8 @@ export const VIEW = {
   H: 1280,
   NEAR_Y: 900, // y en pantalla de la línea de fondo del jugador
   FAR_Y: 330, // y en pantalla de la línea de fondo del rival
-  NEAR_W: 640, // ancho en pantalla de la cancha en la línea de fondo cercana (casi toda la pantalla)
-  RATIO: 0.42, // ancho lejano / ancho cercano (perspectiva fuerte, cámara baja tipo Mario Tennis)
+  NEAR_W: 700, // ancho en pantalla de la cancha en la línea de fondo cercana (antes 640: cancha más ancha)
+  RATIO: 0.48, // ancho lejano / ancho cercano (antes 0.42: el fondo de la cancha menos estrecho)
   Z_K: 0.75, // compresión visual de la altura
   CHAR_K: 0.62, // escala base de los personajes
   /** cuánto sigue la cámara al jugador en lateral (0 = fija, 1 = centrada en él) */

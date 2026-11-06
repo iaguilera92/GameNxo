@@ -5,7 +5,7 @@ const config: CapacitorConfig = {
   appName: 'Game Nxo',
   webDir: 'dist',
   android: {
-    backgroundColor: '#1c2f8f',
+    backgroundColor: '#000000',
   },
 };
 

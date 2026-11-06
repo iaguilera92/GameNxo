@@ -1,6 +1,8 @@
-﻿import Phaser from 'phaser';
+import Phaser from 'phaser';
 import { C } from '../ui/theme';
-import { getSkin, type SkinId } from '../characters/skins';
+import { getSkin, skinMode, type SkinId } from '../characters/skins';
+import { NxoActor, nxoSpritesReady } from './NxoActor';
+import { rivalFor, sheetFor } from '../characters/catalog';
 
 export interface CharacterLook {
   shirt: number;
@@ -18,7 +20,7 @@ export interface CharacterLook {
 }
 
 export const PLAYER_LOOK: CharacterLook = {
-  id: 'player',
+  id: 'nxo',
   shirt: C.blue,
   shirtDark: C.blueDark,
   shorts: 0x2a3fa8,
@@ -29,7 +31,16 @@ export const PLAYER_LOOK: CharacterLook = {
   skinDark: 0xe39a5e,
   shoe: 0xffffff,
 };
-export const BOT_LOOK: CharacterLook = {
+
+/** Look del jugador con la skin elegida en el perfil (o una skin dada). */
+export function playerLook(skinId?: string): CharacterLook {
+  return { ...PLAYER_LOOK, id: (skinId as CharacterLook['id']) ?? PLAYER_LOOK.id };
+}
+/** Rival automático: el personaje del catálogo distinto al del jugador (se elige por id). */
+export function rivalLook(playerSkin?: string): CharacterLook {
+  return { ...BOT_LOOK, id: rivalFor(playerSkin) as CharacterLook['id'] };
+}
+const BOT_LOOK: CharacterLook = {
   id: 'rival',
   shirt: C.red,
   shirtDark: C.redDark,
@@ -66,7 +77,7 @@ function shade(color: number, t: number) {
  *   shadow            sombra en el suelo
  *   rig               se voltea (scaleX) para poner la raqueta a izquierda/derecha
  *     torso           cuerpo (rebota en idle/carrera)
- *     racketArm       brazo + raqueta, pivota en el hombro
+ *       racketArm     brazo + raqueta, pivota en el hombro (rebota con el cuerpo)
  */
 export class Character extends Phaser.GameObjects.Container {
   readonly shadow: Phaser.GameObjects.Ellipse;
@@ -78,10 +89,24 @@ export class Character extends Phaser.GameObjects.Container {
   private charging = false;
   private moving = false;
   private _facing = 1;
-  readonly restAngle = -60;
+  /** true cuando el brazo es una imagen (skin); los ángulos de pose cambian respecto al vectorial. */
+  private usesSkin = false;
+  /** Ángulo de reposo del brazo. Imagen: cae al costado (95°). Vectorial: hacia arriba (-60°). */
+  readonly restAngle: number;
+  /** Animaciones por sprites (solo NXO de espaldas en el partido); undefined = dibujo de siempre. */
+  private nxo?: NxoActor;
 
   constructor(scene: Phaser.Scene, x: number, y: number, look: CharacterLook, view: CharacterView = 'front') {
     super(scene, x, y);
+
+    // NXO de espaldas (partido): spritesheet animado, si cargó y las skins no están desactivadas
+    const spriteId = sheetFor(look.id, view);
+    const useSprites = !!spriteId && skinMode() !== 'off' && nxoSpritesReady(scene, spriteId);
+    // imágenes si el set está completo; si no, el personaje vectorial de siempre
+    const skin = useSprites ? null : getSkin(scene, look.id, view);
+    this.usesSkin = !!skin;
+    // con imagen, el brazo ya viene en reposo (ángulo 0) y pivota en el hombro (extremo de la manga)
+    this.restAngle = skin ? 0 : -60;
 
     this.shadow = scene.add.ellipse(0, 0, 78, 26, 0x000000, 0.3);
     this.add(this.shadow);
@@ -91,9 +116,9 @@ export class Character extends Phaser.GameObjects.Container {
 
     this.torso = scene.add.container(0, 0);
     this.rig.add(this.torso);
-    // imágenes si el set está completo; si no, el personaje vectorial de siempre
-    const skin = getSkin(scene, look.id, view);
-    if (skin) {
+    if (useSprites) {
+      this.nxo = new NxoActor(scene, this.torso, spriteId!);
+    } else if (skin) {
       const b = skin.body;
       const img = scene.add.image(0, 0, b.key).setScale(b.scale);
       this.torso.add(img.setOrigin(b.ox / img.width, b.oy / img.height));
@@ -105,7 +130,9 @@ export class Character extends Phaser.GameObjects.Container {
 
     // brazo con raqueta (pivota en el hombro derecho)
     this.racketArm = scene.add.container(skin ? skin.shoulder.x : 22, skin ? skin.shoulder.y : -64);
-    if (skin) {
+    if (useSprites) {
+      // el sprite ya trae el brazo y la raqueta: el contenedor queda vacío por compatibilidad
+    } else if (skin) {
       const a = skin.arm;
       const img = scene.add.image(0, 0, a.key).setScale(a.scale).setAngle(-a.angle);
       this.racketArm.add(img.setOrigin(a.ox / img.width, a.oy / img.height));
@@ -115,10 +142,11 @@ export class Character extends Phaser.GameObjects.Container {
       this.racketArm.add(scene.add.image(0, 0, rkey).setOrigin(RK_OX / RK_W, RK_OY / RK_H));
     }
     this.racketArm.angle = this.restAngle;
-    this.rig.add(this.racketArm);
+    // dentro del torso: sube/baja con el rebote del cuerpo y no se despega del hombro
+    this.torso.add(this.racketArm);
 
     scene.add.existing(this);
-    this.startBob(1100, 3);
+    if (!this.nxo) this.startBob(1100, 3);
   }
 
   // ------------------------------------------------------------ dibujo
@@ -309,7 +337,9 @@ export class Character extends Phaser.GameObjects.Container {
   }
   set facing(f: number) {
     this._facing = f >= 0 ? 1 : -1;
-    this.rig.scaleX = this._facing;
+    // con sprites NO se voltea: el lado decide si el golpe es de derecha (+1) o de revés (-1)
+    if (this.nxo) this.nxo.setFacing(this._facing);
+    else this.rig.scaleX = this._facing;
   }
 
   private startBob(duration: number, amp: number) {
@@ -328,6 +358,10 @@ export class Character extends Phaser.GameObjects.Container {
 
   /** Cambia la animación entre idle y carrera. */
   setMoving(m: boolean) {
+    if (this.nxo) {
+      this.nxo.setMoving(m);
+      return;
+    }
     if (m === this.moving) return;
     this.moving = m;
     if (m) this.startBob(130, 6);
@@ -336,19 +370,25 @@ export class Character extends Phaser.GameObjects.Container {
 
   /** Pose de tiro cargado: raqueta muy atrás, temblando, hasta golpear o cancelar. */
   setCharging(on: boolean) {
+    if (this.nxo) {
+      this.nxo.setCharging(on);
+      return;
+    }
     if (on === this.charging) return;
     this.charging = on;
     if (this.swinging) return;
     this.scene.tweens.killTweensOf(this.racketArm);
+    // carga: brazo echado atrás (arriba) listo para pegar
+    const back = this.usesSkin ? -55 : -115;
     if (on) {
       this.scene.tweens.add({
         targets: this.racketArm,
-        angle: -115,
+        angle: back,
         duration: 160,
         ease: 'Quad.easeOut',
         onComplete: () => {
           if (!this.charging) return;
-          this.scene.tweens.add({ targets: this.racketArm, angle: -109, duration: 55, yoyo: true, repeat: -1 });
+          this.scene.tweens.add({ targets: this.racketArm, angle: back + 6, duration: 55, yoyo: true, repeat: -1 });
         },
       });
     } else {
@@ -356,17 +396,58 @@ export class Character extends Phaser.GameObjects.Container {
     }
   }
 
-  /** Animación de golpe: preparación hacia atrás y barrido por delante del cuerpo. */
-  swing(power = false) {
+  // ------------------------------------------------------------ solo con sprites (no-op en el resto)
+  /** Guardia: la pelota viene hacia el jugador y está cerca. */
+  setReady(on: boolean) {
+    this.nxo?.setReady(on);
+  }
+
+  /** Saque: la pelota acaba de salir hacia arriba. */
+  serve() {
+    this.nxo?.serve();
+  }
+
+  /** Saque: la pelota está a punto de llegar a la altura de golpeo. */
+  serveRelease() {
+    this.nxo?.serveRelease();
+  }
+
+  /** Tiempo entre soltar el clip de saque y el contacto de la raqueta (para sincronizar el golpe). */
+  serveContactDelay() {
+    return this.nxo?.serveContactDelay() ?? 0.12;
+  }
+
+  /** Celebración de partido ganado. */
+  victory() {
+    this.nxo?.victory();
+  }
+
+  /** Vuelve a la pose neutra (el jugador se recoloca para un nuevo punto). */
+  resetPose() {
+    this.nxo?.resetPose();
+  }
+
+  /**
+   * Animación de golpe: preparación hacia atrás y barrido por delante del cuerpo.
+   * `overhead`: remate (SMASH o pelota alta). Solo lo usa el personaje con sprites.
+   */
+  swing(power = false, overhead = false) {
+    if (this.nxo) {
+      this.nxo.swing(overhead);
+      return;
+    }
     if (this.swinging) return;
     this.swinging = true;
     this.charging = false;
     this.scene.tweens.killTweensOf(this.racketArm);
+    // golpe: preparación atrás (arriba) y barrido hacia adelante/abajo
+    const prep = this.usesSkin ? -60 : -5;
+    const hit = this.usesSkin ? (power ? 130 : 110) : power ? 190 : 150;
     this.scene.tweens.chain({
       targets: this.racketArm,
       tweens: [
-        { angle: -5, duration: 60, ease: 'Quad.easeOut' },
-        { angle: power ? 190 : 150, duration: power ? 120 : 100, ease: 'Quad.easeIn' },
+        { angle: prep, duration: 60, ease: 'Quad.easeOut' },
+        { angle: hit, duration: power ? 120 : 100, ease: 'Quad.easeIn' },
         { angle: this.restAngle, duration: 280, ease: 'Back.easeOut' },
       ],
       onComplete: () => (this.swinging = false),

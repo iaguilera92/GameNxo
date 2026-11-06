@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import { Button } from '../ui/Button';
 import { C, drawBackground, restartOnResize, textStyle } from '../ui/theme';
-import { BOT_LOOK, Character, PLAYER_LOOK } from '../objects/Character';
+import { Character, playerLook, rivalLook } from '../objects/Character';
 import { XP_LOSS, XP_WIN } from '../config';
 import { addXp, getProfile } from '../logic/Profile';
 import { LevelBadge } from '../ui/LevelBadge';
@@ -56,8 +56,8 @@ export class ResultScene extends Phaser.Scene {
 
     // Personajes: el ganador salta, el perdedor cabizbajo
     const cy = H * 0.52;
-    const me = new Character(this, W * 0.32, cy, PLAYER_LOOK, 'front').setScale(2.1);
-    const rival = new Character(this, W * 0.74, cy - 10, BOT_LOOK, 'front').setScale(1.5);
+    const me = new Character(this, W * 0.32, cy, playerLook(getProfile().skin), 'front').setScale(2.1);
+    const rival = new Character(this, W * 0.74, cy - 10, rivalLook(getProfile().skin), 'front').setScale(1.5);
     rival.facing = -1;
     const [winner, loser] = win ? [me, rival] : [rival, me];
     this.tweens.add({ targets: winner, y: winner.y - 50, duration: 350, yoyo: true, repeat: -1, ease: 'Quad.easeOut' });

@@ -1,0 +1,78 @@
+{
+  "source": "pj-mai-sprite.png",
+  "view": "front",
+  "cell": {
+    "w": 217,
+    "h": 165
+  },
+  "origin": {
+    "x": 0.41014,
+    "y": 0.93939
+  },
+  "standHeight": 140,
+  "hold": 2,
+  "serveWait": 3,
+  "smashStart": 3,
+  "animations": {
+    "idle": {
+      "file": "idle.png",
+      "frames": 7,
+      "fps": 9,
+      "loop": true,
+      "scale": 1
+    },
+    "run": {
+      "file": "run.png",
+      "frames": 7,
+      "fps": 14,
+      "loop": true,
+      "scale": 0.907
+    },
+    "runstop": {
+      "file": "runstop.png",
+      "frames": 6,
+      "fps": 14,
+      "loop": false,
+      "scale": 0.964
+    },
+    "forehand": {
+      "file": "forehand.png",
+      "frames": 8,
+      "fps": 15,
+      "loop": false,
+      "impact": 4,
+      "scale": 1.113
+    },
+    "backhand": {
+      "file": "backhand.png",
+      "frames": 8,
+      "fps": 15,
+      "loop": false,
+      "impact": 4,
+      "scale": 1.033
+    },
+    "serve": {
+      "file": "serve.png",
+      "frames": 8,
+      "fps": 12,
+      "loop": false,
+      "impact": 5,
+      "scale": 1.225
+    },
+    "smash": {
+      "file": "smash.png",
+      "frames": 8,
+      "fps": 14,
+      "loop": false,
+      "impact": 5,
+      "scale": 1.052
+    },
+    "victory": {
+      "file": "victory.png",
+      "frames": 6,
+      "fps": 10,
+      "loop": false,
+      "scale": 1.253
+    }
+  }
+}

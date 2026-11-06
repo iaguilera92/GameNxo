@@ -1,68 +1,54 @@
-import { MAX_LEVEL, xpToNext } from '../config';
 import type { AbilityId } from './Abilities';
+import { getPlayer, commit } from '../domain/playerStore';
+import * as ops from '../domain/operations';
+import type { SkinId } from '../characters/skins';
 
-/** Perfil del jugador guardado en el dispositivo (localStorage). */
+/**
+ * Fachada de compatibilidad: las escenas (incluida MatchScene) siguen usando esta API.
+ * Los datos reales viven en src/domain (PlayerState + playerStore).
+ */
 export interface Profile {
   name: string;
   level: number; // 1..MAX_LEVEL
   xp: number; // XP dentro del nivel actual
   style: string;
   abilities: [AbilityId, AbilityId]; // habilidad 1 y 2 equipadas
+  /** personaje elegido (id de skin del catálogo) */
+  skin: string;
 }
 
-const KEY = 'gamenxo.profile.v1';
+/**
+ * Personaje fijo para todos (p. ej. 'nxo'). `null` = usar la skin guardada en el perfil
+ * (por defecto Nxo; en PERSONAJE hay un selector TEMPORAL Hombre/Mujer para pruebas).
+ */
+export const FORCED_SKIN: SkinId | null = null;
 
-const DEFAULT: Profile = { name: 'Jugador', level: 1, xp: 0, style: 'Clásico', abilities: ['dash', 'smash'] };
-
-let cache: Profile | null = null;
-
+/** Vista de solo lectura del jugador con la forma antigua. */
 export function getProfile(): Profile {
-  if (cache) return cache;
-  try {
-    const raw = localStorage.getItem(KEY);
-    cache = raw ? { ...DEFAULT, ...(JSON.parse(raw) as Partial<Profile>) } : { ...DEFAULT };
-  } catch {
-    cache = { ...DEFAULT };
-  }
-  return cache;
+  const s = getPlayer();
+  return {
+    name: s.name,
+    level: s.level,
+    xp: s.xp,
+    style: s.equipped.style,
+    abilities: [...s.equipped.abilities] as [AbilityId, AbilityId],
+    skin: FORCED_SKIN ?? s.equipped.skin,
+  };
 }
 
-function save(p: Profile) {
-  try {
-    localStorage.setItem(KEY, JSON.stringify(p));
-  } catch {
-    /* sin almacenamiento: se juega igual */
-  }
-}
-
-export interface XpResult {
-  gained: number;
-  levelsUp: number;
-  before: { level: number; xp: number };
-  after: { level: number; xp: number };
-}
+export type XpResult = ops.XpGain;
 
 /** Suma XP, sube de nivel si corresponde (máximo MAX_LEVEL) y guarda. */
 export function addXp(amount: number): XpResult {
-  const p = getProfile();
-  const before = { level: p.level, xp: p.xp };
-  let levelsUp = 0;
-  p.xp += amount;
-  while (p.level < MAX_LEVEL && p.xp >= xpToNext(p.level)) {
-    p.xp -= xpToNext(p.level);
-    p.level++;
-    levelsUp++;
-  }
-  if (p.level >= MAX_LEVEL) {
-    p.level = MAX_LEVEL;
-    p.xp = 0;
-  }
-  save(p);
-  return { gained: amount, levelsUp, before, after: { level: p.level, xp: p.xp } };
+  const res = commit((s) => ops.addXp(s, amount));
+  if (res.ok) return res.xp;
+  const { level, xp } = getPlayer();
+  return { gained: 0, levelsUp: 0, before: { level, xp }, after: { level, xp } };
 }
 
-/** Progreso 0..1 dentro del nivel actual. */
-export function levelProgress(p: { level: number; xp: number }) {
-  if (p.level >= MAX_LEVEL) return 1;
-  return p.xp / xpToNext(p.level);
+export const levelProgress = ops.levelProgress;
+
+/** Cambia el personaje elegido y lo guarda (solo si el jugador lo posee). */
+export function setSkin(id: string) {
+  commit((s) => ops.equipSkin(s, id as SkinId));
 }

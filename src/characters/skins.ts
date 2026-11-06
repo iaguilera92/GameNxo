@@ -8,7 +8,6 @@ import { CHARACTER_SKINS } from '../config';
  *   id     player | rival
  *   vista  front | back
  *   pieza  body (cuerpo SIN el brazo de la raqueta) | arm (brazo + raqueta)
- *          (las referencias completas están en art/reference/ y no se empaquetan)
  *
  * El personaje vectorial actual sigue siendo el respaldo: cada vista (frente/espalda) usa
  * imágenes solo si tiene sus DOS piezas (cuerpo + brazo); si falta alguna, esa vista se dibuja
@@ -16,7 +15,9 @@ import { CHARACTER_SKINS } from '../config';
  * de `racketArm`, que siguen moviéndose con los mismos tweens. Solo se escala de forma uniforme.
  */
 
-export type SkinId = 'player' | 'rival';
+export type SkinId = 'player' | 'rival' | 'nxo' | 'mai';
+/** Todas las skins conocidas (se intentan cargar; las que falten usan el vectorial). */
+export const SKIN_IDS: SkinId[] = ['player', 'rival', 'nxo', 'mai'];
 export type SkinView = 'front' | 'back';
 export type SkinPart = 'body' | 'arm';
 
@@ -44,14 +45,30 @@ const MAX_DISPLAY_SCALE = 2.6;
 /** Margen transparente que dejan las imágenes recortadas. */
 const PAD = 8;
 
-/** Calibración conocida. Lo que falte se calcula con valores por defecto razonables. */
+/**
+ * Calibración por skin. El cuerpo (pies + altura) y el largo del brazo se miden solos desde
+ * la imagen; aquí solo va lo que NO se puede deducir: dónde está el hombro y con qué ángulo
+ * viene dibujado el brazo. Los valores por defecto (DEFAULT_RIG) sirven para la lámina 2×2
+ * estándar, así que una skin nueva normalmente no necesita nada aquí.
+ *
+ * El hombro es el muñón de la manga del cuerpo (donde falta el brazo): en la vista de frente
+ * queda a la IZQUIERDA de la pantalla y en la de espaldas a la DERECHA. El extremo redondeado
+ * de la manga del brazo se apoya ahí y lo tapa en cualquier ángulo del golpe.
+ */
+const DEFAULT_RIG: Record<SkinView, { shoulder: { x: number; y: number }; armAngle: number }> = {
+  front: { shoulder: { x: -21.2, y: -72.3 }, armAngle: -17 },
+  back: { shoulder: { x: 20.1, y: -70.3 }, armAngle: -17 },
+};
 const META: Partial<Record<SkinId, Partial<Record<SkinView, ViewMeta>>>> = {
-  player: {
-    back: {
-      body: { ox: 262.5, oy: 998, scale: CHAR_UNITS_H / 991 },
-      arm: { ox: 95, oy: 498, scale: 0.058, angle: -16.8 },
-      shoulder: { x: 16.4, y: -68.6 },
-    },
+  // Personaje principal "nxo": el brazo-imagen tiene la manga abajo-izq y viene en reposo (ángulo 0).
+  nxo: {
+    front: { shoulder: { x: -23.3, y: -84.4 }, arm: { ox: 30, oy: 373 } },
+    back: { shoulder: { x: 20.3, y: -78.5 }, arm: { ox: 44, oy: 388 } },
+  },
+  // en la espalda de "mai" el pelo tapa el hombro: el brazo se apoya sobre el borde del pelo
+  mai: {
+    front: { shoulder: { x: -22.6, y: -84 }, arm: { ox: 30, oy: 387 } },
+    back: { shoulder: { x: 24.5, y: -83.3 }, arm: { ox: 40, oy: 391 } },
   },
 };
 
@@ -85,7 +102,7 @@ export function skinMode(): 'off' | 'auto' {
 /** Llamar desde un `preload()`: encola todas las piezas posibles; las que no existan se ignoran. */
 export function queueSkinLoads(load: Phaser.Loader.LoaderPlugin) {
   if (skinMode() === 'off') return;
-  for (const id of ['player', 'rival'] as SkinId[])
+  for (const id of SKIN_IDS)
     for (const view of ['front', 'back'] as SkinView[])
       for (const part of ['body', 'arm'] as SkinPart[])
         if (!load.textureManager.exists(bakedKey(id, view, part))) load.image(rawKey(id, view, part), fileUrl(id, view, part));
@@ -98,7 +115,7 @@ export function queueSkinLoads(load: Phaser.Loader.LoaderPlugin) {
  */
 export function bakeSkins(scene: Phaser.Scene) {
   const tm = scene.textures;
-  for (const id of ['player', 'rival'] as SkinId[])
+  for (const id of SKIN_IDS)
     for (const view of ['front', 'back'] as SkinView[])
       for (const part of ['body', 'arm'] as SkinPart[]) {
         const rk = rawKey(id, view, part);
@@ -140,13 +157,30 @@ function downscale(src: HTMLImageElement | HTMLCanvasElement, tw: number, th: nu
   return out;
 }
 
-/** Calibración de una pieza, completando con valores por defecto. */
-function partMeta(id: SkinId, view: SkinView, part: 'body' | 'arm', w: number, h: number): Required<PartMeta> {
+/** Escala del cuerpo (unidades por píxel) de una vista, para que el brazo use la MISMA. */
+function bodyScale(id: SkinId, view: SkinView, h: number) {
+  return META[id]?.[view]?.body?.scale ?? CHAR_UNITS_H / Math.max(1, h - PAD * 2);
+}
+
+/**
+ * Calibración de una pieza, completando con valores por defecto.
+ * - cuerpo: ancla en los pies (centro-abajo), escala desde la altura.
+ * - brazo: ancla en el HOMBRO (extremo redondeado de la manga, abajo-izquierda, donde se une
+ *   al cuerpo), MISMA escala que el cuerpo, y ángulo 0 (el brazo ya viene en pose de reposo).
+ *   `bodyH` es la altura del cuerpo de esa vista (para heredar su escala).
+ */
+function partMeta(id: SkinId, view: SkinView, part: 'body' | 'arm', w: number, h: number, bodyH = h): Required<PartMeta> {
   const m = META[id]?.[view]?.[part] ?? {};
   if (part === 'body')
     return { ox: m.ox ?? w / 2, oy: m.oy ?? h - PAD, scale: m.scale ?? CHAR_UNITS_H / Math.max(1, h - PAD * 2), angle: 0 };
-  // brazo: hombro en el borde izquierdo, centrado; largo total ≈ 70 unidades
-  return { ox: m.ox ?? PAD, oy: m.oy ?? h / 2, scale: m.scale ?? 70 / Math.max(1, w - PAD * 2), angle: m.angle ?? 0 };
+  // centro del extremo de la manga, un poco hacia dentro: ≈8% desde la izquierda, ≈80% hacia abajo
+  // (en la esquina, 3%/84%, el pivote quedaba fuera de la manga y el brazo giraba despegado)
+  return {
+    ox: m.ox ?? Math.round(w * 0.08),
+    oy: m.oy ?? Math.round(h * 0.805),
+    scale: m.scale ?? bodyScale(id, view, bodyH),
+    angle: m.angle ?? 0,
+  };
 }
 
 function has(scene: Phaser.Scene, id: SkinId, view: SkinView, part: SkinPart) {
@@ -164,15 +198,19 @@ export interface SkinParts {
 export function getSkin(scene: Phaser.Scene, id: SkinId | undefined, view: SkinView): SkinParts | null {
   if (!id || skinMode() === 'off') return null;
   if (!has(scene, id, view, 'body') || !has(scene, id, view, 'arm')) return null;
+  // alto del cuerpo (px originales) para que el brazo herede su misma escala
+  const bodyKey = bakedKey(id, view, 'body');
+  const bf = bakedFactor.get(bodyKey) ?? 1;
+  const bodyH = (scene.textures.get(bodyKey).getSourceImage() as HTMLCanvasElement).height / bf;
   const build = (part: 'body' | 'arm') => {
     const key = bakedKey(id, view, part);
     const f = bakedFactor.get(key) ?? 1;
     const src = scene.textures.get(key).getSourceImage() as HTMLCanvasElement;
     // la calibración está en píxeles originales: se pasa a la textura reducida
-    const m = partMeta(id, view, part, src.width / f, src.height / f);
+    const m = partMeta(id, view, part, src.width / f, src.height / f, bodyH);
     return { key, ox: m.ox * f, oy: m.oy * f, scale: m.scale / f, angle: m.angle };
   };
-  return { body: build('body'), arm: build('arm'), shoulder: META[id]?.[view]?.shoulder ?? { x: 22, y: -64 } };
+  return { body: build('body'), arm: build('arm'), shoulder: META[id]?.[view]?.shoulder ?? DEFAULT_RIG[view].shoulder };
 }
 
 let reported = false;
@@ -184,12 +222,13 @@ function report(scene: Phaser.Scene) {
     return;
   }
   const missing = REQUIRED.filter(([id, view, part]) => !has(scene, id, view, part)).map((r) => r.join('_') + '.png');
-  const views = (['player', 'rival'] as SkinId[]).flatMap((id) =>
+  const views = SKIN_IDS.flatMap((id) =>
     (['front', 'back'] as SkinView[]).map((v) => `/${v}: ${has(scene, id, v, 'body') && has(scene, id, v, 'arm') ? 'IMÁGENES' : 'vectorial'}`),
   );
   console.info('[skins]', views.join(' | '));
   if (missing.length) console.info('[skins] faltan:', missing);
 }
+
 
 
 

@@ -1,8 +1,8 @@
-﻿import { DASH_COOLDOWN, SMASH_COOLDOWN } from '../config';
+import { DASH_COOLDOWN, SMASH_COOLDOWN } from '../config';
 import { C } from '../ui/theme';
 
 export type AbilityId = 'dash' | 'smash' | 'wall' | 'curve' | 'freeze';
-export type AbilityIcon = 'dash' | 'smash' | 'lock' | 'serveSpin' | 'servePower';
+export type AbilityIcon = 'dash' | 'smash' | 'lock' | 'serveSpin' | 'servePower' | 'serveRacket';
 
 export interface AbilityDef {
   id: AbilityId;

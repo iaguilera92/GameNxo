@@ -1,4 +1,4 @@
-﻿import Phaser from 'phaser';
+import Phaser from 'phaser';
 import { ALLEY, BOUNCE_DAMP, COURT, GRAVITY, HIT_MAX_Z, NET_HEIGHT, NET_X } from '../config';
 import { C } from '../ui/theme';
 import { project } from '../view/projection';
@@ -136,6 +136,9 @@ export class Ball {
   /** 0 = sin fuego, 1 = encendida (smash armado), 2 = bola de fuego */
   private fire = 0;
   private fireTimer = 0;
+  /** estela reforzada tras un golpe potente: 0..1, se apaga sola */
+  private boost = 0;
+  private boostColor = 0xffffff;
 
   constructor(private scn: Phaser.Scene) {
     this.shadow = scn.add.ellipse(0, 0, 30, 12, 0x000000, 0.5);
@@ -152,6 +155,12 @@ export class Ball {
   setKind(k: ShotKind, charged = false) {
     this.kind = k;
     this.charged = charged;
+  }
+
+  /** Refuerza la estela (más ancha y de color) tras un golpe potente; decae en menos de un segundo. */
+  setImpactTrail(boost: number, color: number) {
+    this.boost = boost;
+    this.boostColor = color;
   }
 
   setPower(p: boolean) {
@@ -188,7 +197,8 @@ export class Ball {
     if (z > 12) this.guide.lineStyle(2 * ground.s, 0xffffff, Math.min(0.28, z / 500)).lineBetween(ground.sx, ground.sy, air.sx, sy);
 
     // estela tipo "viento": cinta cónica del color del golpe
-    const col = this.power ? TRAIL_COLOR.power : TRAIL_COLOR[this.kind];
+    this.boost = Math.max(0, this.boost - dt * 1.3);
+    const col = this.boost > 0.2 ? this.boostColor : this.power ? TRAIL_COLOR.power : TRAIL_COLOR[this.kind];
     this.history.push({ x: air.sx, y: sy, col });
     if (this.history.length > 20) this.history.shift();
     this.trail.clear();
@@ -197,8 +207,8 @@ export class Ball {
       const a = this.history[i - 1];
       const b = this.history[i];
       const t = i / n;
-      const w = (3 + t * 16) * scale * (this.charged ? 1.6 : 1);
-      const alpha = t * (this.charged ? 0.85 : 0.6);
+      const w = (3 + t * 16) * scale * (this.charged ? 1.6 : 1) * (1 + 0.7 * this.boost);
+      const alpha = Math.min(1, t * (this.charged ? 0.85 : 0.6) * (1 + 0.5 * this.boost));
       this.trail.lineStyle(w, b.col, alpha).lineBetween(a.x, a.y, b.x, b.y);
       this.trail.fillStyle(b.col, alpha).fillCircle(b.x, b.y, w / 2);
     }
@@ -237,6 +247,7 @@ export class Ball {
     this.guide.clear();
     this.kind = 'normal';
     this.charged = false;
+    this.boost = 0;
   }
 
   setVisible(v: boolean) {

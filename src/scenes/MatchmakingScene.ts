@@ -3,6 +3,7 @@ import { FONT, restartOnResize, textStyle } from '../ui/theme';
 import { UI, flatButton, stadiumBg } from '../ui/ui';
 import { playerLook, rivalLook } from '../objects/Character';
 import { rivalFor } from '../characters/catalog';
+import { rivalLevelFor } from '../ai/BotProfile';
 import { getProfile } from '../logic/Profile';
 import type { SkinId } from '../characters/skins';
 import { showVersus as showVersusScreen } from '../ui/VersusScreen';
@@ -122,21 +123,23 @@ export class MatchmakingScene extends Phaser.Scene {
   /** Presentación VS (diseño en ui/VersusScreen.ts) y paso al partido. */
   private showVersus(botName: string) {
     const p = getProfile();
+    // nivel REAL del rival: cerca del tuyo; define su dificultad (src/ai/BotProfile.ts)
+    const rivalLevel = rivalLevelFor(p.level);
     showVersusScreen(
       this,
       { name: p.name, level: p.level, look: playerLook(p.skin), portraitSkin: p.skin as SkinId },
       {
         name: botName,
-        level: Phaser.Math.Between(1, Math.max(1, p.level + 2)),
+        level: rivalLevel,
         look: rivalLook(p.skin),
         portraitSkin: rivalFor(p.skin),
       },
     );
 
-    // transición al partido (lógica intacta)
+    // transición al partido
     this.time.delayedCall(2700, () => {
       this.cameras.main.fadeOut(250, 0, 0, 0);
-      this.cameras.main.once('camerafadeoutcomplete', () => this.scene.start('Match', { botName }));
+      this.cameras.main.once('camerafadeoutcomplete', () => this.scene.start('Match', { botName, rivalLevel }));
     });
   }
 }

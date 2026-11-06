@@ -1,0 +1,63 @@
+{
+  "source": "pj-nxo-sprite-1.png",
+  "view": "back",
+  "cell": {
+    "w": 251,
+    "h": 187
+  },
+  "origin": {
+    "x": 0.43028,
+    "y": 0.96257
+  },
+  "standHeight": 140,
+  "animations": {
+    "forehand": {
+      "file": "forehand.png",
+      "frames": 9,
+      "fps": 15,
+      "loop": false,
+      "impact": 4,
+      "scale": 1.022
+    },
+    "backhand": {
+      "file": "backhand.png",
+      "frames": 9,
+      "fps": 15,
+      "loop": false,
+      "impact": 4,
+      "scale": 1.044
+    },
+    "forehand-power": {
+      "file": "forehand-power.png",
+      "frames": 9,
+      "fps": 15,
+      "loop": false,
+      "impact": 4,
+      "scale": 1.022
+    },
+    "backhand-power": {
+      "file": "backhand-power.png",
+      "frames": 9,
+      "fps": 15,
+      "loop": false,
+      "impact": 4,
+      "scale": 1.045
+    },
+    "serve": {
+      "file": "serve.png",
+      "frames": 9,
+      "fps": 12,
+      "loop": false,
+      "impact": 4,
+      "scale": 1.052
+    },
+    "smash": {
+      "file": "smash.png",
+      "frames": 9,
+      "fps": 14,
+      "loop": false,
+      "impact": 4,
+      "scale": 1.048
+    }
+  }
+}

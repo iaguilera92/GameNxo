@@ -22,9 +22,11 @@ import {
   SMASH_SPEED_MULT,
   STUN_DURATION,
 } from '../config';
-import { Ball, type BallState, type ShotKind, aimShot, isInCourt, predictIntercept, stepBall } from '../objects/Ball';
+import { Ball, type BallState, type ShotKind, aimShot, isInCourt, stepBall } from '../objects/Ball';
 import { Character, PLAYER_LOOK, playerLook, rivalLook } from '../objects/Character';
-import { BotAI } from '../logic/BotAI';
+import type { BotAI } from '../logic/BotAI';
+import { BotBrain } from '../ai/BotBrain';
+import { profileForMatch, rivalLevelFor } from '../ai/BotProfile';
 import { type ServeKind, ServeController } from '../logic/ServeController';
 import { type BotServePlan, ServeAI } from '../logic/ServeAI';
 import { NEON, ServeButton } from '../ui/ServeButton';
@@ -42,7 +44,13 @@ import { AbilityButton } from '../ui/AbilityButton';
 import { C, textStyle } from '../ui/theme';
 import { VIEW, project } from '../view/projection';
 import { drawCourtView } from '../view/CourtView';
+import { LOB_SMASH, LobTracker } from '../logic/LobSmash';
+import { LobMarker, superSmashFx } from '../fx/LobMarker';
+import { SmokeTrail } from '../fx/SmokeTrail';
 import { playMatchEnd } from '../fx/matchEnd';
+import { playMatchIntro } from '../fx/matchIntro';
+import { ServeTurnTag } from '../ui/ServeTurnTag';
+import { setupUiCamera } from '../view/uiCamera';
 
 type Who = 'player' | 'bot';
 type Phase = 'intro' | 'serve' | 'toss' | 'rally' | 'pointover' | 'over';
@@ -74,12 +82,19 @@ const clamp = Phaser.Math.Clamp;
 const OVERHEAD_Z = 116;
 /** Solo animación: distancia (suelo) a la que el jugador se pone en guardia esperando la pelota. */
 const READY_DIST = 200;
+/** DASH: tiempos del teletransporte (s). El rápido se usa cuando la pelota llega muy justa. */
+const DASH_WARP = { out: 0.11, delay: 0.04, in: 0.18, fastOut: 0.05, fastIn: 0.07 };
 
 export class MatchScene extends Phaser.Scene {
   private botName = 'Bot';
+  /** nivel del rival → su perfil de dificultad (src/ai/BotProfile.ts) */
+  private rivalLevel = 1;
   private player!: Actor;
   private bot!: Actor;
   private ball!: Ball;
+  /** cerebro del rival (src/ai/BotBrain.ts): movimiento + plan de golpe */
+  private brain!: BotBrain;
+  /** reacción y predicción del rival (lo reutiliza el cerebro) */
   private ai!: BotAI;
   private score!: Score;
   private joy!: Joystick;
@@ -99,6 +114,24 @@ export class MatchScene extends Phaser.Scene {
   private lastHitter: Who | null = null;
   private bounces = 0;
   private smashArmed = false;
+  /** globo en vuelo: caída prevista y reglas del SMASH potenciado (src/logic/LobSmash.ts) */
+  private lob = new LobTracker();
+  private lobMarker!: LobMarker;
+  /** el SMASH se armó dentro de la ventana del globo (si al golpear se cumple todo, sale potenciado) */
+  private superArmed = false;
+  /** humo del SMASH en vuelo; `superFlight` = el SMASH en vuelo es el potenciado (humo fuerte) */
+  private smoke!: SmokeTrail;
+  /** "TU SAQUE" / "SACA <RIVAL>" sobre la cabeza de quien saca */
+  private serveTag!: ServeTurnTag;
+  /** el lanzamiento actual empezó con el botón verde (puede salir saque DIRECTO) */
+  private serveDirect = false;
+  /** 0..1: cuánto zoom de remate hay (jugador dentro del círculo del globo) */
+  private lobZoomK = 0;
+  /** DASH en curso: el jugador espera en el punto y la devolución se fuerza en `t` s si hace falta */
+  private dashHit: { t: number; elapsed: number; x: number; y: number } | null = null;
+  /** viñeta de la toma especial del remate (fija en pantalla, bajo el HUD) */
+  private lobVignette!: Phaser.GameObjects.Graphics;
+  private superFlight = false;
   /** saque en curso (la pelota aún no ha botado en el cuadro de saque) */
   private serving = false;
   /** faltas del saque actual (2 = doble falta) */
@@ -109,7 +142,6 @@ export class MatchScene extends Phaser.Scene {
   private serveCtl = new ServeController();
   private serveAI = new ServeAI();
   private botPlan!: BotServePlan;
-  private botWait = 0;
   private botServeY = 0;
   /** tramo permitido (y) de la línea de fondo para colocarse al sacar: la mitad del lado de servicio */
   private serveZone: [number, number] = [0, 0];
@@ -149,8 +181,10 @@ export class MatchScene extends Phaser.Scene {
     queueButtonArt(this.load); // imágenes de DASH, SMASH y los dos saques (si faltan, se dibujan como antes)
   }
 
-  init(data: { botName?: string }) {
+  init(data: { botName?: string; rivalLevel?: number }) {
     this.botName = data?.botName ?? 'Bot';
+    // nivel del rival (lo elige el matchmaking y se mantiene en la revancha); sin él, uno cercano al tuyo
+    this.rivalLevel = data?.rivalLevel ?? rivalLevelFor(getProfile().level);
   }
 
   create() {
@@ -169,6 +203,11 @@ export class MatchScene extends Phaser.Scene {
     this.dialog = [];
 
     this.cameras.main.fadeIn(250, 0, 0, 0);
+    // HUD/botones en su propia cámara: el zoom del partido no los mueve (view/uiCamera.ts)
+    setupUiCamera(this);
+    this.lobZoomK = 0;
+    this.lobVignette = this.makeVignette();
+    this.dashHit = null;
     this.drawCourt();
 
     const mk = (look: typeof PLAYER_LOOK, view: 'front' | 'back', x: number, dir: number): Actor => ({
@@ -192,7 +231,8 @@ export class MatchScene extends Phaser.Scene {
     this.chargeAura = new ChargeAura(this);
     this.dizzy = this.makeDizzy();
     this.ball = new Ball(this);
-    this.ai = new BotAI();
+    this.brain = new BotBrain({ xMin: B_X[0], xMax: B_X[1], yMin: Y_MIN, yMax: Y_MAX }, profileForMatch(this.rivalLevel));
+    this.ai = this.brain.ai;
     this.score = new Score();
 
     this.createHud();
@@ -216,6 +256,13 @@ export class MatchScene extends Phaser.Scene {
     this.serveNormalBtn.show(false);
     this.serveSpinBtn.show(false);
     this.serveAim = this.add.graphics().setDepth(0.8).setVisible(false);
+    // globo: indicador de caída sobre el suelo + estado del SMASH potenciado
+    this.lob = new LobTracker();
+    this.lobMarker = new LobMarker(this);
+    this.superArmed = false;
+    this.smoke = new SmokeTrail(this);
+    this.serveTag = new ServeTurnTag(this, this.botName);
+    this.superFlight = false;
     this.secondTag = this.add.text(0, 0, '2º SAQUE', textStyle(20, '#ffd23f')).setOrigin(0.5).setScrollFactor(0).setDepth(5500).setVisible(false);
     this.serveClockText = this.add.text(0, 0, '', textStyle(40, '#ffd23f')).setOrigin(0.5).setScrollFactor(0).setDepth(5500).setVisible(false);
     this.serveClock = 0;
@@ -236,8 +283,12 @@ export class MatchScene extends Phaser.Scene {
     // un botón (SMASH, DASH, rendirse...) gana el botón y aquí no se hace nada.
     const onTap = (p: Phaser.Input.Pointer, over: Phaser.GameObjects.GameObject[]) => {
       if (over.length > 0) return;
-      if (this.serveUiOn()) return; // mientras el jugador saca, la mitad derecha no carga tiro
       if (p.x < this.scale.width * 0.55) return; // la izquierda es del joystick
+      // al sacar, la mitad derecha = saque normal (1er toque lanza la pelota, 2º golpea)
+      if (this.serveUiOn()) {
+        this.onServeButton('normal', true);
+        return;
+      }
       this.toggleCharge();
     };
     this.input.on('pointerdown', onTap);
@@ -254,8 +305,31 @@ export class MatchScene extends Phaser.Scene {
     this.updateHud();
     this.placeForServe();
     this.renderActors();
-    this.banner('¡A JUGAR!', '#ffd23f', 90, 1100);
-    this.time.delayedCall(1200, () => this.startPoint());
+    // botones correctos desde el principio: si saca el jugador, solo los de saque (no DASH/SMASH)
+    this.setServeUi(this.server === 'player');
+    // presentación (≤ 2 s): mapa de lejos que se acerca, oscurecido, "INICIO" (fx/matchIntro.ts)
+    playMatchIntro(this, () => this.startPoint());
+  }
+
+  /** Viñeta (bordes oscuros que se desvanecen hacia el centro) para la toma especial del remate. */
+  private makeVignette() {
+    const g = this.add.graphics().setScrollFactor(0).setDepth(4900).setVisible(false).setAlpha(0);
+    const draw = () => {
+      const W = this.scale.width;
+      const H = this.scale.height;
+      const c = 0x02060f;
+      const bh = H * 0.24;
+      const bw = W * 0.2;
+      g.clear();
+      g.fillGradientStyle(c, c, c, c, 1, 1, 0, 0).fillRect(0, 0, W, bh);
+      g.fillGradientStyle(c, c, c, c, 0, 0, 1, 1).fillRect(0, H - bh, W, bh);
+      g.fillGradientStyle(c, c, c, c, 1, 0, 1, 0).fillRect(0, 0, bw, H);
+      g.fillGradientStyle(c, c, c, c, 0, 1, 0, 1).fillRect(W - bw, 0, bw, H);
+    };
+    draw();
+    this.scale.on('resize', draw);
+    this.events.once('shutdown', () => this.scale.off('resize', draw));
+    return g;
   }
 
   // ---------------------------------------------------------------- layout
@@ -584,18 +658,28 @@ export class MatchScene extends Phaser.Scene {
       this.popText(this.headPos(this.player).x, this.headPos(this.player).y, 'Espera la pelota', '#cfe0ff', 24);
       return false;
     }
-    const pred = predictIntercept(this.ball.s, 'near', this.bounces >= 1, 0.22);
-    if (!pred) return false;
-    const tx = clamp(pred.x - 18, P_X[0], P_X[1]);
-    const ty = clamp(pred.y, Y_MIN, Y_MAX);
+    // DASH = devolución ASEGURADA: se busca un punto de golpeo antes del 2º bote (también si la pelota
+    // aún no ha pasado la red). Con tiempo, teletransporte normal; si va justo, uno rápido.
+    const normal = this.dashPlan(DASH_WARP.out + DASH_WARP.delay + DASH_WARP.in + 0.02);
+    const plan = normal ?? this.dashPlan(DASH_WARP.fastOut + DASH_WARP.fastIn + 0.02);
+    if (!plan) {
+      const h = this.headPos(this.player);
+      this.popText(h.x, h.y, '¡Muy tarde!', '#cfe0ff', 24);
+      return false;
+    }
+    const fast = !normal;
+    const tx = clamp(plan.x - 18, P_X[0], P_X[1]);
+    const ty = clamp(plan.y, Y_MIN, Y_MAX);
 
     const pl = this.player;
+    this.stopCharge();
     pl.vanished = true;
+    this.dashHit = { t: plan.t, elapsed: 0, x: tx, y: ty };
     this.portalFx(pl.x, pl.y);
     this.tweens.add({
       targets: pl,
       warp: 0,
-      duration: 110,
+      duration: (fast ? DASH_WARP.fastOut : DASH_WARP.out) * 1000,
       ease: 'Quad.easeIn',
       onComplete: () => {
         pl.x = tx;
@@ -604,14 +688,58 @@ export class MatchScene extends Phaser.Scene {
         this.tweens.add({
           targets: pl,
           warp: 1,
-          duration: 180,
-          delay: 40,
+          duration: (fast ? DASH_WARP.fastIn : DASH_WARP.in) * 1000,
+          delay: fast ? 0 : DASH_WARP.delay * 1000,
           ease: 'Back.easeOut',
           onComplete: () => (pl.vanished = false),
         });
       },
     });
     return true;
+  }
+
+  /**
+   * Punto donde el DASH devuelve la pelota: el primero a partir de `minT` s en el campo del jugador,
+   * alcanzable (dentro de su zona y a altura de golpe) y ANTES del 2º bote. Prefiere tras el 1er bote;
+   * si no hay, volea. null = imposible (va a la red o bota dos veces antes).
+   */
+  private dashPlan(minT: number): { x: number; y: number; t: number } | null {
+    const s = { ...this.ball.s };
+    let bounces = this.bounces;
+    let volley: { x: number; y: number; t: number } | null = null;
+    const dt = 1 / 120;
+    for (let t = 0; t < 4; t += dt) {
+      const ev = stepBall(s, dt);
+      if (ev === 'net') return null;
+      if (ev === 'bounce' && s.x < NET_X && ++bounces >= 2) break;
+      if (t < minT || s.x > NET_X - 30) continue;
+      const reachable = s.x >= P_X[0] - 20 && s.x <= P_X[1] + 30 && s.y >= Y_MIN - 30 && s.y <= Y_MAX + 30 && s.z < HIT_MAX_Z * 0.85;
+      if (!reachable) continue;
+      if (bounces >= 1 && s.z < HIT_MAX_Z * 0.7) return { x: s.x, y: s.y, t };
+      if (!volley) volley = { x: s.x, y: s.y, t };
+    }
+    return volley;
+  }
+
+  /**
+   * Tras un DASH el jugador se queda en el punto y la devolución está garantizada: si al llegar el
+   * momento previsto la pelota aún no se ha golpeado (por el alcance justo, el teletransporte…), se golpea igual.
+   */
+  private updateDashHit(dt: number) {
+    const d = this.dashHit;
+    if (!d) return;
+    if (this.phase !== 'rally' || this.lastHitter === 'player') {
+      this.dashHit = null;
+      return;
+    }
+    d.elapsed += dt;
+    const s = this.ball.s;
+    if (d.elapsed >= d.t + 0.02 && s.x < NET_X && s.vx < 0 && this.bounces < 2) {
+      this.dashHit = null;
+      this.player.vanished = false;
+      this.player.warp = 1;
+      this.playerHit();
+    }
   }
 
   private portalFx(x: number, y: number) {
@@ -632,6 +760,8 @@ export class MatchScene extends Phaser.Scene {
   private activateSmash(): boolean {
     if (this.paused || this.phase === 'over' || this.phase === 'intro' || this.smashArmed) return false;
     this.smashArmed = true;
+    // armado dentro de la ventana del globo: candidato a SMASH potenciado (antes de abrirse = demasiado pronto)
+    this.superArmed = this.lob.windowOpenFor('player', this.player.x, this.player.y);
     this.smashBtn.setArmed(true);
     this.ball.setIgnited(true);
     this.aura.start();
@@ -767,6 +897,8 @@ export class MatchScene extends Phaser.Scene {
     if (this.phase === 'over') return;
     this.stopCharge();
     if (!secondServe) this.faults = 0;
+    // el rival sortea su modo (NORMAL / CONCENTRADO / COMPETITIVO) al empezar cada punto
+    if (!secondServe) this.brain.onPointStart(this.score.points, this.score.games);
     this.serving = false;
     this.lastHitter = null;
     this.bounces = 0;
@@ -776,6 +908,7 @@ export class MatchScene extends Phaser.Scene {
     this.serveLet = false;
     this.serveNetLoss = false;
     this.serveCtl.reset();
+    this.serveDirect = false;
     this.placeForServe();
     this.phase = 'serve';
     this.serveClock = this.server === 'player' ? SERVE.timeLimit : 0; // 5 s para sacar (solo el jugador)
@@ -789,7 +922,7 @@ export class MatchScene extends Phaser.Scene {
     else {
       // el rival decide ya su saque (tipo, destino y momento) y se coloca antes de lanzar
       this.botPlan = this.serveAI.plan(this.faults, this.ai.d);
-      this.botWait = this.botPlan.wait;
+      this.brain.serveWait = this.botPlan.wait;
       this.botServeY = clamp(LAT_C + Math.sign(srvA.y - LAT_C) * rand(40, 150), this.serveZone[0], this.serveZone[1]);
     }
     this.setServeUi(this.server === 'player');
@@ -821,11 +954,18 @@ export class MatchScene extends Phaser.Scene {
     this.smashBtn.enabled = !on;
   }
 
-  /** Pulsación de un botón de saque del jugador: 1ª lanza la pelota, 2ª (mismo botón) golpea. */
-  private onServeButton(kind: ServeKind) {
+  /**
+   * Pulsación de saque del jugador: 1ª lanza la pelota, 2ª (mismo tipo) golpea.
+   * `fromTap` = toque en la mitad derecha de la pantalla (saque normal). Con el botón verde el saque
+   * normal puede salir DIRECTO si se golpea en el punto máximo.
+   */
+  private onServeButton(kind: ServeKind, fromTap = false) {
     if (this.paused || this.server !== 'player') return;
     const ctl = this.serveCtl;
-    if (ctl.state === 'POSITIONING' && this.phase === 'serve') this.beginToss(kind);
+    if (ctl.state === 'POSITIONING' && this.phase === 'serve') {
+      this.serveDirect = kind === 'normal' && !fromTap;
+      this.beginToss(kind);
+    }
     else if (ctl.state === 'AIMING' && ctl.kind === kind && this.phase === 'toss') this.beginSwing();
   }
 
@@ -913,9 +1053,13 @@ export class MatchScene extends Phaser.Scene {
     const g = () => (Math.random() + Math.random() + Math.random() - 1.5) * 2; // ~ N(0,1)
     const [eLat, eDep] = SERVE.error[quality];
     const aimT = who === 'player' ? this.playerAimT() : this.botPlan.aimT;
-    const { tx, ty } = this.serveSpot(who, kind, aimT, g() * eLat, g() * eDep);
-    const speed = SERVE_SPEED * SERVE.speed[quality][second] * (kind === 'spin' ? SERVE.spinSpeedMult : 1);
-    const margin = quality === 'perfect' ? 22 : quality === 'normal' ? rand(8, 20) : rand(-4, 10);
+    // saque DIRECTO: botón verde + golpe en el punto máximo
+    const direct = who === 'player' && kind === 'normal' && this.serveDirect && quality === 'perfect';
+    this.serveDirect = false;
+    const extraDepth = direct ? SERVE.direct.depth - SERVE.depth.normal : 0;
+    const { tx, ty } = this.serveSpot(who, kind, aimT, g() * eLat, g() * eDep + extraDepth);
+    const speed = SERVE_SPEED * SERVE.speed[quality][second] * (kind === 'spin' ? SERVE.spinSpeedMult : 1) * (direct ? SERVE.direct.speedMult : 1);
+    const margin = direct ? SERVE.direct.margin : quality === 'perfect' ? 22 : quality === 'normal' ? rand(8, 20) : rand(-4, 10);
 
     aimShot(s, tx, ty, speed, margin);
     if (kind === 'spin') {
@@ -943,11 +1087,23 @@ export class MatchScene extends Phaser.Scene {
     // potencia real del saque (la velocidad que lleva) para el efecto de impacto
     const mult = SERVE.speed[quality][second] * (kind === 'spin' ? SERVE.spinSpeedMult : 1);
     this.hitFx(s.x, s.y, s.z, false, clamp((mult - 0.8) / 0.6, 0, 1));
-    if (quality === 'perfect') this.perfectFx(s.x, s.y, s.z);
+    if (quality === 'perfect') this.perfectFx(s.x, s.y, s.z, direct);
   }
 
-  /** Efecto del saque perfecto: anillo azul neón y texto. */
-  private perfectFx(bx: number, by: number, bz: number) {
+  /** Efecto del saque perfecto: anillo azul neón y texto (dorado y más fuerte si es DIRECTO). */
+  private perfectFx(bx: number, by: number, bz: number, direct = false) {
+    if (direct) {
+      const p = project(bx, by, bz);
+      for (const [col, size, delay] of [[0xffd23f, 4.6, 0], [NEON, 5.6, 60]] as const) {
+        const r = this.add.circle(p.sx, p.sy, 16, col, 0).setStrokeStyle(7, col).setDepth(3500).setBlendMode(Phaser.BlendModes.ADD);
+        this.tweens.add({ targets: r, scale: size, alpha: 0, delay, duration: 420, onComplete: () => r.destroy() });
+      }
+      this.ball.setImpactTrail(1, 0xffd23f);
+      this.cameras.main.flash(110, 255, 220, 120);
+      this.cameras.main.shake(120, 0.006);
+      this.popText(p.sx, p.sy - 50, '¡SAQUE DIRECTO!', '#ffd23f', 38);
+      return;
+    }
     const p = project(bx, by, bz);
     const ring = this.add.circle(p.sx, p.sy, 16, NEON, 0).setStrokeStyle(7, NEON).setDepth(3500).setBlendMode(Phaser.BlendModes.ADD);
     this.tweens.add({ targets: ring, scale: 4.2, alpha: 0, duration: 420, onComplete: () => ring.destroy() });
@@ -999,7 +1155,7 @@ export class MatchScene extends Phaser.Scene {
     if (this.server === 'player') this.setServeUi(true);
     else {
       this.botPlan = this.serveAI.plan(this.faults, this.ai.d);
-      this.botWait = 0.5;
+      this.brain.serveWait = 0.5;
     }
     this.holdBall();
   }
@@ -1093,6 +1249,7 @@ export class MatchScene extends Phaser.Scene {
         playerGames: this.score.games[0],
         rivalGames: this.score.games[1],
         botName: this.botName,
+        rivalLevel: this.rivalLevel,
       },
     });
   }
@@ -1140,14 +1297,6 @@ export class MatchScene extends Phaser.Scene {
     this.chargeFull = this.charge >= 1;
   }
 
-  /**
-   * Lado al que irá realmente el golpe cargado: -1 izquierda, 1 derecha, 0 sin dirección.
-   * Sale de la misma lectura del joystick que usa playerHit (cruzado a esa esquina), no del movimiento crudo.
-   */
-  private chargedSide(): -1 | 0 | 1 {
-    const shot = this.shotFromJoystick();
-    return shot === 'left' ? -1 : shot === 'right' ? 1 : 0;
-  }
 
   private renderCharge() {
     if (!this.charging) return;
@@ -1168,7 +1317,7 @@ export class MatchScene extends Phaser.Scene {
     // indicador único sobre la cabeza: potencia + dirección real
     const h = this.headPos(this.player);
     this.chargeMeter.setValue(this.charge);
-    this.chargeMeter.setDirection(this.chargedSide());
+    this.chargeMeter.setShot(this.shotFromJoystick());
     this.chargeMeter.place(h.x, h.y - 10, Phaser.Math.Clamp(p.s / 1.45, 0.8, 1));
     this.chargeMeter.tick(dt);
     // brillo alrededor del personaje y su raqueta
@@ -1316,14 +1465,21 @@ export class MatchScene extends Phaser.Scene {
     const charged = this.charging && !power;
     const c = this.charge;
     const volley = this.bounces === 0; // golpe antes de que bote = volea
+    // SMASH potenciado: armado en la ventana del globo y, AHORA, dentro del círculo, bajando y a altura de remate
+    const lobOk = this.lob.qualifies('player', this.player.x, this.player.y, s);
+    const superHit = power && this.superArmed && lobOk;
+    // REMATE: globo recibido dentro del círculo sin SMASH → golpe fuerte y directo automático
+    const remate = !power && lobOk;
+    this.superArmed = false;
     this.stopCharge();
     if (power) {
       this.smashArmed = false;
       this.smashBtn.setArmed(false);
       this.aura.stop();
     }
-    // remate (animación 'smash'): con el SMASH o con una pelota alta
-    this.player.ch.swing(power || charged, power || s.z > OVERHEAD_Z);
+    // remate (animación 'smash'): con el SMASH, con el remate del globo o con una pelota alta
+    // ms hasta que la raqueta llega visualmente a la pelota (el golpe físico es AHORA; solo el destello espera)
+    const fxDelay = this.player.ch.swing(power || charged || remate, power || remate || s.z > OVERHEAD_Z, power);
 
     const depth = (a: number, b: number) => NET_X + (COURT.right - NET_X) * rand(a, b);
     const lat = (k: number) => LAT_C + clamp(k, -1, 1) * (HALF_W - 30);
@@ -1337,7 +1493,14 @@ export class MatchScene extends Phaser.Scene {
     if (power) {
       tx = depth(0.72, 0.9);
       ty = this.bot.y > LAT_C ? COURT.top + rand(25, 60) : COURT.bottom - rand(25, 60);
-      speed = SHOT_SPEED * SMASH_SPEED_MULT;
+      speed = SHOT_SPEED * SMASH_SPEED_MULT * (superHit ? LOB_SMASH.powerMult : 1);
+      margin = 6;
+    } else if (remate) {
+      // fuerte, plano y profundo; el joystick elige el lado (si no, lejos del rival)
+      const d = this.shotDir();
+      tx = depth(0.7, 0.9);
+      ty = Math.abs(d.x) > 0.3 ? lat(Math.sign(d.x) * rand(0.7, 0.95)) : this.bot.y > LAT_C ? COURT.top + rand(30, 70) : COURT.bottom - rand(30, 70);
+      speed = SHOT_SPEED * LOB_SMASH.remateMult;
       margin = 6;
     } else if (charged) {
       // tiro cargado: más rápido cuanto más carga; el joystick decide el tipo
@@ -1417,34 +1580,50 @@ export class MatchScene extends Phaser.Scene {
       s.fric = 0.5;
     }
     this.ball.setPower(power);
-    this.ball.setKind(kind, charged);
+    this.ball.setKind(kind, charged || remate);
     this.lastHitter = 'player';
     this.bounces = 0;
-    this.ai.onPlayerHit(power);
-    this.hitFx(s.x, s.y, s.z, power, charged ? c : 0.15);
+    this.ai.onPlayerHit(power || remate);
+    this.hitFxAt(fxDelay, s.x, s.y, s.z, power, charged ? c : remate ? 1 : 0.15);
+    if (remate) {
+      this.time.delayedCall(fxDelay, () => {
+        this.ball.setImpactTrail(0.9, 0xffffff);
+        this.cameras.main.shake(110, 0.007);
+      });
+    }
+    this.superFlight = superHit;
+    if (superHit) {
+      // efectos propios del potenciado (además del fuego del SMASH), en el instante del impacto visual
+      const p = project(s.x, s.y, s.z);
+      this.time.delayedCall(fxDelay, () => {
+        superSmashFx(this, p.sx, p.sy);
+        this.ball.setImpactTrail(1, 0xffd23f);
+      });
+    }
   }
 
   private botHit() {
     const s = this.ball.s;
-    const ai = this.ai;
-    this.bot.ch.swing();
-    let tx = NET_X - (NET_X - COURT.left) * rand(0.55, 0.9);
-    const toward = this.player.y > LAT_C ? -1 : 1; // hacia el lado contrario al jugador
-    let ty = LAT_C + clamp(toward * ai.aimSkill * rand(0.4, 1) + rand(-0.4, 0.4) * (1 - ai.aimSkill), -1, 1) * (HALF_W - 28);
-    if (Math.random() < ai.outChance) {
-      if (Math.random() < 0.5) tx = COURT.left - rand(15, 55);
-      else ty = Math.random() < 0.5 ? COURT.top - rand(15, 45) : COURT.bottom + rand(15, 45);
-    }
+    const fxDelay = this.bot.ch.swing();
+    // a dónde y cómo devuelve: lo decide el cerebro; la física del golpe se aplica aquí como siempre
+    const shot = this.brain.planShot(s, { playerX: this.player.x, playerY: this.player.y, botX: this.bot.x, botY: this.bot.y });
     s.z = Math.max(s.z, 22);
-    const sideways = Math.abs(ty - s.y) > 120;
-    const short = tx > NET_X - (NET_X - COURT.left) * 0.3;
-    aimShot(s, tx, ty, SHOT_SPEED * (0.82 + 0.3 * ai.d));
+    aimShot(s, shot.tx, shot.ty, shot.speed, shot.margin);
     this.ball.setPower(false);
-    this.ball.setKind(short ? 'drop' : sideways ? 'side' : 'normal');
+    this.ball.setKind(shot.kind);
     this.lastHitter = 'bot';
     this.bounces = 0;
-    ai.onBotHit();
-    this.hitFx(s.x, s.y, s.z, false);
+    this.brain.onShot(shot); // se recoloca según su golpe (recuperación táctica)
+    this.hitFxAt(fxDelay, s.x, s.y, s.z, false);
+  }
+
+  /**
+   * Efecto de golpe sincronizado con el frame de impacto de la raqueta. La física ya se aplicó;
+   * el destello, las partículas y la estela salen cuando la raqueta "toca" la pelota (en el punto de contacto).
+   */
+  private hitFxAt(delayMs: number, bx: number, by: number, bz: number, power: boolean, level = 0.15) {
+    if (delayMs <= 0) this.hitFx(bx, by, bz, power, level);
+    else this.time.delayedCall(delayMs, () => this.hitFx(bx, by, bz, power, level));
   }
 
   // ---------------------------------------------------------------- efectos
@@ -1549,6 +1728,7 @@ export class MatchScene extends Phaser.Scene {
       this.charging ||
       pl.stun > 0 ||
       pl.vanished ||
+      this.dashHit !== null || // tras el DASH se queda en el punto hasta devolver
       this.phase === 'over' ||
       this.phase === 'intro' ||
       (this.server === 'player' && this.phase === 'toss') ||
@@ -1571,7 +1751,7 @@ export class MatchScene extends Phaser.Scene {
       pl.x = clamp(pl.x - v.y * PLAYER_SPEED * dt, P_X[0], P_X[1]);
       pl.y = clamp(pl.y + v.x * PLAYER_SPEED * dt, Y_MIN, Y_MAX);
     }
-    pl.ch.setMoving(v.lengthSq() > 0.01);
+    pl.ch.setMoving(v.lengthSq() > 0.01, v.x); // v.x: lado al que corre en pantalla (voltea la carrera)
     this.updateFacing(pl);
     // guardia con la raqueta atrás cuando la pelota viene hacia el jugador y ya está cerca
     const sb = this.ball.s;
@@ -1581,30 +1761,17 @@ export class MatchScene extends Phaser.Scene {
 
     // --- bot
     const bt = this.bot;
-    if (bt.stun > 0) bt.stun -= dt;
-    const botFrozen = bt.stun > 0 || this.phase === 'over' || this.phase === 'intro' || ((this.phase === 'serve' || this.phase === 'toss') && this.server === 'bot');
-    if (this.phase === 'rally') this.ai.update(dt, this.ball.s);
-    if (this.server === 'bot' && this.phase === 'serve' && this.serveCtl.state === 'POSITIONING') {
-      // el rival se coloca sobre su línea de fondo y, pasado un momento, lanza la pelota
-      const dy = this.botServeY - bt.y;
-      const step = Math.min(Math.abs(dy), PLAYER_SPEED * 0.35 * dt);
-      bt.y += Math.sign(dy) * step;
-      bt.ch.setMoving(Math.abs(dy) > 3);
-      this.botWait -= dt;
-      if (this.botWait <= 0 && Math.abs(dy) <= 3) this.beginToss(this.botPlan.kind);
-    } else if (!botFrozen) {
-      const dx = this.ai.target.x - bt.x;
-      const dy = this.ai.target.y - bt.y;
-      const dist = Math.hypot(dx, dy);
-      const step = Math.min(dist, this.ai.speed * dt);
-      if (dist > 4) {
-        bt.x += (dx / dist) * step;
-        bt.y += (dy / dist) * step;
-      }
-      bt.x = clamp(bt.x, B_X[0], B_X[1]);
-      bt.y = clamp(bt.y, Y_MIN, Y_MAX);
-      bt.ch.setMoving(dist > 6);
-    } else bt.ch.setMoving(false);
+    // movimiento del rival: lo decide el cerebro (src/ai/BotBrain.ts); aquí solo se aplica
+    const mv = this.brain.tick(bt, {
+      dt,
+      phase: this.phase,
+      botServes: this.server === 'bot',
+      servePositioning: this.serveCtl.state === 'POSITIONING',
+      serveY: this.botServeY,
+      ball: this.ball.s,
+    });
+    bt.ch.setMoving(mv.moving, mv.dirX);
+    if (mv.readyToToss) this.beginToss(this.botPlan.kind);
     this.updateFacing(bt);
 
     // --- tiempo para sacar (solo el jugador): si se agota, falta
@@ -1649,17 +1816,53 @@ export class MatchScene extends Phaser.Scene {
         } else if (ev === 'bounce') this.handleBounce();
         if (this.phase === 'rally') this.checkHits();
       }
+      this.updateDashHit(dt);
     }
 
+    // globo: caída prevista, círculo en el suelo y aviso del SMASH potenciado (solo presentación + reglas)
+    const lob = this.lob.update(dt, this.ball.s, this.lastHitter, this.ball.shotKind, this.phase, this.bounces);
+    const insideLob = lob.receiver === 'player' && this.lob.contains(pl.x, pl.y);
+    const canSuper = this.lob.windowOpenFor('player', pl.x, pl.y);
+    if (!lob.active) this.superArmed = false;
+    // el botón SMASH brilla en dorado cuando pulsarlo AHORA daría un remate potenciado (o ya se armó así)
+    this.smashBtn.setHint((canSuper && this.smashBtn.ready && !this.smashArmed) || (this.superArmed && canSuper));
+    this.lobMarker.render(dt, lob, insideLob, canSuper);
+
     this.ball.render(dt);
+    // humo del SMASH en vuelo (fuerte si es el potenciado)
+    if (!this.ball.power) this.superFlight = false;
+    this.smoke.update(dt, this.ball.s, this.ball.power, this.superFlight, this.ball.sprite.visible);
     this.renderActors();
     this.renderServeAim();
+    // turno de saque: aparece al terminar la presentación (INICIO) y se oculta al lanzar la pelota
+    const waitingServe = this.phase === 'serve' && !this.serving;
+    const srvHead = this.headPos(this.srvActor());
+    this.serveTag.update(dt, waitingServe ? this.server : null, srvHead.x, srvHead.y);
 
     // cámara: sigue un poco al jugador en lateral (tipo Mario Tennis)
     const cam = this.cameras.main;
     const pp = project(pl.x, pl.y);
     const target = this.baseScrollX + (pp.sx - VIEW.W / 2) * VIEW.FOLLOW;
     cam.scrollX += (target - cam.scrollX) * Math.min(1, dt * 5);
+
+    // globo hacia el jugador y él dentro del círculo: zoom suave hacia él (el HUD va en otra cámara y no se mueve).
+    // Al golpear (el globo deja de estar activo) o al salir del círculo, vuelve al encuadre normal.
+    // Solo cuando recibe el JUGADOR: si el globo es para el rival no hay zoom.
+    if (this.phase !== 'intro' && this.phase !== 'over') {
+      const want = lob.active && lob.receiver === 'player' && insideLob ? 1 : 0;
+      const rate = want > this.lobZoomK ? LOB_SMASH.zoomIn : LOB_SMASH.zoomOut;
+      this.lobZoomK += (want - this.lobZoomK) * Math.min(1, dt * rate);
+      if (this.lobZoomK < 0.002) this.lobZoomK = 0;
+      const k = this.lobZoomK;
+      // toma especial: más cerca, encuadre bajo (los pies al centro: red y rival "por encima"),
+      // leve inclinación tipo cine y viñeta. Todo escala con k y vuelve a cero al golpear / salir.
+      const ease = k * k * (3 - 2 * k);
+      cam.setZoom(1 + (LOB_SMASH.zoom - 1) * ease);
+      cam.scrollY = (pp.sy - LOB_SMASH.focusLift - this.scale.height / 2) * ease;
+      cam.scrollX += (pp.sx - VIEW.W / 2) * (1 - VIEW.FOLLOW) * 0.5 * ease * Math.min(1, dt * 5);
+      cam.setRotation(LOB_SMASH.tilt * ease * (this.player.ch.facing >= 0 ? -1 : 1));
+      this.lobVignette.setAlpha(LOB_SMASH.vignette * ease).setVisible(ease > 0.01);
+    }
   }
 }
 

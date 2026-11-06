@@ -9,7 +9,10 @@ import { RankBadge, preloadRankBadges } from '../ui/RankBadge';
 import { showRankList } from '../ui/RankListDialog';
 import { lockedModeButton, playButton } from '../ui/modeButtons';
 import { fitText } from '../ui/fitText';import { playerRank, playerRankPosition } from '../domain/ranks';
-import { onPlayerChange } from '../domain/playerStore';
+import { getPlayer, onPlayerChange } from '../domain/playerStore';
+
+/** ancho máximo del número en los contadores (entre el icono y el botón +) */
+const COUNTER_TEXT_W = 62;
 
 
 /**
@@ -170,8 +173,8 @@ export class MenuScene extends Phaser.Scene {
     // el perfil ocupa el espacio libre hasta los contadores (132 = ancho de un contador)
     const countersLeft = gx - gs / 2 - 10 - 132;
     this.profileCard(24, y, Math.min(440, countersLeft - 24 - 14), p);
-    this.counter(gx - gs / 2 - 10, y + 4, 'coin', '250');
-    this.counter(gx - gs / 2 - 10, y + 52, 'cash', '50');
+    this.coinCounter(gx - gs / 2 - 10, y + 4);
+    this.counter(gx - gs / 2 - 10, y + 52, 'cash', '50'); // dinero: decorativo por ahora
     this.gearButton(gx, gy, gs, () => this.toast('Ajustes: próximamente'));
   }
 
@@ -316,6 +319,45 @@ export class MenuScene extends Phaser.Scene {
     });
   }
 
+  /**
+   * Contador de MONEDAS con el saldo real. Al volver de un partido cuenta desde lo último que se
+   * mostró hasta el saldo nuevo (con un pequeño salto); también se actualiza en vivo.
+   */
+  private coinCounter(right: number, y: number) {
+    const KEY = 'profile.coinsShown';
+    const fmt = (n: number) => Math.round(n).toLocaleString('es-CL');
+    const now = getPlayer().coins;
+    const prev = this.registry.get(KEY) as number | undefined;
+    const c = this.counter(right, y, 'coin', fmt(prev ?? now));
+    const txt = c.getData('text') as Phaser.GameObjects.Text;
+    const shown = { v: prev ?? now };
+    const animateTo = (to: number) => {
+      this.registry.set(KEY, to);
+      this.tweens.killTweensOf(shown);
+      if (to === shown.v) return;
+      const up = to > shown.v;
+      this.tweens.add({
+        targets: shown,
+        v: to,
+        delay: 350,
+        duration: 900,
+        ease: 'Cubic.easeOut',
+        onUpdate: () => {
+          txt.setText(fmt(shown.v));
+          fitText(txt, COUNTER_TEXT_W);
+        },
+        onComplete: () => {
+          if (up) this.tweens.add({ targets: txt, scale: { from: txt.scale * 1.25, to: txt.scale }, duration: 320, ease: 'Back.easeOut' });
+        },
+      });
+      if (up) txt.setColor('#ffe27a');
+      this.time.delayedCall(1500, () => txt.setColor('#ffffff'));
+    };
+    animateTo(now);
+    const off = onPlayerChange((s) => animateTo(s.coins));
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => off());
+  }
+
   /** Contador de recurso, alineado a la derecha (x = borde derecho). */
   private counter(right: number, y: number, kind: 'coin' | 'cash', value: string) {
     const w = 132;
@@ -336,7 +378,11 @@ export class MenuScene extends Phaser.Scene {
       g.fillStyle(0xcdeccf).fillCircle(h / 2, h / 2, 4);
     }
     c.add(g);
-    c.add(this.add.text(h - 2, h / 2, value, textStyle(20)).setOrigin(0, 0.5));
+    const txt = this.add.text(h - 2, h / 2, value, textStyle(20)).setOrigin(0, 0.5);
+    fitText(txt, COUNTER_TEXT_W);
+    c.add(txt);
+    c.setData('text', txt);
+    c.setData('icon', g);
     // botón +
     const plus = this.add.graphics();
     plus.fillStyle(0x3fae5a).fillCircle(w - 18, h / 2, 13);

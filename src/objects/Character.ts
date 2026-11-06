@@ -356,10 +356,13 @@ export class Character extends Phaser.GameObjects.Container {
     });
   }
 
-  /** Cambia la animación entre idle y carrera. */
-  setMoving(m: boolean) {
+  /**
+   * Cambia la animación entre idle y carrera. `dirX` = dirección lateral en pantalla
+   * (>0 derecha, <0 izquierda); con sprites voltea la carrera hacia el lado al que se corre.
+   */
+  setMoving(m: boolean, dirX = 0) {
     if (this.nxo) {
-      this.nxo.setMoving(m);
+      this.nxo.setMoving(m, dirX);
       return;
     }
     if (m === this.moving) return;
@@ -430,13 +433,12 @@ export class Character extends Phaser.GameObjects.Container {
   /**
    * Animación de golpe: preparación hacia atrás y barrido por delante del cuerpo.
    * `overhead`: remate (SMASH o pelota alta). Solo lo usa el personaje con sprites.
+   * Devuelve los ms hasta el impacto visual de la raqueta (para sincronizar los efectos; 0 = ya).
    */
-  swing(power = false, overhead = false) {
-    if (this.nxo) {
-      this.nxo.swing(overhead);
-      return;
-    }
-    if (this.swinging) return;
+  swing(power = false, overhead = false, special = false): number {
+    // `special`: ataque especial SMASH (remate con salto si el personaje tiene esa animación)
+    if (this.nxo) return this.nxo.swing(overhead, power, special);
+    if (this.swinging) return 0;
     this.swinging = true;
     this.charging = false;
     this.scene.tweens.killTweensOf(this.racketArm);
@@ -453,6 +455,7 @@ export class Character extends Phaser.GameObjects.Container {
       onComplete: () => (this.swinging = false),
     });
     this.scene.tweens.add({ targets: this.rig, scaleY: 0.9, duration: 80, yoyo: true, ease: 'Quad.easeOut' });
+    return 0; // personaje vectorial: comportamiento de siempre
   }
 }
 

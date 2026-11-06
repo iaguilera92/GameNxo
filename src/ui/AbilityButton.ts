@@ -12,6 +12,8 @@ export class AbilityButton extends Phaser.GameObjects.Container {
   private secs: Phaser.GameObjects.Text;
   private face: Phaser.GameObjects.Container;
   private armed = false;
+  private hintGlow: Phaser.GameObjects.Arc;
+  private hinting = false;
   enabled = true;
 
   constructor(
@@ -33,6 +35,9 @@ export class AbilityButton extends Phaser.GameObjects.Container {
 
     this.glow = scene.add.circle(0, 0, R + 20, 0xff9a2e, 0.0);
     this.add(this.glow);
+    // aviso dorado (p. ej. SMASH potenciado disponible); independiente del brillo de "armado"
+    this.hintGlow = scene.add.circle(0, 0, R + 16, 0xffc42e, 0).setStrokeStyle(5, 0xfff1b8, 0);
+    this.add(this.hintGlow);
 
     this.face = scene.add.container(0, 0);
     this.add(this.face);
@@ -93,6 +98,19 @@ export class AbilityButton extends Phaser.GameObjects.Container {
     this.scene.tweens.add({ targets: this.face, scale: 0.82, duration: 70, yoyo: true, ease: 'Quad.easeOut' });
     this.redraw();
     return true;
+  }
+
+  /** Aviso dorado pulsante (sin cambiar el cooldown ni el estado armado). */
+  setHint(on: boolean) {
+    if (on === this.hinting) return;
+    this.hinting = on;
+    this.scene.tweens.killTweensOf(this.hintGlow);
+    if (on) {
+      this.hintGlow.setScale(1).setFillStyle(0xffc42e, 0.35).setStrokeStyle(5, 0xfff1b8, 0.95);
+      this.scene.tweens.add({ targets: this.hintGlow, scale: 1.18, alpha: { from: 1, to: 0.45 }, duration: 260, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
+    } else {
+      this.hintGlow.setScale(1).setAlpha(1).setFillStyle(0xffc42e, 0).setStrokeStyle(5, 0xfff1b8, 0);
+    }
   }
 
   setArmed(a: boolean) {

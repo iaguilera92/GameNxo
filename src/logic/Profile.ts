@@ -48,6 +48,14 @@ export function addXp(amount: number): XpResult {
 
 export const levelProgress = ops.levelProgress;
 
+/** Suma monedas y guarda. Devuelve lo ganado y el total antes/después. */
+export function addCoins(amount: number): { gained: number; before: number; after: number } {
+  const before = getPlayer().coins;
+  const res = commit((s) => ops.addCoins(s, amount));
+  const after = getPlayer().coins;
+  return { gained: res.ok ? after - before : 0, before, after };
+}
+
 /** Cambia el personaje elegido y lo guarda (solo si el jugador lo posee). */
 export function setSkin(id: string) {
   commit((s) => ops.equipSkin(s, id as SkinId));

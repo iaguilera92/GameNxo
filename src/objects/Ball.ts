@@ -151,6 +151,11 @@ export class Ball {
     this.sprite.add([outline, this.core, shine]);
   }
 
+  /** Intención del último golpe ('lob' = globo, etc.). Solo lectura. */
+  get shotKind(): ShotKind {
+    return this.kind;
+  }
+
   /** Cambia el color de la estela según el tipo de golpe. */
   setKind(k: ShotKind, charged = false) {
     this.kind = k;

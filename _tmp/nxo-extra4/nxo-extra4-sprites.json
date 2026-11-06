@@ -1,0 +1,74 @@
+{
+  "source": "pj-nxo-sprite-4.png",
+  "view": "back",
+  "cell": {
+    "w": 233,
+    "h": 174
+  },
+  "origin": {
+    "x": 0.46352,
+    "y": 0.94828
+  },
+  "standHeight": 140,
+  "animations": {
+    "charge-prep": {
+      "file": "charge-prep.png",
+      "frames": 8,
+      "fps": 10,
+      "loop": false,
+      "scale": 1.196
+    },
+    "lob": {
+      "file": "lob.png",
+      "frames": 8,
+      "fps": 13,
+      "loop": false,
+      "impact": 4,
+      "scale": 1.185
+    },
+    "smash-power": {
+      "file": "smash-power.png",
+      "frames": 8,
+      "fps": 14,
+      "loop": false,
+      "impact": 4,
+      "scale": 1.137
+    },
+    "emergency": {
+      "file": "emergency.png",
+      "frames": 8,
+      "fps": 14,
+      "loop": false,
+      "impact": 3,
+      "scale": 1.311
+    },
+    "dive-recover": {
+      "file": "dive-recover.png",
+      "frames": 8,
+      "fps": 12,
+      "loop": false,
+      "scale": 1.281
+    },
+    "brake-turn": {
+      "file": "brake-turn.png",
+      "frames": 8,
+      "fps": 14,
+      "loop": false,
+      "scale": 1.296
+    },
+    "hit-reaction": {
+      "file": "hit-reaction.png",
+      "frames": 8,
+      "fps": 11,
+      "loop": false,
+      "scale": 1.242
+    },
+    "turn-front": {
+      "file": "turn-front.png",
+      "frames": 8,
+      "fps": 10,
+      "loop": false,
+      "scale": 1.267
+    }
+  }
+}

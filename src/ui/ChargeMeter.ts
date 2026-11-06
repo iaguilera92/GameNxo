@@ -1,6 +1,8 @@
 import Phaser from 'phaser';
-import { C, textStyle } from './theme';
+import { C } from './theme';
 
+/** Golpe cargado según el joystick: normal (fuerza) · cortita · globo · cruzado izquierda/derecha. */
+export type ChargeShot = 'normal' | 'drop' | 'lob' | 'left' | 'right';
 /** Azul eléctrico (carga) y dorado (carga máxima) del arco. */
 const BLUE = 0x2f9bff;
 const GOLD = 0xffc72e;
@@ -24,9 +26,8 @@ const lerpColor = (a: number, b: number, t: number) => {
 export class ChargeMeter extends Phaser.GameObjects.Container {
   private g: Phaser.GameObjects.Graphics;
   private icon: Phaser.GameObjects.Graphics;
-  private label: Phaser.GameObjects.Text;
   private value = 0;
-  private dir: -1 | 0 | 1 = 0;
+  private shot: ChargeShot = 'normal';
   private full = false;
   private t = 0;
   private fade?: Phaser.Tweens.Tween;
@@ -40,8 +41,7 @@ export class ChargeMeter extends Phaser.GameObjects.Container {
     this.setDepth(4400).setVisible(false);
     this.g = scene.add.graphics();
     this.icon = scene.add.graphics();
-    this.label = scene.add.text(0, -3, 'FUERZA', textStyle(11, '#e8f6ff')).setOrigin(0.5, 1).setStroke('#0b1736', 4);
-    this.add([this.g, this.icon, this.label]);
+    this.add([this.g, this.icon]);
     scene.add.existing(this);
   }
 
@@ -52,7 +52,7 @@ export class ChargeMeter extends Phaser.GameObjects.Container {
     this.fade = this.pop = undefined;
     this.popK = 1;
     this.value = 0;
-    this.dir = 0;
+    this.shot = 'normal';
     this.full = false;
     this.t = 0;
     this.setAlpha(1).setVisible(true);
@@ -81,9 +81,9 @@ export class ChargeMeter extends Phaser.GameObjects.Container {
     this.value = nv;
   }
 
-  /** -1 izquierda, 1 derecha, 0 = sin dirección (vuelve el icono "FUERZA"). No toca la carga. */
-  setDirection(d: -1 | 0 | 1) {
-    this.dir = d;
+  /** Golpe que saldrá (lo decide el joystick): cambia solo el icono central. No toca la carga. */
+  setShot(s: ChargeShot) {
+    this.shot = s;
   }
 
   /** Pulso luminoso (se llama solo al llegar al máximo). */
@@ -109,6 +109,32 @@ export class ChargeMeter extends Phaser.GameObjects.Container {
     this.t += dt;
     this.applyScale();
     this.draw();
+  }
+
+  /**
+   * Brazo musculoso (💪): brazo horizontal, bíceps abultado, antebrazo vertical y puño arriba.
+   * Se dibuja dos veces: primero engordado en color de contorno y encima el relleno.
+   */
+  private drawArm(ic: Phaser.GameObjects.Graphics, cy: number, col: number) {
+    const k = 0.9;
+    const X = (x: number) => x * k;
+    const Y = (y: number) => cy + (y + 3) * k;
+    const parts = (o: number, c: number) => {
+      ic.fillStyle(c, 1);
+      ic.fillRoundedRect(X(-15) - o, Y(2) - o, 21 * k + o * 2, 8 * k + o * 2, 4 * k + o); // brazo (hombro → codo)
+      ic.fillCircle(X(-5), Y(0), 7.5 * k + o); // bíceps
+      ic.fillCircle(X(6), Y(6), 4.5 * k + o); // codo
+      ic.fillRoundedRect(X(2) - o, Y(-9) - o, 8 * k + o * 2, 17 * k + o * 2, 4 * k + o); // antebrazo
+      ic.fillCircle(X(6.5), Y(-11), 6 * k + o); // puño
+    };
+    parts(2.4, C.outline);
+    parts(0, col);
+    // sombra bajo el bíceps y nudillos
+    ic.lineStyle(1.8, 0xb57a00, 1);
+    ic.beginPath().arc(X(-5), Y(0), 5.2 * k, Math.PI * 0.2, Math.PI * 0.85).strokePath();
+    ic.lineBetween(X(3), Y(-13), X(10), Y(-13));
+    // brillo del bíceps
+    ic.fillStyle(0xffffff, 0.65).fillEllipse(X(-7), Y(-3.5), 6 * k, 2.8 * k);
   }
 
   private draw() {
@@ -144,26 +170,32 @@ export class ChargeMeter extends Phaser.GameObjects.Container {
       }
     }
 
-    // centro: icono de fuerza + "FUERZA", o flecha de dirección
+    // centro: SOLO icono (sin texto) según el golpe que saldrá
     const ic = this.icon;
     ic.clear();
-    const CY = -17; // centro del icono (sobre el texto)
-    const shape = (pts: number[], k: number) => {
+    const CY = -14; // centro del icono dentro del semicírculo
+    const shape = (pts: number[], k: number, dx = 0, dy = 0) => {
       const out: Phaser.Math.Vector2[] = [];
-      for (let i = 0; i < pts.length; i += 2) out.push(new Phaser.Math.Vector2(pts[i] * k, CY + pts[i + 1] * k));
+      for (let i = 0; i < pts.length; i += 2) out.push(new Phaser.Math.Vector2(pts[i] * k + dx, CY + pts[i + 1] * k + dy));
       return out;
     };
-    if (this.dir === 0) {
-      this.label.setVisible(true);
-      const bolt = [-2, -13, 8, -13, 2, -3, 9, -3, -6, 13, -2, 1, -9, 1];
-      ic.fillStyle(C.outline).fillPoints(shape(bolt, 1.3), true);
-      ic.fillStyle(this.full ? 0xfff2a8 : 0xfff36b).fillPoints(shape(bolt, 1), true);
+    const icon = (pts: number[], color: number, k = 1) => {
+      ic.fillStyle(C.outline).fillPoints(shape(pts, k * 1.24), true);
+      ic.fillStyle(color).fillPoints(shape(pts, k), true);
+    };
+    const shot = this.shot;
+    if (shot === 'normal') {
+      // brazo musculoso (bíceps flexionado, puño arriba)
+      this.drawArm(ic, CY, this.full ? 0xfff2a8 : 0xffd23f);
+    } else if (shot === 'lob' || shot === 'drop') {
+      // globo = flecha arriba · cortita = flecha abajo
+      const s = shot === 'lob' ? 1 : -1;
+      const arrow = [0, -15 * s, 12, -3 * s, 5, -3 * s, 5, 13 * s, -5, 13 * s, -5, -3 * s, -12, -3 * s];
+      icon(arrow, shot === 'lob' ? 0xffd23f : 0xdfe6f5);
     } else {
-      this.label.setVisible(false);
-      const s = this.dir;
+      const s = shot === 'left' ? -1 : 1;
       const arrow = [16 * s, 0, 4 * s, -12, 4 * s, -5, -14 * s, -5, -14 * s, 5, 4 * s, 5, 4 * s, 12];
-      ic.fillStyle(C.outline).fillPoints(shape(arrow, 1.22), true);
-      ic.fillStyle(0xffffff).fillPoints(shape(arrow, 1), true);
+      icon(arrow, 0xffffff);
     }
   }
 }

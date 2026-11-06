@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import { FONT } from '../ui/theme';
-import { GAMES_TO_WIN, XP_LOSS, XP_WIN, xpToNext, MAX_LEVEL } from '../config';
-import { addXp, getProfile } from '../logic/Profile';
+import { COINS_LOSS, COINS_SURRENDER, COINS_WIN, GAMES_TO_WIN, XP_LOSS, XP_WIN, xpToNext, MAX_LEVEL } from '../config';
+import { addCoins, addXp, getProfile } from '../logic/Profile';
 import { arcadeButton } from '../ui/modeButtons';
 import { fitText } from '../ui/fitText';
 import { RankBadge } from '../ui/RankBadge';
@@ -25,6 +25,8 @@ export interface MatchEndData {
   rivalGames: number;
   /** para REVANCHA (misma lógica que antes: reiniciar el partido con el mismo rival) */
   botName: string;
+  /** nivel del rival: la revancha es contra el mismo rival (misma dificultad) */
+  rivalLevel?: number;
   /** clave de la escena del partido (la rellena playMatchEnd) */
   matchKey?: string;
   /** SOLO partidas clasificatorias con el competitivo desbloqueado; si no llega, no se muestra ranking */
@@ -34,6 +36,22 @@ export interface MatchEndData {
 const NAVY = 0x0b1733;
 const NEON = 0x3a7bff;
 const GOLD = 0xffc42e;
+/** alto extra del panel para la fila de monedas */
+const COIN_ROW_H = 46;
+
+/** Moneda dibujada (sin imagen): disco dorado con canto, brillo y una corona. */
+function drawCoin(g: Phaser.GameObjects.Graphics, r: number) {
+  g.fillStyle(0x0a1638, 1).fillCircle(0, 0, r + 2.5);
+  g.fillStyle(0xd99400, 1).fillCircle(0, 1.5, r);
+  g.fillStyle(GOLD, 1).fillCircle(0, 0, r);
+  g.lineStyle(Math.max(1.5, r * 0.14), 0xfff1b8, 0.9).strokeCircle(0, 0, r * 0.68);
+  const k = r / 14;
+  g.fillStyle(0xd99400, 1).fillPoints(
+    [{ x: -6 * k, y: 4 * k }, { x: -7 * k, y: -4 * k }, { x: -3 * k, y: 0 }, { x: 0, y: -6 * k }, { x: 3 * k, y: 0 }, { x: 7 * k, y: -4 * k }, { x: 6 * k, y: 4 * k }],
+    true,
+  );
+  g.fillStyle(0xffffff, 0.55).fillEllipse(-r * 0.35, -r * 0.42, r * 0.7, r * 0.32);
+}
 
 export class MatchEndScene extends Phaser.Scene {
   static readonly KEY = 'MatchEnd';
@@ -67,7 +85,7 @@ export class MatchEndScene extends Phaser.Scene {
     this.banner(W, win);
     const btnH = 84;
     const btnY = H - 26 - btnH / 2;
-    const panelH = d.ranked ? 236 : 182;
+    const panelH = (d.ranked ? 236 : 182) + COIN_ROW_H;
     const panelTop = btnY - btnH / 2 - 14 - panelH;
     this.resultPanel(W, panelTop, panelH);
     this.buttons(W, btnY, btnH);
@@ -245,10 +263,59 @@ export class MatchEndScene extends Phaser.Scene {
     };
     this.time.delayedCall(startAt, () => run(0));
 
+    // --- MONEDAS: victoria COINS_WIN, derrota COINS_LOSS, rendición COINS_SURRENDER. Se aplican UNA vez.
+    const cstore = d as MatchEndData & { _coins?: ReturnType<typeof addCoins> };
+    if (!cstore._coins) cstore._coins = addCoins(d.surrendered ? COINS_SURRENDER : d.win ? COINS_WIN : COINS_LOSS);
+    const coins = cstore._coins;
+    const cy = by + bh + 26;
+    const coinIcon = this.add.graphics({ x: -w / 2 + 40, y: cy });
+    drawCoin(coinIcon, 15);
+    const coinText = this.add
+      .text(-w / 2 + 64, cy, '+0', { fontFamily: FONT, fontSize: '26px', color: '#ffd23f', stroke: '#0a1638', strokeThickness: 5 })
+      .setOrigin(0, 0.5);
+    const coinLbl = this.add.text(0, cy + 2, 'MONEDAS', { fontFamily: FONT, fontSize: '15px', color: '#c9a64a' }).setOrigin(0, 0.5).setLetterSpacing(1);
+    // total a la derecha (píldora)
+    const totalText = this.add.text(w / 2 - 30, cy, coins.before.toLocaleString('es-CL'), { fontFamily: FONT, fontSize: '20px', color: '#ffffff' }).setOrigin(1, 0.5);
+    const totalPill = this.add.graphics();
+    const totalCoin = this.add.graphics({ y: cy });
+    drawCoin(totalCoin, 10);
+    const layoutTotal = () => {
+      const tw = totalText.width + 44;
+      const x0 = w / 2 - 18 - tw;
+      totalPill.clear().fillStyle(0x05112c, 1).fillRoundedRect(x0, cy - 16, tw, 32, 16).lineStyle(1.5, 0x8a6a1c, 1).strokeRoundedRect(x0, cy - 16, tw, 32, 16);
+      totalCoin.setX(x0 + 17);
+    };
+    layoutTotal();
+    const placeLbl = () => coinLbl.setX(coinText.x + coinText.width + 8);
+    placeLbl();
+    c.add([totalPill, totalCoin, totalText, coinIcon, coinText, coinLbl]);
+    if (coins.gained > 0) {
+      const coinAt = startAt + 650;
+      const cc = { v: 0 };
+      this.tweens.add({
+        targets: cc,
+        v: coins.gained,
+        delay: coinAt,
+        duration: 800,
+        ease: 'Cubic.easeOut',
+        onUpdate: () => {
+          const v = Math.round(cc.v);
+          coinText.setText(`+${v}`);
+          totalText.setText((coins.before + v).toLocaleString('es-CL'));
+          placeLbl();
+          layoutTotal();
+        },
+        onComplete: () => this.tweens.add({ targets: [totalCoin, coinIcon], scale: { from: 1.35, to: 1 }, duration: 320, ease: 'Back.easeOut' }),
+      });
+      this.time.delayedCall(coinAt, () => this.coinShower(c, -w / 2 + 40, cy, w / 2 - 40, cy, Math.min(8, 2 + Math.round(coins.gained / 10))));
+    } else {
+      coinText.setColor('#7f93bf');
+    }
+
     // --- ranking: solo si llega (clasificatoria con competitivo desbloqueado). No se inventan puntos.
     if (d.ranked) {
       const r = d.ranked;
-      const ry = by + bh + 34;
+      const ry = by + bh + 34 + COIN_ROW_H;
       c.add(new RankBadge(this, -w / 2 + 52, ry, { rank: r.promotedTo ?? r.rank, level: r.level, size: 56, position: r.position }));
       const sign = r.delta >= 0 ? '+' : '';
       c.add(this.add.text(-w / 2 + 92, ry, `${sign}${r.delta} PUNTOS DE RANKING`, { fontFamily: FONT, fontSize: '19px', color: r.delta >= 0 ? '#9fe8a0' : '#ff9aa3' }).setOrigin(0, 0.5));
@@ -260,6 +327,30 @@ export class MatchEndScene extends Phaser.Scene {
     this.tweens.add({ targets: c, alpha: 1, y: top, duration: 460, delay: 350, ease: 'Cubic.easeOut' });
   }
 
+
+  /** Monedas que saltan del contador ganado al total (dentro del panel). */
+  private coinShower(c: Phaser.GameObjects.Container, x0: number, y0: number, x1: number, y1: number, n: number) {
+    for (let i = 0; i < n; i++) {
+      const g = this.add.graphics({ x: x0, y: y0 });
+      drawCoin(g, 9);
+      g.setScale(0.6).setAlpha(0);
+      c.add(g);
+      const peak = Math.min(y0, y1) - Phaser.Math.Between(40, 80);
+      const dur = 520;
+      const delay = i * 70;
+      this.tweens.add({ targets: g, alpha: 1, scale: 1, duration: 120, delay });
+      this.tweens.add({ targets: g, x: x1, duration: dur, delay, ease: 'Sine.easeInOut' });
+      this.tweens.add({
+        targets: g,
+        y: peak,
+        duration: dur / 2,
+        delay,
+        ease: 'Quad.easeOut',
+        yoyo: true,
+        onComplete: () => g.destroy(),
+      });
+    }
+  }
 
   /** Celebración breve: texto dorado con destello. */
   private levelUp(x: number, y: number, level: number, text?: string) {
@@ -290,7 +381,7 @@ export class MatchEndScene extends Phaser.Scene {
     // REVANCHA: misma lógica que ya existía (reiniciar el partido con el mismo rival)
     const again = arcadeButton(this, x1, y, bw, bh, 'REVANCHA', () => {
       resetMatchEnd(this.scene.get(matchKey));
-      this.scene.start(matchKey, { botName: d.botName });
+      this.scene.start(matchKey, { botName: d.botName, rivalLevel: d.rivalLevel });
     }, { palette: 'blue' });
     for (const [b, delay] of [[cont, 550], [again, 620]] as const) {
       b.setAlpha(0).setY(y + 40);

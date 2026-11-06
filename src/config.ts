@@ -35,6 +35,10 @@ export const KNOCKBACK_DIST = 110; // en profundidad de cancha
 export const MAX_LEVEL = 30;
 export const XP_WIN = 60;
 export const XP_LOSS = 25;
+/** Monedas por partido: victoria / derrota (pocas). Rendirse no da monedas (evita farmear rindiéndose). */
+export const COINS_WIN = 50;
+export const COINS_LOSS = 10;
+export const COINS_SURRENDER = 0;
 /** XP necesaria para pasar del nivel `lvl` al siguiente. */
 export const xpToNext = (lvl: number) => 100 + (lvl - 1) * 50;
 
@@ -112,6 +116,11 @@ export const SERVE = {
   flawDrop: [150, 290],
   /** Profundidad objetivo dentro del cuadro (0 = red, 1 = línea de saque). */
   depth: { normal: 0.76, spin: 0.7 },
+  /**
+   * Saque DIRECTO: botón verde (no el toque en pantalla) golpeado en el punto máximo (calidad 'perfect').
+   * Más rápido, más plano (pasa más justo sobre la red) y más profundo.
+   */
+  direct: { speedMult: 1.18, margin: 10, depth: 0.86 },
   /** Aceleración lateral del saque con efecto (px/s²) y su "patada" al botar (ver stepBall). */
   spinAy: 260,
   /** Zona de cinta de la red: un saque que roza la red por encima y cae bien es let. */

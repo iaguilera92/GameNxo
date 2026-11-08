@@ -7,9 +7,18 @@ import type { SkinId } from '../characters/skins';
 import { roundedPoly } from '../ui/shapes';
 import { RankBadge, preloadRankBadges } from '../ui/RankBadge';
 import { showRankList } from '../ui/RankListDialog';
-import { lockedModeButton, playButton } from '../ui/modeButtons';
-import { fitText } from '../ui/fitText';import { playerRank, playerRankPosition } from '../domain/ranks';
+import { lockedModeButton } from '../ui/modeButtons';
+import { fitText } from '../ui/fitText';
+import { myLeague, myPosition, rankedState, syncRanked } from '../logic/Ranked';
+import { dailyLoginButton } from '../ui/DailyLoginButton';
+import { rankedPlayButton } from '../ui/PlayEntry';
 import { getPlayer, onPlayerChange } from '../domain/playerStore';
+import { DailyWheels } from '../ui/DailyWheels';
+import { showSettings } from '../ui/SettingsDialog';
+import { BP_TIERS, bpClaimable, bpLevel, syncSeason } from '../domain/battlePass';
+import type { PlayerState } from '../domain/player';
+import { openWheel } from './WheelScene';
+import { markWheelPresented, syncWheels, wheelToPresent } from '../logic/Wheels';
 
 /** ancho máximo del número en los contadores (entre el icono y el botón +) */
 const COUNTER_TEXT_W = 62;
@@ -54,7 +63,7 @@ export class MenuScene extends Phaser.Scene {
     if (!this.textures.exists('menu-bg')) this.load.image('menu-bg', 'assets/menu-bg.png');
     if (!this.textures.exists('btn-jugar')) this.load.image('btn-jugar', 'assets/btn-jugar.png');
     if (!this.textures.exists(NAV.key)) this.load.image(NAV.key, NAV.file);
-    preloadRankBadges(this.load, [playerRank(getProfile())]);
+    preloadRankBadges(this.load, [myLeague()]);
   }
 
   create() {
@@ -88,12 +97,33 @@ export class MenuScene extends Phaser.Scene {
     }
 
     this.profileBar(W, p);    // botones laterales a media altura, sin chocar con el personaje
-    const sideY = Math.min(H * 0.4, feetY - 300);
+    // nunca encima del widget del PASE (termina en y≈242): si no, en pantallas bajas/anchas lo tapan
+    const sideY = Math.max(242 + 16 + 68, Math.min(H * 0.4, feetY - 300));
     this.sideButton(128, sideY, 'PERSONAJE', 'user', false, () => go('Customize'));
-    this.sideButton(128, sideY + 166, 'TIENDA', 'shop', true, () => this.toast('Tienda: próximamente'));
+    this.sideButton(128, sideY + 166, 'TIENDA', 'shop', false, () => go('Shop'));
+    // premio diario: bajo TIENDA, mitad de su ancho (214/2); se marca en dorado pero NUNCA se abre solo
+    // (sin pisar el panel de ruletas en pantallas bajas)
+    const dailyH = 84;
+    const dailyW = 214 / 2;
+    const dailyY = Math.min(sideY + 166 + 68 + 14 + dailyH / 2, playY - 124 - 52 - 30 - dailyH / 2);
+    // alineado a la izquierda con TIENDA (su borde izquierdo está en 128 − 214/2)
+    dailyLoginButton(this, 128 - 214 / 2 + dailyW / 2, dailyY, (m) => this.toast(m), dailyW, dailyH);
 
     // --- JUGAR
-    this.playRow(W, playY, () => go('Matchmaking'));
+    // JUGAR = partida Ranked en tu liga con la apuesta elegida (monto tocable + info). Sin monedas: amistosa gratis
+    this.playRow(W, playY, (bet) => {
+      if (bet) {
+        this.cameras.main.fadeOut(200, 0, 0, 0);
+        this.cameras.main.once('camerafadeoutcomplete', () => this.scene.start('Matchmaking', { ranked: { bet }, from: 'Menu' }));
+        return;
+      }
+      // sin monedas: AMISTOSO (rival de Ranked, sin apuesta; EXP y ruleta sí)
+      this.cameras.main.fadeOut(200, 0, 0, 0);
+      this.cameras.main.once('camerafadeoutcomplete', () => this.scene.start('Matchmaking', { unranked: true, from: 'Menu' }));
+    });
+
+    // --- ruletas diarias (encima de JUGAR). Una ruleta recién ganada se abre sola UNA vez.
+    this.dailyWheels(W, playY);
 
     if (this.textures.exists(NAV.key)) this.navImage(W, H);
     else this.bottomBar(W, navTop, navH);
@@ -131,9 +161,38 @@ export class MenuScene extends Phaser.Scene {
         onClick();
       });
     };
-    zone(0, NAV.split[0], () => this.toast('Ranking: próximamente'));
+    zone(0, NAV.split[0], () => this.openRanked());
     zone(NAV.split[0], NAV.split[1], () => undefined); // INICIO (activa)
     zone(NAV.split[1], 1, () => this.toast('Eventos: próximamente'));
+  }
+
+  // ---------------------------------------------------------------- Ranked
+  /** RANKING: abre el modo Ranked (desde nivel RANK_UNLOCK_LEVEL); antes, la lista informativa de ligas. */
+  private openRanked() {
+    syncRanked();
+    const p = getProfile();
+    if (!rankedState().unlocked) {
+      showRankList(this, { current: myLeague(), level: p.level });
+      return;
+    }
+    this.cameras.main.fadeOut(200, 0, 0, 0);
+    this.cameras.main.once('camerafadeoutcomplete', () => this.scene.start('Ranked'));
+  }
+
+  // ---------------------------------------------------------------- ruletas diarias
+  private dailyWheels(W: number, playY: number) {
+    syncWheels();
+    // mismo ancho que la fila JUGAR + 2v2 (márgenes 26) y su misma forma inclinada
+    const w = W - 52;
+    new DailyWheels(this, W / 2, playY - 54 - 18 - 52, w, {
+      onOpen: (i) => openWheel(this, i),
+      onToast: (m) => this.toast(m),
+    });
+    const auto = wheelToPresent();
+    if (auto >= 0) {
+      markWheelPresented(auto); // antes de abrir: no se repite aunque se cierre o se reinicie el menú
+      this.time.delayedCall(650, () => openWheel(this, auto));
+    }
   }
 
   // ---------------------------------------------------------------- fila JUGAR + 2v2
@@ -141,14 +200,14 @@ export class MenuScene extends Phaser.Scene {
    * Fila de modos: JUGAR (≈70 %, amarillo, principal) y 2v2 (≈30 %, gris, bloqueado).
    * Ambos comparten la misma forma inclinada del botón JUGAR original, dibujada por código.
    */
-  private playRow(W: number, y: number, onPlay: () => void) {
+  private playRow(W: number, y: number, onPlay: (bet: number | null) => void) {
     const margin = 26;
     const gap = 14;
     const h = 108;
     const avail = W - margin * 2 - gap;
     const jw = Math.round(avail * 0.7);
     const vw = avail - jw;
-    playButton(this, margin + jw / 2, y, jw, h, onPlay);
+    rankedPlayButton(this, margin + jw / 2, y, jw, h, onPlay);
     lockedModeButton(this, margin + jw + gap + vw / 2, y, vw, h, '2v2');
   }
 
@@ -173,9 +232,111 @@ export class MenuScene extends Phaser.Scene {
     // el perfil ocupa el espacio libre hasta los contadores (132 = ancho de un contador)
     const countersLeft = gx - gs / 2 - 10 - 132;
     this.profileCard(24, y, Math.min(440, countersLeft - 24 - 14), p);
+    // justo bajo el perfil y con su mismo ancho
+    this.passWidget(24, y + 96 + 12, Math.min(380, Math.min(440, countersLeft - 24 - 14)));
     this.coinCounter(gx - gs / 2 - 10, y + 4);
-    this.counter(gx - gs / 2 - 10, y + 52, 'cash', '50'); // dinero: decorativo por ahora
-    this.gearButton(gx, gy, gs, () => this.toast('Ajustes: próximamente'));
+    // dinero (billetes): saldo real, en vivo; al tocarlo lleva a la Tienda
+    const cash = this.counter(gx - gs / 2 - 10, y + 52, 'cash', getPlayer().gems.toLocaleString('es-CL'));
+    const cashTxt = cash.getData('text') as Phaser.GameObjects.Text;
+    const offCash = onPlayerChange((s) => {
+      cashTxt.setText(s.gems.toLocaleString('es-CL'));
+      fitText(cashTxt, COUNTER_TEXT_W);
+    });
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => offCash());
+    cash.setSize(132, 42).setInteractive(new Phaser.Geom.Rectangle(0, 0, 132, 42), Phaser.Geom.Rectangle.Contains);
+    cash.on('pointerup', () => this.scene.start('Shop'));
+    this.gearButton(gx, gy, gs, () => showSettings(this));
+  }
+
+  /** Acceso al PASE DE BATALLA: nivel del pase, barra de progreso y aviso de premios por reclamar. */
+  private passWidget(x: number, y: number, w: number) {
+    const s = syncSeason(getPlayer() as PlayerState);
+    const { level, progress } = bpLevel(s.bp.xp);
+    const ready = bpClaimable(s);
+    const h = 76;
+    const c = this.add.container(x, y);
+    // halo dorado que respira (invita a tocar)
+    const halo = this.add.graphics();
+    halo.lineStyle(12, 0xffd23f, 0.55).strokeRoundedRect(-2, -2, w + 4, h + 4, 22);
+    halo.setBlendMode(Phaser.BlendModes.ADD).setAlpha(0.25);
+    c.add(halo);
+    this.tweens.add({ targets: halo, alpha: 0.75, duration: 900, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
+    const g = this.add.graphics();
+    // cuerpo DORADO brillante (capas: base ámbar, mitad alta oro, reflejo claro) + doble borde
+    g.fillStyle(0x000000, 0.35).fillRoundedRect(3, 6, w, h, 20);
+    g.fillStyle(0xe58a00, 1).fillRoundedRect(0, 0, w, h, 20);
+    g.fillStyle(0xffc42e, 1).fillRoundedRect(0, 0, w, h * 0.62, { tl: 20, tr: 20, bl: 8, br: 8 });
+    g.fillStyle(0xffe680, 1).fillRoundedRect(4, 3, w - 8, h * 0.3, { tl: 17, tr: 17, bl: 6, br: 6 });
+    g.fillStyle(0xffffff, 0.45).fillRoundedRect(14, 5, w - 28, 6, 3);
+    g.lineStyle(3, 0x7a4a00, 1).strokeRoundedRect(0, 0, w, h, 20);
+    g.lineStyle(2, 0xfff1b8, 0.9).strokeRoundedRect(3, 3, w - 6, h - 6, 17);
+    // insignia (corona + nivel del pase): disco azul noche con corona dorada
+    const bx0 = 10 + 43;
+    g.fillStyle(0x7a4a00, 1).fillCircle(bx0, h / 2, 31);
+    g.fillStyle(0x0a1638, 1).fillCircle(bx0, h / 2, 27);
+    g.fillStyle(0x1f3a7a, 0.6).fillEllipse(bx0 - 4, h / 2 - 12, 30, 10);
+    g.fillStyle(0xffd23f, 1).fillPoints([{ x: bx0 - 11, y: h / 2 - 8 }, { x: bx0 - 13, y: h / 2 - 19 }, { x: bx0 - 6, y: h / 2 - 13 }, { x: bx0, y: h / 2 - 21 }, { x: bx0 + 6, y: h / 2 - 13 }, { x: bx0 + 13, y: h / 2 - 19 }, { x: bx0 + 11, y: h / 2 - 8 }], true);
+    c.add(g);
+    c.add(this.add.text(bx0, h / 2 + 7, String(level), { fontFamily: FONT, fontSize: '24px', color: '#ffd23f' }).setOrigin(0.5));
+    // chevron que empuja hacia la derecha
+    const chev = this.add.graphics({ x: w - 22, y: h / 2 });
+    chev.lineStyle(5, 0x5a3200, 1).beginPath().moveTo(-5, -10).lineTo(5, 0).lineTo(-5, 10).strokePath();
+    c.add(chev);
+    this.tweens.add({ targets: chev, x: w - 16, duration: 420, yoyo: true, repeat: -1, repeatDelay: 500, ease: 'Sine.easeInOut' });
+    // textos + barra alineados con los del perfil
+    const tx = bx0 + 43 + 10;
+    const tw = w - tx - 40;
+    const title = this.add.text(tx, 12, 'PASE DE BATALLA', { fontFamily: FONT, fontSize: '23px', color: '#ffffff', stroke: '#7a4a00', strokeThickness: 5 }).setOrigin(0, 0);
+    fitText(title, tw);
+    c.add(title);
+    const done = level >= BP_TIERS;
+    c.add(this.add.text(tx, 40, done ? 'COMPLETADO' : `NIVEL ${level + 1} DE ${BP_TIERS}`, { fontFamily: FONT, fontSize: '14px', color: '#5a3200' }).setOrigin(0, 0).setLetterSpacing(1));
+    const by = 58;
+    const bar = this.add.graphics();
+    bar.fillStyle(0x5a3200, 1).fillRoundedRect(tx, by, tw, 10, 5).lineStyle(1, 0x7a4a00, 1).strokeRoundedRect(tx, by, tw, 10, 5);
+    const fw = Math.max(10, tw * (done ? 1 : progress));
+    bar.fillStyle(0xffffff, 1).fillRoundedRect(tx, by, fw, 10, 5);
+    bar.fillStyle(0xfff1b8, 1).fillRoundedRect(tx, by + 5, fw, 5, { tl: 0, tr: 0, bl: 5, br: 5 });
+    c.add(bar);
+    // brillo que cruza el cuadro (recortado a su forma)
+    const shine = this.add.graphics();
+    shine.fillStyle(0xffffff, 0.5).fillPoints([{ x: 0, y: 0 }, { x: 34, y: 0 }, { x: 10, y: h }, { x: -24, y: h }], true);
+    shine.fillStyle(0xffffff, 0.25).fillPoints([{ x: 44, y: 0 }, { x: 56, y: 0 }, { x: 32, y: h }, { x: 20, y: h }], true);
+    shine.setBlendMode(Phaser.BlendModes.ADD).setX(-90);
+    const maskG = this.make.graphics({}, false);
+    maskG.fillStyle(0xffffff).fillRoundedRect(x, y, w, h, 20);
+    shine.setMask(maskG.createGeometryMask());
+    c.add(shine);
+    this.tweens.add({ targets: shine, x: w + 60, duration: 1100, repeat: -1, repeatDelay: 1500, ease: 'Sine.easeInOut' });
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => maskG.destroy());
+    // destellos (estrellitas que aparecen y desaparecen)
+    const star = (sx: number, sy: number, r: number, delay: number) => {
+      const st = this.add.graphics({ x: sx, y: sy });
+      st.fillStyle(0xffffff, 1).fillPoints([{ x: 0, y: -r }, { x: r * 0.25, y: -r * 0.25 }, { x: r, y: 0 }, { x: r * 0.25, y: r * 0.25 }, { x: 0, y: r }, { x: -r * 0.25, y: r * 0.25 }, { x: -r, y: 0 }, { x: -r * 0.25, y: -r * 0.25 }], true);
+      st.setBlendMode(Phaser.BlendModes.ADD).setScale(0);
+      c.add(st);
+      this.tweens.add({ targets: st, scale: 1, angle: 90, duration: 380, yoyo: true, repeat: -1, repeatDelay: 1700, delay, ease: 'Sine.easeInOut' });
+    };
+    star(w * 0.62, 12, 9, 0);
+    star(bx0 + 22, h / 2 - 22, 7, 700);
+    star(w - 48, h - 16, 8, 1300);
+    if (ready > 0) {
+      const badge = this.add.container(w - 10, 8);
+      const bg = this.add.graphics();
+      bg.fillStyle(0x0a1638, 1).fillCircle(0, 0, 15).fillStyle(0xff3b4f, 1).fillCircle(0, 0, 12);
+      badge.add([bg, this.add.text(0, 0, String(Math.min(99, ready)), { fontFamily: FONT, fontSize: '14px', color: '#ffffff' }).setOrigin(0.5)]);
+      c.add(badge);
+      this.tweens.add({ targets: badge, scale: 1.2, duration: 380, yoyo: true, repeat: -1 });
+    }
+    // zona táctil = TODO el cuadro (un rectángulo hijo con origen arriba-izquierda: el área de un Container
+    // se mide desde su centro y dejaba fuera parte del cuadro)
+    const hit = this.add.rectangle(0, 0, w, h, 0x000000, 0.001).setOrigin(0).setInteractive({ useHandCursor: true });
+    c.add(hit);
+    hit.on('pointerup', () => {
+      this.tweens.add({ targets: c, scale: { from: 0.96, to: 1 }, duration: 160 });
+      this.cameras.main.fadeOut(200, 0, 0, 0);
+      this.cameras.main.once('camerafadeoutcomplete', () => this.scene.start('BattlePass'));
+    });
   }
 
   /**
@@ -199,15 +360,15 @@ export class MenuScene extends Phaser.Scene {
     // insignia de rango a la izquierda (en lugar del avatar)
     const badgeH = 86;
     const badgeX = 10 + badgeH / 2;
-    const rank = playerRank(p);
-    const position = playerRankPosition(p);
+    const rank = myLeague();
+    const position = myPosition();
     card.add(
       new RankBadge(this, badgeX, ch / 2, {
         rank,
         level: p.level,
         size: badgeH,
         position,
-        // tocar la insignia abre la lista de rangos (informativa si aún no es nivel 30)
+        // tocar la insignia abre la lista de rangos (informativa si aún no se desbloqueó Ranked)
         openWhenLocked: true,
         onOpen: () => showRankList(this, { current: rank, level: p.level, position }),
       }),
@@ -497,7 +658,7 @@ export class MenuScene extends Phaser.Scene {
       });
     };
 
-    tab('RANKING', W * 0.2, 'rank', false, () => this.toast('Ranking: próximamente'));
+    tab('RANKING', W * 0.2, 'rank', false, () => this.openRanked());
     tab('INICIO', W * 0.5, 'home', true, () => undefined);
     tab('EVENTOS', W * 0.8, 'event', false, () => this.toast('Eventos: próximamente'));
   }

@@ -1,8 +1,8 @@
 import Phaser from 'phaser';
-import { COURT, HIT_MAX_Z, HIT_RANGE, NET_X, PLAYER_SPEED, SHOT_SPEED } from '../config';
+import { COURT, DASH_COOLDOWN, HIT_MAX_Z, HIT_RANGE, NET_X, PLAYER_SPEED, SHOT_SPEED, SMASH_COOLDOWN, SMASH_SPEED_MULT } from '../config';
 import { BotAI } from '../logic/BotAI';
 import type { BallState, ShotKind } from '../objects/Ball';
-import type { BotProfile } from './BotProfile';
+import type { BotProfile, BotTier } from './BotProfile';
 import { type BotMode, MOOD, isKeyPoint, nextMode } from './BotMood';
 
 /**
@@ -65,6 +65,8 @@ export interface BotTickInput {
 
 export interface BotTickResult {
   moving: boolean;
+  /** DASH del rival: empieza / termina el sprint en este paso */
+  sprint?: SprintEvt;
   /** dirección lateral en pantalla (para la animación de carrera) */
   dirX: number;
   /** ya está colocado y pasó la espera: la escena lanza la pelota */
@@ -92,6 +94,8 @@ export interface ShotPlan {
   intent: ShotIntent;
   /** calidad del contacto 0..1 */
   quality: number;
+  /** SMASH del rival: bola de fuego (si la tocas, quedas aturdido) */
+  power?: boolean;
 }
 
 /** Estrategia de golpes (Etapa 4). */
@@ -107,7 +111,47 @@ const STRAT = {
   outBadContact: 1.1,
 };
 
+/**
+ * Habilidades del rival (como el jugador): DASH (sprint cuando no llega) y SMASH (bola de fuego).
+ * Por tramo: `dash` / `smash` = probabilidad de usarla cuando la situación lo pide (0 = no la tiene);
+ * `cd` = multiplicador del enfriamiento (los flojos tardan más en recargar).
+ */
+const ABIL: Record<BotTier, { dash: number; smash: number; cd: number }> = {
+  principiante: { dash: 0, smash: 0, cd: 1.6 },
+  facil: { dash: 0.4, smash: 0, cd: 1.4 },
+  normal: { dash: 0.65, smash: 0.22, cd: 1.2 },
+  dificil: { dash: 0.85, smash: 0.4, cd: 1 },
+  experto: { dash: 1, smash: 0.6, cd: 0.85 },
+};
+const DASH_AI = {
+  /** se lanza si al punto previsto le faltan más de estos s a su velocidad normal */
+  needS: 0.62,
+  /** duración del sprint (s) y multiplicador de velocidad */
+  time: 0.34,
+  mult: 2.4,
+};
+const SMASH_AI = {
+  /** contacto mínimo para intentarlo (no remata estirado) */
+  minQuality: 0.6,
+  /** velocidad respecto al SMASH del jugador (algo menos: que se pueda leer) */
+  speedK: 0.9,
+};
+
+/** Evento del sprint del DASH en este paso (la escena pone la animación). */
+export type SprintEvt = 'start' | 'end' | null;
+
 export class BotBrain {
+  /** enfriamientos restantes de las habilidades (s) */
+  private dashCd = 0;
+  private smashCd = 0;
+  /** s que le quedan de sprint (DASH en curso) */
+  private dashT = 0;
+  /** ya decidió si usar el DASH para la pelota que viene */
+  private dashDecided = false;
+  private wasReading = false;
+  private get abil() {
+    return ABIL[this.profile?.tier ?? 'normal'];
+  }
   /** reacción + predicción (implementación existente, reutilizada) */
   readonly ai: BotAI;
   /** espera antes de lanzar el saque (s); la fija la escena con el plan de saque */
@@ -127,6 +171,8 @@ export class BotBrain {
     readonly profile?: BotProfile,
   ) {
     this.ai = new BotAI(profile?.difficulty);
+    // el SMASH no está listo desde el primer punto (tarda medio enfriamiento)
+    this.smashCd = SMASH_COOLDOWN * 0.5 * this.abil.cd;
   }
 
   /** Modo de comportamiento del punto en curso (NORMAL / CONCENTRADO / COMPETITIVO). */
@@ -146,6 +192,8 @@ export class BotBrain {
     if (forced === 'normal' || forced === 'concentrado' || forced === 'competitivo') mode = forced;
     this._mode = mode;
     this.ai.setBoost(MOOD.boost[mode]);
+    this.dashT = 0;
+    this.dashDecided = false;
     if (devFlag('dev.botDebug') === '1') console.info(`[rival] punto ${points.join('-')}${key ? ' (clave)' : ''}: modo ${mode}, dificultad ${this.ai.d.toFixed(2)}`);
   }
 
@@ -160,6 +208,31 @@ export class BotBrain {
     if (body.stun > 0) body.stun -= dt;
     const frozen = body.stun > 0 || phase === 'over' || phase === 'intro' || ((phase === 'serve' || phase === 'toss') && inp.botServes);
     if (phase === 'rally') this.ai.update(dt, inp.ball);
+    if (phase !== 'intro' && phase !== 'over') {
+      this.dashCd = Math.max(0, this.dashCd - dt);
+      this.smashCd = Math.max(0, this.smashCd - dt);
+    }
+    // DASH: al empezar a leer cada golpe tuyo decide UNA vez si sprinta (no llegaría a tiempo)
+    let sprint: SprintEvt = null;
+    const reading = phase === 'rally' && this.ai.reading;
+    if (reading && !this.wasReading) this.dashDecided = false;
+    this.wasReading = reading;
+    if (reading && !this.dashDecided && !frozen) {
+      this.dashDecided = true;
+      const need = Math.hypot(this.ai.target.x - body.x, this.ai.target.y - body.y) / this.ai.speed;
+      if (this.dashCd <= 0 && need > DASH_AI.needS && Math.random() < this.abil.dash) {
+        this.dashT = DASH_AI.time;
+        this.dashCd = DASH_COOLDOWN * this.abil.cd;
+        sprint = 'start';
+      }
+    }
+    if (this.dashT > 0 && sprint !== 'start') {
+      this.dashT -= dt;
+      if (this.dashT <= 0 || frozen) {
+        this.dashT = 0;
+        sprint = 'end';
+      }
+    }
 
     if (inp.botServes && phase === 'serve' && inp.servePositioning) {
       // se coloca sobre su línea de fondo y, pasado un momento, lanza la pelota
@@ -171,12 +244,13 @@ export class BotBrain {
     }
     if (frozen) {
       this.vel.x = this.vel.y = 0;
-      return { moving: false, dirX: 0, readyToToss: false };
+      return { moving: false, dirX: 0, readyToToss: false, sprint };
     }
 
     // persigue el punto que predijo BotAI, con inercia: acelera, corre y frena al llegar
-    const max = this.ai.speed;
-    const accel = max * MOVE.accel;
+    const dashing = this.dashT > 0;
+    const max = this.ai.speed * (dashing ? DASH_AI.mult : 1);
+    const accel = max * MOVE.accel * (dashing ? 2 : 1);
     const decel = max * MOVE.decel;
     const dx = this.ai.target.x - body.x;
     const dy = this.ai.target.y - body.y;
@@ -204,7 +278,7 @@ export class BotBrain {
     body.x = cx;
     body.y = cy;
     const sp = Math.hypot(this.vel.x, this.vel.y);
-    return { moving: sp > MOVE.runAnim, dirX: this.vel.y, readyToToss: false }; // +y de cancha = derecha en pantalla
+    return { moving: sp > MOVE.runAnim, dirX: this.vel.y, readyToToss: false, sprint }; // +y de cancha = derecha en pantalla
   }
 
   /**
@@ -237,8 +311,29 @@ export class BotBrain {
     let q = 1 - clamp((stretch - STRAT.cleanReach) / (1 - STRAT.cleanReach), 0, 1);
     if (ball.z > HIT_MAX_Z * 0.75) q *= 0.8;
 
-    // 2) lectura del jugador y elección
     const depth = (ctx.playerX - COURT.left) / ownLen; // 0 = en su línea de fondo, 1 = en la red
+
+    // SMASH (habilidad): con buen contacto y la habilidad cargada; más a menudo en puntos con tensión
+    // (modo COMPETITIVO) o con el jugador en la red (poco tiempo para esquivarla)
+    if (this.smashCd <= 0 && this.abil.smash > 0 && q >= SMASH_AI.minQuality) {
+      const want = this.abil.smash * (this._mode === 'competitivo' ? 1.35 : this._mode === 'concentrado' ? 1.15 : 1) * (depth > 0.5 ? 1.3 : 1);
+      if (Math.random() < want) {
+        this.smashCd = SMASH_COOLDOWN * this.abil.cd;
+        this.lastIntents = ['deep', this.lastIntents[0]];
+        return {
+          tx: NET_X - ownLen * rand(0.7, 0.9),
+          ty: ctx.playerY > LAT_C ? COURT.top + rand(25, 60) : COURT.bottom - rand(25, 60), // lejos del jugador
+          speed: SHOT_SPEED * SMASH_SPEED_MULT * SMASH_AI.speedK,
+          kind: 'normal',
+          margin: 6,
+          intent: 'deep',
+          quality: q,
+          power: true,
+        };
+      }
+    }
+
+    // 2) lectura del jugador y elección
     const playerAtNet = depth > 0.6;
     const playerDeep = depth < 0.08;
     const w: Record<ShotIntent, number> = {

@@ -4,7 +4,7 @@ import { FONT } from './theme';
 
 /**
  * Insignia de rango competitivo reutilizable.
- * - Bloqueada (nivel < 30): gris/desaturada y tachada con una diagonal discreta
+ * - Bloqueada (nivel < RANK_UNLOCK_LEVEL): gris/desaturada y tachada con una diagonal discreta
  *   (sin interacción, salvo `openWhenLocked`).
  * - Desbloqueada: a color; si recibe `onOpen`, se puede tocar (detalle del ranking).
  * Las imágenes grandes se reducen ("hornean") una vez al tamaño de uso, en color y en gris.

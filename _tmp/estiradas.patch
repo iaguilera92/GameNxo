@@ -1,0 +1,294 @@
+diff --git a/src/scenes/MatchScene.ts b/src/scenes/MatchScene.ts
+index 5cf0b93..885aaa7 100644
+--- a/src/scenes/MatchScene.ts
++++ b/src/scenes/MatchScene.ts
+@@ -60,6 +60,7 @@ import { perfectSound, playTimingFx, vibrate } from '../fx/timingFx';
+ import { MOTION, type MotionEvent, createMotion, stepMotion, stopMotion } from '../logic/PlayerMotion';
+ import { DASH, type DashRun, createRun, guaranteeStep, planSprint, sampleTrajectory, shouldCancelRun, stepRun } from '../logic/DashSprint';
+ import { DashFx } from '../fx/dashFx';
++import { LUNGE, type LungeRun, createLunge, dashBlockedByLunge, lungeTarget, stepLunge } from '../logic/Lunge';
+ 
+ type Who = 'player' | 'bot';
+ 
+@@ -155,6 +156,8 @@ export class MatchScene extends Phaser.Scene {
+   /** DASH sprint en curso (src/logic/DashSprint.ts): mueve al jugador en arranque / sprint / frenada */
+   private dashRun: DashRun | null = null;
+   private dashFx!: DashFx;
++  /** estirada sincronizada en curso (src/logic/Lunge.ts) */
++  private lungeRun: LungeRun | null = null;
+   // Perfect Timing (src/logic/PerfectTiming.ts): reloj de simulación (s, avanza con el dt de la física)
+   private timing = new TimingTracker();
+   private simClock = 0;
+@@ -265,6 +268,7 @@ export class MatchScene extends Phaser.Scene {
+     stopMotion(this.motion);
+     this.dashRun = null;
+     this.dashFx = new DashFx(this, DASH);
++    this.lungeRun = null;
+     this.simClock = 0;
+     this.simRealAt = performance.now();
+     this.contactClock = 0;
+@@ -722,6 +726,12 @@ export class MatchScene extends Phaser.Scene {
+   /** DASH: desaparece y reaparece donde llegará la pelota. */
+   private activateDash(): boolean {
+     if (this.paused || this.cine.active) return false;
++    // recuperándose de una estirada (0,45 s): sin DASH (no se consume el enfriamiento)
++    if (dashBlockedByLunge(this.player.stun)) {
++      const h = this.headPos(this.player);
++      this.popText(h.x, h.y, 'Espera', '#cfe0ff', 24);
++      return false;
++    }
+     if (this.phase !== 'rally' || this.lastHitter !== 'bot' || this.player.vanished) {
+       this.popText(this.headPos(this.player).x, this.headPos(this.player).y, 'Espera la pelota', '#cfe0ff', 24);
+       return false;
+@@ -1836,23 +1846,33 @@ export class MatchScene extends Phaser.Scene {
+     this.timing.clear(); // la estirada no se evalúa con Perfect Timing
+     const side = s.y > pl.y ? 1 : -1; // lado de la pantalla hacia el que se tira
+     pl.ch.facing = side;
+-    pl.ch.swing();
+-
+-    // se desplaza parte del hueco hacia la pelota
+-    const tx = clamp(pl.x + (s.x - 15 - pl.x) * 0.55, P_X[0], P_X[1]);
+-    const ty = clamp(pl.y + (s.y - pl.y) * 0.55, Y_MIN, Y_MAX);
+-    this.tweens.add({ targets: pl, x: tx, y: ty, duration: 140, ease: 'Quad.easeOut' });
+-    // inclinación de "casi me caigo" y recuperación tambaleante
+-    const rig = pl.ch.rig;
+-    this.tweens.killTweensOf(rig);
+-    this.tweens.chain({
+-      targets: rig,
+-      tweens: [
+-        { angle: 38 * side, duration: 120, ease: 'Quad.easeOut' },
+-        { angle: 38 * side, duration: 220 },
+-        { angle: 0, duration: 520, ease: 'Elastic.easeOut', easeParams: [1.2, 0.45] },
+-      ],
+-    });
++    const synced = this.lungeAnimOn();
++    if (synced) {
++      // estirada SINCRONIZADA (src/logic/Lunge.ts): mismo desplazamiento (55 % del hueco en 140 ms) y misma
++      // duración que el aturdimiento; con sprites si existen, si no la inclinación de siempre comprimida a 0,45 s
++      const look = pl.ch.hasLungeSprites() ? 'sprite' : 'tilt';
++      if (look === 'tilt') pl.ch.swing();
++      pl.ch.lungeStart(side, look);
++      const to = lungeTarget(pl, s, { xMin: P_X[0], xMax: P_X[1], yMin: Y_MIN, yMax: Y_MAX });
++      this.lungeRun = createLunge({ look, side, from: { x: pl.x, y: pl.y }, to, total: LUNGE_RECOVER, frames: pl.ch.lungeFrames() });
++    } else {
++      pl.ch.swing();
++      // se desplaza parte del hueco hacia la pelota
++      const tx = clamp(pl.x + (s.x - 15 - pl.x) * 0.55, P_X[0], P_X[1]);
++      const ty = clamp(pl.y + (s.y - pl.y) * 0.55, Y_MIN, Y_MAX);
++      this.tweens.add({ targets: pl, x: tx, y: ty, duration: 140, ease: 'Quad.easeOut' });
++      // inclinación de "casi me caigo" y recuperación tambaleante
++      const rig = pl.ch.rig;
++      this.tweens.killTweensOf(rig);
++      this.tweens.chain({
++        targets: rig,
++        tweens: [
++          { angle: 38 * side, duration: 120, ease: 'Quad.easeOut' },
++          { angle: 38 * side, duration: 220 },
++          { angle: 0, duration: 520, ease: 'Elastic.easeOut', easeParams: [1.2, 0.45] },
++        ],
++      });
++    }
+     pl.stun = LUNGE_RECOVER;
+     this.dustFx(pl.x, pl.y);
+ 
+@@ -1866,11 +1886,49 @@ export class MatchScene extends Phaser.Scene {
+     this.lastHitter = 'player';
+     this.bounces = 0;
+     this.ai.onPlayerHit(false);
+-    this.hitFx(s.x, s.y, s.z, false);
++    // destello ~50 ms después, con la raqueta extendida (la física y la trayectoria ya se aplicaron AHORA)
++    if (synced) this.hitFxAt(LUNGE.fxDelayMs, s.x, s.y, s.z, false);
++    else this.hitFx(s.x, s.y, s.z, false);
+     const h = this.headPos(pl);
+     this.popText(h.x, h.y, '¡ESTIRADA!', '#ffe066', 30);
+   }
+ 
++  /** ¿Estirada sincronizada? (LUNGE.enabled y sin localStorage 'dev.lungeAnim' = '0') */
++  private lungeAnimOn() {
++    if (!LUNGE.enabled) return false;
++    try {
++      return localStorage.getItem('dev.lungeAnim') !== '0';
++    } catch {
++      return true;
++    }
++  }
++
++  /**
++   * Cada fotograma de la estirada (tiempo de simulación): mueve al jugador (primeros 140 ms), pone la pose y
++   * fija el aturdimiento restante = lo que le queda a la animación → se puede volver a mover justo cuando
++   * está de pie y recto. Fuera del peloteo (nuevo punto, fin) se cancela.
++   */
++  private updateLunge(dt: number) {
++    const r = this.lungeRun;
++    if (!r) return;
++    const pl = this.player;
++    if (this.phase !== 'rally' && this.phase !== 'pointover') {
++      this.lungeRun = null;
++      pl.ch.lungeEnd(r.look);
++      return;
++    }
++    const st = stepLunge(r, dt);
++    pl.x = st.pos.x;
++    pl.y = st.pos.y;
++    pl.ch.lungeTick(st, r.look);
++    pl.stun = Math.max(0, r.total - r.elapsed);
++    if (st.phase === 'done') {
++      this.lungeRun = null;
++      pl.stun = 0;
++      pl.ch.lungeEnd(r.look);
++    }
++  }
++
+   /** Polvo en los pies (estirada). */
+   private dustFx(x: number, y: number) {
+     const p = project(x, y);
+@@ -2236,6 +2294,7 @@ export class MatchScene extends Phaser.Scene {
+     // --- jugador
+     const pl = this.player;
+     this.updateDashSprint(dt); // DASH sprint: el recorrido mueve al jugador (arranque / sprint / frenada)
++    this.updateLunge(dt); // estirada: desplazamiento, animación y aturdimiento con el mismo reloj
+     const frozen =
+       this.charging ||
+       pl.stun > 0 ||
+diff --git a/src/objects/NxoActor.ts b/src/objects/NxoActor.ts
+index 4e3056a..152c3f6 100644
+--- a/src/objects/NxoActor.ts
++++ b/src/objects/NxoActor.ts
+@@ -4,6 +4,7 @@ import { CHAR_UNITS_H, skinMode } from '../characters/skins';
+ import nxoHits from '../characters/nxo-hits.json';
+ import nxoSpecial from '../characters/nxo-special.json';
+ import nxoMove from '../characters/nxo-move.json';
++import nxoLunge from '../characters/nxo-lunge.json';
+ import { runAnimRate } from '../logic/PlayerMotion';
+ 
+ /**
+@@ -22,7 +23,7 @@ import { runAnimRate } from '../logic/PlayerMotion';
+  * llegue a la pelota casi a la vez.
+  */
+ export type NxoAnim = 'idle' | 'run' | 'runstop' | 'forehand' | 'backhand' | 'serve' | 'smash' | 'victory';
+-type State = 'idle' | 'run' | 'runstop' | 'hold' | 'swing' | 'serve' | 'victory' | 'turn' | 'sprint' | 'land';
++type State = 'idle' | 'run' | 'runstop' | 'hold' | 'swing' | 'serve' | 'victory' | 'turn' | 'sprint' | 'land' | 'lunge';
+ 
+ export type SpriteCharId = SheetId;
+ const CFGS = SHEETS;
+@@ -75,6 +76,17 @@ const MOVE = nxoMove as {
+ };
+ /** Ritmo de la carrera durante el sprint del DASH (la de siempre, con raqueta, muy acelerada). */
+ const SPRINT_RATE = 1.9;
++
++/**
++ * Estirada (src/logic/Lunge.ts): estirada con el estilo de la hoja 1b + recuperación de la hoja 4. Cada una con
++ * su celda/ancla. Solo se carga con "ready": true (hasta tener la estirada corregida se usa la inclinación).
++ * Los frames los pone la escena según el tiempo de simulación (no es una animación de Phaser).
++ */
++type LungeSheet = 'dive' | 'recover';
++type LungeCfg = { file: string; cell: { w: number; h: number }; origin: { x: number; y: number }; frames: number[] };
++const LUNGE_SPR = nxoLunge as { ready: boolean; standHeight: number; dive: LungeCfg; recover: LungeCfg };
++const lungeKey = (s: LungeSheet) => `${HITS_FOR}-lunge-${s}`;
++const lungeReady = (scene: Phaser.Scene) => LUNGE_SPR.ready && scene.textures.exists(lungeKey('dive')) && scene.textures.exists(lungeKey('recover'));
+ const moveKey = (a: MoveAnim) => `${HITS_FOR}-move-${a}`;
+ const moveReady = (scene: Phaser.Scene) => scene.textures.exists(moveKey('brake-turn')) && scene.anims.exists(moveKey('brake-turn'));
+ 
+@@ -83,6 +95,12 @@ export function queueNxoSpriteLoads(load: Phaser.Loader.LoaderPlugin) {
+     for (const a of Object.keys(MOVE.animations) as MoveAnim[]) {
+       load.spritesheet(moveKey(a), `assets/characters/nxo-move/${MOVE.animations[a].file}`, { frameWidth: MOVE.cell.w, frameHeight: MOVE.cell.h });
+     }
++    if (LUNGE_SPR.ready) {
++      for (const s of ['dive', 'recover'] as LungeSheet[]) {
++        const c = LUNGE_SPR[s];
++        load.spritesheet(lungeKey(s), `assets/characters/nxo-lunge/${c.file}`, { frameWidth: c.cell.w, frameHeight: c.cell.h });
++      }
++    }
+   }
+   queueBaseLoads(load);
+ }
+@@ -301,6 +319,42 @@ export class NxoActor {
+     if (this.state === 'idle') this.enter('idle');
+   }
+ 
++  /** ¿Hay sprites de estirada + recuperación para este personaje? (si no, la escena usa la inclinación) */
++  hasLungeSprites() {
++    return this.id === HITS_FOR && lungeReady(this.scene);
++  }
++
++  /** Frames de la estirada y la recuperación (los decide nxo-lunge.json). */
++  lungeFrames() {
++    return { dive: [...LUNGE_SPR.dive.frames], recover: [...LUNGE_SPR.recover.frames] };
++  }
++
++  /** Empieza la estirada con sprites: la escena pone cada frame (lungeFrame) y la termina (endLunge). */
++  startLunge(flipX: boolean) {
++    if (this.state === 'victory' || this.state === 'serve') return;
++    this.stopShake();
++    this.stopLean();
++    this.state = 'lunge';
++    this.sprite.anims.stop();
++    this.sprite.setFlipX(flipX);
++  }
++
++  /** Frame de la estirada. Si un golpe la interrumpió (estado swing), el golpe manda y no se toca nada. */
++  lungeFrame(sheet: LungeSheet, frame: number) {
++    if (this.state !== 'lunge') return;
++    const c = LUNGE_SPR[sheet];
++    this.sprite.setOrigin(c.origin.x, c.origin.y);
++    this.sprite.setTexture(lungeKey(sheet), frame);
++  }
++
++  /** Fin de la recuperación: de pie, vuelve al estado que corresponda (reposo, carrera o guardia). */
++  endLunge() {
++    if (this.state !== 'lunge') return;
++    this.state = 'idle';
++    this.refresh();
++    if (this.state === 'idle') this.enter('idle');
++  }
++
+   /** Se soltó el joystick corriendo rápido: la próxima parada muestra la frenada (runstop). */
+   skid() {
+     this.skidArmed = true;
+@@ -439,6 +493,7 @@ export class NxoActor {
+     if (this.state === 'swing') return !this.swingInterruptible;
+     if (this.state === 'turn') return !this.turnDone; // el giro se ve hasta quedar orientado
+     if (this.state === 'sprint') return true; // lo controla el DASH (setSprint)
++    if (this.state === 'lunge') return true; // estirada: la recuperación no la cortan ni el joystick ni la carga
+     if (this.state === 'land') return !this.landDone;
+     return this.state === 'serve' || this.state === 'victory';
+   }
+diff --git a/src/objects/Character.ts b/src/objects/Character.ts
+index ca3693a..b218a32 100644
+--- a/src/objects/Character.ts
++++ b/src/objects/Character.ts
+@@ -390,6 +390,34 @@ export class Character extends Phaser.GameObjects.Container {
+     else this.startBob(1100, 3);
+   }
+ 
++  // ------------------------------------------------------------ estirada (src/logic/Lunge.ts)
++  /** ¿Estirada con sprites? (solo NXO con la hoja de estirada corregida cargada) */
++  hasLungeSprites() {
++    return this.nxo?.hasLungeSprites() ?? false;
++  }
++
++  lungeFrames() {
++    return this.nxo?.lungeFrames() ?? { dive: [], recover: [] };
++  }
++
++  /** Empieza la estirada hacia `side` (−1/+1). 'tilt': inclinación sincronizada (el golpe lo pone la escena). */
++  lungeStart(side: number, look: 'tilt' | 'sprite') {
++    this.scene.tweens.killTweensOf(this.rig);
++    if (look === 'sprite' && this.nxo) this.nxo.startLunge(side < 0); // la estirada mira a la derecha: a la izquierda se voltea
++  }
++
++  /** Cada fotograma de la estirada (tiempo de simulación). */
++  lungeTick(st: { angle: number; frame: { sheet: 'dive' | 'recover'; frame: number } | null }, look: 'tilt' | 'sprite') {
++    if (look === 'tilt') this.rig.angle = st.angle;
++    else if (st.frame) this.nxo?.lungeFrame(st.frame.sheet, st.frame.frame);
++  }
++
++  /** Fin (o cancelación) de la estirada: recto y de pie. */
++  lungeEnd(look: 'tilt' | 'sprite') {
++    this.rig.angle = 0;
++    if (look === 'sprite') this.nxo?.endLunge();
++  }
++
+   /** Se soltó el joystick corriendo rápido (inercia): la parada lleva frenada. Solo con sprites. */
+   skid() {
+     this.nxo?.skid();

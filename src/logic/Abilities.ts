@@ -25,7 +25,7 @@ export const ABILITIES: Record<AbilityId, AbilityDef> = {
   dash: {
     id: 'dash',
     name: 'Dash',
-    desc: 'Desapareces y reapareces donde llegará la pelota.',
+    desc: 'Sprint explosivo hasta donde llegará la pelota.',
     cooldown: DASH_COOLDOWN,
     icon: 'dash',
     color: C.purple,

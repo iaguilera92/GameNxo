@@ -15,6 +15,14 @@ export class AbilityButton extends Phaser.GameObjects.Container {
   private hintGlow: Phaser.GameObjects.Arc;
   private hinting = false;
   enabled = true;
+  // variante INFERNO DRIVE (mismo botón): aspecto de fuego, sin enfriamiento, con medidor de carga
+  private infernoMode = false;
+  private labelText!: Phaser.GameObjects.Text;
+  private baseLabel = '';
+  private fireRing?: Phaser.GameObjects.Arc;
+  private meter?: Phaser.GameObjects.Container;
+  private meterText?: Phaser.GameObjects.Text;
+  private meterPips?: Phaser.GameObjects.Graphics;
 
   constructor(
     scene: Phaser.Scene,
@@ -51,7 +59,9 @@ export class AbilityButton extends Phaser.GameObjects.Container {
     this.add([this.overlay, this.ring]);
     this.secs = scene.add.text(0, 0, '', textStyle(Math.round(R * 0.6))).setOrigin(0.5);
     this.add(this.secs);
-    this.add(scene.add.text(0, R + 22, label, textStyle(20)).setOrigin(0.5));
+    this.baseLabel = label;
+    this.labelText = scene.add.text(0, R + 22, label, textStyle(20)).setOrigin(0.5);
+    this.add(this.labelText);
 
     this.setSize(R * 2 + 20, R * 2 + 20);
     this.setInteractive(new Phaser.Geom.Circle(R + 10, R + 10, R + 14), Phaser.Geom.Circle.Contains);
@@ -75,7 +85,68 @@ export class AbilityButton extends Phaser.GameObjects.Container {
   }
 
   get ready() {
-    return this.remaining <= 0 && this.enabled;
+    // INFERNO DRIVE no depende del enfriamiento del SMASH
+    return (this.infernoMode || this.remaining <= 0) && this.enabled;
+  }
+
+  get inferno() {
+    return this.infernoMode;
+  }
+
+  /**
+   * Cambia el botón a INFERNO DRIVE (tonos de fuego, aura y texto) o lo devuelve a su aspecto original.
+   * Misma posición, tamaño y zona táctil.
+   */
+  setInferno(on: boolean) {
+    if (on === this.infernoMode) return;
+    this.infernoMode = on;
+    const R = this.radius;
+    for (const o of this.face.list) {
+      const img = o as Phaser.GameObjects.Image;
+      if (typeof img.setTint === 'function') on ? img.setTint(0xff8a3a, 0xffc040, 0xff3d1a, 0xff6a1a) : img.clearTint();
+    }
+    if (!this.fireRing) {
+      this.fireRing = this.scene.add.circle(0, 0, R + 14, 0xff5a1a, 0.35).setStrokeStyle(6, 0xffb020, 1).setBlendMode(Phaser.BlendModes.ADD).setVisible(false);
+      this.addAt(this.fireRing, 1);
+    }
+    this.scene.tweens.killTweensOf(this.fireRing);
+    this.fireRing.setVisible(on).setScale(1).setAlpha(1);
+    if (on) {
+      this.scene.tweens.add({ targets: this.fireRing, scale: 1.16, alpha: 0.45, duration: 300, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
+      // disponible: rebote + destello
+      this.scene.tweens.add({ targets: this.face, scale: { from: 1.3, to: 1 }, duration: 420, ease: 'Back.easeOut' });
+    }
+    this.labelText.setText(on ? 'INFERNO' : this.baseLabel).setColor(on ? '#ffb347' : '#ffffff');
+    this.redraw();
+  }
+
+  /** Medidor discreto de carga encima del botón: "INFERNO n/max" + pips. */
+  setMeter(n: number, max: number) {
+    const R = this.radius;
+    if (!this.meter) {
+      this.meter = this.scene.add.container(0, -R - 34);
+      const bg = this.scene.add.graphics();
+      bg.fillStyle(0x0b1733, 0.85).fillRoundedRect(-62, -15, 124, 30, 15);
+      bg.lineStyle(2, 0xff7a1a, 0.9).strokeRoundedRect(-62, -15, 124, 30, 15);
+      this.meterText = this.scene.add.text(0, -4, '', { fontFamily: '"Lilita One", "Arial Black", sans-serif', fontSize: '14px', color: '#ffd9a8' }).setOrigin(0.5);
+      this.meterPips = this.scene.add.graphics();
+      this.meter.add([bg, this.meterText, this.meterPips]);
+      this.add(this.meter);
+    }
+    const full = n >= max;
+    this.meterText!.setText(`INFERNO ${n}/${max}`).setColor(full ? '#ffe066' : '#ffd9a8');
+    const g = this.meterPips!.clear();
+    const w = 14;
+    const x0 = -((max - 1) * (w + 3)) / 2;
+    for (let i = 0; i < max; i++) {
+      g.fillStyle(i < n ? (full ? 0xffc02a : 0xff6a1a) : 0x2a3a66, 1).fillRoundedRect(x0 + i * (w + 3) - w / 2, 7, w, 4, 2);
+    }
+  }
+
+  /** Pequeña animación de "cargada" en el medidor. */
+  pulseMeter() {
+    if (!this.meter) return;
+    this.scene.tweens.add({ targets: this.meter, scale: { from: 1.35, to: 1 }, duration: 480, ease: 'Back.easeOut' });
   }
 
   private shake() {
@@ -94,7 +165,7 @@ export class AbilityButton extends Phaser.GameObjects.Container {
       this.shake();
       return false;
     }
-    this.remaining = this.cooldown;
+    if (!this.infernoMode) this.remaining = this.cooldown;
     this.scene.tweens.add({ targets: this.face, scale: 0.82, duration: 70, yoyo: true, ease: 'Quad.easeOut' });
     this.redraw();
     return true;
@@ -140,7 +211,8 @@ export class AbilityButton extends Phaser.GameObjects.Container {
     const R = this.radius;
     this.overlay.clear();
     this.ring.clear();
-    const busy = this.remaining > 0;
+    // en modo INFERNO no se muestra el enfriamiento del SMASH (sigue contando por detrás)
+    const busy = this.remaining > 0 && !this.infernoMode;
     this.face.setAlpha(busy || !this.enabled ? 0.55 : 1);
     if (busy) {
       const frac = this.remaining / this.cooldown; // parte que falta

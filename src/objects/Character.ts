@@ -88,6 +88,8 @@ export class Character extends Phaser.GameObjects.Container {
   private swinging = false;
   private charging = false;
   private moving = false;
+  /** sprint del DASH en curso (ignora setMoving) */
+  private sprinting = false;
   private _facing = 1;
   /** true cuando el brazo es una imagen (skin); los ángulos de pose cambian respecto al vectorial. */
   private usesSkin = false;
@@ -360,15 +362,42 @@ export class Character extends Phaser.GameObjects.Container {
    * Cambia la animación entre idle y carrera. `dirX` = dirección lateral en pantalla
    * (>0 derecha, <0 izquierda); con sprites voltea la carrera hacia el lado al que se corre.
    */
-  setMoving(m: boolean, dirX = 0) {
+  setMoving(m: boolean, dirX = 0, speedK?: number) {
+    if (this.sprinting) return; // durante el sprint del DASH la animación la decide setSprint
     if (this.nxo) {
-      this.nxo.setMoving(m, dirX);
+      // speedK (0..1, velocidad real con inercia): sin él, comportamiento de siempre (p. ej. el rival)
+      this.nxo.setMoving(m, dirX, speedK);
       return;
     }
     if (m === this.moving) return;
     this.moving = m;
     if (m) this.startBob(130, 6);
     else this.startBob(1100, 3);
+  }
+
+  /**
+   * Sprint del DASH (src/logic/DashSprint.ts): carrera muy rápida hacia `dirX`; al terminar, `land` = frenada.
+   * Sin sprites: rebote de carrera rápido.
+   */
+  setSprint(on: boolean, dirX = 0, land = false) {
+    this.sprinting = on;
+    if (this.nxo) {
+      this.nxo.setSprint(on, dirX, land);
+      return;
+    }
+    this.moving = on;
+    if (on) this.startBob(90, 7);
+    else this.startBob(1100, 3);
+  }
+
+  /** Se soltó el joystick corriendo rápido (inercia): la parada lleva frenada. Solo con sprites. */
+  skid() {
+    this.nxo?.skid();
+  }
+
+  /** Cambio de sentido lateral corriendo (inercia): frenada y giro. Solo con sprites de NXO. */
+  brakeTurn(newDir: number) {
+    this.nxo?.brakeTurn(newDir);
   }
 
   /** Pose de tiro cargado: raqueta muy atrás, temblando, hasta golpear o cancelar. */
@@ -405,9 +434,59 @@ export class Character extends Phaser.GameObjects.Container {
     this.nxo?.setReady(on);
   }
 
-  /** Saque: la pelota acaba de salir hacia arriba. */
-  serve() {
-    this.nxo?.serve();
+  /** INFERNO DRIVE: pose de espera de su hoja propia (congelada). false = no hay hoja: se usa la guardia de siempre. */
+  infernoHold(): boolean {
+    return this.nxo?.infernoHold() ?? false;
+  }
+
+  /** INFERNO DRIVE: último fotograma de preparación, justo antes del golpe. */
+  infernoPre() {
+    this.nxo?.infernoPre();
+  }
+
+  /** INFERNO DRIVE cancelado o sin golpe: sale de la pose de espera. */
+  infernoRelease() {
+    this.nxo?.infernoRelease();
+  }
+
+  /** Saque: la pelota acaba de salir hacia arriba. `kind`: con efecto usa su propio golpe (hojas nuevas). */
+  serve(kind: 'normal' | 'spin' = 'normal') {
+    this.nxo?.serve(kind);
+  }
+
+  /** Sacador quieto antes de lanzar: reposo = bote de la pelota (solo hojas nuevas de NXO). */
+  setServeIdle(on: boolean) {
+    this.nxo?.setServeIdle(on);
+  }
+
+  /** Pelota del bote sincronizada con la mano del clip ({ z, dy } en unidades del mundo), o null si no se está botando. */
+  serveBounceBall(): { z: number; dy: number } | null {
+    return this.nxo?.serveBounceBall() ?? null;
+  }
+
+  /** Estirada con su animación (hojas nuevas). false = sin hoja: el llamador inclina el cuerpo. */
+  lunge(side: number): boolean {
+    return this.nxo?.lunge(side) ?? false;
+  }
+
+  /** Recibe un ataque especial (aturdido / impacto del INFERNO). false = sin hoja: el llamador usa el giro de siempre. */
+  impactStun(kind: 'smash' | 'inferno', ms: number): boolean {
+    return this.nxo?.impactStun(kind, ms) ?? false;
+  }
+
+  /** Reacción al acabar un punto. */
+  pointEnd(won: boolean) {
+    this.nxo?.pointEnd(won);
+  }
+
+  /** Partido perdido. */
+  defeat() {
+    this.nxo?.defeat();
+  }
+
+  /** Clip suelto de la hoja nueva (intro, saludo, espera activa, caminar, volea, dejada…). */
+  emote(name: Parameters<NxoActor['emote']>[0]) {
+    this.nxo?.emote(name);
   }
 
   /** Saque: la pelota está a punto de llegar a la altura de golpeo. */
@@ -435,9 +514,10 @@ export class Character extends Phaser.GameObjects.Container {
    * `overhead`: remate (SMASH o pelota alta). Solo lo usa el personaje con sprites.
    * Devuelve los ms hasta el impacto visual de la raqueta (para sincronizar los efectos; 0 = ya).
    */
-  swing(power = false, overhead = false, special = false): number {
+  swing(power = false, overhead = false, special = false, volley = false): number {
     // `special`: ataque especial SMASH (remate con salto si el personaje tiene esa animación)
-    if (this.nxo) return this.nxo.swing(overhead, power, special);
+    // `volley`: volea en la red (clip propio si el personaje lo tiene; si no, el golpe normal)
+    if (this.nxo) return this.nxo.swing(overhead, power, special, volley);
     if (this.swinging) return 0;
     this.swinging = true;
     this.charging = false;

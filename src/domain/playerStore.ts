@@ -55,7 +55,7 @@ export function getPlayer(): Readonly<PlayerState> {
 }
 
 /** Aplica una operación; si sale bien, guarda y avisa. Devuelve el resultado tal cual. */
-export function commit<R extends OpResult<object>>(op: (s: PlayerState) => R): R {
+export function commit<R extends OpResult<object> | { ok: true; state: PlayerState } | { ok: false; error: string }>(op: (s: PlayerState) => R): R {
   const res = op(getPlayer() as PlayerState);
   if (res.ok) {
     state = res.state;

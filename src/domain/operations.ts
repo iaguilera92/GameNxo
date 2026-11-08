@@ -8,6 +8,7 @@ import type { AbilityId } from '../logic/Abilities';
 import type { SkinId } from '../characters/skins';
 import { type ItemId, type PlayerState, type StyleId, clonePlayer, itemId, owns } from './player';
 import { shopItem } from './shopCatalog';
+import { bpAddXpInPlace } from './battlePassConfig';
 
 export type OpError =
   | 'invalid_amount'
@@ -17,7 +18,8 @@ export type OpError =
   | 'level_too_low'
   | 'already_owned'
   | 'not_owned'
-  | 'duplicate_ability';
+  | 'duplicate_ability'
+  | 'not_enough_cash';
 
 export type OpResult<T = object> = ({ ok: true; state: PlayerState } & T) | { ok: false; error: OpError };
 
@@ -38,6 +40,8 @@ export function addXp(s: PlayerState, amount: number): OpResult<{ xp: XpGain }> 
   const before = { level: n.level, xp: n.xp };
   let levelsUp = 0;
   n.xp += Math.floor(amount);
+  // toda la EXP ganada llena también el pase de batalla de la temporada
+  bpAddXpInPlace(n, amount);
   while (n.level < MAX_LEVEL && n.xp >= xpToNext(n.level)) {
     n.xp -= xpToNext(n.level);
     n.level++;
@@ -73,6 +77,16 @@ export function spendCoins(s: PlayerState, amount: number): OpResult {
   return { ok: true, state: n };
 }
 
+/** Canje en la Tienda: paga DINERO (billetes, PlayerState.gems) y recibe monedas. */
+export function buyCoinsWithCash(s: PlayerState, cash: number, coins: number): OpResult {
+  if (!Number.isInteger(cash) || cash <= 0 || !Number.isInteger(coins) || coins <= 0) return fail('invalid_amount');
+  if (s.gems < cash) return fail('not_enough_cash');
+  const n = clonePlayer(s);
+  n.gems -= cash;
+  n.coins += coins;
+  return { ok: true, state: n };
+}
+
 // ---------------------------------------------------------------- tienda / inventario
 
 export function purchase(s: PlayerState, id: ItemId): OpResult {
@@ -81,10 +95,13 @@ export function purchase(s: PlayerState, id: ItemId): OpResult {
   if (!item) return fail('not_found');
   if (!item.available) return fail('not_available');
   if (s.level < item.minLevel) return fail('level_too_low');
-  const paid = spendCoins(s, item.price);
-  if (!paid.ok) return paid;
-  paid.state.owned.push(id);
-  return paid;
+  // la Tienda cobra DINERO: las monedas son la moneda competitiva (Ranked)
+  if (!Number.isInteger(item.price) || item.price < 0) return fail('invalid_amount');
+  if (s.gems < item.price) return fail('not_enough_cash');
+  const n = clonePlayer(s);
+  n.gems -= item.price;
+  n.owned.push(id);
+  return { ok: true, state: n };
 }
 
 /** Desbloqueo gratuito (recompensas de nivel, eventos…). Idempotente. */

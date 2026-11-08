@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { FONT } from './theme';
 import { roundedPoly } from './shapes';
+import { refitWhenFontsReady } from './fitText';
 
 /**
  * Botones de modo de juego (JUGAR / 2v2…): forma inclinada del botón JUGAR original,
@@ -17,11 +18,26 @@ interface BodyPal {
 }
 
 /** Paralelogramo inclinado (la parte de arriba se corre a la derecha) con esquinas suaves. */
-function modeShape(w: number, h: number, grow = 0) {
+export function modeShape(w: number, h: number, grow = 0) {
   const k = h * 0.22;
   const hw = w / 2 + grow;
   const hh = h / 2 + grow;
   return roundedPoly([[-hw + k, -hh], [hw + k * 0.15, -hh], [hw - k, hh], [-hw - k * 0.15, hh]], 12 + grow);
+}
+
+/**
+ * Franja horizontal de y0 a y1 DENTRO de la forma: sus lados siguen los lados inclinados del botón (misma
+ * inclinación), metidos `inset` px. Antes cada capa era una forma más baja con MENOS inclinación y sus
+ * esquinas asomaban por los lados del botón (el fondo claro del texto se salía).
+ */
+export function modeBand(w: number, h: number, y0: number, y1: number, inset: number, r: number) {
+  const k = h * 0.22;
+  const hw = w / 2;
+  const hh = h / 2;
+  const t = (y: number) => (y + hh) / (2 * hh);
+  const xl = (y: number) => (-hw + k) * (1 - t(y)) + (-hw - k * 0.15) * t(y) + inset;
+  const xr = (y: number) => (hw + k * 0.15) * (1 - t(y)) + (hw - k) * t(y) - inset;
+  return roundedPoly([[xl(y0), y0], [xr(y0), y0], [xr(y1), y1], [xl(y1), y1]], r);
 }
 
 function modeBody(scene: Phaser.Scene, w: number, h: number, pal: BodyPal) {
@@ -30,9 +46,10 @@ function modeBody(scene: Phaser.Scene, w: number, h: number, pal: BodyPal) {
   g.fillStyle(pal.shadow, pal.shadowA).fillPoints(off(modeShape(w, h, 4), 6, 9), true);
   g.fillStyle(0x0a1638, 1).fillPoints(modeShape(w, h, 5), true);
   g.fillStyle(pal.bottom, 1).fillPoints(modeShape(w, h), true);
-  g.fillStyle(pal.mid, 1).fillPoints(off(modeShape(w, h * 0.84), 0, -h * 0.06), true);
-  g.fillStyle(pal.top, 1).fillPoints(off(modeShape(w * 0.98, h * 0.42), 0, -h * 0.22), true);
-  g.fillStyle(0xffffff, pal.glossA).fillPoints(off(modeShape(w * 0.9, h * 0.1), h * 0.06, -h * 0.36), true);
+  // capas del degradado (mismas alturas que antes), siempre dentro del contorno
+  g.fillStyle(pal.mid, 1).fillPoints(modeBand(w, h, -h * 0.44, h * 0.34, 5, 9), true);
+  g.fillStyle(pal.top, 1).fillPoints(modeBand(w, h, -h * 0.42, -h * 0.02, 8, 8), true);
+  g.fillStyle(0xffffff, pal.glossA).fillPoints(modeBand(w, h, -h * 0.39, -h * 0.3, Math.max(14, w * 0.05), 4), true);
   return g;
 }
 
@@ -75,8 +92,10 @@ export function arcadeButton(
       strokeThickness: pal.stroke,
     })
     .setOrigin(0.5);
-  const maxW = w * (chevron ? 0.66 : 0.78);
-  if (txt.width > maxW) txt.setScale(maxW / txt.width);
+  // el texto nunca se sale del botón (margen por la forma inclinada y el chevron); se reajusta al cargar la fuente
+  const maxW = w * (chevron ? 0.6 : 0.72) - h * 0.2;
+  const maxH = h * 0.72;
+  refitWhenFontsReady(txt, () => txt.setScale(Math.min(1, maxW / Math.max(1, txt.width), maxH / Math.max(1, txt.height))));
   inner.add(txt);
   if (chevron) {
     const ch = scene.add.graphics({ x: w / 2 - h * 0.48, y: 0 });
@@ -114,9 +133,16 @@ export function lockedModeButton(scene: Phaser.Scene, x: number, y: number, w: n
   const txt = scene.add.text(0, 0, label, { fontFamily: FONT, fontSize: `${Math.round(h * 0.4)}px`, color: '#8d99b5' }).setOrigin(0, 0.5);
   const lw = h * 0.26;
   const gap = h * 0.08;
-  const lx = -(lw + gap + txt.width) / 2 + lw / 2 - h * 0.03;
-  txt.setX(lx + lw / 2 + gap);
-  const lk = scene.add.graphics({ x: lx, y: h * 0.02 });
+  const lk = scene.add.graphics({ x: 0, y: h * 0.02 });
+  // candado + texto centrados y dentro del botón (se recalcula al cargar la fuente)
+  const layout = () => {
+    const maxTxt = Math.max(10, w * 0.78 - h * 0.25 - lw - gap);
+    txt.setScale(Math.min(1, maxTxt / Math.max(1, txt.width)));
+    const lx = -(lw + gap + txt.displayWidth) / 2 + lw / 2 - h * 0.03;
+    lk.setX(lx);
+    txt.setX(lx + lw / 2 + gap);
+  };
+  refitWhenFontsReady(txt, layout);
   lk.lineStyle(h * 0.05, 0x8d99b5, 1).beginPath().arc(0, -lw * 0.18, lw * 0.3, Math.PI, 0).strokePath();
   lk.fillStyle(0x8d99b5, 1).fillRoundedRect(-lw / 2, -lw * 0.18, lw, lw * 0.75, lw * 0.14);
   lk.fillStyle(0x232a3b, 1).fillCircle(0, lw * 0.12, lw * 0.09).fillRect(-lw * 0.035, lw * 0.12, lw * 0.07, lw * 0.2);

@@ -259,3 +259,59 @@ Hoja 2 (sprite-2): 1 Derecha cargada 8 | 2 Reves cargado 8 | 3 Derecha maxima 8 
 Hoja 3 (sprite-3, 9 filas): 1 Saque en espera 8 | 2 Botar pelota 8 | 3 Estirada 8 | 4 Aturdido 8 | 5 DASH Sprint 8 | 6 Derecha alt 9 | 7 Reves alt 9 | 8 Saque alt 9 | 9 Devolucion especial frontal 9 (impacto 5-6 por validar)
 Hoja 4 (sprite-4, pendiente): 1 Preparacion golpe cargado | 2 Globo (LOB) | 3 Smash potenciado | 4 Golpe de emergencia | 5 Recuperacion tras estirada | 6 Frenada/cambio direccion | 7 Reaccion a golpe potente | 8 Transicion espalda-frente (todas 8 frames)
 Nota: impactos "previstos" sin validar visualmente. Usar tamano real de cada hoja.
+
+==================================================
+10. HOJAS DE NXO (INTEGRADAS 07-11-2026)
+==================================================
+Hojas de referencia en public/personajes/Nxo/ (1536x1024, 8 col x 8 filas, celda nominal 192x128,
+fondo verde chroma). Se cortan con:   node tools/build-nxo-v2.mjs
+  - quita el verde a alfa (g - max(r,b) > 60; borde con despill), separa piezas conexas y las asigna
+    a su celda (los pies de una fila cruzan a la de abajo y alguna raqueta toca el frame de arriba:
+    hay un corte por columna entre filas);
+  - apoya cada fila en su suelo (mediana de las bases) y escala cada fila para que su pose de pie mida
+    lo mismo (las hojas y algunas filas vienen dibujadas a tamaños distintos; solo se reduce);
+  - escribe tiras de 8 frames (celda 200x151, ancla x 0.5 / y 0.874, alto de pie 111 px) en
+    public/assets/characters/nxo-v2/<anim>.png y los JSON nxo-sprites, nxo-hits, nxo-move,
+    nxo-special y nxo-extra de src/characters/.
+SIN VOLTEOS: con estas hojas no se hace flipX en nada (la raqueta siempre en la mano derecha).
+Los sprites NO llevan pelota: el juego dibuja la suya.
+INFERNO: pj-nxo-sprite-inferno.png sigue aparte (tools/build-nxo-inferno.mjs, nxo-inferno.json).
+
+REGISTRO DE FILAS -> nombre de animación (uso en el juego)
+ sprites-1 MOVIMIENTO
+  1 idle            reposo
+  2 run             correr a la derecha
+  3 runstop         frenada al soltar corriendo (solo hacia la derecha; a la izquierda para en reposo)
+  4 victory         partido ganado
+  5 brake-turn      giro con freno derecha->izquierda (+ frenada del DASH hacia la derecha)
+  6 run-left        correr a la izquierda (OJO: en el partido parece correr a la derecha;
+                    revisar el dibujo de la fila)
+  7 dash            sprint del DASH hacia la derecha (a la izquierda: run-left acelerada)
+  8 defeat          partido perdido (queda en la última pose)
+ sprites-2 GOLPES (guardia = frame 3, impacto = frame 5; el saque espera en el trofeo = frame 3)
+  1 forehand  2 backhand  3 forehand-power  4 backhand-power   golpes de siempre
+  5 serve           golpe del saque normal
+  6 serve-spin      golpe del saque con efecto
+  7 smash           remate (pelota alta)
+  8 smash-power     ataque especial SMASH (salto)
+ sprites-3 ESPECIALES
+  1 dive-right  2 dive-left        estirada (playerLunge) según el lado de la pelota
+  3 recover-right  4 recover-left  se levanta tras la estirada (moverse la corta)
+  5 stunned         aturdido por un ataque especial (stunMs 650; sustituye al giro rig.angle)
+  6 point-won  7 point-lost        reacción al acabar el punto
+  8 wait            espera activa (las marcas "( )" se quitan al cortar)  [preparada]
+ sprites-4 EXTRAS
+  1 serve-bounce    sacador QUIETO antes de lanzar: bota y la pelota del juego rebota con la mano
+  2 serve-toss      lanzamiento (al pulsar sacar); queda en la última pose hasta el golpe
+  3 walk            [preparada]
+  4 inferno-hit     recibir el INFERNO: desde el frame 3 la mano queda vacía y la raqueta (imagen
+                    generada por código) sale girando; vuelve al acabar el aturdimiento
+  5 volley  6 dropshot  7 intro  8 greet   [preparadas: Character.emote(nombre)]
+Saque: quieto = serve-bounce -> serve-toss -> serve/serve-spin desde el trofeo; moviéndose = directo
+al lanzamiento (sin bote).
+Aturdido / impacto INFERNO / reacciones de punto: hoy solo se ven si quien las recibe es NXO de
+espaldas (el rival usa su hoja frontal, sin cambios).
+
+Assets antiguos BORRADOS el 07-11-2026 (copia en _tmp/backup-pre-sprites-nxo-*):
+  public/assets/characters/nxo-sprites/  nxo-hits/  nxo-move/  nxo-special/
+Se siguen usando: nxo-front-sprites/, mai-sprites/, mai-front-sprites/, nxo-inferno/, nxo-v2/.

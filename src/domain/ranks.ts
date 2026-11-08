@@ -1,9 +1,8 @@
 /**
  * Rangos competitivos (datos puros, sin Phaser).
  *
- * El competitivo se desbloquea al llegar a RANK_UNLOCK_LEVEL. Mientras no exista un sistema
- * competitivo real (servidor, puntos, ranking global) todos los jugadores están en Bronce:
- * aquí NO se simulan puntos ni posiciones.
+ * El competitivo (Ranked) se desbloquea al llegar a RANK_UNLOCK_LEVEL y empieza en Bronce.
+ * La liga y la posición vienen de PlayerState.ranked (lógica en domain/ranked.ts, docs/RANKED.md).
  */
 import type { PlayerState } from './player';
 
@@ -35,7 +34,8 @@ export function formatRankPosition(pos: number | undefined | null, max = 999): s
   return s.length <= RANK_POSITION_MAX_DIGITS ? s : null;
 }
 
-export const RANK_UNLOCK_LEVEL = 30;
+/** Debe coincidir con RANKED.unlockLevel (domain/rankedConfig.ts; lo comprueban los tests). */
+export const RANK_UNLOCK_LEVEL = 1;
 
 export const RANKS: RankDef[] = [
   { id: 'bronze', name: 'Bronce', tier: 1, image: 'assets/bronce.png' },
@@ -63,15 +63,7 @@ export function isRankUnlocked(level: number) {
   return level >= RANK_UNLOCK_LEVEL;
 }
 
-/** Rango actual del jugador. Hoy siempre el inicial; mañana vendrá del servidor. */
-export function playerRank(_p: Pick<PlayerState, 'level'>): RankId {
-  return INITIAL_RANK;
-}
-
-/**
- * Posición mundial del jugador (solo Challenger, 1..500). Hoy no hay ranking global:
- * undefined. Mañana vendrá del servidor; la insignia ya la muestra si existe.
- */
-export function playerRankPosition(_p: Pick<PlayerState, 'level'>): number | undefined {
-  return undefined;
+/** Liga actual del jugador (Bronce si aún no desbloqueó Ranked). */
+export function playerRank(p: Pick<PlayerState, 'ranked'>): RankId {
+  return p.ranked?.unlocked ? p.ranked.league : INITIAL_RANK;
 }

@@ -6,8 +6,22 @@ import { queuePortraitLoads } from '../characters/portrait';
 import { queueNxoSpriteLoads, registerNxoAnims } from '../objects/NxoActor';
 import { preloadRankBadges } from '../ui/RankBadge';
 import { queueAmbienteLoad } from '../view/CourtView';
-import { playerRank } from '../domain/ranks';
-import { getProfile } from '../logic/Profile';
+import { bootRanked, myLeague } from '../logic/Ranked';
+import { commit } from '../domain/playerStore';
+import { addCoins } from '../domain/operations';
+
+/** TEMPORAL (pruebas): regalo único de monedas al arrancar (una sola vez por dispositivo). Borrar al terminar. */
+const DEV_GIFT = { key: 'dev.gift.coins5000', coins: 5000 };
+function devGift() {
+  try {
+    if (localStorage.getItem(DEV_GIFT.key)) return;
+    localStorage.setItem(DEV_GIFT.key, '1');
+  } catch {
+    return;
+  }
+  commit((s) => addCoins(s, DEV_GIFT.coins));
+}
+
 
 /**
  * Pantalla de carga: parte en NEGRO mientras se descargan los recursos y luego aparece
@@ -32,7 +46,9 @@ export class BootScene extends Phaser.Scene {
     this.load.image('btn-jugar', 'assets/btn-jugar.png');
     this.load.image('nav-bar', 'assets/nav-bar.png');
     queueAmbienteLoad(this.load); // ambiente del partido (estadio)
-    preloadRankBadges(this.load, [playerRank(getProfile())]); // solo la del rango actual
+    devGift();
+    bootRanked(); // partida Ranked a medias = abandono; cierre de semana / mes
+    preloadRankBadges(this.load, [myLeague()]); // solo la del rango actual
   }
 
   create() {

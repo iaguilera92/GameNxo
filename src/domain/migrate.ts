@@ -6,6 +6,10 @@
 import { MAX_LEVEL } from '../config';
 import { type ItemId, type PlayerState, type StyleId, STARTER_ITEMS, itemId, newPlayer } from './player';
 import { SHOP_ITEMS } from './shopCatalog';
+import { sanitizeWheel } from './dailyWheel';
+import { sanitizeBattlePass } from './battlePass';
+import { sanitizeRanked } from './ranked';
+import { sanitizeLogin } from './dailyLogin';
 
 /** Todos los ítems que existen (los demás ids guardados se descartan). */
 const KNOWN_ITEMS = new Set<string>([...STARTER_ITEMS, ...SHOP_ITEMS.map((i) => i.id)]);
@@ -20,7 +24,15 @@ export function migratePlayer(raw: unknown): PlayerState {
   const s = newPlayer();
   if (!raw || typeof raw !== 'object') return s;
   const r = raw as Raw;
-  const isV2 = r.version === 2;
+  // v3 = v2 + ruletas diarias · v4 = v3 + pase de batalla: mismo formato para el resto de campos
+  // v5 = v4 + Ranked + premio diario
+  const isV2 = r.version === 2 || r.version === 3 || r.version === 4 || r.version === 5;
+  if (r.version === 3 || r.version === 4 || r.version === 5) s.wheel = sanitizeWheel(r.wheel);
+  s.bp = sanitizeBattlePass(r.version === 4 || r.version === 5 ? r.bp : undefined);
+  if (r.version === 5) {
+    s.ranked = sanitizeRanked(r.ranked);
+    s.login = sanitizeLogin(r.login);
+  }
 
   s.name = str(r.name, s.name);
   s.level = Math.min(MAX_LEVEL, Math.max(1, Math.floor(num(r.level, 1))));

@@ -292,7 +292,7 @@ export class CustomizeScene extends Phaser.Scene {
         if (has) {
           commit((st0) => equipStyle(st0, st.id));
           this.scene.restart();
-        } else this.toast(`Desbloquea ${st.name.toLowerCase()} en la Tienda (próximamente)`);
+        } else this.toast(`Consigue el estilo ${st.name.toLowerCase()} en la Tienda`);
       });
     });
   }

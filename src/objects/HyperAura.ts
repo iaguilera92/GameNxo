@@ -104,7 +104,7 @@ export class HyperAura {
     this.active = true;
     this.t = 0;
     this.halo.setVisible(true);
-    this.ring.setVisible(true);
+    this.ring.setVisible(!this.ringHidden);
     this.flames.start();
     this.sparks.start();
 
@@ -124,6 +124,13 @@ export class HyperAura {
       .setScale(0.5);
     this.scene.tweens.add({ targets: blast, scale: 6 * k, alpha: 0, duration: 380, ease: 'Quad.easeOut', onComplete: () => blast.destroy() });
     this.sparks.explode(18, this.ch.x, this.ch.y);
+  }
+
+  /** Oculta (o vuelve a mostrar) el anillo de los pies, p. ej. durante las cinemáticas de golpe especial. */
+  private ringHidden = false;
+  setRingHidden(h: boolean) {
+    this.ringHidden = h;
+    this.ring.setVisible(this.active && !h);
   }
 
   stop() {

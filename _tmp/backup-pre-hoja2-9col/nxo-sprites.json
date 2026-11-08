@@ -1,0 +1,78 @@
+{
+  "source": "pj-nxo-sprites-1.png / pj-nxo-sprites-2.png (tools/build-nxo-v2.mjs)",
+  "view": "back",
+  "cell": {
+    "w": 200,
+    "h": 151
+  },
+  "origin": {
+    "x": 0.5,
+    "y": 0.87417
+  },
+  "standHeight": 111,
+  "hold": 2,
+  "serveWait": 2,
+  "smashStart": 2,
+  "animations": {
+    "idle": {
+      "file": "idle.png",
+      "frames": 8,
+      "fps": 8,
+      "loop": true,
+      "scale": 1
+    },
+    "run": {
+      "file": "run.png",
+      "frames": 8,
+      "fps": 14,
+      "loop": true,
+      "scale": 1
+    },
+    "runstop": {
+      "file": "runstop.png",
+      "frames": 8,
+      "fps": 14,
+      "loop": false,
+      "scale": 1
+    },
+    "forehand": {
+      "file": "forehand.png",
+      "frames": 8,
+      "fps": 15,
+      "loop": false,
+      "impact": 4,
+      "scale": 1
+    },
+    "backhand": {
+      "file": "backhand.png",
+      "frames": 8,
+      "fps": 15,
+      "loop": false,
+      "impact": 4,
+      "scale": 1
+    },
+    "serve": {
+      "file": "serve.png",
+      "frames": 8,
+      "fps": 12,
+      "loop": false,
+      "impact": 4,
+      "scale": 1
+    },
+    "smash": {
+      "file": "smash.png",
+      "frames": 8,
+      "fps": 14,
+      "loop": false,
+      "impact": 4,
+      "scale": 1
+    },
+    "victory": {
+      "file": "victory.png",
+      "frames": 8,
+      "fps": 10,
+      "loop": false,
+      "scale": 1
+    }
+  }
+}

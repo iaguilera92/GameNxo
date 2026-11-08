@@ -1,18 +1,60 @@
 {
-  "source": "pj-nxo-sprite-1b.png",
+  "source": "pj-nxo-sprites-2.png (fila 1-7)",
   "view": "back",
-  "cell": { "w": 251, "h": 187 },
-  "origin": { "x": 0.43028, "y": 0.96257 },
-  "standHeight": 140,
+  "cell": {
+    "w": 198,
+    "h": 145
+  },
+  "origin": {
+    "x": 0.5,
+    "y": 0.87586
+  },
+  "standHeight": 109,
   "hold": 2,
   "serveWait": 2,
   "smashStart": 2,
   "animations": {
-    "forehand": { "file": "forehand.png", "frames": 9, "fps": 15, "loop": false, "impact": 4 },
-    "backhand": { "file": "backhand.png", "frames": 9, "fps": 15, "loop": false, "impact": 4 },
-    "forehand-power": { "file": "forehand-power.png", "frames": 9, "fps": 15, "loop": false, "impact": 4 },
-    "backhand-power": { "file": "backhand-power.png", "frames": 9, "fps": 15, "loop": false, "impact": 4 },
-    "serve": { "file": "serve.png", "frames": 9, "fps": 12, "loop": false, "impact": 4 },
-    "smash": { "file": "smash.png", "frames": 9, "fps": 14, "loop": false, "impact": 4 }
+    "forehand": {
+      "file": "forehand.png",
+      "frames": 9,
+      "fps": 15,
+      "loop": false,
+      "impact": 5
+    },
+    "backhand": {
+      "file": "backhand.png",
+      "frames": 9,
+      "fps": 15,
+      "loop": false,
+      "impact": 5
+    },
+    "forehand-power": {
+      "file": "forehand-power.png",
+      "frames": 9,
+      "fps": 15,
+      "loop": false,
+      "impact": 5
+    },
+    "backhand-power": {
+      "file": "backhand-power.png",
+      "frames": 9,
+      "fps": 15,
+      "loop": false,
+      "impact": 5
+    },
+    "serve": {
+      "file": "serve.png",
+      "frames": 9,
+      "fps": 12,
+      "loop": false,
+      "impact": 5
+    },
+    "smash": {
+      "file": "smash.png",
+      "frames": 9,
+      "fps": 14,
+      "loop": false,
+      "impact": 5
+    }
   }
 }

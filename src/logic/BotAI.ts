@@ -67,6 +67,11 @@ export class BotAI {
   /** error de percepción de ESTE golpe (normalizado, se sortea una vez) */
   private noise = { vx: 0, vy: 0, vz: 0, ox: 0, oy: 0 };
 
+  /** ya está leyendo tu golpe (pasó su tiempo de reacción) y persigue el punto previsto */
+  get reading() {
+    return this.tracking;
+  }
+
   get home() {
     return new Phaser.Math.Vector2(COURT.right + 40, (COURT.top + COURT.bottom) / 2);
   }

@@ -7,6 +7,21 @@ import { fitText } from '../ui/fitText';
 import { RankBadge } from '../ui/RankBadge';
 import type { RankId } from '../domain/ranks';
 import { resetMatchEnd } from '../fx/matchEnd';
+import { recordMatchWin, wheelStatuses } from '../logic/Wheels';
+import { drawWheelFace, drawXpIcon } from '../ui/wheelArt';
+import { WHEEL } from '../domain/wheelConfig';
+import { getPlayer } from '../domain/playerStore';
+import { RANKED } from '../domain/rankedConfig';
+import { myPosition, rankedState, settleCurrentRanked } from '../logic/Ranked';
+
+/** Id único de partida (ruletas: cada partida se cuenta una sola vez). */
+function newMatchId(): string {
+  const c = globalThis.crypto;
+  if (c?.randomUUID) return c.randomUUID();
+  const a = new Uint32Array(4);
+  c?.getRandomValues?.(a);
+  return `m-${Date.now().toString(36)}-${[...a].map((x) => x.toString(36)).join('')}-${Math.random().toString(36).slice(2)}`;
+}
 
 /**
  * Overlay de fin de partido. Se lanza ENCIMA de la escena del partido (que sigue visible detrás,
@@ -29,15 +44,20 @@ export interface MatchEndData {
   rivalLevel?: number;
   /** clave de la escena del partido (la rellena playMatchEnd) */
   matchKey?: string;
-  /** SOLO partidas clasificatorias con el competitivo desbloqueado; si no llega, no se muestra ranking */
-  ranked?: { delta: number; rank: RankId; level: number; position?: number; promotedTo?: RankId };
+  /**
+   * SOLO partidas Ranked. Lo rellena esta escena al liquidar la partida pendiente (logic/Ranked.ts):
+   * el partido (MatchScene) no necesita saber nada de Ranked. `delta` = monedas netas (premio − entrada).
+   */
+  ranked?: { delta: number; rank: RankId; level: number; position?: number; promotedTo?: RankId; bet?: number; entry?: number; pot?: number };
 }
 
 const NAVY = 0x0b1733;
 const NEON = 0x3a7bff;
 const GOLD = 0xffc42e;
-/** alto extra del panel para la fila de monedas */
-const COIN_ROW_H = 46;
+/** alto de los 3 cuadros de recompensa (monedas · EXP · ruleta) */
+const CARD_H = 196;
+/** alto extra del panel con el duelo de apuestas Ranked */
+const RANKED_H = 150;
 
 /** Moneda dibujada (sin imagen): disco dorado con canto, brillo y una corona. */
 function drawCoin(g: Phaser.GameObjects.Graphics, r: number) {
@@ -71,6 +91,23 @@ export class MatchEndScene extends Phaser.Scene {
     const d = this.d;
     const win = d.win;
 
+    // Ranked: liquida UNA vez la partida con entrada pagada (victoria / derrota / rendición)
+    const rstore = d as MatchEndData & { _rankedDone?: boolean };
+    if (!rstore._rankedDone) {
+      rstore._rankedDone = true;
+      const pend = rankedState().pending;
+      const st = settleCurrentRanked(d.surrendered ? 'surrender' : win ? 'win' : 'loss');
+      if (st && !st.duplicate && pend)
+        d.ranked = { delta: st.delta, rank: st.league, level: getPlayer().level, position: myPosition(), promotedTo: st.promotedTo ?? undefined, bet: pend.bet, entry: pend.entry, pot: pend.prize };
+    }
+
+    // ruletas diarias: cada partida COMPLETADA (ganada o perdida; no rendición) cuenta UNA vez (id único guardado)
+    const wstore = d as MatchEndData & { _matchId?: string; _wheel?: number | null };
+    if (!d.surrendered && !wstore._matchId) {
+      wstore._matchId = newMatchId();
+      wstore._wheel = recordMatchWin(wstore._matchId); // índice de la ruleta desbloqueada (o null)
+    }
+
     // oscurecido ligero (el partido sigue visible)
     const dim = this.add.rectangle(0, 0, W, H, 0x02060f, 0).setOrigin(0);
     this.tweens.add({ targets: dim, fillAlpha: win ? 0.28 : 0.38, duration: 500 });
@@ -85,7 +122,7 @@ export class MatchEndScene extends Phaser.Scene {
     this.banner(W, win);
     const btnH = 84;
     const btnY = H - 26 - btnH / 2;
-    const panelH = (d.ranked ? 236 : 182) + COIN_ROW_H;
+    const panelH = 108 + 16 + CARD_H + 22 + (d.ranked ? RANKED_H : 0);
     const panelTop = btnY - btnH / 2 - 14 - panelH;
     this.resultPanel(W, panelTop, panelH);
     this.buttons(W, btnY, btnH);
@@ -216,110 +253,19 @@ export class MatchEndScene extends Phaser.Scene {
     sep.lineStyle(2, 0x2c4a8a, 0.9).lineBetween(-w / 2 + 24, sepY, w / 2 - 24, sepY);
     c.add(sep);
 
-    // --- XP: misma regla que antes (victoria XP_WIN, derrota/rendición XP_LOSS). Se aplica UNA vez.
-    const store = d as MatchEndData & { _xp?: ReturnType<typeof addXp> };
+    // --- recompensas (se aplican UNA vez por partida; las reglas de siempre)
+    //   XP: victoria XP_WIN, derrota/rendición XP_LOSS · monedas: COINS_WIN / COINS_LOSS / COINS_SURRENDER
+    const store = d as MatchEndData & { _xp?: ReturnType<typeof addXp>; _coins?: ReturnType<typeof addCoins> };
     const gained = d.win ? XP_WIN : XP_LOSS;
     if (!store._xp) store._xp = addXp(gained);
-    const res = store._xp;
-    const rowY = sepY + 26;
-    const xpText = this.add.text(-w / 2 + 24, rowY, '+0 XP', { fontFamily: FONT, fontSize: '26px', color: '#8fd0ff', stroke: '#0a1638', strokeThickness: 5 }).setOrigin(0, 0.5);
-    const lvlText = this.add.text(w / 2 - 24, rowY, `NIVEL ${res.before.level}`, { fontFamily: FONT, fontSize: '18px', color: '#ffffff' }).setOrigin(1, 0.5);
-    c.add([xpText, lvlText]);
-    const bx = -w / 2 + 24;
-    const bw = w - 48;
-    const by = rowY + 20;
-    const bh = 14;
-    const track = this.add.graphics();
-    track.fillStyle(0x05112c, 1).fillRoundedRect(bx, by, bw, bh, bh / 2);
-    track.lineStyle(1, 0x2a4a8a, 1).strokeRoundedRect(bx, by, bw, bh, bh / 2);
-    const bar = this.add.graphics();
-    c.add([track, bar]);
-    const drawBar = (p: number) => {
-      bar.clear();
-      if (p <= 0) return;
-      const fw = Math.max(bh, bw * Math.min(1, p));
-      bar.fillStyle(0x1f7bff, 1).fillRoundedRect(bx, by, fw, bh, bh / 2);
-      bar.fillStyle(0x5fd0ff, 1).fillRoundedRect(bx, by, fw, bh * 0.5, { tl: bh / 2, tr: bh / 2, bl: 0, br: 0 });
-    };
-    const prog = (lv: number, xp: number) => (lv >= MAX_LEVEL ? 1 : xp / xpToNext(lv));
-    drawBar(prog(res.before.level, res.before.xp));
-
-    // conteo de XP + barra (con subida de nivel si corresponde)
-    const startAt = 900;
-    const count = { v: 0 };
-    this.tweens.add({ targets: count, v: gained, delay: startAt, duration: 900, ease: 'Cubic.easeOut', onUpdate: () => xpText.setText(`+${Math.round(count.v)} XP`) });
-    const p = { v: prog(res.before.level, res.before.xp) };
-    const steps: { to: number; reset?: boolean; level?: number }[] =
-      res.levelsUp > 0 ? [{ to: 1 }, { to: prog(res.after.level, res.after.xp), reset: true, level: res.after.level }] : [{ to: prog(res.after.level, res.after.xp) }];
-    const run = (i: number) => {
-      const s = steps[i];
-      if (!s) return;
-      if (s.reset) {
-        p.v = 0;
-        lvlText.setText(`NIVEL ${s.level}`);
-        this.levelUp(W / 2, top - 26, s.level!);
-      }
-      this.tweens.add({ targets: p, v: s.to, duration: 700, ease: 'Cubic.easeOut', onUpdate: () => drawBar(p.v), onComplete: () => run(i + 1) });
-    };
-    this.time.delayedCall(startAt, () => run(0));
-
-    // --- MONEDAS: victoria COINS_WIN, derrota COINS_LOSS, rendición COINS_SURRENDER. Se aplican UNA vez.
-    const cstore = d as MatchEndData & { _coins?: ReturnType<typeof addCoins> };
-    if (!cstore._coins) cstore._coins = addCoins(d.surrendered ? COINS_SURRENDER : d.win ? COINS_WIN : COINS_LOSS);
-    const coins = cstore._coins;
-    const cy = by + bh + 26;
-    const coinIcon = this.add.graphics({ x: -w / 2 + 40, y: cy });
-    drawCoin(coinIcon, 15);
-    const coinText = this.add
-      .text(-w / 2 + 64, cy, '+0', { fontFamily: FONT, fontSize: '26px', color: '#ffd23f', stroke: '#0a1638', strokeThickness: 5 })
-      .setOrigin(0, 0.5);
-    const coinLbl = this.add.text(0, cy + 2, 'MONEDAS', { fontFamily: FONT, fontSize: '15px', color: '#c9a64a' }).setOrigin(0, 0.5).setLetterSpacing(1);
-    // total a la derecha (píldora)
-    const totalText = this.add.text(w / 2 - 30, cy, coins.before.toLocaleString('es-CL'), { fontFamily: FONT, fontSize: '20px', color: '#ffffff' }).setOrigin(1, 0.5);
-    const totalPill = this.add.graphics();
-    const totalCoin = this.add.graphics({ y: cy });
-    drawCoin(totalCoin, 10);
-    const layoutTotal = () => {
-      const tw = totalText.width + 44;
-      const x0 = w / 2 - 18 - tw;
-      totalPill.clear().fillStyle(0x05112c, 1).fillRoundedRect(x0, cy - 16, tw, 32, 16).lineStyle(1.5, 0x8a6a1c, 1).strokeRoundedRect(x0, cy - 16, tw, 32, 16);
-      totalCoin.setX(x0 + 17);
-    };
-    layoutTotal();
-    const placeLbl = () => coinLbl.setX(coinText.x + coinText.width + 8);
-    placeLbl();
-    c.add([totalPill, totalCoin, totalText, coinIcon, coinText, coinLbl]);
-    if (coins.gained > 0) {
-      const coinAt = startAt + 650;
-      const cc = { v: 0 };
-      this.tweens.add({
-        targets: cc,
-        v: coins.gained,
-        delay: coinAt,
-        duration: 800,
-        ease: 'Cubic.easeOut',
-        onUpdate: () => {
-          const v = Math.round(cc.v);
-          coinText.setText(`+${v}`);
-          totalText.setText((coins.before + v).toLocaleString('es-CL'));
-          placeLbl();
-          layoutTotal();
-        },
-        onComplete: () => this.tweens.add({ targets: [totalCoin, coinIcon], scale: { from: 1.35, to: 1 }, duration: 320, ease: 'Back.easeOut' }),
-      });
-      this.time.delayedCall(coinAt, () => this.coinShower(c, -w / 2 + 40, cy, w / 2 - 40, cy, Math.min(8, 2 + Math.round(coins.gained / 10))));
-    } else {
-      coinText.setColor('#7f93bf');
-    }
+    if (!store._coins) store._coins = addCoins(d.surrendered ? COINS_SURRENDER : d.win ? COINS_WIN : COINS_LOSS);
+    this.rewardCards(c, W, top, w, sepY + 16);
 
     // --- ranking: solo si llega (clasificatoria con competitivo desbloqueado). No se inventan puntos.
     if (d.ranked) {
       const r = d.ranked;
-      const ry = by + bh + 34 + COIN_ROW_H;
-      c.add(new RankBadge(this, -w / 2 + 52, ry, { rank: r.promotedTo ?? r.rank, level: r.level, size: 56, position: r.position }));
-      const sign = r.delta >= 0 ? '+' : '';
-      c.add(this.add.text(-w / 2 + 92, ry, `${sign}${r.delta} PUNTOS DE RANKING`, { fontFamily: FONT, fontSize: '19px', color: r.delta >= 0 ? '#9fe8a0' : '#ff9aa3' }).setOrigin(0, 0.5));
-      if (r.promotedTo) this.levelUp(W / 2, top - 26, 0, '¡ASCENSO DE RANGO!');
+      this.rankedDuel(c, w, sepY + 16 + CARD_H + 20);
+      if (r.promotedTo) this.levelUp(W / 2, top - 26, 0, '¡ASCENSO DE LIGA!');
     }
 
     // entrada: sube desde abajo junto con los botones
@@ -327,6 +273,162 @@ export class MatchEndScene extends Phaser.Scene {
     this.tweens.add({ targets: c, alpha: 1, y: top, duration: 460, delay: 350, ease: 'Cubic.easeOut' });
   }
 
+
+  /**
+   * Tres cuadros de recompensa (estilo fin de partida de juegos de cartas): MONEDAS · EXP · RULETA.
+   * Entran uno a uno con rebote y sus cifras cuentan hacia arriba. Los valores ya están aplicados
+   * (una vez por partida); aquí solo se muestran.
+   */
+  private rewardCards(c: Phaser.GameObjects.Container, W: number, top: number, w: number, y0: number) {
+    const d = this.d as MatchEndData & { _xp?: ReturnType<typeof addXp>; _coins?: ReturnType<typeof addCoins>; _wheel?: number | null };
+    const xp = d._xp!;
+    const coins = d._coins!;
+    const gap = 12;
+    const cw = (w - 40 - gap * 2) / 3;
+    const xs = [-cw - gap, 0, cw + gap];
+    const base = 750; // empieza cuando el panel ya subió
+    const step = 380;
+
+    // --- 1) MONEDAS
+    const m = this.card(c, xs[0], y0, cw, 'MONEDAS', GOLD, 0x3a2a08);
+    drawCoin(m.icon, 30);
+    m.value.setText('+0').setColor('#ffd23f');
+    m.sub.setText(`TOTAL ${coins.before.toLocaleString('es-CL')}`);
+    this.pop(m.cont, base, () => {
+      if (coins.gained <= 0) return m.value.setColor('#7f93bf');
+      const cc = { v: 0 };
+      this.tweens.add({
+        targets: cc,
+        v: coins.gained,
+        duration: 800,
+        ease: 'Cubic.easeOut',
+        onUpdate: () => {
+          const v = Math.round(cc.v);
+          m.value.setText(`+${v}`);
+          m.sub.setText(`TOTAL ${(coins.before + v).toLocaleString('es-CL')}`);
+          fitText(m.sub, cw - 16);
+        },
+        onComplete: () => this.tweens.add({ targets: m.icon, scale: { from: 1.3, to: 1 }, duration: 300, ease: 'Back.easeOut' }),
+      });
+      this.coinShower(c, xs[0], y0 + 70, xs[0], y0 + 40, Math.min(7, 2 + Math.round(coins.gained / 10)));
+    });
+
+    // --- 2) EXP (+ barra de nivel; sube de nivel si corresponde)
+    const e = this.card(c, xs[1], y0, cw, 'EXP', 0x5fd0ff, 0x0a2a4a);
+    drawXpIcon(e.icon, 32);
+    e.value.setText('+0').setColor('#8fd0ff');
+    e.sub.setText(`NIVEL ${xp.before.level}`);
+    const bw = cw - 30;
+    const bh = 10;
+    const bx = -bw / 2;
+    // cifra un poco más arriba; debajo la barra de nivel y el nivel
+    e.value.setY(126);
+    const by = CARD_H - 46;
+    const track = this.add.graphics();
+    track.fillStyle(0x05112c, 1).fillRoundedRect(bx, by, bw, bh, bh / 2);
+    track.lineStyle(1, 0x2a4a8a, 1).strokeRoundedRect(bx, by, bw, bh, bh / 2);
+    const bar = this.add.graphics();
+    e.cont.add([track, bar]);
+    e.sub.setY(CARD_H - 20);
+    const drawBar = (p: number) => {
+      bar.clear();
+      if (p <= 0) return;
+      const fw = Math.max(bh, bw * Math.min(1, p));
+      bar.fillStyle(0x1f7bff, 1).fillRoundedRect(bx, by, fw, bh, bh / 2);
+      bar.fillStyle(0x5fd0ff, 1).fillRoundedRect(bx, by, fw, bh * 0.5, { tl: bh / 2, tr: bh / 2, bl: 0, br: 0 });
+    };
+    const prog = (lv: number, v: number) => (lv >= MAX_LEVEL ? 1 : v / xpToNext(lv));
+    drawBar(prog(xp.before.level, xp.before.xp));
+    this.pop(e.cont, base + step, () => {
+      const cnt = { v: 0 };
+      this.tweens.add({ targets: cnt, v: xp.gained, duration: 800, ease: 'Cubic.easeOut', onUpdate: () => e.value.setText(`+${Math.round(cnt.v)}`) });
+      const p = { v: prog(xp.before.level, xp.before.xp) };
+      const steps: { to: number; reset?: boolean; level?: number }[] =
+        xp.levelsUp > 0 ? [{ to: 1 }, { to: prog(xp.after.level, xp.after.xp), reset: true, level: xp.after.level }] : [{ to: prog(xp.after.level, xp.after.xp) }];
+      const run = (i: number) => {
+        const s = steps[i];
+        if (!s) return;
+        if (s.reset) {
+          p.v = 0;
+          e.sub.setText(`¡NIVEL ${s.level}!`).setColor('#ffd23f');
+          this.levelUp(W / 2, top - 26, s.level!);
+        }
+        this.tweens.add({ targets: p, v: s.to, duration: 650, ease: 'Cubic.easeOut', onUpdate: () => drawBar(p.v), onComplete: () => run(i + 1) });
+      };
+      run(0);
+    });
+
+    // --- 3) RULETA (se desbloqueó una con esta partida, o no)
+    const unlocked = d._wheel !== undefined && d._wheel !== null;
+    const r = this.card(c, xs[2], y0, cw, 'RULETA', unlocked ? 0xb27bff : 0x55607a, unlocked ? 0x2a1250 : 0x141c33);
+    const wheel = this.add.container(0, r.icon.y);
+    const rim = this.add.graphics();
+    rim.fillStyle(0x0a1638, 1).fillCircle(0, 0, 36);
+    rim.fillStyle(unlocked ? GOLD : 0x55607a, 1).fillCircle(0, 0, 33);
+    const face = this.add.graphics();
+    drawWheelFace(face, 30, false);
+    const hub = this.add.graphics();
+    hub.fillStyle(0x0a1638, 1).fillCircle(0, 0, 7).fillStyle(GOLD, 1).fillCircle(0, 0, 4.5);
+    const ptr = this.add.graphics();
+    ptr.fillStyle(0x0a1638, 1).fillTriangle(-7, -42, 7, -42, 0, -29);
+    ptr.fillStyle(0xff3b4f, 1).fillTriangle(-4.5, -40, 4.5, -40, 0, -32);
+    wheel.add([rim, face, hub, ptr]);
+    r.cont.add(wheel);
+    const done = wheelStatuses().filter((s) => s !== 'locked').length;
+    if (unlocked) {
+      r.value.setText('¡NUEVA!').setColor('#ffd23f');
+      r.sub.setText(`${(d._wheel ?? 0) + 1}/${WHEEL.perDay} HOY`);
+    } else {
+      wheel.setAlpha(0.45);
+      r.value.setText(d.surrendered ? 'SIN RULETA' : 'MÁXIMO').setColor('#9aa6c4');
+      r.sub.setText(d.surrendered ? 'POR RENDIRTE' : `${done}/${WHEEL.perDay} HOY`);
+    }
+    fitText(r.value, cw - 16);
+    this.pop(r.cont, base + step * 2, () => {
+      if (!unlocked) return;
+      // aparece girando con brillo (se abrirá sola al volver al menú)
+      this.tweens.add({ targets: face, angle: 720, duration: 1400, ease: 'Cubic.easeOut' });
+      const glow = this.add.circle(0, wheel.y, 44, GOLD, 0.5).setBlendMode(Phaser.BlendModes.ADD);
+      r.cont.addAt(glow, 1);
+      this.tweens.add({ targets: glow, scale: 1.35, alpha: 0.1, duration: 700, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
+    });
+  }
+
+  /** Un cuadro de recompensa: fondo, etiqueta arriba, icono al medio, cifra y subtítulo abajo. */
+  private card(parent: Phaser.GameObjects.Container, x: number, y: number, w: number, label: string, accent: number, tint: number) {
+    const cont = this.add.container(x, y);
+    const g = this.add.graphics();
+    g.fillStyle(0x000000, 0.35).fillRoundedRect(-w / 2 + 3, 5, w, CARD_H, 18);
+    g.fillStyle(0x0a1638, 1).fillRoundedRect(-w / 2 - 3, -3, w + 6, CARD_H + 6, 20);
+    g.fillStyle(tint, 1).fillRoundedRect(-w / 2, 0, w, CARD_H, 18);
+    g.fillStyle(0xffffff, 0.06).fillRoundedRect(-w / 2 + 4, 4, w - 8, CARD_H * 0.42, { tl: 15, tr: 15, bl: 6, br: 6 });
+    g.lineStyle(3, accent, 1).strokeRoundedRect(-w / 2, 0, w, CARD_H, 18);
+    // etiqueta en una franja
+    g.fillStyle(accent, 1).fillRoundedRect(-w / 2 + 10, 10, w - 20, 26, 13);
+    cont.add(g);
+    cont.add(this.add.text(0, 23, label, { fontFamily: FONT, fontSize: '16px', color: '#0a1638' }).setOrigin(0.5).setLetterSpacing(1));
+    const icon = this.add.graphics({ x: 0, y: 84 });
+    const value = this.add.text(0, 140, '', { fontFamily: FONT, fontSize: '30px', color: '#ffffff', stroke: '#0a1638', strokeThickness: 6 }).setOrigin(0.5);
+    const sub = this.add.text(0, CARD_H - 22, '', { fontFamily: FONT, fontSize: '14px', color: '#c9d6f2' }).setOrigin(0.5).setLetterSpacing(1);
+    cont.add([icon, value, sub]);
+    parent.add(cont);
+    cont.setScale(0).setAlpha(0);
+    return { cont, icon, value, sub };
+  }
+
+  /** Entrada de un cuadro con rebote; `then` al terminar (para empezar a contar). */
+  private pop(o: Phaser.GameObjects.Container, delay: number, then?: () => void) {
+    this.tweens.add({
+      targets: o,
+      scale: 1,
+      alpha: 1,
+      delay,
+      duration: 360,
+      ease: 'Back.easeOut',
+      easeParams: [2.2],
+      onComplete: () => then?.(),
+    });
+  }
 
   /** Monedas que saltan del contador ganado al total (dentro del panel). */
   private coinShower(c: Phaser.GameObjects.Container, x0: number, y0: number, x1: number, y1: number, n: number) {
@@ -350,6 +452,116 @@ export class MatchEndScene extends Phaser.Scene {
         onComplete: () => g.destroy(),
       });
     }
+  }
+
+  /**
+   * Duelo de apuestas Ranked: dos cuadros (TÚ · RIVAL) con lo apostado por cada uno. Las monedas del que
+   * perdió vuelan al cuadro del que ganó: el ganador sube a la bolsa completa y el perdedor queda en 0.
+   */
+  private rankedDuel(c: Phaser.GameObjects.Container, w: number, y0: number) {
+    const d = this.d;
+    const r = d.ranked!;
+    const entry = r.entry ?? Math.abs(r.delta);
+    const pot = r.pot ?? entry * 2;
+    const rivalStake = pot - entry;
+    const won = r.delta > 0;
+    // cabecera: insignia + RANKED · posición y semana
+    const hy = y0 + 14;
+    c.add(new RankBadge(this, -w / 2 + 40, hy + 2, { rank: r.promotedTo ?? r.rank, level: r.level, size: 40, position: r.position }));
+    c.add(this.add.text(-w / 2 + 68, hy - 8, `RANKED${(r.bet ?? 1) > 1 ? ' · APUESTA x2' : ''}`, { fontFamily: FONT, fontSize: '17px', color: '#ffd23f' }).setOrigin(0, 0.5).setLetterSpacing(1));
+    const info = d.surrendered ? 'Rendición: no cuenta para la semana' : `Posición #${r.position ?? '—'} · Semana ${Math.min(rankedState().weekMatches, RANKED.minMatchesForReward)}/${RANKED.minMatchesForReward}`;
+    c.add(this.add.text(-w / 2 + 68, hy + 12, info, { fontFamily: FONT, fontSize: '13px', color: '#9fb4e0' }).setOrigin(0, 0.5));
+    // cuadros
+    const by = y0 + 86;
+    const bw = (w - 40 - 56) / 2;
+    const bh = 78;
+    const lx = -w / 2 + 20 + bw / 2;
+    const rx = w / 2 - 20 - bw / 2;
+    const box = (x: number, name: string, color: number, amount: number) => {
+      const bc = this.add.container(x, by);
+      const g = this.add.graphics();
+      g.fillStyle(0x0a1638, 1).fillRoundedRect(-bw / 2, -bh / 2, bw, bh, 16);
+      g.lineStyle(3, color, 1).strokeRoundedRect(-bw / 2, -bh / 2, bw, bh, 16);
+      bc.add(g);
+      const nm = this.add.text(0, -bh / 2 + 15, name.toUpperCase(), { fontFamily: FONT, fontSize: '15px', color: '#cfe0ff' }).setOrigin(0.5);
+      fitText(nm, bw - 20);
+      bc.add(nm);
+      const coin = this.add.graphics({ x: -28, y: 12 });
+      drawCoin(coin, 13);
+      const val = this.add.text(-10, 12, amount.toLocaleString('es-CL'), { fontFamily: FONT, fontSize: '30px', color: '#ffffff', stroke: '#0a1638', strokeThickness: 5 }).setOrigin(0, 0.5);
+      bc.add([coin, val]);
+      const center = () => {
+        const tw = 26 + 8 + val.width;
+        coin.setX(-tw / 2 + 13);
+        val.setX(-tw / 2 + 34);
+      };
+      center();
+      c.add(bc);
+      return { bc, g, val, center, coin };
+    };
+    const me = box(lx, d.playerName, 0x3a7bff, entry);
+    const rv = box(rx, d.rivalName, 0xff4f5e, rivalStake);
+    // centro: VS, luego flecha hacia el ganador
+    const vs = this.add.text(0, by, 'VS', { fontFamily: FONT, fontSize: '22px', color: '#7f93bf' }).setOrigin(0.5);
+    c.add(vs);
+    // animación: tras las tarjetas de recompensa
+    const start = 750 + 380 * 3;
+    this.time.delayedCall(start, () => {
+      const from = won ? rv : me;
+      const to = won ? me : rv;
+      const moved = won ? rivalStake : entry;
+      vs.setText(won ? '◀' : '▶').setColor(won ? '#9fe8a0' : '#ff9aa3').setFontSize(30);
+      this.tweens.add({ targets: vs, scale: { from: 1.5, to: 1 }, duration: 300, ease: 'Back.easeOut' });
+      // monedas que vuelan de un cuadro al otro (en arco)
+      const n = 7;
+      for (let i = 0; i < n; i++) {
+        const cg = this.add.graphics();
+        drawCoin(cg, 11);
+        cg.setPosition(from.bc.x, by);
+        c.add(cg);
+        const t = { k: 0 };
+        this.tweens.add({
+          targets: t,
+          k: 1,
+          duration: 520,
+          delay: i * 70,
+          ease: 'Sine.easeInOut',
+          onUpdate: () => cg.setPosition(from.bc.x + (to.bc.x - from.bc.x) * t.k, by - Math.sin(t.k * Math.PI) * 46),
+          onComplete: () => {
+            cg.destroy();
+            this.tweens.add({ targets: to.coin, scale: { from: 1.35, to: 1 }, duration: 160 });
+          },
+        });
+      }
+      // cifras: el ganador cuenta hacia arriba, el perdedor hasta 0
+      const a0 = won ? entry : rivalStake;
+      const cnt = { v: 0 };
+      this.tweens.add({
+        targets: cnt,
+        v: moved,
+        duration: 520 + n * 70,
+        ease: 'Cubic.easeOut',
+        onUpdate: () => {
+          const v = Math.round(cnt.v);
+          to.val.setText((a0 + v).toLocaleString('es-CL'));
+          from.val.setText(Math.max(0, moved - v).toLocaleString('es-CL'));
+          to.center();
+          from.center();
+        },
+        onComplete: () => {
+          // ganador en dorado, perdedor apagado
+          to.g.lineStyle(4, GOLD, 1).strokeRoundedRect(-bw / 2, -bh / 2, bw, bh, 16);
+          to.val.setColor('#ffd23f');
+          from.bc.setAlpha(0.55);
+          this.tweens.add({ targets: to.bc, scale: { from: 1.08, to: 1 }, duration: 300, ease: 'Back.easeOut' });
+          const gain = this.add
+            .text(me.bc.x, by - bh / 2 - 6, won ? `+${moved.toLocaleString('es-CL')}` : `−${entry.toLocaleString('es-CL')}`, { fontFamily: FONT, fontSize: '24px', color: won ? '#9fe8a0' : '#ff9aa3', stroke: '#0a1638', strokeThickness: 5 })
+            .setOrigin(0.5);
+          c.add(gain);
+          this.tweens.add({ targets: gain, y: gain.y - 26, alpha: { from: 1, to: 0 }, duration: 1400, delay: 400 });
+        },
+      });
+    });
   }
 
   /** Celebración breve: texto dorado con destello. */
@@ -376,11 +588,17 @@ export class MatchEndScene extends Phaser.Scene {
     const cont = arcadeButton(this, x0, y, bw, bh, 'CONTINUAR', () => {
       resetMatchEnd(this.scene.get(matchKey));
       this.scene.stop(matchKey);
-      this.scene.start('Menu');
+      this.scene.start(d.ranked ? 'Ranked' : 'Menu'); // Ranked vuelve a su pantalla (ascenso / recompensas)
     }, { palette: 'yellow' });
-    // REVANCHA: misma lógica que ya existía (reiniciar el partido con el mismo rival)
-    const again = arcadeButton(this, x1, y, bw, bh, 'REVANCHA', () => {
+    // REVANCHA: misma lógica que ya existía (reiniciar el partido con el mismo rival).
+    // En Ranked se vuelve a buscar partida con la misma apuesta (la entrada se paga de nuevo al empezar).
+    const again = arcadeButton(this, x1, y, bw, bh, d.ranked ? 'OTRA RANKED' : 'REVANCHA', () => {
       resetMatchEnd(this.scene.get(matchKey));
+      if (d.ranked) {
+        this.scene.stop(matchKey);
+        this.scene.start('Matchmaking', { ranked: { bet: d.ranked.bet ?? 1 } });
+        return;
+      }
       this.scene.start(matchKey, { botName: d.botName, rivalLevel: d.rivalLevel });
     }, { palette: 'blue' });
     for (const [b, delay] of [[cont, 550], [again, 620]] as const) {

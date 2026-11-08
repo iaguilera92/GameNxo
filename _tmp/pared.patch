@@ -1,0 +1,157 @@
+diff --git a/src/scenes/MatchScene.ts b/src/scenes/MatchScene.ts
+index 5cf0b93..2f0eeab 100644
+--- a/src/scenes/MatchScene.ts
++++ b/src/scenes/MatchScene.ts
+@@ -60,6 +60,8 @@ import { perfectSound, playTimingFx, vibrate } from '../fx/timingFx';
+ import { MOTION, type MotionEvent, createMotion, stepMotion, stopMotion } from '../logic/PlayerMotion';
+ import { DASH, type DashRun, createRun, guaranteeStep, planSprint, sampleTrajectory, shouldCancelRun, stepRun } from '../logic/DashSprint';
+ import { DashFx } from '../fx/dashFx';
++import { WALL, type WallGeom, wallFromArt, wallHit, wallOutcome } from '../logic/BackWall';
++import { WallFx } from '../fx/wallFx';
+ 
+ type Who = 'player' | 'bot';
+ 
+@@ -155,6 +157,9 @@ export class MatchScene extends Phaser.Scene {
+   /** DASH sprint en curso (src/logic/DashSprint.ts): mueve al jugador en arranque / sprint / frenada */
+   private dashRun: DashRun | null = null;
+   private dashFx!: DashFx;
++  /** pared del fondo del rival tal como está dibujada (src/logic/BackWall.ts); la calcula drawCourt */
++  private backWall: WallGeom | null = null;
++  private wallFx!: WallFx;
+   // Perfect Timing (src/logic/PerfectTiming.ts): reloj de simulación (s, avanza con el dt de la física)
+   private timing = new TimingTracker();
+   private simClock = 0;
+@@ -265,6 +270,7 @@ export class MatchScene extends Phaser.Scene {
+     stopMotion(this.motion);
+     this.dashRun = null;
+     this.dashFx = new DashFx(this, DASH);
++    this.wallFx = new WallFx(this);
+     this.simClock = 0;
+     this.simRealAt = performance.now();
+     this.contactClock = 0;
+@@ -629,7 +635,10 @@ export class MatchScene extends Phaser.Scene {
+     line(COURT.right - 14, LAT_C, COURT.right, LAT_C);
+ 
+     // ambiente-1 + cancha nueva (view/CourtView.ts); si falta la imagen, se usa este dibujo de siempre
+-    if (!drawCourtView(this)) {
++    const drawn = drawCourtView(this);
++    // pared del fondo donde se ve: la del estadio (muro + valla) o, en el dibujo de siempre, la valla de x = ax1 (z 70)
++    this.backWall = drawn ? wallFromArt(project, LAT_C, drawn.wallAtY, drawn.padPx, drawn.fencePx, VIEW.Z_K) : { x: ax1, padZ: WALL_Z, fenceZ: WALL_Z };
++    if (!drawn) {
+       const BX = -1000;
+       const BY = 0;
+       const baked = this.add.renderTexture(BX, BY, 2720, 1800).setOrigin(0).setDepth(-10);
+@@ -1574,6 +1583,39 @@ export class MatchScene extends Phaser.Scene {
+     g.fillStyle(0xffd23f, 0.9).fillEllipse(p.sx, p.sy, 16 * p.s, 7 * p.s);
+   }
+ 
++  /** ¿Pared del fondo activa? (WALL.enabled y sin localStorage 'dev.backWall' = '0') */
++  private backWallOn() {
++    if (!WALL.enabled) return false;
++    try {
++      return localStorage.getItem('dev.backWall') !== '0';
++    } catch {
++      return true;
++    }
++  }
++
++  /**
++   * Pared del fondo del rival: si la pelota la alcanza en este subpaso, rebota con su impacto. Si el punto
++   * seguía vivo, lo termina (tras botar bien → punto de quien golpeó; sin botar → fuera; saque → falta).
++   */
++  private checkBackWall(prevX: number) {
++    const w = this.backWall;
++    if (!w || !this.backWallOn()) return;
++    const s = this.ball.s;
++    const kind = wallHit(prevX, s, w);
++    if (!kind) return;
++    const p = project(s.x, s.y, s.z);
++    const ground = project(s.x, s.y, 0);
++    this.wallFx.impact(kind, p.sx, p.sy, p.s, ground.sy + 3, this.ball.power);
++    const out = wallOutcome({ rally: this.phase === 'rally', hitter: this.lastHitter, serving: this.serving, bounces: this.bounces });
++    if (out.kind === 'fault') this.serviceFault();
++    else if (out.kind === 'point' && this.lastHitter) {
++      const hitter = this.lastHitter;
++      const receiver: Who = hitter === 'player' ? 'bot' : 'player';
++      if (out.winner === 'receiver') this.pointTo(receiver, '¡FUERA!', '#ff7a85');
++      else this.pointTo(hitter, hitter === 'player' ? '¡PUNTO!' : 'Punto rival', hitter === 'player' ? '#8fd0ff' : '#ff9aa3');
++    }
++  }
++
+   /** Falta de saque: segundo saque, o doble falta = punto del rival. */
+   private serviceFault() {
+     if (this.phase !== 'rally' || !this.serving) return;
+@@ -2340,7 +2382,10 @@ export class MatchScene extends Phaser.Scene {
+         this.contactClock = this.simClock + ((i + 1) * dt) / sub; // instante del contacto si golpea en este subpaso
+         // saque que roza la cinta de la red por encima: si cae en el cuadro es let
+         if (this.serving && this.phase === 'rally' && (px - NET_X) * (this.ball.s.x - NET_X) < 0 && this.ball.s.z >= NET_HEIGHT && this.ball.s.z <= NET_HEIGHT + SERVE.letBand) this.serveLet = true;
+-        if (this.phase !== 'rally') continue;
++        if (this.phase !== 'rally') {
++          this.checkBackWall(px); // punto ya decidido: la pelota también rebota en la pared (sin puntuar)
++          continue;
++        }
+         if (ev === 'net' && this.serving && this.serveNetLoss) {
+           this.serveNetLoss = false;
+           this.serving = false;
+@@ -2351,6 +2396,7 @@ export class MatchScene extends Phaser.Scene {
+           this.pointTo(rec, '¡RED!', '#ff7a85');
+         } else if (ev === 'bounce') this.handleBounce();
+         if (this.phase === 'rally') this.checkHits();
++        this.checkBackWall(px); // después de los golpes: si el rival llegaba, ya devolvió
+         if (this.cine.active) break; // contacto reservado: la pelota no avanza más
+       }
+       this.updateDashHit(dt);
+diff --git a/src/view/CourtView.ts b/src/view/CourtView.ts
+index 3dc413a..fbf7013 100644
+--- a/src/view/CourtView.ts
++++ b/src/view/CourtView.ts
+@@ -24,6 +24,9 @@ export interface Ambiente {
+   h: number;
+   /** borde inferior del muro del fondo en la imagen (px) */
+   wallBottomY: number;
++  /** borde superior del muro sólido y de la valla de malla que hay encima (px de imagen; medidos a ojo) */
++  wallTopY: number;
++  fenceTopY: number;
+   /** color para rellenar bajo la imagen si la pantalla es más alta */
+   foreground: number;
+   surface: Surface;
+@@ -31,8 +34,8 @@ export interface Ambiente {
+ 
+ /** Ambientes disponibles. Para añadir uno: imagen 1024x1536 en public/ + una entrada aquí. */
+ export const AMBIENTES: Ambiente[] = [
+-  { key: 'ambiente-1', file: 'ambiente-1.png', w: 1024, h: 1536, wallBottomY: 370, foreground: 0x061447, surface: 'hard' },
+-  { key: 'ambiente-2', file: 'ambiente-2.png', w: 1024, h: 1536, wallBottomY: 372, foreground: 0xa83c14, surface: 'clay' },
++  { key: 'ambiente-1', file: 'ambiente-1.png', w: 1024, h: 1536, wallBottomY: 370, wallTopY: 308, fenceTopY: 240, foreground: 0x061447, surface: 'hard' },
++  { key: 'ambiente-2', file: 'ambiente-2.png', w: 1024, h: 1536, wallBottomY: 372, wallTopY: 285, fenceTopY: 210, foreground: 0xa83c14, surface: 'clay' },
+ ];
+ 
+ /** y en pantalla donde debe quedar el muro del fondo (un poco por detrás de la cancha) */
+@@ -46,9 +49,17 @@ export function queueAmbienteLoad(load: Phaser.Loader.LoaderPlugin) {
+   for (const a of AMBIENTES) if (!load.textureManager.exists(a.key)) load.image(a.key, a.file);
+ }
+ 
+-export function drawCourtView(scene: Phaser.Scene): boolean {
++/** Pared del fondo tal como se dibujó (para que la pelota choque donde se ve): base en pantalla y alturas en px. */
++export interface DrawnWall {
++  wallAtY: number;
++  padPx: number;
++  fencePx: number;
++}
++
++/** Dibuja ambiente + cancha. Devuelve la pared dibujada, o null si falta la imagen (la escena dibuja la suya). */
++export function drawCourtView(scene: Phaser.Scene): DrawnWall | null {
+   const available = AMBIENTES.filter((a) => scene.textures.exists(a.key));
+-  if (!available.length) return false;
++  if (!available.length) return null;
+   // pruebas: localStorage 'dev.ambiente' = 'ambiente-2' fuerza uno concreto
+   let forced: string | null = null;
+   try {
+@@ -78,7 +89,7 @@ export function drawCourtView(scene: Phaser.Scene): boolean {
+   const rt = scene.add.renderTexture(BX, BY, VIEW.W + 2000, Math.ceil(H) + 40).setOrigin(0).setDepth(-10);
+   rt.draw(g, -BX, -BY);
+   g.destroy();
+-  return true;
++  return { wallAtY: WALL_AT_Y, padPx: (amb.wallBottomY - amb.wallTopY) * s, fencePx: (amb.wallBottomY - amb.fenceTopY) * s };
+ }
+ 
+ // ================================================================ utilidades de dibujo

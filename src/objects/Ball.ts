@@ -139,6 +139,8 @@ export class Ball {
   /** estela reforzada tras un golpe potente: 0..1, se apaga sola */
   private boost = 0;
   private boostColor = 0xffffff;
+  /** true = sin estela ni partículas de fuego propias (otro efecto dibuja la pelota, p. ej. INFERNO DRIVE) */
+  quietFx = false;
 
   constructor(private scn: Phaser.Scene) {
     this.shadow = scn.add.ellipse(0, 0, 30, 12, 0x000000, 0.5);
@@ -156,11 +158,17 @@ export class Ball {
     return this.kind;
   }
 
-  /** Cambia el color de la estela según el tipo de golpe. */
-  setKind(k: ShotKind, charged = false) {
+  /**
+   * Cambia el color de la estela según el tipo de golpe. `look`: estilo equipado del jugador (solo en
+   * sus golpes): tiñe la estela de los golpes normales y añade chispas si el estilo las tiene.
+   */
+  setKind(k: ShotKind, charged = false, look?: { trail: number; sparkle: boolean }) {
     this.kind = k;
     this.charged = charged;
+    this.look = look ?? null;
   }
+  private look: { trail: number; sparkle: boolean } | null = null;
+  private sparkTimer = 0;
 
   /** Refuerza la estela (más ancha y de color) tras un golpe potente; decae en menos de un segundo. */
   setImpactTrail(boost: number, color: number) {
@@ -201,9 +209,17 @@ export class Ball {
     this.guide.clear();
     if (z > 12) this.guide.lineStyle(2 * ground.s, 0xffffff, Math.min(0.28, z / 500)).lineBetween(ground.sx, ground.sy, air.sx, sy);
 
+    // efecto propio encima (bola de fuego de INFERNO DRIVE): sin estela ni chispas de fuego
+    if (this.quietFx) {
+      this.history = [];
+      this.trail.clear();
+      return;
+    }
     // estela tipo "viento": cinta cónica del color del golpe
     this.boost = Math.max(0, this.boost - dt * 1.3);
-    const col = this.boost > 0.2 ? this.boostColor : this.power ? TRAIL_COLOR.power : TRAIL_COLOR[this.kind];
+    const styled = this.look && (this.kind === 'normal' || this.kind === 'side') ? this.look.trail : null;
+    const col = this.boost > 0.2 ? this.boostColor : this.power ? TRAIL_COLOR.power : styled ?? TRAIL_COLOR[this.kind];
+    if (this.look?.sparkle && !this.power && this.sprite.visible) this.emitSparks(dt, air.sx, sy, scale, ground.sy);
     this.history.push({ x: air.sx, y: sy, col });
     if (this.history.length > 20) this.history.shift();
     this.trail.clear();
@@ -218,6 +234,18 @@ export class Ball {
       this.trail.fillStyle(b.col, alpha).fillCircle(b.x, b.y, w / 2);
     }
     if (this.fire && this.sprite.visible) this.emitFire(dt, air.sx, sy, scale, ground.sy);
+  }
+
+  /** Chispas del estilo Oro: estrellitas que se quedan atrás en la estela. */
+  private emitSparks(dt: number, x: number, y: number, scale: number, depth: number) {
+    this.sparkTimer -= dt;
+    if (this.sparkTimer > 0) return;
+    this.sparkTimer = 0.05;
+    const st = this.scn.add
+      .star(x + Phaser.Math.FloatBetween(-8, 8) * scale, y + Phaser.Math.FloatBetween(-6, 6) * scale, 4, 2 * scale, 6 * scale, Phaser.Math.RND.pick([0xfff1b8, 0xffd23f, 0xffffff]))
+      .setDepth(depth + 1)
+      .setBlendMode(Phaser.BlendModes.ADD);
+    this.scn.tweens.add({ targets: st, angle: 180, scale: 0.1, alpha: 0, y: st.y + Phaser.Math.FloatBetween(4, 14) * scale, duration: Phaser.Math.Between(260, 420), onComplete: () => st.destroy() });
   }
 
   /** Partículas de fuego (llamas que suben y se apagan). */

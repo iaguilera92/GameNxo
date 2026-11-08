@@ -1,5 +1,14 @@
 import Phaser from 'phaser';
 import { C } from './theme';
+import { JOY, joyResponse } from '../logic/PlayerMotion';
+
+function devFlag(key: string) {
+  try {
+    return localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
 
 /**
  * Joystick virtual flotante estilo Brawl Stars:
@@ -13,6 +22,8 @@ export class Joystick {
   private home = new Phaser.Math.Vector2();
   private readonly radius = 80;
   enabled = true;
+  /** respuesta nueva del joystick (JOY.enabled y sin localStorage 'dev.joyCurve' = '0') */
+  private readonly curve = JOY.enabled && devFlag('dev.joyCurve') !== '0';
 
   constructor(private scene: Phaser.Scene) {
     this.base = scene.add.container(0, 0).setScrollFactor(0).setDepth(5000);
@@ -81,8 +92,11 @@ export class Joystick {
     const ny = len > 0 ? dy / len : 0;
     this.knob.setPosition(this.base.x + nx * cl, this.base.y + ny * cl);
     const mag = cl / this.radius;
-    if (mag < 0.12) this.value.set(0, 0);
-    else this.value.set(nx * mag, ny * mag);
+    // respuesta (src/logic/PlayerMotion.ts): zona muerta reescalada (sin salto al 12 %), curva suave
+    // para los ajustes finos y velocidad máxima desde el 85 %. La dirección no se toca.
+    const out = this.curve ? joyResponse(mag) : mag < 0.12 ? 0 : mag;
+    if (out <= 0) this.value.set(0, 0);
+    else this.value.set(nx * out, ny * out);
   }
 
   private onUp(p: Phaser.Input.Pointer) {

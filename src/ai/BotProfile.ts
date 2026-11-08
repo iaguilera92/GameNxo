@@ -1,4 +1,5 @@
 import { MAX_LEVEL } from '../config';
+import { getSettings } from '../logic/Settings';
 
 /**
  * Perfiles de dificultad del rival (habilidad BASE, fija durante el partido).
@@ -52,6 +53,11 @@ export function profileForMatch(rivalLevel: number): BotProfile {
     forced = localStorage.getItem('dev.botTier');
   } catch {
     /* sin almacenamiento */
+  }
+  // dificultad elegida por el jugador en AJUSTES (AUTO = por el nivel del rival)
+  if (!forced) {
+    const chosen = getSettings().rival;
+    if (chosen !== 'auto') forced = chosen;
   }
   const f = TIERS.find((x) => x.tier === forced);
   return f ? { tier: f.tier, name: f.name, difficulty: f.difficulty, level: p.level } : p;

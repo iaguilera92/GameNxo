@@ -39,4 +39,6 @@
     <!-- Permissions -->
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Vibración breve de Perfect Timing (navigator.vibrate en el WebView). Permiso normal: no se pide al usuario. -->
+    <uses-permission android:name="android.permission.VIBRATE" />
 </manifest>

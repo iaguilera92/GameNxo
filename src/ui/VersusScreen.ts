@@ -89,7 +89,9 @@ export function showVersus(scene: Phaser.Scene, player: VersusSide, rival: Versu
     const obj: Phaser.GameObjects.Image | Character =
       portrait ?? new Character(scene, fromX, feetY, side.look, 'front').setScale(height / 150);
     obj.setDepth(5);
+    // el rival (abajo a la derecha) mira hacia la izquierda, hacia el jugador
     if (!top && obj instanceof Character) obj.facing = -1;
+    if (!top && portrait) portrait.setFlipX(true);
     scene.tweens.add({ targets: obj, x, delay: 140, duration: 520, ease: 'Back.easeOut', easeParams: [1.2] });
     // respiración
     scene.tweens.add({ targets: obj, y: obj.y - 6, delay: 700, duration: 900, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });

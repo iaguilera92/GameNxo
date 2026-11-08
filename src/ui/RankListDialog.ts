@@ -6,7 +6,7 @@ import { RANKS, RANK_UNLOCK_LEVEL, type RankId, isRankUnlocked } from '../domain
 
 /**
  * Diálogo RANGOS: los 6 rangos competitivos en orden (insignia + nombre), con el rango actual
- * marcado. Con nivel < RANK_UNLOCK_LEVEL es informativo ("Se desbloquea en nivel 30").
+ * marcado. Con nivel < RANK_UNLOCK_LEVEL es informativo ("Se desbloquea en nivel 20").
  * Carga las insignias que falten al abrirse (~1,2 MB c/u). Se cierra con CERRAR o tocando fuera.
  */
 export interface RankListOpts {

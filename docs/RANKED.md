@@ -40,7 +40,7 @@ Responsable: Claude. Kiro mantiene el partido (MatchScene): Ranked **no** modifi
   - Cada semana se cobra una sola vez.
   - La hora nunca retrocede (`timeSource`).
 
-## Configuración (`src/domain/rankedConfig.ts`)
+## Configuración (`frontend/src/domain/rankedConfig.ts`)
 
 | Liga | Entrada (x1 / x2) | Premio (x1 / x2) | Objetivo de ascenso | Semanal |
 |---|---|---|---|---|
@@ -55,7 +55,7 @@ Responsable: Claude. Kiro mantiene el partido (MatchScene): Ranked **no** modifi
 - Premios por posición: Top 1 = 5.000 + 50 · Top 10 = 2.000 + 20 · Top 50 = 500 + 5.
 - `validateRankedConfig()` comprueba la coherencia (también en los tests).
 
-## Rivales simulados (`src/domain/rankedBots.ts`)
+## Rivales simulados (`frontend/src/domain/rankedBots.ts`)
 
 - Hasta 100 participantes por liga: `bots = tableSize − jugadores reales` (sin backend hay 1 jugador real).
 - Son deterministas: misma liga, mes y hora dan la misma tabla en cualquier dispositivo o servidor.
@@ -73,7 +73,7 @@ Responsable: Claude. Kiro mantiene el partido (MatchScene): Ranked **no** modifi
 - **Anuncio para duplicar**: **no implementado**, porque no hay proveedor de anuncios. Cuando exista:
   - Acreditar el doble solo con la confirmación del proveedor (idealmente verificada por el servidor).
   - Marcar el giro como duplicado en la misma operación que el pago, para no duplicar dos veces.
-- **Premio diario** (`src/domain/dailyLogin.ts`): racha de 7 días.
+- **Premio diario** (`frontend/src/domain/dailyLogin.ts`): racha de 7 días.
   - Botón pequeño a la derecha del menú, en dorado cuando hay algo que reclamar.
   - **Nunca se abre solo.**
 

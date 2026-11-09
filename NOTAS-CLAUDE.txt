@@ -58,3 +58,19 @@ NOTAS PARA CLAUDE (pendientes detectados por Kiro, sin corregir)
    si se integra ese parche, unificar con NxoActor.lunge().
  - Huérfanos (no se cargan): public/assets/characters/nxo-sprites, nxo-hits, nxo-move, nxo-special. Backup en _tmp/backup-pre-sprites-nxo-*.
  - Detalle y registro de filas: MOVIMIENTOS-PERSONAJES.txt §10.
+
+[08-11-2026] AVISO DE CLAUDE PARA KIRO: REORGANIZACIÓN DEL REPO
+ - El juego se movió a frontend/ (src, public, android, tools, package.json, vite/tsconfig/capacitor). Las rutas internas
+   no cambian (frontend/src/scenes/MatchScene.ts, etc.). Los comandos se ejecutan dentro de frontend/.
+ - Nuevo backend/ (Node + Socket.IO) para el multijugador LAN 1v1: docs/MULTIJUGADOR.md.
+ - MatchScene: modo red opcional (`net`). Con `net` null (modo BOT) todo funciona igual. Los cambios están marcados:
+   sección "partido en red" al final de la clase + guardas `this.net` / `netGate(...)` en pointTo, serviceFault,
+   serveLetCall, tossFault, catchBall, startPoint, checkHits (rama del bot) y el bloque del bot en update.
+   lastHitter es ahora un accessor (get/set) que marca el golpe propio para enviarlo. Score.serverOffset (0 = como siempre).
+ - Respaldo previo: _tmp/MatchScene.pre-net.ts y _tmp/Score.pre-net.ts.
+
+[08-11-2026] CLAUDE: nueva mecánica ZONA (remontada)
+ - Lógica pura: frontend/src/logic/Zone.ts (ZoneTracker, ZONE). Efecto: frontend/src/fx/ZoneFx.ts.
+ - MatchScene: zone.onPoint en pointTo; multiplicadores en maxSp (jugador), ai.speed (bot, temporal en el tick),
+   speed antes de aimShot (playerHit y botHit), inReach (alcance) e inmunidad a la bola de fuego (checkHits/playerHit/
+   fireImpact). zoneStart/zoneRender antes de la sección de red. Respaldo previo: _tmp/MatchScene.pre-zona.ts.

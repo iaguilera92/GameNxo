@@ -1,0 +1,61 @@
+{
+  "source": "pj-nxo-rival-2.png (fila 1-7)",
+  "view": "front",
+  "cell": {
+    "w": 234,
+    "h": 193
+  },
+  "origin": {
+    "x": 0.5,
+    "y": 0.69948
+  },
+  "standHeight": 117,
+  "hold": 2,
+  "serveWait": 2,
+  "smashStart": 2,
+  "holdForehand": 4,
+  "animations": {
+    "forehand": {
+      "file": "forehand.png",
+      "frames": 8,
+      "fps": 15,
+      "loop": false,
+      "impact": 7
+    },
+    "backhand": {
+      "file": "backhand.png",
+      "frames": 8,
+      "fps": 15,
+      "loop": false,
+      "impact": 5
+    },
+    "forehand-power": {
+      "file": "forehand-power.png",
+      "frames": 8,
+      "fps": 15,
+      "loop": false,
+      "impact": 5
+    },
+    "backhand-power": {
+      "file": "backhand-power.png",
+      "frames": 8,
+      "fps": 15,
+      "loop": false,
+      "impact": 5
+    },
+    "serve": {
+      "file": "serve.png",
+      "frames": 8,
+      "fps": 12,
+      "loop": false,
+      "impact": 4
+    },
+    "smash": {
+      "file": "smash.png",
+      "frames": 8,
+      "fps": 14,
+      "loop": false,
+      "impact": 4
+    }
+  }
+}

@@ -1,0 +1,187 @@
+/**
+ * PROTOCOLO Socket.IO de NxoGames (multijugador 1v1). Nombres de eventos y forma de sus datos.
+ *
+ * ESTE ARCHIVO ESTÁ DUPLICADO en frontend/src/net/protocol.ts (cliente y servidor son proyectos
+ * independientes). Si cambias uno, copia el otro: deben ser idénticos. Documentación: docs/MULTIJUGADOR.md
+ *
+ * Modelo de sincronización: "autoridad por posesión".
+ *  - Cada teléfono ejecuta el motor de siempre (MatchScene) con SU jugador abajo y el rival como "bot" sin IA.
+ *  - Al golpear (o sacar), el cliente envía la pelota resultante (HIT). El otro la aplica como un golpe del rival.
+ *  - La pelota en juego tiene UN juez: el cliente que la RECIBE. Él decide punto / falta / let y lo avisa (POINT).
+ *  - El servidor reenvía los mensajes, lleva el marcador OFICIAL con los POINT y declara el final (OVER).
+ * Coordenadas: cada cliente envía las suyas (su jugador abajo); el receptor las espeja (ver frontend/src/net/mirror.ts).
+ */
+
+export const EV = {
+  // ---- cliente -> servidor
+  /** buscar rival (pulsar JUGAR = listo para jugar) */
+  FIND: 'mm:find',
+  /** cancelar la búsqueda */
+  CANCEL: 'mm:cancel',
+  /** la escena del partido ya cargó (cuando están los dos, el servidor manda START) */
+  READY: 'game:ready',
+  /** estado del propio jugador (~20 Hz): se reenvía al rival */
+  STATE: 'game:state',
+  /** golpe / saque propio con la pelota resultante: se reenvía al rival */
+  HIT: 'game:hit',
+  /** acciones visuales y de habilidades (lanzamiento, DASH, carga…): se reenvía al rival */
+  ACTION: 'game:action',
+  /** el juez de la pelota avisa un punto / falta / let: marcador oficial en el servidor + rival */
+  POINT: 'game:point',
+  /** rendición / salir del partido */
+  LEAVE: 'game:leave',
+
+  // ---- servidor -> cliente
+  SEARCHING: 'mm:searching',
+  MATCHED: 'mm:matched',
+  TIMEOUT: 'mm:timeout',
+  CANCELLED: 'mm:cancelled',
+  ERROR: 'mm:error',
+  START: 'game:start',
+  OPPONENT_LEFT: 'game:opponent-left',
+  SCORE: 'game:score',
+  OVER: 'game:over',
+} as const;
+
+/** rol en la sala: host = quien la creó (saca el primer juego), guest = quien se unió */
+export type Role = 'host' | 'guest';
+
+export interface PlayerProfile {
+  name: string;
+  level: number;
+  skin: string;
+}
+
+export interface FindRequest {
+  profile: PlayerProfile;
+}
+
+export interface SearchingMsg {
+  roomId: string;
+  /** ms hasta que el servidor cancele la búsqueda */
+  timeoutMs: number;
+  players: number;
+}
+
+export interface MatchedMsg {
+  roomId: string;
+  role: Role;
+  opponent: PlayerProfile;
+  /** reglas del partido (las mismas que el modo BOT) */
+  gamesToWin: number;
+}
+
+export interface ErrorMsg {
+  code: 'already_searching' | 'already_in_room' | 'invalid' | 'not_in_room';
+  message: string;
+}
+
+/** Pelota (estado físico completo) en coordenadas del emisor. */
+export interface BallWire {
+  x: number;
+  y: number;
+  z: number;
+  vx: number;
+  vy: number;
+  vz: number;
+  /** amortiguación / fricción especiales (dejada muerta); 0 = normales */
+  damp?: number;
+  fric?: number;
+  /** aceleración lateral del saque con efecto (curva en el aire); el receptor la espeja */
+  ay?: number;
+}
+
+/** Estado del propio jugador (coordenadas del emisor). */
+export interface StateMsg {
+  t: number;
+  x: number;
+  y: number;
+  moving: boolean;
+  dirX: number;
+  facing: number;
+  charging: boolean;
+  stunned: boolean;
+}
+
+export type HitKind = 'hit' | 'serve';
+
+export interface HitMsg {
+  seq: number;
+  kind: HitKind;
+  ball: BallWire;
+  /** posición del que golpea en el momento del golpe */
+  x: number;
+  y: number;
+  /** tipo visual de golpe (normal, side, lob, drop) */
+  shotKind: string;
+  /** bola de fuego (SMASH / INFERNO): al recibirla se aplica el impacto de siempre */
+  power: boolean;
+  inferno: boolean;
+  charged: boolean;
+  /** animación: remate por arriba / volea (valores REALES del golpe del emisor) */
+  overhead: boolean;
+  volley: boolean;
+  /** saque con efecto (violeta); en saques normales no viene */
+  serveSpin?: boolean;
+  /** estirada: lado hacia el que se tira, en las coordenadas del EMISOR (+1 / -1); el receptor lo espeja */
+  lunge?: number;
+  /** devolución del impacto de una bola de fuego: el emisor está aturdido, el receptor NO anima un golpe */
+  impact?: boolean;
+}
+
+/**
+ * Acciones visuales y de habilidades (no cambian la pelota ni el marcador):
+ *  toss / catch                 lanzamiento del saque / lo atrapa sin golpear
+ *  sprint-start / sprint-end    DASH del emisor (data: dirX)
+ *  stunned                      el emisor quedó aturdido por una bola de fuego (data: ms)
+ *  emote                        carita del chat (data: kind = happy | cool | wow)
+ *  smash-armed / smash-disarmed el emisor arma / consume su SMASH (aura en el rival)
+ *  smash-cine                   empieza la cinemática del SMASH del emisor (data: x, y, overhead, ms)
+ *  inferno-cine                 empieza la cinemática del INFERNO del emisor (data: x, y, tx, ty, ms)
+ */
+export type ActionKind =
+  | 'toss'
+  | 'catch'
+  | 'sprint-start'
+  | 'sprint-end'
+  | 'stunned'
+  | 'emote'
+  | 'smash-armed'
+  | 'smash-disarmed'
+  | 'smash-cine'
+  | 'inferno-cine';
+
+export interface ActionMsg {
+  kind: ActionKind;
+  /** datos según la acción (coordenadas en las del EMISOR; el receptor las espeja) */
+  data?: Record<string, number | string | boolean>;
+}
+
+export type PointKind = 'point' | 'fault' | 'let';
+
+export interface PointMsg {
+  seq: number;
+  kind: PointKind;
+  /** a quién va el punto, desde el punto de vista del EMISOR */
+  to: 'me' | 'opponent';
+  reason: string;
+  color: string;
+  /** marcador del emisor tras aplicar el punto (para validar) */
+  games?: [number, number];
+}
+
+export interface ScoreMsg {
+  /** marcador oficial (por rol) */
+  points: { host: number; guest: number };
+  games: { host: number; guest: number };
+}
+
+export interface OverMsg {
+  winner: Role;
+  reason: 'score' | 'abandon' | 'disconnect';
+  games: { host: number; guest: number };
+}
+
+export interface OpponentLeftMsg {
+  reason: 'abandon' | 'disconnect';
+}

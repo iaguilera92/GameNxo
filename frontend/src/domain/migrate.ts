@@ -25,11 +25,11 @@ export function migratePlayer(raw: unknown): PlayerState {
   if (!raw || typeof raw !== 'object') return s;
   const r = raw as Raw;
   // v3 = v2 + ruletas diarias · v4 = v3 + pase de batalla: mismo formato para el resto de campos
-  // v5 = v4 + Ranked + premio diario
-  const isV2 = r.version === 2 || r.version === 3 || r.version === 4 || r.version === 5;
-  if (r.version === 3 || r.version === 4 || r.version === 5) s.wheel = sanitizeWheel(r.wheel);
-  s.bp = sanitizeBattlePass(r.version === 4 || r.version === 5 ? r.bp : undefined);
-  if (r.version === 5) {
+  // v5 = v4 + Ranked + premio diario · v6 = giros bonus persistentes del pase
+  const isV2 = r.version === 2 || r.version === 3 || r.version === 4 || r.version === 5 || r.version === 6;
+  if (r.version === 3 || r.version === 4 || r.version === 5 || r.version === 6) s.wheel = sanitizeWheel(r.wheel);
+  s.bp = sanitizeBattlePass(r.version === 4 || r.version === 5 || r.version === 6 ? r.bp : undefined);
+  if (r.version === 5 || r.version === 6) {
     s.ranked = sanitizeRanked(r.ranked);
     s.login = sanitizeLogin(r.login);
   }

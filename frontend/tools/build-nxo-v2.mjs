@@ -168,10 +168,10 @@ for (const sheet of [1, 2, 3, 4]) {
     for (let r = 1; r < N; r++) {
       const b = Math.round(r * chh);
       let best = b, bv = 1e9;
-      for (let y = b - 8; y <= b + 16; y++) {
+      for (let y = b - 40; y <= b + 16; y++) { // ventana amplia hacia arriba: en los saltos la cabeza cruza el limite nominal de la fila
         let n = 0;
         for (let x = Math.round(col * cw); x < Math.round((col + 1) * cw); x++) if (px[(y * w + x) * 4 + 3] > 24) n++;
-        if (n < bv) { bv = n; best = y; }
+        if (n < bv || (n === bv && Math.abs(y - b) < Math.abs(best - b))) { bv = n; best = y; } // empate: el mas cercano al limite nominal
       }
       cutAt[col][r] = best;
     }
@@ -375,11 +375,13 @@ const write = (name, obj) => writeFileSync(join(ROOT, 'src', 'characters', `${na
 // Hoja 2 (8 frames): 1 guardia, 2 preparaciÃ³n, 3 carga, 4 inicio, 5 aceleraciÃ³n, 6 IMPACTO (derecha/revÃ©s),
 // 7 seguimiento, 8 recuperaciÃ³n. Saques y remates: 3 trofeo/carga, 5 IMPACTO arriba, 6-7 seguimiento.
 const K = {
-  hold: 2, // guardia con la raqueta atrÃ¡s (forehand/backhand): frame 3 "carga"
+  hold: FRONT ? 2 : 1, // pose de espera y arranque del golpe NORMAL del reves (frame 2 en la hoja nueva de espaldas; frame 3 en el rival)
+  powerHoldFh: FRONT ? 2 : 3, // derecha CARGADA (fila 3, hoja nueva de espaldas): pose de carga = frame 4
+  powerHold: FRONT ? 2 : 3, // reves CARGADO (fila 4, hoja nueva de espaldas): pose de carga = frame 4 (el rival conserva la suya)
   serveWait: 2, // saque: postura de trofeo (raqueta atrÃ¡s) esperando la pelota
   smashStart: 2,
-  fhHold: 4, // derecha: pose de carga = frame 5
-  fhImpact: 7, // derecha: contacto en el frame 8
+  fhHold: FRONT ? 4 : 1, // derecha: pose de espera y arranque del golpe automatico = frame 2 (hoja nueva de espaldas) / frame 5 (rival). Se vera todo el swing; la carga tendra su propia fila (fila 3)
+  fhImpact: FRONT ? 7 : 6, // derecha: contacto en el frame 8 (rival) / frame 7 (hoja nueva de espaldas, fila 1)
   hitImpact: 5, // derecha / revÃ©s (normal y potente): el contacto se ve en el frame 6
   serveImpact: 4, // saque, saque con efecto, remate y smash potenciado: contacto en el frame 5
   smashImpact: 4,
@@ -421,6 +423,8 @@ write(PFX + 'hits', {
   serveWait: K.serveWait,
   smashStart: K.smashStart,
   holdForehand: K.fhHold,
+  holdPower: K.powerHold,
+  holdPowerForehand: K.powerHoldFh,
   animations: {
     forehand: hit('forehand', 15, K.fhImpact),
     backhand: hit('backhand', 15, K.hitImpact),

@@ -16,15 +16,22 @@ export function queueGazeArt(load: Phaser.Loader.LoaderPlugin) {
 }
 
 /** Muestra la franja de la mirada. `holdMs` = cuánto tiempo queda visible (sale antes del desplazamiento). */
-export function showInfernoGaze(scene: Phaser.Scene, holdMs = 700) {
+/** Altura de la franja respecto a la imagen completa (se recorta alrededor de los ojos; el ancho sigue siendo toda la pantalla). */
+const BAND = 0.5;
+/** Muestra la franja. `centerY` = y de pantalla donde queda centrada (por defecto, la red; ver MatchScene.gazeY). */
+export function showInfernoGaze(scene: Phaser.Scene, holdMs = 700, centerY?: number) {
   if (!scene.textures.exists(GAZE_ART.key)) return;
   // una sola a la vez: pulsar varias veces no la duplica
   if (current?.active) return;
   const W = scene.scale.width;
   const H = scene.scale.height;
   const src = scene.textures.get(GAZE_ART.key).getSourceImage() as HTMLImageElement;
-  const bh = Math.round(W * (src.height / src.width)); // ocupa TODO el ancho
-  const cy = Math.round(H * 0.34);
+  const full = Math.round(W * (src.height / src.width)); // alto de la imagen a todo el ancho (sin deformarla)
+  const bh = Math.round(full * BAND); // alto de la franja visible
+  const cy = Math.round(centerY ?? H * 0.45);
+  /** la imagen se desplaza para que los ojos queden en el centro de la franja */
+  const EYE_FY = 0.64;
+  const iy = Math.round(-(EYE_FY - 0.5) * full);
   const root = scene.add.container(0, cy).setScrollFactor(0).setDepth(7600);
   current = root;
 
@@ -33,7 +40,7 @@ export function showInfernoGaze(scene: Phaser.Scene, holdMs = 700) {
   frame.fillStyle(0x000000, 0.92).fillRect(0, -bh / 2 - 14, W, bh + 28);
   frame.fillStyle(0xff5a1a, 1).fillRect(0, -bh / 2 - 14, W, 4).fillRect(0, bh / 2 + 10, W, 4);
   frame.fillStyle(0xffd27a, 1).fillRect(0, -bh / 2 - 10, W, 2).fillRect(0, bh / 2 + 8, W, 2);
-  const img = scene.add.image(W / 2, 0, GAZE_ART.key).setDisplaySize(W, bh);
+  const img = scene.add.image(W / 2, iy, GAZE_ART.key).setDisplaySize(W, full);
   // máscara: la imagen solo se ve dentro de la franja
   const maskG = scene.make.graphics({}, false);
   maskG.fillRect(0, cy - bh / 2, W, bh);
@@ -81,7 +88,7 @@ export function showInfernoGaze(scene: Phaser.Scene, holdMs = 700) {
     const ix = img.x - W / 2;
     for (const e of EYES) {
       const ex = ix + e.fx * W;
-      const ey = (e.fy - 0.5) * bh;
+      const ey = iy + (e.fy - 0.5) * full;
       // estela hacia la izquierda (como si la mirada dejara un rastro al moverse), con quiebres eléctricos
       const pts: { x: number; y: number }[] = [{ x: ex, y: ey }];
       for (let i = 1; i <= 9; i++) pts.push({ x: ex - i * 34, y: ey - i * 2 + Phaser.Math.Between(-7, 7) });
@@ -96,38 +103,49 @@ export function showInfernoGaze(scene: Phaser.Scene, holdMs = 700) {
     }
   };
   draw();
-  const anim = scene.time.addEvent({ delay: 33, loop: true, callback: draw });
   bolt.setMask(maskG.createGeometryMask());
 
-  // entrada desde la izquierda (muy rápida), avance leve y salida hacia la derecha
+  // TIEMPO REAL (no el del partido): durante la cinemática la escena pausa tweens y temporizadores, y la franja se
+  // quedaba "pegada". Aquí todo se anima con performance.now + requestAnimationFrame.
   const IN = 120;
-  root.setX(-W);
-  scene.tweens.add({ targets: root, x: 0, duration: IN, ease: 'Cubic.easeOut' });
-  scene.tweens.add({ targets: img, x: W / 2 + 22, duration: holdMs, ease: 'Linear' });
-  scene.tweens.add({ targets: lines, x: -140, duration: holdMs, ease: 'Linear' });
-  // destello en los ojos al llegar
+  const OUT = 140;
+  const hold = Math.max(60, holdMs - IN - OUT);
   const flash = scene.add.rectangle(W / 2, 0, W, bh, 0xffffff, 0.55).setBlendMode(Phaser.BlendModes.ADD);
   root.add(flash);
   flash.setMask(maskG.createGeometryMask());
-  scene.tweens.add({ targets: flash, alpha: 0, duration: 260, delay: IN - 20 });
-  scene.time.delayedCall(IN + holdMs, () => {
-    scene.tweens.add({
-      targets: root,
-      x: W,
-      alpha: 0.2,
-      duration: 140,
-      ease: 'Cubic.easeIn',
-      onComplete: () => {
-        anim.remove();
-        root.destroy();
-        maskG.destroy();
-      },
-    });
-  });
-  // la máscara sigue a la franja mientras entra / sale
-  const follow = () => {
-    if (!root.active) return scene.events.off(Phaser.Scenes.Events.UPDATE, follow);
-    maskG.x = root.x;
+  const easeOut = (u: number) => 1 - Math.pow(1 - u, 3);
+  const easeIn = (u: number) => u * u * u;
+  const t0 = performance.now();
+  let lastDraw = 0;
+  let raf = 0;
+  const end = () => {
+    cancelAnimationFrame(raf);
+    scene.events.off(Phaser.Scenes.Events.SHUTDOWN, end);
+    if (current === root) current = null;
+    if (root.active) root.destroy();
+    maskG.destroy();
   };
-  scene.events.on(Phaser.Scenes.Events.UPDATE, follow);
+  const tick = (now: number) => {
+    if (!root.active) return end();
+    const e = now - t0;
+    if (e < IN) root.setX(-W * (1 - easeOut(e / IN)));
+    else if (e < IN + hold) root.setX(0);
+    else {
+      const u = Math.min(1, (e - IN - hold) / OUT);
+      root.setX(W * easeIn(u)).setAlpha(1 - 0.8 * u);
+      if (u >= 1) return end();
+    }
+    const k = Math.min(1, Math.max(0, (e - IN) / hold));
+    img.x = W / 2 + 22 * k;
+    lines.x = -140 * k;
+    flash.setAlpha(0.55 * (1 - Math.min(1, Math.max(0, (e - (IN - 20)) / 260))));
+    maskG.x = root.x;
+    if (now - lastDraw >= 33) {
+      lastDraw = now;
+      draw();
+    }
+    raf = requestAnimationFrame(tick);
+  };
+  scene.events.once(Phaser.Scenes.Events.SHUTDOWN, end);
+  raf = requestAnimationFrame(tick);
 }

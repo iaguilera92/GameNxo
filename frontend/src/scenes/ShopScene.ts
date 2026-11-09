@@ -19,7 +19,7 @@ import { styleLook } from '../ui/styleLook';
  * precio, nivel mínimo, disponibilidad y "ya lo tienes" los valida la operación, no la pantalla.
  *   ESTILOS      se compran y se equipan aquí (también en PERSONAJE)
  *   NUEVOS PODERES  Hielo, Rayo y Viento como PRÓXIMAMENTE (aún no existen en el partido)
- *   CON DINERO      bolsa de monedas · PASE PREMIUM solo con dinero real ($4.990, pagos pendientes)
+ *   CON DINERO      bolsa de monedas · PASE PREMIUM solo con dinero real ($3.990 CLP, pagos pendientes)
  */
 const NAVY = 0x0b1733;
 const NEON = 0x3a7bff;
@@ -47,6 +47,7 @@ export class ShopScene extends Phaser.Scene {
 
   preload() {
     if (!this.textures.exists('menu-bg')) this.load.image('menu-bg', 'assets/menu-bg.png');
+    if (!this.textures.exists('shop-title')) this.load.image('shop-title', 'assets/tienda-titulo.png');
   }
 
   create() {
@@ -62,8 +63,9 @@ export class ShopScene extends Phaser.Scene {
       this.cameras.main.fadeOut(180, 0, 0, 0);
       this.cameras.main.once('camerafadeoutcomplete', () => this.scene.start('Menu'));
     });
-    const title = this.add.text(W / 2, headY, 'TIENDA', { fontFamily: FONT, fontSize: '46px', color: '#ffffff' }).setOrigin(0.5).setLetterSpacing(3);
-    title.setShadow(0, 4, '#0a1638', 0, true, true);
+    const titleW = Math.min(250, Math.max(150, W - 250));
+    const titleX = W / 2 - Math.min(35, W * 0.08);
+    this.add.image(titleX, headY - 3, 'shop-title').setDisplaySize(titleW, titleW / 3);
     this.coinPill(W - 26, headY);
 
     this.body = this.add.container(0, 0);
@@ -134,7 +136,7 @@ export class ShopScene extends Phaser.Scene {
     this.realOffer(30, y, W - 60, oh, premium);
   }
 
-  /** Pase Premium: se paga con dinero real ($4.990). Sin pagos integrados todavía: muestra el precio y avisa. */
+  /** Pase Premium: se paga con dinero real ($3.990 CLP). Sin pagos integrados todavía: muestra el precio y avisa. */
   private realOffer(x: number, y: number, w: number, h: number, active: boolean) {
     const c = this.add.container(0, 0);
     this.body.add(c);

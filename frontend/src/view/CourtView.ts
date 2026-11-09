@@ -34,8 +34,8 @@ export interface Ambiente {
 
 /** Ambientes disponibles. Para añadir uno: imagen 1024x1536 en public/ + una entrada aquí. */
 export const AMBIENTES: Ambiente[] = [
-  { key: 'ambiente-1', file: 'ambiente-1.png', w: 1024, h: 1536, wallBottomY: 370, wallTopY: 308, fenceTopY: 240, foreground: 0x061447, surface: 'hard' },
-  { key: 'ambiente-2', file: 'ambiente-2.png', w: 1024, h: 1536, wallBottomY: 372, wallTopY: 285, fenceTopY: 210, foreground: 0xa83c14, surface: 'clay' },
+  { key: 'ambiente-1', file: 'ambiente-1.png', w: 1536, h: 1024, wallBottomY: 318, wallTopY: 265, fenceTopY: 205, foreground: 0x061447, surface: 'hard' },
+  { key: 'ambiente-2', file: 'ambiente-2.png', w: 1536, h: 1024, wallBottomY: 345, wallTopY: 268, fenceTopY: 196, foreground: 0xa83c14, surface: 'clay' },
 ];
 
 /** y en pantalla donde debe quedar el muro del fondo (un poco por detrás de la cancha) */
@@ -54,6 +54,8 @@ export interface DrawnWall {
   wallAtY: number;
   padPx: number;
   fencePx: number;
+  /** ambiente elegido (para elegir la música del partido) */
+  key: string;
 }
 
 /** Dibuja ambiente + cancha. Devuelve la pared dibujada, o null si falta la imagen (la escena dibuja la suya). */
@@ -89,7 +91,7 @@ export function drawCourtView(scene: Phaser.Scene): DrawnWall | null {
   const rt = scene.add.renderTexture(BX, BY, VIEW.W + 2000, Math.ceil(H) + 40).setOrigin(0).setDepth(-10);
   rt.draw(g, -BX, -BY);
   g.destroy();
-  return { wallAtY: WALL_AT_Y, padPx: (amb.wallBottomY - amb.wallTopY) * s, fencePx: (amb.wallBottomY - amb.fenceTopY) * s };
+  return { wallAtY: WALL_AT_Y, padPx: (amb.wallBottomY - amb.wallTopY) * s, fencePx: (amb.wallBottomY - amb.fenceTopY) * s, key: amb.key };
 }
 
 // ================================================================ utilidades de dibujo

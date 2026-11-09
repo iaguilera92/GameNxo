@@ -23,7 +23,7 @@ const sheetDir = (id: SheetId) => PACKS[id]?.dir ?? `${id}-sprites`;
 type ExtraAnim = keyof typeof nxoExtra.animations;
 const EXTRA = nxoExtra as { cell: { w: number; h: number }; origin: { x: number; y: number }; standHeight: number; animations: Record<ExtraAnim, AnimInfo> };
 const EXTRA_ANIMS = Object.keys(EXTRA.animations) as ExtraAnim[];
-const extraKey = (a: ExtraAnim, pk = 'nxo') => `-x-${a}`;
+const extraKey = (a: ExtraAnim, pk = 'nxo') => `${pk}-x-${a}`;
 
 /** Raqueta suelta (sale volando al recibir el INFERNO): imagen generada por cÃ³digo. */
 const LOOSE_RACKET = 'nxo-loose-racket';
@@ -387,10 +387,16 @@ export class NxoActor {
   private get geo() {
     return this.hits ? this.P.hits : this.cfg;
   }
-  /** frame de la pose de carga: la derecha puede tener el suyo (`holdForehand` en nxo-hits.json) */
-  private holdOf(side: 'forehand' | 'backhand'): number {
-    const fh = this.hits ? (this.P.hits as { holdForehand?: number }).holdForehand : undefined;
-    return side === 'forehand' && fh !== undefined ? fh : this.geo.hold;
+  /**
+   * Frame de la pose de espera: normal (la derecha puede tener el suyo: `holdForehand`) o de CARGA (`holdPower`,
+   * filas 3 y 4 = forehand-power / backhand-power). Ver nxo-hits.json.
+   */
+  private holdOf(side: 'forehand' | 'backhand', power = false): number {
+    const h = this.hits ? (this.P.hits as { holdForehand?: number; holdPower?: number; holdPowerForehand?: number }) : undefined;
+    if (power && side === 'forehand' && h?.holdPowerForehand !== undefined) return h.holdPowerForehand;
+    if (power && h?.holdPower !== undefined) return h.holdPower;
+    if (!power && side === 'forehand' && h?.holdForehand !== undefined) return h.holdForehand;
+    return this.geo.hold;
   }
   /** ancla y alto de pie de la hoja de un clip (las hojas tienen celdas y escalas distintas) */
   private geoOf(key: string): { origin: { x: number; y: number }; standHeight: number } {
@@ -568,6 +574,7 @@ export class NxoActor {
   }
 
   setCharging(on: boolean) {
+    const changed = this.charging !== on;
     this.charging = on;
     if (on && this.state === 'turn') this.turnDone = true; // cargar corta el giro: guardia al momento
     // durante el sprint del DASH el jugador no puede cargar: solo INFERNO DRIVE pide la guardia aquÃ­ â†’ manda INFERNO
@@ -576,6 +583,7 @@ export class NxoActor {
       this.state = 'idle';
     }
     this.refresh();
+    if (changed && this.state === 'hold') this.enterHold(); // ya estaba en guardia: pasa de la pose de espera a la de carga (o al reves)
   }
 
   /** La pelota viene hacia el jugador y estÃ¡ cerca: ponerse en guardia con la raqueta atrÃ¡s. */
@@ -604,8 +612,10 @@ export class NxoActor {
     if (this.state === 'swing' && !this.swingInterruptible) return 0;
     const wasHold = this.state === 'hold' || this.scene.time.now - this.lastHoldAt < 150;
     const side = this.facing > 0 ? 'forehand' : 'backhand';
-    // golpe potente (cargado / SMASH sin remate): de derecha usa la fila 1 (forehand), de revÃ©s la fila 4 (backhand-power)
-    const anim: HitAnim = overhead ? 'smash' : power ? (side === 'forehand' ? 'forehand' : 'backhand-power') : side;
+    // normal: derecha = hoja 2 fila 1 (forehand), reves = fila 2 (backhand). Cargado: fila 3 (forehand-power) / fila 4 (backhand-power),
+    // cada una con su propia pose de carga (holdPower)
+    const anim: HitAnim = overhead ? 'smash' : power ? (side === 'forehand' ? 'forehand-power' : 'backhand-power') : side;
+    const holdFrame = this.holdOf(side, power && !overhead);
     // ataque especial SMASH: remate con salto (hoja propia) si existe para este personaje
     // INFERNO DRIVE: viene de su pose de espera (infernoHold) â†’ clip propio, solo para este golpe
     const inferno = this.state === 'inferno' && infernoReady(this.scene, this.P.key);
@@ -622,7 +632,7 @@ export class NxoActor {
           : this.clip(anim);
     const geo = this.geo;
     // desde la preparaciÃ³n se continÃºa justo despuÃ©s; sin ella se arranca EN la preparaciÃ³n (se ve la raqueta atrÃ¡s)
-    const start = inferno ? this.P.inf.strikeFrom : useSpecial ? this.P.special.start : useVolley ? 1 : overhead ? geo.smashStart : wasHold ? this.holdOf(side) + 1 : this.holdOf(side);
+    const start = inferno ? this.P.inf.strikeFrom : useSpecial ? this.P.special.start : useVolley ? 1 : overhead ? geo.smashStart : wasHold ? holdFrame + 1 : holdFrame;
     const impact = inferno ? this.P.inf.impact : Math.max(start, info.impact ?? start + 2);
     this.stopShake();
     this.stopLean();
@@ -634,7 +644,9 @@ export class NxoActor {
     this.swingOverhead = overhead;
     this.swingHitDone = false;
     this.swingInterruptible = false;
-    const accel = power ? SWING.accelPower : SWING.accel;
+    // la velocidad sube lo justo para que el contacto llegue dentro de maxImpactMs aunque el golpe arranque lejos del impacto
+    const need = (impact - start) / (info.fps * (SWING.maxImpactMs / 1000));
+    const accel = Math.max(power ? SWING.accelPower : SWING.accel, need);
     this.sprite.anims.timeScale = accel;
     this.playClip(key, start);
     return Math.min(SWING.maxImpactMs, ((impact - start) / (info.fps * accel)) * 1000);
@@ -768,6 +780,18 @@ export class NxoActor {
   pointEnd(won: boolean) {
     if (!this.v2 || this.state === 'victory' || this.state === 'stun') return;
     this.emote(won ? 'point-won' : 'point-lost');
+  }
+
+  /** Texturas + último frame de las poses de victoria / derrota (para dibujarlas fuera del partido). */
+  endPoses(): { victory: { key: string; frame: number }; defeat: { key: string; frame: number } } | null {
+    if (!this.v2) return null;
+    const last = (k: string) => {
+      const a = this.scene.anims.get(k);
+      return a && this.scene.textures.exists(k) ? { key: k, frame: a.frames.length - 1 } : null;
+    };
+    const victory = last(this.k('victory'));
+    const defeat = last(this.xk('defeat'));
+    return victory && defeat ? { victory, defeat } : null;
   }
 
   /** Derrota (partido perdido): queda en la Ãºltima pose. */
@@ -933,9 +957,11 @@ export class NxoActor {
     this.state = 'hold';
     this.sprite.setFlipX(false);
     this.sprite.anims.stop();
-    const holdKey = this.clip(this.facing > 0 ? 'forehand' : 'backhand').key;
+    const side = this.facing > 0 ? 'forehand' : 'backhand';
+    // cargando: pose de carga de la fila de golpe cargado; con la pelota cerca (sin cargar): pose de espera del golpe normal
+    const holdKey = this.clip(this.charging ? (side === 'forehand' ? 'forehand-power' : 'backhand-power') : side).key;
     this.fitTo(holdKey);
-    this.sprite.setTexture(holdKey, this.holdOf(this.facing > 0 ? 'forehand' : 'backhand'));
+    this.sprite.setTexture(holdKey, this.holdOf(side, this.charging));
     if (this.charging) {
       // carga: anticipaciÃ³n marcada (cuerpo echado hacia atrÃ¡s y algo agachado) + temblor
       if (!this.lean) {

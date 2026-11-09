@@ -56,7 +56,7 @@ const TONGUE = 'fx-inferno-tongue';
  * inferno-1.png con cada frame recentrado en su bola (el centro de la celda = centro de la pelota) y
  * reducidos para móvil. Si la imagen falta se usa la bola dibujada por código (nunca las dos).
  */
-export const FIREBALL_ART = { key: 'inferno-ball', file: 'assets/inferno-ball.png', cell: 192, frames: 8, fps: 14, anim: 'inferno-ball-spin', fill: 0.92 };
+export const FIREBALL_ART = { key: 'inferno-ball', file: 'assets/inferno-ball.png', cell: 192, frames: 9, fps: 14, anim: 'inferno-ball-spin', fill: 0.6 }; // 9 frames (hoja de 5 columnas, tools/build-inferno-ball.mjs); fill = parte de la celda que ocupa el cuerpo de la bola
 
 export function queueInfernoArt(load: Phaser.Loader.LoaderPlugin) {
   if (!load.scene.textures.exists(FIREBALL_ART.key)) load.spritesheet(FIREBALL_ART.key, FIREBALL_ART.file, { frameWidth: FIREBALL_ART.cell, frameHeight: FIREBALL_ART.cell });
@@ -182,6 +182,26 @@ export class GhostTrail {
 /** la esfera de fuego mide esto × la pelota (radio de la pelota en pantalla = 12 × escala) */
 export const FIREBALL_SCALE = 3;
 const TONGUES = 14;
+/** estela de siluetas de la bola de fuego (hoja de sprites), brasas que salen por detras y su ritmo */
+const TRAIL = 6;
+const TRAIL_STEP = 0.042; // s entre siluetas
+const EMBERS = 24;
+const EMBER_RATE = 80; // brasas por segundo
+interface Ember {
+  o: Phaser.GameObjects.Image;
+  life: number;
+  max: number;
+  vx: number;
+  vy: number;
+  s: number;
+}
+interface Hist {
+  t: number;
+  x: number;
+  y: number;
+  a: number;
+  size: number;
+}
 const TONGUE_COLS = [0xff2a0a, 0xff6a12, 0xffa21a, 0xffd23a];
 
 /**
@@ -196,6 +216,15 @@ export class InfernoFire {
   private tongues: Phaser.GameObjects.Image[] = [];
   /** bola de fuego animada (hoja de sprites); si existe sustituye a la dibujada por código */
   private art?: Phaser.GameObjects.Sprite;
+  /** efectos programados de la bola de fuego (solo con la hoja de sprites) */
+  private ang = 0;
+  private angInit = false;
+  private hist: Hist[] = [];
+  private trail: Phaser.GameObjects.Image[] = [];
+  private artHalo?: Phaser.GameObjects.Image;
+  private artCore?: Phaser.GameObjects.Image;
+  private embers: Ember[] = [];
+  private emberAcc = 0;
 
   constructor(scene: Phaser.Scene) {
     if (scene.textures.exists(FIREBALL_ART.key)) {
@@ -210,6 +239,13 @@ export class InfernoFire {
       [1, 0],
     ]);
     ensureTongue(scene, TONGUE);
+    if (this.art) {
+      const add = Phaser.BlendModes.ADD;
+      for (let i = 0; i < TRAIL; i++) this.trail.push(scene.add.image(0, 0, FIREBALL_ART.key, 0).setBlendMode(add).setVisible(false));
+      this.artHalo = scene.add.image(0, 0, GLOW).setTint(0xff4a10).setBlendMode(add).setVisible(false);
+      this.artCore = scene.add.image(0, 0, GLOW).setTint(0xfff1c0).setBlendMode(add).setVisible(false);
+      for (let i = 0; i < EMBERS; i++) this.embers.push({ o: scene.add.image(0, 0, GLOW).setTint(0xffa21a).setBlendMode(add).setVisible(false), life: 0, max: 1, vx: 0, vy: 0, s: 1 });
+    }
     this.body = [
       scene.add.image(0, 0, GLOW).setTint(0xff3a0a).setAlpha(0.55).setBlendMode(Phaser.BlendModes.ADD), // halo
       scene.add.image(0, 0, GLOW).setTint(0xff5a12).setAlpha(0.98), // cuerpo (sólido)
@@ -233,10 +269,7 @@ export class InfernoFire {
     const R = FIREBALL_SCALE * 12 * k;
     const d = ground.sy + 2.5; // por encima de la pelota real
     if (this.art) {
-      // sprite animado centrado en la pelota (misma trayectoria y altura), escala de perspectiva
-      const size = (R * 2) / FIREBALL_ART.fill;
-      if (!this.art.visible) this.art.play(FIREBALL_ART.anim, true);
-      this.art.setPosition(air.sx, air.sy).setDisplaySize(size, size).setDepth(d).setVisible(true);
+      this.updateArt(ball, air, R, d, dt);
       return;
     }
     const pulse = 1 + Math.sin(this.t * 31) * 0.05 + Math.sin(this.t * 17) * 0.04;
@@ -262,10 +295,104 @@ export class InfernoFire {
     core.setPosition(air.sx, air.sy).setDisplaySize(R * (0.95 + 0.08 * Math.sin(this.t * 45)), R * (0.95 + 0.08 * Math.sin(this.t * 45))).setDepth(d + 0.012).setVisible(true);
   }
 
+  /**
+   * Bola de fuego con la hoja de sprites. El dibujo tiene la lengua de fuego ARRIBA: se gira para que la cola vaya
+   * siempre DETRAS (contra el avance en pantalla). Efectos por codigo: halo que late, nucleo caliente, estela de
+   * siluetas (cometa) y brasas que salen por detras.
+   */
+  private updateArt(ball: BallState, air: { sx: number; sy: number }, R: number, d: number, dt: number) {
+    const art = this.art!;
+    // direccion del avance en pantalla (la velocidad de la pelota proyectada un instante despues)
+    const nx = project(ball.x + ball.vx * 0.04, ball.y + ball.vy * 0.04, ball.z + ball.vz * 0.04);
+    const vx = nx.sx - air.sx, vy = nx.sy - air.sy;
+    const sp = Math.hypot(vx, vy);
+    if (sp > 0.05) {
+      const target = Math.atan2(-vx, vy); // la punta del dibujo (arriba) apunta contra el avance
+      if (!this.angInit) {
+        this.ang = target;
+        this.angInit = true;
+      } else {
+        const df = Math.atan2(Math.sin(target - this.ang), Math.cos(target - this.ang));
+        this.ang += df * (1 - Math.exp(-dt * 16));
+      }
+    }
+    const bx = sp > 0.05 ? -vx / sp : 0, by = sp > 0.05 ? -vy / sp : 1; // hacia atras
+    const pulse = 1 + 0.05 * Math.sin(this.t * 26) + 0.03 * Math.sin(this.t * 13);
+    const size = ((R * 2) / FIREBALL_ART.fill) * pulse;
+    const first = !art.visible;
+    if (first) art.play(FIREBALL_ART.anim, true);
+    // halo grande que late
+    this.artHalo!.setPosition(air.sx, air.sy).setDisplaySize(size * 1.9, size * 1.9).setAlpha(0.5 + 0.2 * Math.sin(this.t * 21)).setDepth(d - 0.02).setVisible(true);
+    // estela: siluetas de posiciones anteriores, cada vez mas chicas y tenues
+    const now = performance.now() / 1000;
+    this.hist.push({ t: now, x: air.sx, y: air.sy, a: this.ang, size });
+    while (this.hist.length > 2 && now - this.hist[0].t > TRAIL * TRAIL_STEP + 0.2) this.hist.shift();
+    const frame = art.frame.name;
+    for (let i = 0; i < TRAIL; i++) {
+      const g = this.trail[i];
+      const want = now - (i + 1) * TRAIL_STEP;
+      let h: Hist | undefined;
+      for (let j = this.hist.length - 1; j >= 0; j--) {
+        if (this.hist[j].t <= want) {
+          h = this.hist[j];
+          break;
+        }
+      }
+      if (!h || Math.hypot(h.x - air.sx, h.y - air.sy) < 1.5) {
+        g.setVisible(false);
+        continue;
+      }
+      const f = 1 - (i + 1) / (TRAIL + 1);
+      g.setFrame(frame).setPosition(h.x, h.y).setRotation(h.a).setDisplaySize(h.size * (0.55 + 0.4 * f), h.size * (0.55 + 0.4 * f)).setAlpha(0.5 * f).setTint(i < 2 ? 0xffb347 : 0xff5a1a).setDepth(d - 0.01).setVisible(true);
+    }
+    // la bola
+    art.setPosition(air.sx, air.sy).setRotation(this.ang).setDisplaySize(size, size).setDepth(d).setVisible(true);
+    // nucleo caliente encima (parpadea)
+    this.artCore!.setPosition(air.sx, air.sy).setDisplaySize(size * 0.42, size * 0.42).setAlpha(0.55 + 0.3 * Math.sin(this.t * 38)).setDepth(d + 0.01).setVisible(true);
+    // brasas que salen por detras
+    this.emberAcc += dt * EMBER_RATE;
+    while (this.emberAcc >= 1) {
+      this.emberAcc -= 1;
+      const e = this.embers.find((q) => q.life <= 0);
+      if (!e) break;
+      const side = (Math.random() - 0.5) * R * 1.1;
+      const px = air.sx + bx * R * (0.3 + Math.random() * 0.5) - by * side;
+      const py = air.sy + by * R * (0.3 + Math.random() * 0.5) + bx * side;
+      const spd = R * (2.2 + Math.random() * 3.2);
+      e.max = e.life = 0.3 + Math.random() * 0.3;
+      e.vx = bx * spd + (Math.random() - 0.5) * R * 1.2;
+      e.vy = by * spd + (Math.random() - 0.5) * R * 1.2 - R * 0.8; // el calor las sube un poco
+      e.s = R * (0.14 + Math.random() * 0.22);
+      e.o.setPosition(px, py).setTint(Math.random() < 0.5 ? 0xffd23a : 0xff6a12).setVisible(true);
+    }
+    for (const e of this.embers) {
+      if (e.life <= 0) continue;
+      e.life -= dt;
+      if (e.life <= 0) {
+        e.o.setVisible(false);
+        continue;
+      }
+      const k = e.life / e.max;
+      e.o.setPosition(e.o.x + e.vx * dt, e.o.y + e.vy * dt).setDisplaySize(e.s * (0.4 + k), e.s * (0.4 + k)).setAlpha(0.95 * k).setDepth(d + 0.005);
+    }
+  }
+
   private hide() {
     this.body.forEach((o) => o.setVisible(false));
     this.tongues.forEach((o) => o.setVisible(false));
-    if (this.art?.visible) this.art.stop().setVisible(false);
+    if (this.art?.visible) {
+      this.art.stop().setVisible(false);
+      this.trail.forEach((o) => o.setVisible(false));
+      this.artHalo?.setVisible(false);
+      this.artCore?.setVisible(false);
+      this.embers.forEach((e) => {
+        e.life = 0;
+        e.o.setVisible(false);
+      });
+      this.hist.length = 0;
+      this.angInit = false;
+      this.emberAcc = 0;
+    }
   }
 
   clear() {
@@ -340,9 +467,18 @@ function tone(ctx: AudioContext, f0: number, f1: number, at: number, dur: number
   o.stop(at + dur + 0.02);
 }
 
+let chargeSnd: Phaser.Sound.BaseSound | null = null;
+
 /** Carga de energía (1 s ascendente), desplazamiento (silbido) e impacto (golpe grave). */
 export const infernoSound = {
   charge(scene: Phaser.Scene) {
+    // mp3 cargando (se corta al golpear); si falta, el zumbido sintetizado de siempre
+    if (scene.cache.audio.exists('cargando')) {
+      chargeSnd?.destroy();
+      chargeSnd = scene.sound.add('cargando', { volume: 0.8 });
+      chargeSnd.play();
+      return;
+    }
     const c = audio(scene);
     if (!c) return;
     tone(c, 90, 520, c.currentTime, 1.0, 'sawtooth', 0.05);
@@ -354,6 +490,14 @@ export const infernoSound = {
     tone(c, 1400, 300, c.currentTime, 0.28, 'sawtooth', 0.04);
   },
   impact(scene: Phaser.Scene) {
+    chargeSnd?.stop();
+    chargeSnd?.destroy();
+    chargeSnd = null;
+    // mp3 del golpe INFERNO (cargado en MatchScene.preload); si falta, el golpe sintetizado de siempre
+    if (scene.cache.audio.exists('inferno-hit')) {
+      scene.sound.play('inferno-hit', { volume: 1 });
+      return;
+    }
     const c = audio(scene);
     if (!c) return;
     tone(c, 160, 40, c.currentTime, 0.45, 'square', 0.12);

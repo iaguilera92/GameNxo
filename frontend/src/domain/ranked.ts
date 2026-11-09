@@ -19,7 +19,7 @@ import { cycleIdAt, msToNextReset } from './dailyWheel';
 import { type PlayerState, clonePlayer } from './player';
 import { RANKED, demotionCap, league, matchStakes, nextLeague, positionPrize } from './rankedConfig';
 import { type BoardEntry, type BotClock, buildBoard, prizePosition } from './rankedBots';
-import { type RankedOutcome, type WeeklyReward, newStats } from './rankedState';
+import { type RankedMatchHistory, type RankedOutcome, type WeeklyReward, newStats } from './rankedState';
 import type { RankId } from './ranks';
 
 export const ME = 'me';
@@ -225,6 +225,8 @@ export function settleRanked(s: PlayerState, matchId: string, outcome: RankedOut
       st.streak = win ? st.streak + 1 : 0;
       st.bestStreak = Math.max(st.bestStreak, st.streak);
     }
+    r.history.unshift({ outcome: win ? 'win' : 'loss', delta: prize - p.entry, league: p.league, playedAt: now });
+    r.history = r.history.slice(0, 20);
   } else {
     r.season.streak = 0;
     r.total.streak = 0;
@@ -298,6 +300,7 @@ export interface RankedView {
   season: PlayerState['ranked']['season'];
   total: PlayerState['ranked']['total'];
   stakes: { bet: number; entry: number; prize: number; affordable: boolean }[];
+  history: RankedMatchHistory[];
 }
 
 export function rankedView(s0: PlayerState, now: number): RankedView {
@@ -328,6 +331,7 @@ export function rankedView(s0: PlayerState, now: number): RankedView {
       const st = matchStakes(r.league, bet);
       return { bet, ...st, affordable: s.coins >= st.entry };
     }),
+    history: r.history,
   };
 }
 
@@ -371,6 +375,16 @@ export function sanitizeRanked(raw: unknown): PlayerState['ranked'] {
       claimed: !!w.claimed,
     }));
   const d = o.demotion as Record<string, unknown> | null | undefined;
+  const history: RankedMatchHistory[] = (Array.isArray(o.history) ? o.history : [])
+    .filter((entry): entry is Record<string, unknown> => !!entry && typeof entry === 'object')
+    .filter((entry) => entry.outcome === 'win' || entry.outcome === 'loss')
+    .map((entry) => ({
+      outcome: entry.outcome as 'win' | 'loss',
+      delta: typeof entry.delta === 'number' && Number.isFinite(entry.delta) ? Math.trunc(entry.delta) : 0,
+      league: leagueOr(entry.league, leagueId),
+      playedAt: int0(entry.playedAt),
+    }))
+    .slice(0, 20);
   return {
     unlocked: !!o.unlocked,
     league: leagueId,
@@ -380,6 +394,7 @@ export function sanitizeRanked(raw: unknown): PlayerState['ranked'] {
     season: statsOf(o.season),
     total: statsOf(o.total),
     pending,
+    history,
     settled: Array.isArray(o.settled) ? o.settled.filter((x): x is string => typeof x === 'string').slice(-RANKED.maxMatchIds) : [],
     rewards,
     seenLeague: leagueOr(o.seenLeague, leagueId),

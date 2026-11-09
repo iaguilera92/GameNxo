@@ -2,16 +2,12 @@
  * PASE DE BATALLA — configuración de la temporada (niveles, premios, precio). Sin lógica de premios:
  * operations.addXp la usa para llenar el pase sin imports circulares.
  *
- * Monedas del juego:
- *   monedas  (moneda común)  se ganan jugando · compran estilos en la Tienda
- *   dinero   (billetes)      moneda premium · sale del pase (también del gratis) · compra el Pase
- *                            Premium y artículos de dinero en la Tienda. Se guarda en PlayerState.gems.
+ * El pase entrega dinero (billetes) y cosméticos; las monedas quedan reservadas para Ranked.
  */
 import type { ItemId, PlayerState } from './player';
 import { newBattlePass } from './battlePassState';
 
 export type BpReward =
-  | { kind: 'coins'; amount: number }
   | { kind: 'cash'; amount: number }
   | { kind: 'item'; item: ItemId; name: string };
 
@@ -22,8 +18,9 @@ export interface BpTier {
   prem: BpReward;
 }
 
-const c = (amount: number): BpReward => ({ kind: 'coins', amount });
 const $ = (amount: number): BpReward => ({ kind: 'cash', amount });
+// Conversión de antiguos premios en monedas a dinero, manteniendo un valor moderado.
+const cashReward = (coins: number): BpReward => ({ kind: 'cash', amount: Math.max(5, Math.round(coins / 15)) });
 const it = (item: ItemId, name: string): BpReward => ({ kind: 'item', item, name });
 
 export const BP_SEASON = {
@@ -37,42 +34,44 @@ export const BP_SEASON = {
    * El Pase Premium se paga SOLO con dinero real (compra dentro de la app). Precio mostrado en CLP.
    * Mientras no exista la integración de pagos (Google Play / App Store), no se puede comprar.
    */
-  premiumRealPrice: '$4.990',
+  premiumRealPrice: '$3.990 CLP',
   premiumRealMoney: true,
-  /** si un premio de cosmético ya se tiene: compensación */
-  duplicateCoins: 300,
+  /** si un premio de cosmético ya se tiene: compensación en dinero */
+  duplicateCash: 10,
+  /** regalo de bienvenida (no cuenta como nivel del pase) */
+  welcome: { free: $(10), prem: $(20) } as { free: BpReward; prem: BpReward },
   /** niveles 1..N (índice 0 = nivel 1) */
   tiers: [
-    { free: c(50), prem: c(150) },
-    { free: c(60), prem: $(10) },
-    { free: $(10), prem: c(200) },
-    { free: c(80), prem: $(15) },
-    { free: it('style:red', 'Estilo Rojo'), prem: c(250) },
+    { free: cashReward(50), prem: cashReward(150) },
+    { free: cashReward(60), prem: $(10) },
+    { free: $(10), prem: cashReward(200) },
+    { free: cashReward(80), prem: $(15) },
+    { free: it('style:red', 'Estilo Rojo'), prem: cashReward(250) },
     { free: $(15), prem: $(20) },
-    { free: c(100), prem: c(300) },
-    { free: c(100), prem: $(20) },
-    { free: $(20), prem: c(300) },
-    { free: c(120), prem: it('style:gold', 'Estilo Oro') },
-    { free: c(120), prem: $(25) },
-    { free: $(20), prem: c(350) },
-    { free: c(130), prem: $(25) },
-    { free: c(140), prem: c(350) },
+    { free: cashReward(100), prem: cashReward(300) },
+    { free: cashReward(100), prem: $(20) },
+    { free: $(20), prem: cashReward(300) },
+    { free: cashReward(120), prem: it('style:gold', 'Estilo Oro') },
+    { free: cashReward(120), prem: $(25) },
+    { free: $(20), prem: cashReward(350) },
+    { free: cashReward(130), prem: $(25) },
+    { free: cashReward(140), prem: cashReward(350) },
     { free: it('style:green', 'Estilo Verde'), prem: $(30) },
-    { free: $(25), prem: c(400) },
-    { free: c(150), prem: $(30) },
-    { free: c(160), prem: c(400) },
+    { free: $(25), prem: cashReward(400) },
+    { free: cashReward(150), prem: $(30) },
+    { free: cashReward(160), prem: cashReward(400) },
     { free: $(25), prem: $(35) },
-    { free: c(200), prem: c(500) },
-    { free: c(170), prem: $(35) },
-    { free: $(30), prem: c(500) },
-    { free: c(180), prem: $(40) },
-    { free: c(190), prem: c(550) },
+    { free: cashReward(200), prem: cashReward(500) },
+    { free: cashReward(170), prem: $(35) },
+    { free: $(30), prem: cashReward(500) },
+    { free: cashReward(180), prem: $(40) },
+    { free: cashReward(190), prem: cashReward(550) },
     { free: $(30), prem: $(50) },
-    { free: c(200), prem: c(600) },
-    { free: c(210), prem: $(50) },
-    { free: $(40), prem: c(650) },
-    { free: c(230), prem: $(60) },
-    { free: $(60), prem: c(1500) },
+    { free: cashReward(200), prem: cashReward(600) },
+    { free: cashReward(210), prem: $(50) },
+    { free: $(40), prem: cashReward(650) },
+    { free: cashReward(230), prem: $(60) },
+    { free: $(60), prem: cashReward(1500) },
   ] as BpTier[],
 };
 

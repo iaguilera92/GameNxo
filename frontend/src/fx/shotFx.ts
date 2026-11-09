@@ -163,3 +163,73 @@ export class ChargeAura {
     this.racket.destroy();
   }
 }
+
+/** Rayo en zigzag entre dos puntos (dibujo inmediato sobre un Graphics). */
+function bolt(g: Phaser.GameObjects.Graphics, x0: number, y0: number, x1: number, y1: number, jag: number, w: number, color: number, alpha: number) {
+  const n = 5;
+  const dx = x1 - x0, dy = y1 - y0;
+  const len = Math.hypot(dx, dy) || 1;
+  const nx = -dy / len, ny = dx / len;
+  g.lineStyle(w, color, alpha).beginPath().moveTo(x0, y0);
+  for (let i = 1; i < n; i++) {
+    const o = (Math.random() - 0.5) * 2 * jag;
+    g.lineTo(x0 + (dx * i) / n + nx * o, y0 + (dy * i) / n + ny * o);
+  }
+  g.lineTo(x1, y1).strokePath();
+}
+
+/** Chispas eléctricas que recorren el cuerpo del personaje mientras tiene la carga al máximo. */
+export class ChargeSparks {
+  private g: Phaser.GameObjects.Graphics;
+  private t = 0;
+  constructor(scene: Phaser.Scene) {
+    this.g = scene.add.graphics().setBlendMode(Phaser.BlendModes.ADD).setVisible(false);
+  }
+  hide() {
+    this.g.clear().setVisible(false);
+    this.t = 0;
+  }
+  /** (sx, sy) = pies; `k` = escala del personaje (px por unidad); `bodyH` alto aproximado en unidades. */
+  update(dt: number, sx: number, sy: number, k: number, bodyH = 120) {
+    this.t -= dt;
+    if (this.t > 0) return; // parpadeo: se redibuja ~14 veces/s
+    this.t = 0.07;
+    const g = this.g.clear().setVisible(true).setDepth(sy + 5);
+    const H = bodyH * k;
+    for (let i = 0; i < 4; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const r = (0.18 + Math.random() * 0.14) * H;
+      const cy = sy - H * (0.15 + Math.random() * 0.75);
+      const x0 = sx + Math.cos(a) * r * 0.5, x1 = sx + Math.cos(a) * r * 1.6;
+      const y1 = cy + (Math.random() - 0.5) * H * 0.35;
+      bolt(g, x0, cy, x1, y1, H * 0.05, 5 * k, 0x7fd4ff, 0.5);
+      bolt(g, x0, cy, x1, y1, H * 0.05, 2 * k, 0xffffff, 1);
+    }
+    // motitas de chispa
+    for (let i = 0; i < 5; i++) {
+      g.fillStyle(0xfff2a8, 0.9).fillCircle(sx + (Math.random() - 0.5) * H * 0.7, sy - Math.random() * H, (1.5 + Math.random() * 2) * k);
+    }
+  }
+}
+
+/** Choque raqueta-pelota del tiro cargado al máximo: estallido eléctrico en el punto de contacto. */
+export function shockFx(scene: Phaser.Scene, x: number, y: number, s = 1) {
+  const g = scene.add.graphics().setDepth(3600).setBlendMode(Phaser.BlendModes.ADD);
+  const draw = () => {
+    g.clear();
+    for (let i = 0; i < 9; i++) {
+      const a = (i / 9) * Math.PI * 2 + Math.random() * 0.5;
+      const L = (50 + Math.random() * 50) * s;
+      bolt(g, x, y, x + Math.cos(a) * L, y + Math.sin(a) * L, 9 * s, 6 * s, 0x7fd4ff, 0.6);
+      bolt(g, x, y, x + Math.cos(a) * L, y + Math.sin(a) * L, 9 * s, 2.5 * s, 0xffffff, 1);
+    }
+  };
+  draw();
+  scene.time.delayedCall(60, draw);
+  scene.time.delayedCall(120, draw);
+  scene.time.delayedCall(190, () => g.destroy());
+  const flash = scene.add.circle(x, y, 26 * s, 0xffffff, 0.9).setDepth(3600).setBlendMode(Phaser.BlendModes.ADD);
+  scene.tweens.add({ targets: flash, scale: 2.8, alpha: 0, duration: 240, ease: 'Cubic.easeOut', onComplete: () => flash.destroy() });
+  const ring = scene.add.ellipse(x, y, 40 * s, 40 * s).setStrokeStyle(5 * s, 0x7fd4ff, 1).setDepth(3600).setBlendMode(Phaser.BlendModes.ADD);
+  scene.tweens.add({ targets: ring, scale: 4.5, alpha: 0, duration: 340, ease: 'Cubic.easeOut', onComplete: () => ring.destroy() });
+}

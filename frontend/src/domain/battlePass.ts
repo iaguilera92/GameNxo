@@ -8,9 +8,10 @@
  * - Pase premium: se compra con DINERO (billetes), que da el propio pase (también el gratis).
  * Configuración (temporada, niveles, premios, precio) en BP_SEASON.
  */
-import { addCoins, grantItem } from './operations';
+import { grantItem } from './operations';
 import { type PlayerState, clonePlayer, owns } from './player';
 import { newBattlePass } from './battlePassState';
+import { grantBonusSpin } from './dailyWheel';
 import { BP_SEASON, type BpReward, type BpTrack } from './battlePassConfig';
 
 export { BP_SEASON } from './battlePassConfig';
@@ -54,15 +55,11 @@ export function bpClaim(s: PlayerState, track: BpTrack, tier: number): BpResult<
   const reward = BP_SEASON.tiers[tier - 1][track];
   let n = clonePlayer(synced);
   let given = reward;
-  if (reward.kind === 'coins') {
-    const r = addCoins(n, reward.amount);
-    if (r.ok) n = r.state;
-  } else if (reward.kind === 'cash') {
+  if (reward.kind === 'cash') {
     n.gems += reward.amount; // dinero (billetes)
   } else if (owns(n, reward.item)) {
-    given = { kind: 'coins', amount: BP_SEASON.duplicateCoins };
-    const r = addCoins(n, BP_SEASON.duplicateCoins);
-    if (r.ok) n = r.state;
+    given = { kind: 'cash', amount: BP_SEASON.duplicateCash };
+    n.gems += BP_SEASON.duplicateCash;
   } else {
     const r = grantItem(n, reward.item);
     if (r.ok) n = r.state;
@@ -70,6 +67,43 @@ export function bpClaim(s: PlayerState, track: BpTrack, tier: number): BpResult<
   n = clonePlayer(n);
   (track === 'free' ? n.bp.free : n.bp.prem).push(tier);
   return { ok: true, state: n, given };
+}
+
+/** Cobra una sola vez el regalo de bienvenida del camino elegido. */
+export function bpClaimWelcome(s: PlayerState, track: BpTrack): BpResult<{ given: BpReward }> {
+  const synced = syncSeason(s);
+  const claimed = track === 'free' ? synced.bp.welcomeFreeClaimed : synced.bp.welcomePremClaimed;
+  if (claimed) return { ok: false, error: 'already_claimed' };
+  if (track === 'prem' && !synced.bp.premium) return { ok: false, error: 'not_premium' };
+  const reward = BP_SEASON.welcome[track];
+  const n = clonePlayer(synced);
+  let given = reward;
+  if (reward.kind === 'cash') n.gems += reward.amount;
+  else if (owns(n, reward.item)) {
+    given = { kind: 'cash', amount: BP_SEASON.duplicateCash };
+    n.gems += BP_SEASON.duplicateCash;
+  } else {
+    const res = grantItem(n, reward.item);
+    if (res.ok) Object.assign(n, res.state);
+  }
+  if (track === 'free') n.bp.welcomeFreeClaimed = true;
+  else n.bp.welcomePremClaimed = true;
+  return { ok: true, state: n, given };
+}
+
+/** Reclama el bonus único compartido por ambos caminos al completar la temporada. */
+export function bpClaimBonus(s: PlayerState): BpResult<{ bonusIndex: number }> {
+  const synced = syncSeason(s);
+  if (bpLevel(synced.bp.xp).level < BP_TIERS) return { ok: false, error: 'locked' };
+  if (synced.bp.bonusClaimed) return { ok: false, error: 'already_claimed' };
+  const granted = grantBonusSpin(synced, `battle-pass:${BP_SEASON.id}`);
+  const n = clonePlayer(granted.state);
+  n.bp.bonusClaimed = true;
+  return { ok: true, state: n, bonusIndex: granted.index };
+}
+
+export function bpBonusSpinIndex(s: PlayerState) {
+  return s.wheel.bonusSpins.findIndex((sp) => sp.matchId === `battle-pass:${BP_SEASON.id}`);
 }
 
 /** Compra del Pase Premium. Hoy se paga solo con dinero real (premiumRealMoney): devuelve 'real_money'. */
@@ -93,6 +127,9 @@ export function bpClaimable(s: PlayerState): number {
     if (!b.free.includes(t)) n++;
     if (b.premium && !b.prem.includes(t)) n++;
   }
+  if (lvl >= BP_TIERS && !b.bonusClaimed) n++;
+  if (!b.welcomeFreeClaimed) n++;
+  if (b.premium && !b.welcomePremClaimed) n++;
   return n;
 }
 
@@ -107,5 +144,8 @@ export function sanitizeBattlePass(raw: unknown) {
   b.premium = r.premium === true;
   b.free = ints(r.free);
   b.prem = ints(r.prem);
+  b.bonusClaimed = r.bonusClaimed === true;
+  b.welcomeFreeClaimed = r.welcomeFreeClaimed === true;
+  b.welcomePremClaimed = r.welcomePremClaimed === true;
   return b;
 }

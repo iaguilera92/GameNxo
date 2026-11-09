@@ -1,4 +1,4 @@
-﻿import Phaser from 'phaser';
+import Phaser from 'phaser';
 import { FONT } from '../ui/theme';
 import { UI } from '../ui/ui';
 import { bakeSkins, queueSkinLoads } from '../characters/skins';
@@ -32,6 +32,7 @@ export class BootScene extends Phaser.Scene {
     this.load.image('menu-bg', 'assets/menu-bg.png');
     this.load.image('btn-jugar', 'assets/btn-jugar.png');
     this.load.image('nav-bar', 'assets/nav-bar.png');
+    this.load.audio('vs', 'mp3/vs.mp3'); // sonido de la pantalla VS (la cache de audio es global)
     queueAmbienteLoad(this.load); // ambiente del partido (estadio)
     bootRanked(); // partida Ranked a medias = abandono; cierre de semana / mes
     preloadRankBadges(this.load, [myLeague()]); // solo la del rango actual

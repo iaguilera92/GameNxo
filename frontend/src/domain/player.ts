@@ -12,7 +12,7 @@ import { type BattlePassState, cloneBattlePass, newBattlePass } from './battlePa
 import { type RankedState, cloneRanked, newRankedState } from './rankedState';
 
 /** v3: + ruletas diarias (`wheel`) · v4: + pase de batalla (`bp`) · v5: + Ranked (`ranked`) y premio diario (`login`) */
-export const PLAYER_SCHEMA_VERSION = 5;
+export const PLAYER_SCHEMA_VERSION = 6;
 
 /** Recompensa por iniciar sesión (domain/dailyLogin.ts). */
 export interface LoginState {

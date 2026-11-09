@@ -26,7 +26,7 @@ export class WallFx {
     const ring = power ? 0xff7a1e : kind === 'pad' ? 0xffe066 : 0xbfe8ff;
     if (kind === 'pad') {
       // marca del golpe en la pared (se queda un momento)
-      const mark = sc.add.ellipse(x, y + 2 * k, 30 * k, 22 * k, 0x0a1638, 0.45).setDepth(depth - 0.5);
+      const mark = sc.add.ellipse(x, y + 2 * k, 30 * k, 22 * k, 0x0a1638, 0.45).setDepth(1.5); // marca (sombra) pegada a la pared: SIEMPRE detrás de los personajes y la pelota
       this.fade(mark, { alpha: 0 }, 300, 900);
       const flash = sc.add.circle(x, y, 14 * k, hot, 0.95).setDepth(depth + 1).setBlendMode(Phaser.BlendModes.ADD);
       this.fade(flash, { scale: power ? 2.6 : 1.9, alpha: 0 }, 180);

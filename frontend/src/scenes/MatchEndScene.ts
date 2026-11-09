@@ -31,6 +31,8 @@ function newMatchId(): string {
  * · ranking (solo si llega `ranked`, p. ej. partida clasificatoria desbloqueada) · CONTINUAR / REVANCHA.
  */
 export interface MatchEndData {
+  /** pose final de cada lado (textura + frame), para el duelo Ranked */
+  poses?: { me?: { key: string; frame: number }; rival?: { key: string; frame: number } };
   win: boolean;
   surrendered?: boolean;
   playerName: string;
@@ -59,7 +61,7 @@ const GOLD = 0xffc42e;
 /** alto de los 3 cuadros de recompensa (monedas · EXP · ruleta) */
 const CARD_H = 196;
 /** alto extra del panel con el duelo de apuestas Ranked */
-const RANKED_H = 150;
+const RANKED_H = 212;
 
 /** Moneda dibujada (sin imagen): disco dorado con canto, brillo y una corona. */
 function drawCoin(g: Phaser.GameObjects.Graphics, r: number) {
@@ -474,35 +476,42 @@ export class MatchEndScene extends Phaser.Scene {
     const info = d.surrendered ? 'Rendición: no cuenta para la semana' : `Posición #${r.position ?? '—'} · Semana ${Math.min(rankedState().weekMatches, RANKED.minMatchesForReward)}/${RANKED.minMatchesForReward}`;
     c.add(this.add.text(-w / 2 + 68, hy + 12, info, { fontFamily: FONT, fontSize: '13px', color: '#9fb4e0' }).setOrigin(0, 0.5));
     // cuadros
-    const by = y0 + 86;
+    const by = y0 + 117;
     const bw = (w - 40 - 56) / 2;
-    const bh = 78;
+    const bh = 140;
     const lx = -w / 2 + 20 + bw / 2;
     const rx = w / 2 - 20 - bw / 2;
-    const box = (x: number, name: string, color: number, amount: number) => {
+    const box = (x: number, name: string, color: number, amount: number, pose?: { key: string; frame: number }) => {
+      const ox = pose ? 34 : 0; // con personaje, el texto se corre a la derecha
       const bc = this.add.container(x, by);
       const g = this.add.graphics();
       g.fillStyle(0x0a1638, 1).fillRoundedRect(-bw / 2, -bh / 2, bw, bh, 16);
       g.lineStyle(3, color, 1).strokeRoundedRect(-bw / 2, -bh / 2, bw, bh, 16);
       bc.add(g);
-      const nm = this.add.text(0, -bh / 2 + 15, name.toUpperCase(), { fontFamily: FONT, fontSize: '15px', color: '#cfe0ff' }).setOrigin(0.5);
-      fitText(nm, bw - 20);
+      const nm = this.add.text(ox, -bh / 2 + 15, name.toUpperCase(), { fontFamily: FONT, fontSize: '15px', color: '#cfe0ff' }).setOrigin(0.5);
+      fitText(nm, bw - 20 - ox * 2);
       bc.add(nm);
       const coin = this.add.graphics({ x: -28, y: 12 });
+      if (pose && this.textures.exists(pose.key)) {
+        const fr = this.textures.getFrame(pose.key, pose.frame);
+        const ch = this.add.image(-bw / 2 + 50, bh / 2 - 8, pose.key, pose.frame).setOrigin(0.5, 0.94);
+        ch.setScale(Math.min(1.1, (bh - 22) / (fr.height * 0.94)));
+        bc.add(ch);
+      }
       drawCoin(coin, 13);
       const val = this.add.text(-10, 12, amount.toLocaleString('es-CL'), { fontFamily: FONT, fontSize: '30px', color: '#ffffff', stroke: '#0a1638', strokeThickness: 5 }).setOrigin(0, 0.5);
       bc.add([coin, val]);
       const center = () => {
         const tw = 26 + 8 + val.width;
-        coin.setX(-tw / 2 + 13);
-        val.setX(-tw / 2 + 34);
+        coin.setX(ox - tw / 2 + 13);
+        val.setX(ox - tw / 2 + 34);
       };
       center();
       c.add(bc);
       return { bc, g, val, center, coin };
     };
-    const me = box(lx, d.playerName, 0x3a7bff, entry);
-    const rv = box(rx, d.rivalName, 0xff4f5e, rivalStake);
+    const me = box(lx, d.playerName, 0x3a7bff, entry, d.poses?.me);
+    const rv = box(rx, d.rivalName, 0xff4f5e, rivalStake, d.poses?.rival);
     // centro: VS, luego flecha hacia el ganador
     const vs = this.add.text(0, by, 'VS', { fontFamily: FONT, fontSize: '22px', color: '#7f93bf' }).setOrigin(0.5);
     c.add(vs);

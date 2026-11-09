@@ -16,7 +16,7 @@ import { addCoins, addXp, grantItem } from './operations';
 import type { OpResult } from './operations';
 import { type ItemId, type PlayerState, clonePlayer, owns } from './player';
 import { COSMETIC_CATALOG, WHEEL, type WheelSlot } from './wheelConfig';
-import { type WheelReward, type WheelState, newWheelState } from './wheelState';
+import { type WheelReward, type WheelSpin, type WheelState, newWheelState } from './wheelState';
 
 export type { WheelReward, WheelSpin, WheelState } from './wheelState';
 
@@ -121,7 +121,9 @@ export function syncCycle(s: PlayerState, now: number): PlayerState {
   if (s.wheel.cycle && cycle <= s.wheel.cycle) return s;
   let n = clonePlayer(s);
   for (const sp of n.wheel.spins) if (sp.reward && !sp.claimed) n = applyReward(n, sp.reward).state;
+  const bonusSpins = n.wheel.bonusSpins;
   n.wheel = newWheelState(cycle);
+  n.wheel.bonusSpins = bonusSpins;
   return n;
 }
 
@@ -141,6 +143,20 @@ export function recordWin(s: PlayerState, matchId: string, now: number): WheelRe
   const index = w.spins.length;
   w.spins.push({ index, matchId, slot: null, reward: null, claimed: false, presented: false });
   return { ok: true, state: n, unlocked: index, duplicate: false };
+}
+
+/** Añade un giro bonus persistente, independiente del límite diario de partidas. */
+export function grantBonusSpin(s: PlayerState, id: string): { state: PlayerState; index: number } {
+  const n = clonePlayer(s);
+  const existing = n.wheel.bonusSpins.findIndex((sp) => sp.matchId === id);
+  if (existing >= 0) return { state: n, index: existing };
+  const index = n.wheel.bonusSpins.length;
+  n.wheel.bonusSpins.push({ index, matchId: id, slot: null, reward: null, claimed: false, presented: false });
+  return { state: n, index };
+}
+
+export function bonusSpinIndex(s: PlayerState, id: string): number {
+  return s.wheel.bonusSpins.findIndex((sp) => sp.matchId === id);
 }
 
 /** Marca una ruleta como ya presentada (la apertura automática ocurre una sola vez). */
@@ -171,9 +187,9 @@ export function resolvePrize(slot: WheelSlot, s: PlayerState, rng: Rng): WheelRe
  * Gira la ruleta `index`: decide (y guarda) el premio. Si ya estaba girada, devuelve el MISMO
  * resultado (pulsaciones repetidas / reconexión / app cerrada a mitad de la animación).
  */
-export function spin(s: PlayerState, index: number, now: number, rng: Rng = secureRng): WheelResult<{ slot: WheelSlot; reward: WheelReward; repeated: boolean }> {
+export function spin(s: PlayerState, index: number, now: number, rng: Rng = secureRng, bonus = false): WheelResult<{ slot: WheelSlot; reward: WheelReward; repeated: boolean }> {
   const n = clonePlayer(syncCycle(s, now));
-  const sp = n.wheel.spins[index];
+  const sp = (bonus ? n.wheel.bonusSpins : n.wheel.spins)[index];
   if (!sp) return fail('no_spin');
   if (sp.slot && sp.reward) {
     const slot = slotById(sp.slot);
@@ -204,15 +220,15 @@ function applyReward(s: PlayerState, r: WheelReward): { state: PlayerState; give
 }
 
 /** Cobra el premio de la ruleta `index`. Idempotente: la segunda vez no entrega nada. */
-export function claim(s: PlayerState, index: number, now: number): WheelResult<{ given: WheelReward | null; already: boolean }> {
+export function claim(s: PlayerState, index: number, now: number, bonus = false): WheelResult<{ given: WheelReward | null; already: boolean }> {
   const synced = syncCycle(s, now);
-  const sp0 = synced.wheel.spins[index];
+  const sp0 = (bonus ? synced.wheel.bonusSpins : synced.wheel.spins)[index];
   if (!sp0) return fail('no_spin');
   if (!sp0.reward) return fail('not_spun');
   if (sp0.claimed) return { ok: true, state: synced, given: null, already: true };
   const { state, given } = applyReward(synced, sp0.reward);
   const n = clonePlayer(state);
-  const sp = n.wheel.spins[index];
+  const sp = (bonus ? n.wheel.bonusSpins : n.wheel.spins)[index];
   sp.claimed = true;
   sp.reward = given;
   return { ok: true, state: n, given, already: false };
@@ -248,20 +264,24 @@ export function sanitizeWheel(raw: unknown): WheelState {
   w.wins = typeof r.wins === 'number' && Number.isFinite(r.wins) ? Math.max(0, Math.floor(r.wins)) : 0;
   w.matchIds = Array.isArray(r.matchIds) ? r.matchIds.filter((x): x is string => typeof x === 'string').slice(-WHEEL.maxMatchIds) : [];
   const spins = Array.isArray(r.spins) ? r.spins : [];
-  for (const x of spins.slice(0, WHEEL.perDay)) {
-    if (!x || typeof x !== 'object') break;
-    const o = x as Record<string, unknown>;
-    const slot = typeof o.slot === 'string' && slotById(o.slot) ? o.slot : null;
-    const reward = slot ? validReward(o.reward) : null;
-    w.spins.push({
-      index: w.spins.length,
-      matchId: typeof o.matchId === 'string' ? o.matchId : '',
-      slot: reward ? slot : null,
-      reward,
-      claimed: !!o.claimed && !!reward,
-      presented: !!o.presented,
-    });
-  }
+  const parseSpins = (values: unknown[], limit: number, into: WheelSpin[]) => {
+    for (const x of values.slice(0, limit)) {
+      if (!x || typeof x !== 'object') break;
+      const o = x as Record<string, unknown>;
+      const slot = typeof o.slot === 'string' && slotById(o.slot) ? o.slot : null;
+      const reward = slot ? validReward(o.reward) : null;
+      into.push({
+        index: into.length,
+        matchId: typeof o.matchId === 'string' ? o.matchId : '',
+        slot: reward ? slot : null,
+        reward,
+        claimed: !!o.claimed && !!reward,
+        presented: !!o.presented,
+      });
+    }
+  };
+  parseSpins(spins, WHEEL.perDay, w.spins);
+  parseSpins(Array.isArray(r.bonusSpins) ? r.bonusSpins : [], 100, w.bonusSpins);
   return w;
 }
 

@@ -3,14 +3,14 @@
   "view": "back",
   "cell": {
     "w": 222,
-    "h": 174
+    "h": 154
   },
   "origin": {
     "x": 0.5,
-    "y": 0.78161
+    "y": 0.94156
   },
   "standHeight": 115,
-  "hold": 2,
+  "hold": 1,
   "serveWait": 2,
   "smashStart": 2,
   "animations": {

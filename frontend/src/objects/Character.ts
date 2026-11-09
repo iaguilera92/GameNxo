@@ -492,6 +492,16 @@ export class Character extends Phaser.GameObjects.Container {
     this.nxo?.pointEnd(won);
   }
 
+  /** Tiene hoja de sprites (poses de final propias). */
+  get hasSheet() {
+    return !!this.nxo;
+  }
+
+  /** Poses finales (textura + frame) para dibujarlas en la pantalla de resultados. */
+  endPoses() {
+    return this.nxo?.endPoses() ?? null;
+  }
+
   /** Partido perdido. */
   defeat() {
     this.nxo?.defeat();

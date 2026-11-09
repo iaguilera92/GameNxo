@@ -152,16 +152,15 @@ export function showVersus(scene: Phaser.Scene, player: VersusSide, rival: Versu
   slash.lineStyle(12, 0xffe08a, 0.35).lineBetween(0, yL, W, yR);
   slash.lineStyle(4, 0xffffff, 1).lineBetween(0, yL, W, yR);
 
-  // estallido de rayos detrás del VS
-  const burst = scene.add.graphics({ x: W / 2, y: midY }).setDepth(11).setBlendMode(Phaser.BlendModes.ADD).setScale(0);
-  const rays = 18;
-  for (let i = 0; i < rays; i++) {
-    const a = (i / rays) * Math.PI * 2;
-    const a2 = a + (Math.PI / rays) * 0.55;
-    const r = i % 2 ? 190 : 260;
-    burst.fillStyle(0xffc42e, i % 2 ? 0.18 : 0.3).fillTriangle(0, 0, Math.cos(a) * r, Math.sin(a) * r, Math.cos(a2) * r, Math.sin(a2) * r);
-  }
-  burst.fillStyle(0xfff1b8, 0.35).fillCircle(0, 0, 70);
+  // detrás del VS: disco oscuro con aro dorado (sin rayos giratorios) + ondas de choque al impactar
+  const burst = scene.add.graphics({ x: W / 2, y: midY }).setDepth(11).setScale(0);
+  burst.fillStyle(0x0a0f24, 0.85).fillCircle(0, 0, 118);
+  burst.lineStyle(6, 0xffc42e, 1).strokeCircle(0, 0, 118);
+  burst.lineStyle(2, 0xfff1b8, 0.8).strokeCircle(0, 0, 106);
+  const ring = (delay: number) => {
+    const r = scene.add.circle(W / 2, midY, 120, 0xffffff, 0).setStrokeStyle(8, 0xffe08a, 1).setDepth(11).setAlpha(0);
+    scene.tweens.add({ targets: r, alpha: { from: 0.9, to: 0 }, scale: { from: 1, to: 2.6 }, delay, duration: 520, ease: 'Cubic.easeOut', onComplete: () => r.destroy() });
+  };
 
   const vs = scene.add
     .text(W / 2, midY, 'VS', { fontFamily: FONT, fontSize: '170px', color: '#ffc42e', stroke: '#1a0f00', strokeThickness: 14 })
@@ -195,7 +194,11 @@ export function showVersus(scene: Phaser.Scene, player: VersusSide, rival: Versu
     },
   });
   scene.tweens.add({ targets: burst, scale: 1, delay: impactAt + 60, duration: 300, ease: 'Back.easeOut' });
-  scene.tweens.add({ targets: burst, angle: 360, delay: impactAt, duration: 9000, repeat: -1 });
+  ring(impactAt + 60);
+  ring(impactAt + 200);
+
+  // sonido de la presentación, completo, desde que empieza el VS
+  if (scene.cache.audio.exists('vs')) scene.sound.play('vs', { volume: 0.9 });
 
   // destello de entrada
   const flash = scene.add.rectangle(0, 0, W, H, 0xffffff, 0).setOrigin(0).setDepth(50);

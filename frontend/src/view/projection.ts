@@ -18,7 +18,9 @@ export const VIEW = {
   NEAR_W: 700, // ancho en pantalla de la cancha en la línea de fondo cercana (antes 640: cancha más ancha)
   RATIO: 0.48, // ancho lejano / ancho cercano (antes 0.42: el fondo de la cancha menos estrecho)
   Z_K: 0.75, // compresión visual de la altura
-  CHAR_K: 0.62, // escala base de los personajes
+  CHAR_K: 0.58, // escala base de los personajes (solo visual; antes 0.62)
+  /** zoom base de la cámara del partido (<1 = más alejada; solo visual, el HUD no se ve afectado) */
+  CAM_ZOOM: 0.85,
   /** cuánto sigue la cámara al jugador en lateral (0 = fija, 1 = centrada en él) */
   FOLLOW: 0.35,
 };

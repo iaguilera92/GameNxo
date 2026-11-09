@@ -1,7 +1,6 @@
 import Phaser from 'phaser';
 import { FONT, restartOnResize } from '../ui/theme';
-import { arcadeButton } from '../ui/modeButtons';
-import { GOLD, NAVY, SECTOR, addSectorContent, drawSlotIcon, drawWheelFace, isSpecial, slotColors, sectorCenter } from '../ui/wheelArt';
+import { GOLD, NAVY, SECTOR, addSectorContent, drawSlotIcon, drawWheelFace, isSpecial, sectorCenter } from '../ui/wheelArt';
 import { WHEEL, type WheelSlot } from '../domain/wheelConfig';
 import type { WheelReward } from '../domain/wheelState';
 import { slotById } from '../domain/dailyWheel';
@@ -11,17 +10,23 @@ import { wheelClaim, wheelStart, wheelTick, wheelWin } from '../fx/wheelSound';
 /**
  * Pantalla de RULETA DIARIA (overlay sobre el menú).
  *
- * Flujo: presentación → GIRAR → el premio se decide y GUARDA antes de animar (logic/Wheels →
- * domain/dailyWheel) → la animación solo representa ese resultado → premio → RECLAMAR (idempotente).
- * Cerrar sin girar conserva el giro; si ya estaba girada, al volver se muestra el resultado.
+ * Flujo (estilo recompensa de Brawl Stars): pantalla completa con fondo propio → TOCAR cualquier parte para girar
+ * (hasta 4 toques: cada uno da más potencia al giro) → el premio se decide y GUARDA en el primer toque (logic/Wheels →
+ * domain/dailyWheel) y la animación solo representa ese resultado → la ruleta desaparece y queda solo el premio
+ * (icono + cantidad), que se cobra solo (idempotente) → un toque en cualquier parte vuelve al menú.
+ * Cerrar (X) sin girar conserva el giro; si ya estaba girada, al volver se muestra el premio.
  */
 export interface WheelSceneData {
   index: number;
+  bonus?: boolean;
 }
 
-/** Duración del giro (ms) y vueltas completas antes de parar. Solo visual. */
-const SPIN_MS = 5200;
-const SPIN_TURNS = 7;
+/** Toques máximos y, por número de toques, vueltas completas y duración (ms) del giro. Solo visual. */
+const MAX_TAPS = 4;
+const SPIN_TURNS = [0, 5, 7, 9, 11];
+const SPIN_MS = [0, 3400, 4000, 4700, 5500];
+const BG_KEY = 'wheel-bg';
+const GLOW_KEY = 'wheel-glow';
 
 /**
  * Marco de la ruleta (public/assets/ruleta-frame.png, sacado de ruleta.png): aro metálico, luces,
@@ -32,14 +37,26 @@ const FRAME = { key: 'ruleta-frame', file: 'assets/ruleta-frame.png', size: 900,
 export class WheelScene extends Phaser.Scene {
   static readonly KEY = 'Wheel';
   private index = 0;
+  private bonus = false;
   private wheel!: Phaser.GameObjects.Container;
   private pointer!: Phaser.GameObjects.Container;
   private cx = 0;
   private cy = 0;
   private R = 0;
   private busy = false;
+  private phase: 'idle' | 'spin' | 'result' = 'idle';
+  private taps = 0;
+  private res: { slot: WheelSlot; reward: WheelReward } | null = null;
+  private jitter = 0;
+  private lastSector = 0;
+  private spinTween?: Phaser.Tweens.Tween;
+  private canContinue = false;
+  private blinkEv?: Phaser.Time.TimerEvent;
+  /** objetos que sobreviven al paso de la ruleta al premio (fondo, rayos, destellos, zona táctil) */
+  private keep = new Set<Phaser.GameObjects.GameObject>();
+  private hint?: Phaser.GameObjects.Text;
+  private pips: Phaser.GameObjects.Arc[] = [];
   private bulbs: Phaser.GameObjects.Arc[] = [];
-  private ui: Phaser.GameObjects.GameObject[] = [];
   private closeBtn!: Phaser.GameObjects.Container;
   /** se usa el marco en imagen */
   private framed = false;
@@ -57,9 +74,18 @@ export class WheelScene extends Phaser.Scene {
 
   init(data: WheelSceneData) {
     this.index = data?.index ?? 0;
+    this.bonus = data?.bonus === true;
     this.busy = false;
+    this.phase = 'idle';
+    this.taps = 0;
+    this.res = null;
+    this.canContinue = false;
     this.bulbs = [];
-    this.ui = [];
+    this.pips = [];
+    this.keep = new Set();
+    this.hint = undefined;
+    this.frameGlow = undefined;
+    this.blinkEv = undefined;
   }
 
   create() {
@@ -73,24 +99,26 @@ export class WheelScene extends Phaser.Scene {
     this.R = this.framed ? Math.min(W * 0.36, H * 0.215, 280) : Math.min(W * 0.4, H * 0.24, 300);
     this.outerR = this.framed ? (this.R * FRAME.outer) / FRAME.disc : this.R + 30;
 
-    // fondo: oscurece el menú y bloquea toques
-    const dim = this.add.rectangle(0, 0, W, H, 0x02060f, 0).setOrigin(0).setInteractive();
-    this.tweens.add({ targets: dim, fillAlpha: 0.82, duration: 260 });
-
+    // fondo a pantalla completa (tapa el menú) y zona táctil: cualquier parte de la pantalla es un toque
+    this.background(W, H);
     this.rays();
+    const zone = this.add.zone(0, 0, W, H).setOrigin(0).setInteractive();
+    zone.on('pointerdown', (p: Phaser.Input.Pointer) => this.onTap(p));
+    this.keep.add(zone);
     this.title(W);
     this.buildWheel();
     this.closeBtn = this.closeButton(W);
 
-    const sp = wheelSpin(this.index);
+    const sp = wheelSpin(this.index, this.bonus);
     const slot = sp?.slot ? slotById(sp.slot) : undefined;
     if (sp?.reward && slot) {
-      // ya girada (cerrada antes de cobrar / app cerrada a mitad): se muestra el resultado
+      // ya girada (cerrada antes de cobrar / app cerrada a mitad): se muestra el premio directamente
+      this.phase = 'result';
       this.wheel.setRotation(this.restAngle(WHEEL.slots.indexOf(slot)));
-      this.showResult(slot, sp.reward, sp.claimed, false);
+      this.time.delayedCall(60, () => this.reveal(slot, sp.reward!, sp.claimed, !sp.claimed));
     } else {
       this.presentIn();
-      this.spinButton(W);
+      this.tapHint(W);
     }
   }
 
@@ -101,13 +129,71 @@ export class WheelScene extends Phaser.Scene {
     const len = Math.max(this.scale.width, this.scale.height);
     for (let i = 0; i < n; i++) {
       const a0 = (i / n) * Math.PI * 2;
-      g.fillStyle(i % 2 ? 0x3a7bff : 0xffc42e, 0.07).slice(0, 0, len, a0, a0 + Math.PI / n, false).fillPath();
+      g.fillStyle(i % 2 ? 0x3a7bff : 0xffc42e, 0.1).slice(0, 0, len, a0, a0 + Math.PI / n, false).fillPath();
     }
     g.setAlpha(0);
     this.tweens.add({ targets: g, alpha: 1, duration: 500 });
     this.tweens.add({ targets: g, angle: 360, duration: 40000, repeat: -1 });
     g.setData('rays', true);
     this.data.set('rays', g);
+    this.keep.add(g);
+  }
+
+  /** Fondo a pantalla completa en la gama del juego (azul marino → azul eléctrico con viñeta) + destellos que suben. */
+  private background(W: number, H: number) {
+    if (this.textures.exists(BG_KEY)) this.textures.remove(BG_KEY);
+    const tex = this.textures.createCanvas(BG_KEY, W, H);
+    if (tex) {
+      const ctx = tex.getContext();
+      const gx = W / 2;
+      const gy = H * 0.43;
+      const rad = ctx.createRadialGradient(gx, gy, 10, gx, gy, Math.max(W, H) * 0.78);
+      rad.addColorStop(0, '#2f5fd6');
+      rad.addColorStop(0.32, '#16398f');
+      rad.addColorStop(0.68, '#0b1733');
+      rad.addColorStop(1, '#03070f');
+      ctx.fillStyle = rad;
+      ctx.fillRect(0, 0, W, H);
+      // franjas diagonales muy suaves (como el menú)
+      ctx.globalAlpha = 0.05;
+      ctx.fillStyle = '#7fb0ff';
+      for (let x = -H; x < W + H; x += 90) {
+        ctx.beginPath();
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x + 38, 0);
+        ctx.lineTo(x + 38 - H * 0.6, H);
+        ctx.lineTo(x - H * 0.6, H);
+        ctx.closePath();
+        ctx.fill();
+      }
+      ctx.globalAlpha = 1;
+      tex.refresh();
+      this.keep.add(this.add.image(0, 0, BG_KEY).setOrigin(0));
+    } else {
+      this.keep.add(this.add.rectangle(0, 0, W, H, 0x0b1733, 1).setOrigin(0));
+    }
+    this.ensureGlow();
+    // destellos que suben despacio
+    for (let i = 0; i < 28; i++) {
+      const sz = Phaser.Math.FloatBetween(3, 8);
+      const st = this.add.star(Phaser.Math.Between(0, W), Phaser.Math.Between(0, H), 4, sz * 0.4, sz, Phaser.Utils.Array.GetRandom([0xffe9a0, 0xbfe0ff, 0xffffff]), 0.8).setBlendMode(Phaser.BlendModes.ADD);
+      this.keep.add(st);
+      this.tweens.add({ targets: st, y: st.y - Phaser.Math.Between(120, 360), alpha: { from: 0.15, to: 0.9 }, angle: 180, duration: Phaser.Math.Between(2600, 5200), yoyo: true, repeat: -1, delay: Phaser.Math.Between(0, 2500), ease: 'Sine.easeInOut' });
+    }
+  }
+
+  private ensureGlow() {
+    if (this.textures.exists(GLOW_KEY)) return;
+    const c = this.textures.createCanvas(GLOW_KEY, 256, 256);
+    if (!c) return;
+    const ctx = c.getContext();
+    const g = ctx.createRadialGradient(128, 128, 0, 128, 128, 128);
+    g.addColorStop(0, 'rgba(255,255,255,1)');
+    g.addColorStop(0.35, 'rgba(255,255,255,0.45)');
+    g.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, 256, 256);
+    c.refresh();
   }
 
   private title(W: number) {
@@ -143,7 +229,7 @@ export class WheelScene extends Phaser.Scene {
       const b = this.add.circle(cx + Math.cos(a) * (R + 13), cy + Math.sin(a) * (R + 13), 5.5, 0xfff6c8, 1);
       this.bulbs.push(b);
     }
-    this.time.addEvent({ delay: this.busy ? 90 : 260, loop: true, callback: () => this.blink() });
+    this.blinkEv = this.time.addEvent({ delay: this.busy ? 90 : 260, loop: true, callback: () => this.blink() });
 
     // ruleta (gira)
     this.wheel = this.add.container(cx, cy);
@@ -220,7 +306,7 @@ export class WheelScene extends Phaser.Scene {
     const d = FRAME.size * scale;
     this.add.image(cx, cy, FRAME.key).setDisplaySize(d, d);
     this.frameGlow = this.add.image(cx, cy, FRAME.key).setDisplaySize(d, d).setBlendMode(Phaser.BlendModes.ADD).setAlpha(0);
-    this.time.addEvent({ delay: 90, loop: true, callback: () => this.blink() });
+    this.blinkEv = this.time.addEvent({ delay: 90, loop: true, callback: () => this.blink() });
   }
 
   private blink() {
@@ -244,23 +330,121 @@ export class WheelScene extends Phaser.Scene {
     this.tweens.add({ targets: shine, alpha: 0, scale: 1.4, delay: 450, duration: 500, onComplete: () => shine.destroy() });
   }
 
-  private spinButton(W: number) {
-    const y = this.cy + this.outerR + 80;
-    const btn = arcadeButton(this, W / 2, y, Math.min(420, W - 120), 104, 'GIRAR', () => this.doSpin(), { palette: 'yellow', pulse: true });
-    this.ui.push(this.popIn(btn, 500));
+  /** Sin botón: se toca cualquier parte. Indicación pulsante + 4 marcas de potencia. */
+  private tapHint(W: number) {
+    const y = this.cy + this.outerR + 62;
+    const h = this.add
+      .text(W / 2, y, 'TOCA LA PANTALLA\nPARA GIRAR', { fontFamily: FONT, fontSize: '40px', color: '#ffffff', stroke: '#0a1638', strokeThickness: 9, align: 'center' })
+      .setOrigin(0.5)
+      .setLineSpacing(2)
+      .setAlpha(0);
+    this.hint = h;
+    this.tweens.add({ targets: h, alpha: 1, delay: 600, duration: 300, onComplete: () => this.tweens.add({ targets: h, alpha: 0.55, scale: 1.06, duration: 620, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' }) });
+    for (let i = 0; i < MAX_TAPS; i++) {
+      const pip = this.add.circle(W / 2 + (i - (MAX_TAPS - 1) / 2) * 52, y + 96, 15, GOLD, 0).setStrokeStyle(4, GOLD, 0.9).setAlpha(0);
+      this.tweens.add({ targets: pip, alpha: 1, delay: 700 + i * 60, duration: 250 });
+      this.pips.push(pip);
+    }
+  }
+
+  /** Un toque en cualquier parte: gira (1.º), da más potencia (2.º a 4.º) o continúa (con el premio ya a la vista). */
+  private onTap(p: Phaser.Input.Pointer) {
+    if (this.phase === 'result') {
+      if (this.canContinue) this.close();
+      return;
+    }
+    if (this.taps >= MAX_TAPS) return;
+    if (this.phase === 'idle') {
+      // 1) el premio se decide y se guarda ANTES de animar (aleatorio seguro y ponderado)
+      const res = spinWheel(this.index, this.bonus);
+      if (!res) return this.close();
+      this.res = { slot: res.slot, reward: res.reward };
+      this.jitter = (Math.random() - 0.5) * SECTOR * 0.6; // solo visual, dentro del mismo sector
+      this.phase = 'spin';
+      this.busy = true;
+      this.closeBtn.setVisible(false);
+      this.tweens.killTweensOf(this.wheel);
+      this.wheel.setScale(1).setAlpha(1); // por si se tocó durante la entrada de la ruleta
+      wheelStart(this);
+      this.lastSector = Math.floor((this.wheel.rotation + SECTOR / 2) / SECTOR);
+    }
+    this.taps++;
+    this.tapFx(p);
+    this.spinTo();
+  }
+
+  private tapFx(p: Phaser.Input.Pointer) {
+    const n = this.taps;
+    const pip = this.pips[n - 1];
+    if (pip) {
+      pip.setFillStyle(GOLD, 1);
+      this.tweens.add({ targets: pip, scale: { from: 1.8, to: 1 }, duration: 260, ease: 'Back.easeOut' });
+    }
+    if (this.hint) {
+      this.tweens.killTweensOf(this.hint);
+      this.hint.setAlpha(1).setScale(1).setText(n >= MAX_TAPS ? '¡POTENCIA MÁXIMA!' : '¡TOCA MÁS FUERTE!');
+      this.hint.setColor(n >= MAX_TAPS ? '#ffd23f' : '#ffffff');
+      this.tweens.add({ targets: this.hint, scale: { from: 1.25, to: 1 }, duration: 220, ease: 'Back.easeOut' });
+    }
+    const ring = this.add.circle(p.x, p.y, 14, 0xffffff, 0).setStrokeStyle(6, GOLD, 1).setBlendMode(Phaser.BlendModes.ADD).setDepth(50);
+    this.tweens.add({ targets: ring, scale: 4 + n, alpha: 0, duration: 420, ease: 'Cubic.easeOut', onComplete: () => ring.destroy() });
+    for (let i = 0; i < 6 + n * 2; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const d = Phaser.Math.FloatBetween(40, 120 + n * 20);
+      const st = this.add.star(p.x, p.y, 5, 3, 8, Phaser.Utils.Array.GetRandom([0xffd23f, 0xfff1b8, 0xffffff]), 1).setBlendMode(Phaser.BlendModes.ADD).setDepth(50);
+      this.tweens.add({ targets: st, x: p.x + Math.cos(a) * d, y: p.y + Math.sin(a) * d, alpha: 0, scale: 0.3, angle: 200, duration: Phaser.Math.Between(350, 600), ease: 'Cubic.easeOut', onComplete: () => st.destroy() });
+    }
+    this.cameras.main.shake(90 + n * 30, 0.002 + n * 0.0015);
+    wheelTick(this, 1.2 + n * 0.15);
   }
 
   /**
-   * Entrada con rebote en un contenedor propio: el botón tiene su latido (tween de escala) y no
-   * debe competir con la animación de entrada sobre la misma propiedad.
+   * Giro hacia el sector ya decidido. Cada toque lo relanza desde donde va con más vueltas y más tiempo
+   * (empuje inmediato y luego frena), siempre terminando en el mismo sector.
    */
-  private popIn(btn: Phaser.GameObjects.Container, delay: number) {
-    const wrap = this.add.container(btn.x, btn.y);
-    btn.setPosition(0, 0);
-    wrap.add(btn);
-    wrap.setScale(0).setAlpha(0);
-    this.tweens.add({ targets: wrap, scale: 1, alpha: 1, delay, duration: 380, ease: 'Back.easeOut' });
-    return wrap;
+  private spinTo() {
+    const res = this.res;
+    if (!res) return;
+    const i = WHEEL.slots.indexOf(res.slot);
+    const turns = Math.PI * 2 * SPIN_TURNS[this.taps];
+    const from = this.wheel.rotation;
+    const base = this.restAngle(i) + this.jitter;
+    let to = base + turns;
+    while (to - from < turns) to += Math.PI * 2;
+    this.spinTween?.stop();
+    const st = { v: from };
+    this.spinTween = this.tweens.add({
+      targets: st,
+      v: to,
+      duration: SPIN_MS[this.taps],
+      ease: 'Cubic.easeOut',
+      onUpdate: (tw) => {
+        this.wheel.setRotation(st.v);
+        const sec = Math.floor((st.v + SECTOR / 2) / SECTOR);
+        if (sec !== this.lastSector) {
+          this.lastSector = sec;
+          wheelTick(this, 1 + (1 - tw.progress) * 0.3);
+          this.flapPointer();
+        }
+      },
+      onComplete: () => this.spinDone(),
+    });
+  }
+
+  private spinDone() {
+    const res = this.res;
+    if (!res) return;
+    this.busy = false;
+    // sector ganador iluminado un instante (fijo arriba, encima de la ruleta) y luego se muestra solo el premio
+    // dentro de la ruleta y sobre el sector ganador (gira con ella: queda justo bajo el indicador aunque el giro
+    // termine algo desplazado dentro del sector)
+    const a0 = sectorCenter(WHEEL.slots.indexOf(res.slot)) - SECTOR / 2;
+    const hl = this.add.graphics().setBlendMode(Phaser.BlendModes.ADD);
+    hl.fillStyle(0xffffff, 0.35).slice(0, 0, this.R, a0, a0 + SECTOR, false).fillPath();
+    hl.lineStyle(6, GOLD, 1).beginPath().arc(0, 0, this.R - 2, a0, a0 + SECTOR).strokePath();
+    this.wheel.add(hl);
+    this.tweens.add({ targets: hl, alpha: { from: 1, to: 0.35 }, duration: 200, yoyo: true, repeat: -1 });
+    this.time.delayedCall(850, () => this.reveal(res.slot, res.reward, false, true));
   }
 
   private closeButton(W: number) {
@@ -283,58 +467,6 @@ export class WheelScene extends Phaser.Scene {
     return -i * SECTOR;
   }
 
-  private doSpin() {
-    if (this.busy) return;
-    // 1) el premio se decide y se guarda ANTES de animar (aleatorio seguro y ponderado)
-    const res = spinWheel(this.index);
-    if (!res) return this.close();
-    this.busy = true;
-    this.closeBtn.setVisible(false);
-    for (const o of this.ui) this.tweens.add({ targets: o, alpha: 0, scale: 0.8, duration: 180, onComplete: () => o.destroy() });
-    this.ui = [];
-    this.tweens.killTweensOf(this.wheel);
-    wheelStart(this);
-
-    // 2) la animación solo representa el resultado: vueltas + desaceleración hasta su sector
-    const i = WHEEL.slots.indexOf(res.slot);
-    const from = this.wheel.rotation;
-    const jitter = (Math.random() - 0.5) * SECTOR * 0.6; // solo visual, dentro del mismo sector
-    const base = this.restAngle(i) + jitter;
-    const turns = Math.PI * 2 * SPIN_TURNS;
-    let to = base + turns;
-    while (to - from < turns) to += Math.PI * 2;
-    const st = { v: from };
-    let lastSector = Math.floor((from + SECTOR / 2) / SECTOR);
-    // pequeño "tirón" hacia atrás y luego el giro
-    this.tweens.add({
-      targets: st,
-      v: from - 0.18,
-      duration: 220,
-      ease: 'Quad.easeOut',
-      onUpdate: () => this.wheel.setRotation(st.v),
-      onComplete: () =>
-        this.tweens.add({
-          targets: st,
-          v: to,
-          duration: SPIN_MS,
-          ease: 'Quart.easeOut',
-          onUpdate: (tw) => {
-            this.wheel.setRotation(st.v);
-            const sec = Math.floor((st.v + SECTOR / 2) / SECTOR);
-            if (sec !== lastSector) {
-              lastSector = sec;
-              wheelTick(this, 1 + (1 - tw.progress) * 0.3);
-              this.flapPointer();
-            }
-          },
-          onComplete: () => {
-            this.busy = false;
-            this.showResult(res.slot, res.reward, false, true);
-          },
-        }),
-    });
-  }
-
   private flapPointer() {
     if (!this.pointer) return; // con el marco en imagen el indicador es fijo
     this.tweens.killTweensOf(this.pointer);
@@ -343,57 +475,95 @@ export class WheelScene extends Phaser.Scene {
   }
 
   // ---------------------------------------------------------------- premio
-  private showResult(slot: WheelSlot, reward: WheelReward, claimed: boolean, celebrate: boolean) {
+  /**
+   * La ruleta desaparece y queda SOLO el premio: icono grande y la cantidad debajo (cuenta hacia arriba).
+   * Se cobra solo (idempotente). Un toque en cualquier parte vuelve al menú.
+   */
+  private reveal(slot: WheelSlot, reward: WheelReward, claimed: boolean, celebrate: boolean) {
     const special = isSpecial(slot);
     const W = this.scale.width;
-    this.closeBtn.setVisible(true);
-    // sector ganador iluminado (fijo arriba, encima de la ruleta)
-    const hl = this.add.graphics({ x: this.cx, y: this.cy }).setBlendMode(Phaser.BlendModes.ADD);
-    hl.fillStyle(0xffffff, 0.35).slice(0, 0, this.R, -Math.PI / 2 - SECTOR / 2, -Math.PI / 2 + SECTOR / 2, false).fillPath();
-    hl.lineStyle(6, GOLD, 1).beginPath().arc(0, 0, this.R - 2, -Math.PI / 2 - SECTOR / 2, -Math.PI / 2 + SECTOR / 2).strokePath();
-    this.tweens.add({ targets: hl, alpha: { from: 1, to: 0.35 }, duration: 420, yoyo: true, repeat: -1 });
-
+    const H = this.scale.height;
+    this.phase = 'result';
+    this.canContinue = false;
+    this.busy = false;
+    this.spinTween?.stop();
+    this.blinkEv?.remove();
+    this.blinkEv = undefined;
+    this.frameGlow = undefined;
+    // 1) fuera la ruleta, el título y las indicaciones
+    for (const o of [...this.children.list]) {
+      if (this.keep.has(o)) continue;
+      this.tweens.killTweensOf(o);
+      this.tweens.add({ targets: o, alpha: 0, scale: (o as unknown as { scale: number }).scale * 0.6, duration: 240, ease: 'Cubic.easeIn', onComplete: () => o.destroy() });
+    }
+    this.closeBtn.setVisible(false);
+    // 2) cobro automático
+    if (!claimed) {
+      claimWheel(this.index, this.bonus);
+      wheelClaim(this);
+    }
+    const cx = W / 2;
+    const cy = H * 0.42;
+    const rays = this.data.get('rays') as Phaser.GameObjects.Graphics | undefined;
+    if (rays) {
+      rays.setPosition(cx, cy);
+      this.tweens.add({ targets: rays, alpha: special ? 2.4 : 1.6, duration: 400 });
+    }
     if (celebrate) {
       wheelWin(this, special);
-      this.burst(this.cx, this.cy - this.R * 0.62, special);
-      if (special) this.specialCelebration();
+      this.cameras.main.flash(220, 255, 235, 170);
+    }
+    const t0 = 180;
+    // 3) resplandor + icono que aparece con rebote
+    const glow = this.add.image(cx, cy, GLOW_KEY).setTint(special ? 0xff9bd8 : 0xffd23f).setBlendMode(Phaser.BlendModes.ADD).setAlpha(0).setScale(0.5);
+    this.tweens.add({ targets: glow, alpha: 0.95, scale: 4.2, delay: t0, duration: 520, ease: 'Cubic.easeOut' });
+    this.tweens.add({ targets: glow, scale: 4.6, alpha: 0.75, delay: t0 + 520, duration: 900, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
+    const icon = this.add.graphics({ x: cx, y: cy });
+    const iconSlot = reward.kind === 'coins' && slot.prize.kind !== 'coins' ? WHEEL.slots.find((s) => s.prize.kind === 'coins')! : reward.kind === 'xp' && slot.prize.kind !== 'xp' ? WHEEL.slots.find((s) => s.prize.kind === 'xp')! : reward.kind === 'item' ? WHEEL.slots.find((s) => s.prize.kind === 'cosmetic')! : slot;
+    drawSlotIcon(icon, iconSlot, Math.min(150, W * 0.2));
+    icon.setScale(0).setAngle(-25);
+    this.tweens.add({ targets: icon, scale: 1, angle: 0, delay: t0, duration: 560, ease: 'Back.easeOut' });
+    this.tweens.add({ targets: icon, y: cy - 10, delay: t0 + 600, duration: 1100, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
+    if (celebrate) this.time.delayedCall(t0 + 120, () => this.burst(cx, cy, special));
+    if (special) this.specialCelebration();
+
+    // 4) cantidad debajo (cuenta hacia arriba) y etiqueta
+    const n = (v: number) => v.toLocaleString('es-CL');
+    let big: string;
+    let small: string;
+    let note = '';
+    let target = 0;
+    if (reward.kind === 'item') {
+      big = `¡${reward.name.toUpperCase()}!`;
+      small = 'NUEVO COSMÉTICO';
+    } else {
+      target = reward.amount;
+      big = `+${n(target)}`;
+      small = reward.kind === 'xp' ? 'EXP' : 'MONEDAS';
+      if (reward.kind === 'coins' && reward.duplicateOf !== undefined) note = reward.duplicateOf ? 'Ya tenías ese cosmético: compensación' : 'Ya tienes todos los cosméticos: compensación';
+    }
+    const ty = cy + Math.min(150, W * 0.2) + 90;
+    const amount = this.add.text(cx, ty, reward.kind === 'item' ? big : '+0', { fontFamily: FONT, fontSize: reward.kind === 'item' ? '60px' : '110px', color: special ? '#ffd23f' : '#ffffff', stroke: '#0a1638', strokeThickness: 14 }).setOrigin(0.5).setAlpha(0).setScale(0.4);
+    if (amount.width > W - 60) amount.setFontSize(Math.floor((parseInt(String(amount.style.fontSize), 10) * (W - 60)) / amount.width));
+    amount.setShadow(0, 8, '#0a1638', 0, true, true);
+    this.tweens.add({ targets: amount, alpha: 1, scale: 1, delay: t0 + 300, duration: 420, ease: 'Back.easeOut' });
+    if (reward.kind !== 'item') {
+      const c = { v: 0 };
+      this.tweens.add({ targets: c, v: target, delay: t0 + 360, duration: 800, ease: 'Cubic.easeOut', onUpdate: () => amount.setText(`+${n(Math.round(c.v))}`), onComplete: () => amount.setText(big) });
+    }
+    const label = this.add.text(cx, ty + (reward.kind === 'item' ? 56 : 84), small, { fontFamily: FONT, fontSize: '40px', color: '#ffd23f', stroke: '#0a1638', strokeThickness: 9 }).setOrigin(0.5).setAlpha(0).setLetterSpacing(3);
+    this.tweens.add({ targets: label, alpha: 1, delay: t0 + 620, duration: 300 });
+    if (note) {
+      const nt = this.add.text(cx, label.y + 48, note, { fontFamily: FONT, fontSize: '22px', color: '#cfe0ff', stroke: '#0a1638', strokeThickness: 5 }).setOrigin(0.5).setAlpha(0);
+      this.tweens.add({ targets: nt, alpha: 1, delay: t0 + 800, duration: 300 });
     }
 
-    // tarjeta del premio
-    const y = this.cy + this.outerR + 62;
-    const card = this.add.container(W / 2, y);
-    const cw = Math.min(560, W - 60);
-    const ch = 116;
-    const col = slotColors(slot);
-    const bg = this.add.graphics();
-    bg.fillStyle(0x000000, 0.35).fillRoundedRect(-cw / 2 + 5, -ch / 2 + 8, cw, ch, 26);
-    bg.fillStyle(NAVY, 0.97).fillRoundedRect(-cw / 2, -ch / 2, cw, ch, 26);
-    bg.lineStyle(4, special ? GOLD : col.fill, 1).strokeRoundedRect(-cw / 2, -ch / 2, cw, ch, 26);
-    card.add(bg);
-    const icon = this.add.graphics({ x: -cw / 2 + 66, y: 0 });
-    const iconSlot = reward.kind === 'coins' && slot.prize.kind !== 'coins' ? WHEEL.slots.find((s) => s.prize.kind === 'coins')! : reward.kind === 'xp' && slot.prize.kind !== 'xp' ? WHEEL.slots.find((s) => s.prize.kind === 'xp')! : slot;
-    drawSlotIcon(icon, iconSlot, 30);
-    card.add(icon);
-    const { line1, line2 } = rewardText(reward);
-    const t1 = this.add.text(-cw / 2 + 120, line2 ? -16 : 0, line1, { fontFamily: FONT, fontSize: '38px', color: special ? '#ffd23f' : '#ffffff', stroke: '#0a1638', strokeThickness: 7 }).setOrigin(0, 0.5);
-    const maxW = cw - 140;
-    if (t1.width > maxW) t1.setScale(maxW / t1.width);
-    card.add(t1);
-    if (line2) card.add(this.add.text(-cw / 2 + 122, 24, line2, { fontFamily: FONT, fontSize: '18px', color: '#9fb4e0' }).setOrigin(0, 0.5));
-    card.setScale(0.3).setAlpha(0);
-    this.tweens.add({ targets: card, scale: 1, alpha: 1, duration: 420, ease: 'Back.easeOut' });
-
-    // RECLAMAR (o CONTINUAR si ya se cobró)
-    const by = y + ch / 2 + 74;
-    const bw = Math.min(420, W - 120);
-    const btn = arcadeButton(this, W / 2, by, bw, 100, claimed ? 'CONTINUAR' : 'RECLAMAR', () => {
-      if (claimed) return this.close();
-      const r = claimWheel(this.index);
-      claimed = true;
-      if (r?.given) this.claimFx(r.given);
-      (btn.getData('label') as Phaser.GameObjects.Text).setText('CONTINUAR');
-    }, { palette: claimed ? 'blue' : 'yellow', pulse: !claimed });
-    this.popIn(btn, 300);
+    // 5) tocar para continuar (cualquier parte)
+    const cont = this.add.text(cx, H * 0.9, 'TOCA PARA CONTINUAR', { fontFamily: FONT, fontSize: '30px', color: '#ffffff', stroke: '#0a1638', strokeThickness: 7 }).setOrigin(0.5).setAlpha(0).setLetterSpacing(2);
+    this.time.delayedCall(t0 + 1100, () => {
+      this.canContinue = true;
+      this.tweens.add({ targets: cont, alpha: 1, duration: 300, onComplete: () => this.tweens.add({ targets: cont, alpha: 0.4, duration: 650, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' }) });
+    });
   }
 
   private burst(x: number, y: number, special: boolean) {
@@ -414,12 +584,8 @@ export class WheelScene extends Phaser.Scene {
   private specialCelebration() {
     const W = this.scale.width;
     const H = this.scale.height;
-    this.cameras.main.flash(260, 255, 230, 150);
-    const rays = this.data.get('rays') as Phaser.GameObjects.Graphics | undefined;
-    if (rays) this.tweens.add({ targets: rays, alpha: 2.5, duration: 400, yoyo: true, repeat: 3 });
-    (this.data.get('sub') as Phaser.GameObjects.Text | undefined)?.setVisible(false);
     const banner = this.add
-      .text(W / 2, this.cy - this.outerR - 42, '¡PREMIO ESPECIAL!', { fontFamily: FONT, fontSize: '40px', color: '#ffffff', stroke: '#7b2cff', strokeThickness: 10 })
+      .text(W / 2, H * 0.12, '¡PREMIO ESPECIAL!', { fontFamily: FONT, fontSize: '40px', color: '#ffffff', stroke: '#7b2cff', strokeThickness: 10 })
       .setOrigin(0.5)
       .setScale(0);
     this.tweens.add({ targets: banner, scale: 1, duration: 450, ease: 'Back.easeOut' });
@@ -435,31 +601,6 @@ export class WheelScene extends Phaser.Scene {
         duration: Phaser.Math.Between(1800, 3000),
         ease: 'Sine.easeIn',
         onComplete: () => c.destroy(),
-      });
-    }
-  }
-
-  /** Cobro: monedas/estrellas suben hacia el contador del menú. */
-  private claimFx(r: WheelReward) {
-    wheelClaim(this);
-    const W = this.scale.width;
-    const from = { x: W / 2 - Math.min(560, W - 60) / 2 + 66, y: this.cy + this.outerR + 62 };
-    const target = r.kind === 'xp' ? { x: 150, y: 90 } : { x: W - 200, y: 82 };
-    const n = 12;
-    for (let i = 0; i < n; i++) {
-      const g = this.add.graphics({ x: from.x, y: from.y });
-      if (r.kind === 'xp') drawSlotIcon(g, WHEEL.slots.find((s) => s.prize.kind === 'xp')!, 14);
-      else if (r.kind === 'item') drawSlotIcon(g, WHEEL.slots.find((s) => s.prize.kind === 'cosmetic')!, 14);
-      else drawSlotIcon(g, WHEEL.slots[0], 14);
-      this.tweens.add({
-        targets: g,
-        x: { from: from.x + Phaser.Math.Between(-40, 40), to: target.x },
-        y: { from: from.y + Phaser.Math.Between(-30, 30), to: target.y },
-        scale: { from: 1.2, to: 0.6 },
-        delay: i * 45,
-        duration: 650,
-        ease: 'Cubic.easeIn',
-        onComplete: () => g.destroy(),
       });
     }
   }

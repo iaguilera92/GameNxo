@@ -32,10 +32,12 @@ export interface WheelState {
   /** ids de partidas ya contadas en este ciclo */
   matchIds: string[];
   spins: WheelSpin[];
+  /** Giros bonus del pase: no caducan con el reinicio diario. */
+  bonusSpins: WheelSpin[];
 }
 
 export function newWheelState(cycle = ''): WheelState {
-  return { cycle, wins: 0, matchIds: [], spins: [] };
+  return { cycle, wins: 0, matchIds: [], spins: [], bonusSpins: [] };
 }
 
 export function cloneWheel(w: WheelState): WheelState {
@@ -43,5 +45,6 @@ export function cloneWheel(w: WheelState): WheelState {
     ...w,
     matchIds: [...w.matchIds],
     spins: w.spins.map((s) => ({ ...s, reward: s.reward ? { ...s.reward } : null })),
+    bonusSpins: w.bonusSpins.map((s) => ({ ...s, reward: s.reward ? { ...s.reward } : null })),
   };
 }

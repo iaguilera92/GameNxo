@@ -3,24 +3,26 @@
   "view": "back",
   "cell": {
     "w": 222,
-    "h": 174
+    "h": 154
   },
   "origin": {
     "x": 0.5,
-    "y": 0.78161
+    "y": 0.94156
   },
   "standHeight": 115,
-  "hold": 2,
+  "hold": 1,
   "serveWait": 2,
   "smashStart": 2,
-  "holdForehand": 4,
+  "holdForehand": 1,
+  "holdPower": 3,
+  "holdPowerForehand": 3,
   "animations": {
     "forehand": {
       "file": "forehand.png",
       "frames": 8,
       "fps": 15,
       "loop": false,
-      "impact": 7
+      "impact": 6
     },
     "backhand": {
       "file": "backhand.png",

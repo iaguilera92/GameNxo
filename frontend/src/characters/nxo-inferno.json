@@ -2,12 +2,12 @@
   "source": "pj-nxo-inferno.png (1 fila x 9: INFERNO DRIVE)",
   "view": "back",
   "cell": {
-    "w": 187,
-    "h": 161
+    "w": 183,
+    "h": 154
   },
   "origin": {
-    "x": 0.36364,
-    "y": 0.95652
+    "x": 0.42077,
+    "y": 0.96753
   },
   "standHeight": 140,
   "cols": 3,

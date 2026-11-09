@@ -12,10 +12,15 @@ export interface BattlePassState {
   /** niveles ya reclamados en cada camino */
   free: number[];
   prem: number[];
+  /** bonus compartido final de la temporada ya reclamado */
+  bonusClaimed: boolean;
+  /** regalos de inicio ya cobrados */
+  welcomeFreeClaimed: boolean;
+  welcomePremClaimed: boolean;
 }
 
 export function newBattlePass(season = ''): BattlePassState {
-  return { season, xp: 0, premium: false, free: [], prem: [] };
+  return { season, xp: 0, premium: false, free: [], prem: [], bonusClaimed: false, welcomeFreeClaimed: false, welcomePremClaimed: false };
 }
 
 export function cloneBattlePass(b: BattlePassState): BattlePassState {

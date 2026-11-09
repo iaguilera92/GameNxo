@@ -4,7 +4,7 @@ import { C } from './theme';
 /**
  * EMOTES del partido (estilo Brawl Stars): un botón de charla abre 3 caritas; al elegir una sale un globo con
  * la carita sobre la cabeza del jugador. Después hay una espera de 10 s (el botón se apaga con la cuenta atrás).
- * Todo se dibuja por código (sin imágenes). El botón y el panel son de interfaz (scrollFactor 0); el globo vive en
+ * Los rostros usan los stickers de Nxo. El botón y el panel son de interfaz (scrollFactor 0); el globo vive en
  * el mundo y sigue la cabeza del jugador.
  */
 export const EMOTE_COOLDOWN_MS = 10000;
@@ -14,51 +14,11 @@ const PANEL_AUTOCLOSE_MS = 4000;
 export type EmoteKind = 'happy' | 'cool' | 'wow';
 export const EMOTES: EmoteKind[] = ['happy', 'cool', 'wow'];
 
-/** Carita redonda centrada en (0,0) de radio r. */
-function drawFace(g: Phaser.GameObjects.Graphics, kind: EmoteKind, r: number) {
-  const o = Math.max(2, r * 0.1);
-  g.fillStyle(C.outline).fillCircle(0, 0, r + o);
-  g.fillStyle(C.yellowDark).fillCircle(0, r * 0.06, r);
-  g.fillStyle(C.yellow).fillCircle(0, 0, r * 0.94);
-  g.fillStyle(0xffffff, 0.35).fillEllipse(-r * 0.22, -r * 0.62, r * 0.9, r * 0.32);
-  const ink = C.outline;
-  if (kind === 'happy') {
-    // ojos cerrados sonrientes + boca grande
-    g.lineStyle(r * 0.14, ink).beginPath().arc(-r * 0.36, -r * 0.18, r * 0.17, Math.PI, 0, false).strokePath();
-    g.lineStyle(r * 0.14, ink).beginPath().arc(r * 0.36, -r * 0.18, r * 0.17, Math.PI, 0, false).strokePath();
-    g.fillStyle(ink).fillPoints(arcPoints(0, r * 0.12, r * 0.52, 0, Math.PI), true);
-    g.fillStyle(0xff6b7a).fillEllipse(0, r * 0.45, r * 0.5, r * 0.2);
-  } else if (kind === 'cool') {
-    // gafas oscuras + media sonrisa
-    g.fillStyle(ink).fillRoundedRect(-r * 0.7, -r * 0.34, r * 0.6, r * 0.38, r * 0.1);
-    g.fillStyle(ink).fillRoundedRect(r * 0.1, -r * 0.34, r * 0.6, r * 0.38, r * 0.1);
-    g.fillStyle(ink).fillRect(-r * 0.12, -r * 0.28, r * 0.24, r * 0.08);
-    g.fillStyle(0xffffff, 0.55).fillRect(-r * 0.58, -r * 0.28, r * 0.16, r * 0.07);
-    g.fillStyle(0xffffff, 0.55).fillRect(r * 0.22, -r * 0.28, r * 0.16, r * 0.07);
-    g.lineStyle(r * 0.13, ink).beginPath().arc(0, r * 0.12, r * 0.44, 0.2, Math.PI - 0.55, false).strokePath();
-  } else {
-    // asombro: ojos redondos y boca en "o"
-    for (const sx of [-1, 1]) {
-      g.fillStyle(0xffffff).fillCircle(sx * r * 0.36, -r * 0.2, r * 0.22);
-      g.lineStyle(r * 0.07, ink).strokeCircle(sx * r * 0.36, -r * 0.2, r * 0.22);
-      g.fillStyle(ink).fillCircle(sx * r * 0.36, -r * 0.18, r * 0.09);
-    }
-    g.fillStyle(ink).fillEllipse(0, r * 0.45, r * 0.34, r * 0.44);
-    g.fillStyle(0xff6b7a).fillEllipse(0, r * 0.52, r * 0.2, r * 0.2);
-    g.lineStyle(r * 0.1, ink).lineBetween(-r * 0.58, -r * 0.55, -r * 0.2, -r * 0.62);
-    g.lineStyle(r * 0.1, ink).lineBetween(r * 0.2, -r * 0.62, r * 0.58, -r * 0.55);
-  }
-}
-
-function arcPoints(cx: number, cy: number, rad: number, a0: number, a1: number) {
-  const pts: Phaser.Math.Vector2[] = [];
-  const n = 14;
-  for (let i = 0; i <= n; i++) {
-    const a = a0 + ((a1 - a0) * i) / n;
-    pts.push(new Phaser.Math.Vector2(cx + Math.cos(a) * rad, cy + Math.sin(a) * rad));
-  }
-  return pts;
-}
+const EMOTE_TEXTURE: Record<EmoteKind, string> = {
+  happy: 'emote-risa',
+  cool: 'emote-pensando',
+  wow: 'emote-enojado',
+};
 
 export class Emotes {
   /** botón de charla (posicionar con setPosition) */
@@ -107,8 +67,7 @@ export class Emotes {
       const o = scene.add.container(-(i + 1) * 76, 0);
       const bg = scene.add.graphics();
       bg.fillStyle(C.outline, 0.85).fillCircle(0, 3, 33);
-      const face = scene.add.graphics();
-      drawFace(face, kind, 25);
+      const face = scene.add.image(0, 0, EMOTE_TEXTURE[kind]).setDisplaySize(54, 54);
       o.add([bg, face]);
       o.setSize(66, 66);
       o.setInteractive({ useHandCursor: true });
@@ -201,8 +160,7 @@ export class Emotes {
     g.fillStyle(C.outline).fillTriangle(-14, -2, 14, -2, 0, 18);
     g.fillStyle(0xffffff).fillRoundedRect(-W / 2, -H, W, H, 17);
     g.fillStyle(0xffffff).fillTriangle(-10, -4, 10, -4, 0, 12);
-    const face = this.scene.add.graphics().setPosition(0, -H / 2);
-    drawFace(face, kind, 25);
+    const face = this.scene.add.image(0, -H / 2, EMOTE_TEXTURE[kind]).setDisplaySize(58, 58);
     c.add([g, face]);
     return c;
   }

@@ -47,8 +47,8 @@ const BG_ZOOM = 1.12;
  * Si la imagen no existe se dibuja la barra vectorial de antes.
  */
 const NAV = {
-  key: 'nav-bar',
-  file: 'assets/nav-bar.png',
+  key: 'nav-home',
+  file: 'assets/barra-inicio.png',
   w: 2172,
   h: 724,
   box: { x0: 46, y0: 170, x1: 2124, y1: 540 },
@@ -65,6 +65,9 @@ export class MenuScene extends Phaser.Scene {
   preload() {
     if (!this.textures.exists('menu-bg')) this.load.image('menu-bg', 'assets/menu-bg.png');
     if (!this.textures.exists('btn-jugar')) this.load.image('btn-jugar', 'assets/btn-jugar.png');
+    if (!this.textures.exists('daily-coins-art')) this.load.image('daily-coins-art', 'assets/monedas.png');
+    if (!this.textures.exists('daily-cash-art')) this.load.image('daily-cash-art', 'assets/billetes.png');
+    if (!this.textures.exists('daily-title-art')) this.load.image('daily-title-art', 'assets/premio-diario.png');
     if (!this.textures.exists(NAV.key)) this.load.image(NAV.key, NAV.file);
     preloadRankBadges(this.load, [myLeague()]);
   }
@@ -154,15 +157,8 @@ export class MenuScene extends Phaser.Scene {
     const zone = (from: number, to: number, onClick: () => void) => {
       const zx = NAV.side + (W - NAV.side * 2) * from;
       const zw = (W - NAV.side * 2) * (to - from);
-      const flash = this.add.rectangle(zx + zw / 2, (top + bottom) / 2, zw * 0.9, (bottom - top) * 0.8, 0x9fd0ff, 0)
-        .setBlendMode(Phaser.BlendModes.ADD)
-        .setDepth(101);
       const hit = this.add.rectangle(zx + zw / 2, (top + bottom) / 2, zw, bottom - top + 16, 0x000000, 0.001).setDepth(102);
-      hit.setInteractive({ useHandCursor: true }).on('pointerdown', () => {
-        this.tweens.killTweensOf(flash);
-        this.tweens.add({ targets: flash, fillAlpha: { from: 0.22, to: 0 }, duration: 260, ease: 'Quad.easeOut' });
-        onClick();
-      });
+      hit.setInteractive({ useHandCursor: true }).on('pointerdown', onClick);
     };
     zone(0, NAV.split[0], () => this.openRanked());
     zone(NAV.split[0], NAV.split[1], () => undefined); // INICIO (activa)

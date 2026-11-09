@@ -14,20 +14,21 @@ import { FONT } from '../ui/theme';
 export const INTRO = {
   /** zoom inicial (más bajo deja ver el borde del fondo; la viñeta tapa el resto) */
   zoomFrom: 0.72,
+  /** relativo al zoom de juego (VIEW.CAM_ZOOM): la cámara termina EXACTAMENTE en el encuadre de juego (sin salto) */
   /** desplazamiento vertical inicial de la cámara (px de mundo; positivo = mira más abajo, oculta el borde superior) */
-  liftFrom: 130,
+  liftFrom: -420,
   /** viñeta superior (y de mundo): opaca hasta aquí y se desvanece hasta vigFadeTo */
   vigSolidTo: -60,
   vigFadeTo: 300,
   vigBottomFrom: 1250,
   vigBottomSolid: 1560,
-  zoomMs: 1200,
+  zoomMs: 2300,
   dark: 0.55,
-  textAt: 700,
-  textOutAt: 1500,
-  revealAt: 1200,
-  revealMs: 450,
-  totalMs: 1800,
+  textAt: 1500,
+  textOutAt: 2400,
+  revealAt: 2100,
+  revealMs: 500,
+  totalMs: 2700,
 };
 
 export function playMatchIntro(scene: Phaser.Scene, onDone: () => void) {
@@ -48,14 +49,15 @@ export function playMatchIntro(scene: Phaser.Scene, onDone: () => void) {
 
   // cámara: de lejos y un poco alta → encuadre normal
   const baseY = cam.scrollY;
-  cam.setZoom(INTRO.zoomFrom);
+  const baseZoom = cam.zoom; // zoom de juego (no 1): antes terminaba en 1 y al empezar saltaba al real
+  cam.setZoom(baseZoom * INTRO.zoomFrom);
   cam.scrollY = baseY + INTRO.liftFrom;
   cam.fadeIn(220, 0, 0, 0);
-  scene.tweens.add({ targets: cam, zoom: 1, scrollY: baseY, duration: INTRO.zoomMs, ease: 'Cubic.easeInOut' });
+  scene.tweens.add({ targets: cam, zoom: baseZoom, scrollY: baseY, duration: INTRO.zoomMs, ease: 'Sine.easeInOut' });
 
   // oscurecido (cubre de sobra aunque la cámara esté alejada)
   const dim = scene.add
-    .rectangle(W / 2, H / 2, (W / INTRO.zoomFrom) * 1.2, (H / INTRO.zoomFrom) * 1.2, 0x02060f, INTRO.dark)
+    .rectangle(W / 2, H / 2, (W / INTRO.zoomFrom) * 2, (H / INTRO.zoomFrom) * 2, 0x02060f, INTRO.dark)
     .setScrollFactor(0)
     .setDepth(8000);
   // viñeta superior EN EL MUNDO: oscurece el cielo y esconde el borde del fondo mientras la cámara está lejos
@@ -109,7 +111,7 @@ export function playMatchIntro(scene: Phaser.Scene, onDone: () => void) {
   });
 
   scene.time.delayedCall(INTRO.totalMs, () => {
-    cam.setZoom(1);
+    cam.setZoom(baseZoom);
     cam.scrollY = baseY;
     onDone();
   });

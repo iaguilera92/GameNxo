@@ -39,6 +39,13 @@ export interface RankedStats {
   bestStreak: number;
 }
 
+export interface RankedMatchHistory {
+  outcome: 'win' | 'loss';
+  delta: number;
+  league: RankId;
+  playedAt: number;
+}
+
 export interface RankedState {
   /** se desbloqueó (nivel >= RANKED.unlockLevel) */
   unlocked: boolean;
@@ -52,6 +59,8 @@ export interface RankedState {
   season: RankedStats;
   total: RankedStats;
   pending: RankedPending | null;
+  /** últimos resultados Ranked completados, del más reciente al más antiguo */
+  history: RankedMatchHistory[];
   /** ids de partidas ya liquidadas (idempotencia) */
   settled: string[];
   /** recompensas semanales por mostrar / cobrar */
@@ -74,6 +83,7 @@ export function newRankedState(): RankedState {
     season: newStats(),
     total: newStats(),
     pending: null,
+    history: [],
     settled: [],
     rewards: [],
     seenLeague: 'bronze',
@@ -87,6 +97,7 @@ export function cloneRanked(r: RankedState): RankedState {
     season: { ...r.season },
     total: { ...r.total },
     pending: r.pending ? { ...r.pending } : null,
+    history: r.history.map((entry) => ({ ...entry })),
     settled: [...r.settled],
     rewards: r.rewards.map((w) => ({ ...w })),
     demotion: r.demotion ? { ...r.demotion } : null,

@@ -6,7 +6,7 @@ import { GAMES_TO_WIN, GOLDEN_POINT } from '../config';
 /**
  * Marcador del punto en mitad de la pantalla (~2 s): dos franjas inclinadas entran desde los lados
  * (jugador por la izquierda en azul, rival por la derecha en rojo), se cruzan en una diagonal con un
- * rayo de energía, muestran el marcador del juego (15 / 30 / 40 / AD) y salen. La franja de quien ganó
+ * muestran el marcador del juego (15 / 30 / 40 / AD) y salen. La franja de quien ganó
  * el punto brilla y su cifra salta. Fijo en pantalla (cámara de interfaz: scrollFactor 0).
  */
 export interface PointSplashOpts {
@@ -14,6 +14,8 @@ export interface PointSplashOpts {
   rivalName: string;
   /** etiquetas tras el punto: [jugador, rival] */
   labels: [string, string];
+  /** etiquetas ANTES del punto: la cifra del ganador se ve primero con el valor anterior y cambia (30 → 40) */
+  prevLabels?: [string, string];
   /** quién ganó el punto */
   winner: 'player' | 'bot';
   /** texto extra opcional (Iguales, Ventaja, Juego para…) */
@@ -97,27 +99,6 @@ export function showPointSplash(scene: Phaser.Scene, o: PointSplashOpts) {
   const a = band('player');
   const b = band('bot');
 
-  // rayo de energía en la diagonal central
-  const bolt = scene.add.graphics().setBlendMode(Phaser.BlendModes.ADD).setAlpha(0);
-  const drawBolt = () => {
-    bolt.clear();
-    const y0 = cy - BAND_H - 40;
-    const y1 = cy + BAND_H + 40;
-    const steps = 9;
-    const pts: Phaser.Types.Math.Vector2Like[] = [];
-    for (let i = 0; i <= steps; i++) {
-      const t = i / steps;
-      const x = cx + SLANT * 2.2 * (0.5 - t) + 5 + (i > 0 && i < steps ? Phaser.Math.Between(-9, 9) : 0);
-      pts.push({ x, y: y0 + (y1 - y0) * t });
-    }
-    bolt.lineStyle(14, 0xb58cff, 0.35).strokePoints(pts);
-    bolt.lineStyle(6, 0xd9c4ff, 0.8).strokePoints(pts);
-    bolt.lineStyle(2, 0xffffff, 1).strokePoints(pts);
-  };
-  drawBolt();
-  root.add(bolt);
-  const flicker = scene.time.addEvent({ delay: 60, loop: true, callback: drawBolt });
-
   // título (JUEGOS) y texto de estado (Iguales / Ventaja / Juego para…)
   const extras: Phaser.GameObjects.GameObject[] = [];
   if (o.title) {
@@ -152,23 +133,33 @@ export function showPointSplash(scene: Phaser.Scene, o: PointSplashOpts) {
   const OUT = 240;
   scene.tweens.add({ targets: a.c, x: 0, duration: IN, ease: 'Cubic.easeOut' });
   scene.tweens.add({ targets: b.c, x: 0, duration: IN, delay: 60, ease: 'Cubic.easeOut' });
-  scene.tweens.add({ targets: bolt, alpha: 1, duration: 120, delay: IN - 40 });
   if (extras.length) scene.tweens.add({ targets: extras, alpha: 1, duration: 200, delay: IN + 80 });
-  // la cifra de quien ganó el punto salta
+  // la cifra de quien ganó el punto: se ve el valor ANTERIOR y cambia al nuevo (sin pulsación): el anterior sube
+  // y se desvanece, el nuevo entra desde abajo
   const w = a.won ? a : b;
-  scene.tweens.add({ targets: w.num, scale: { from: 1.5, to: 1 }, duration: 380, delay: IN + 40, ease: 'Back.easeOut' });
-  const spark = scene.add.circle(w.num.x + (a.won ? -w.num.width / 2 : w.num.width / 2), w.y, 30, 0xffffff, 0).setBlendMode(Phaser.BlendModes.ADD);
-  w.c.add(spark);
-  scene.tweens.add({ targets: spark, fillAlpha: { from: 0.7, to: 0 }, scale: { from: 0.6, to: 3 }, duration: 450, delay: IN + 40 });
+  const wi = a.won ? 0 : 1;
+  const prev = o.prevLabels?.[wi];
+  if (prev !== undefined && prev !== o.labels[wi]) {
+    const next = w.num.text;
+    w.num.setText(prev);
+    const ghost = scene.add.text(w.num.x, w.num.y, next, w.num.style).setOrigin(w.num.originX, 0.5).setAlpha(0);
+    w.c.add(ghost);
+    const at = IN + 260;
+    scene.tweens.add({ targets: w.num, y: w.num.y - 36, alpha: 0, duration: 220, delay: at, ease: 'Quad.easeIn' });
+    ghost.setY(w.num.y + 36);
+    scene.tweens.add({ targets: ghost, y: w.num.y, alpha: 1, duration: 240, delay: at + 60, ease: 'Quad.easeOut' });
+  }
+
+  // sonido del marcador, completo: justo cuando la cifra cambia (30 → 40), no al entrar las franjas
+  scene.time.delayedCall(IN + 300, () => {
+    if (scene.cache.audio.exists('marcador')) scene.sound.play('marcador', { volume: 0.9 });
+  });
 
   const outAt = POINT_SPLASH_MS - OUT - 60;
   scene.time.delayedCall(outAt, () => {
-    flicker.remove();
-    scene.tweens.add({ targets: bolt, alpha: 0, duration: 120 });
     if (extras.length) scene.tweens.add({ targets: extras, alpha: 0, duration: 150 });
     scene.tweens.add({ targets: a.c, x: -W, duration: OUT, ease: 'Cubic.easeIn' });
     scene.tweens.add({ targets: b.c, x: W, duration: OUT, ease: 'Cubic.easeIn', onComplete: () => root.destroy() });
   });
-  scene.events.once(Phaser.Scenes.Events.SHUTDOWN, () => flicker.remove());
   return root;
 }

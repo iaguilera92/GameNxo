@@ -31,12 +31,15 @@ export function playMatchEnd(scene: Phaser.Scene, o: MatchEndOpts) {  // 1) sin 
   scene.cameras.main.zoomTo(ZOOM, DURATION, 'Sine.easeInOut');
 
   // 3) poses
-  o.winner.victory();
-  slump(scene, o.loser);
+  // con hoja de sprites ya están en su pose final desde el último punto (no se reinician ni se encorvan)
+  if (!o.winner.hasSheet) o.winner.victory();
+  if (!o.loser.hasSheet) slump(scene, o.loser);
 
   // 4) overlay de resultados encima del partido
   const key = MatchEndScene.KEY;
-  const data: MatchEndData = { ...o.data, matchKey: scene.scene.key };
+  const wp = o.winner.endPoses()?.victory;
+  const lp = o.loser.endPoses()?.defeat;
+  const data: MatchEndData = { ...o.data, matchKey: scene.scene.key, poses: { me: o.data.win ? wp : lp, rival: o.data.win ? lp : wp } };
   scene.time.delayedCall(450, () => {
     if (scene.scene.get(key)) scene.scene.launch(key, data);
     else scene.scene.add(key, MatchEndScene, true, data);

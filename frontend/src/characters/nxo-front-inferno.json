@@ -2,26 +2,26 @@
   "source": "pj-nxo-inferno.png (1 fila x 9: INFERNO DRIVE)",
   "view": "front",
   "cell": {
-    "w": 160,
-    "h": 154
+    "w": 175,
+    "h": 186
   },
   "origin": {
-    "x": 0.51875,
-    "y": 0.95455
+    "x": 0.44,
+    "y": 0.87634
   },
   "standHeight": 140,
   "cols": 3,
   "hold": 4,
-  "preStrike": 4,
-  "strikeFrom": 4,
-  "impact": 5,
+  "preStrike": 5,
+  "strikeFrom": 5,
+  "impact": 6,
   "animations": {
     "inferno-swing": {
       "file": "inferno-swing.png",
       "frames": 9,
       "fps": 15,
       "loop": false,
-      "impact": 5
+      "impact": 6
     }
   }
 }

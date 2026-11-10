@@ -303,6 +303,8 @@ export class MatchScene extends Phaser.Scene {
 
   // HUD
   private hud!: Phaser.GameObjects.Container;
+  /** degradado común tras los controles inferiores para unificar el cierre de los distintos ambientes */
+  private controlsBackdrop?: Phaser.GameObjects.Graphics;
   /** marcador visual (ui/ScoreBoard): solo dibuja, los datos salen de this.score */
   private board!: ScoreBoard;
 
@@ -315,9 +317,7 @@ export class MatchScene extends Phaser.Scene {
     this.load.image('emote-pensando', 'personajes/Nxo/emojis/nxo-pensando.png');
     this.load.image('emote-enojado', 'personajes/Nxo/emojis/nxo-enojado.png');
     this.load.audio('marcador', 'mp3/marcador.mp3'); // suena completo cada vez que sale el marcador
-    this.load.audio('soundtrack-3', 'mp3/soundtrack-3.mp3');
-    this.load.audio('soundtrack-2', 'mp3/soundtrack-2.mp3');
-    this.load.audio('soundtrack-1', 'mp3/soundtrack-1.mp3'); // música de fondo de todos los partidos
+    // los soundtracks NO se cargan aquí: se pide solo el del ambiente elegido (create) y se libera al salir
     this.load.audio('cargando', 'mp3/cargando.mp3'); // sonido de carga (tiro cargado e INFERNO)
     this.load.audio('inferno-hit', 'mp3/inferno.mp3'); // sonido del golpe INFERNO (sustituye al de golpe normal)
     this.load.audio('golpe-fuerte', 'mp3/golpe-fuerte.mp3'); // sonido de TODO golpe de raqueta a la pelota
@@ -484,13 +484,24 @@ export class MatchScene extends Phaser.Scene {
     let music: Phaser.Sound.BaseSound | null = null;
     // música por ambiente: 2 → soundtrack-3, 3 → soundtrack-2, el resto → soundtrack-1
     const track = this.ambienteKey === 'ambiente-3' ? 'soundtrack-2' : this.ambienteKey === 'ambiente-2' ? 'soundtrack-3' : 'soundtrack-1';
-    if (this.cache.audio.exists(track)) {
+    // decodificado ocupa mucha RAM (soundtrack-1 ~57 MB): solo el de este ambiente, bajo demanda, y se libera al salir
+    let musicAlive = true;
+    const startMusic = () => {
+      if (!musicAlive || music || !this.cache.audio.exists(track)) return;
       music = this.sound.add(track, { loop: true, volume: 0.22 });
       music.play();
+    };
+    if (this.cache.audio.exists(track)) startMusic();
+    else {
+      this.load.audio(track, 'mp3/' + track + '.mp3');
+      this.load.once(Phaser.Loader.Events.COMPLETE, startMusic); // si el archivo falta, no suena (sin error)
+      this.load.start();
     }
     this.events.once('shutdown', () => {
+      musicAlive = false;
       music?.stop();
       music?.destroy();
+      this.cache.audio.remove(track); // libera el audio decodificado (el siguiente partido lo vuelve a pedir)
       this.scale.off('resize', onResize);
       this.input.off('pointerdown', onTap);
       this.input.keyboard?.removeAllListeners();
@@ -531,6 +542,12 @@ export class MatchScene extends Phaser.Scene {
   private layout() {
     const W = this.scale.width;
     const H = this.scale.height;
+    if (!this.controlsBackdrop) this.controlsBackdrop = this.add.graphics().setScrollFactor(0).setDepth(4900);
+    const footerH = Math.min(360, H * 0.3);
+    this.controlsBackdrop.clear();
+    this.controlsBackdrop
+      .fillGradientStyle(0x07152f, 0x07152f, 0x07152f, 0x07152f, 0, 0, 0.84, 0.84)
+      .fillRect(0, H - footerH, W, footerH);
     // el mundo mide VIEW.W x VIEW.H: se centra en horizontal y el espacio extra queda abajo (controles)
     this.baseScrollX = (VIEW.W - W) / 2;
     this.cameras.main.setScroll(this.baseScrollX, 0).setZoom(VIEW.CAM_ZOOM);

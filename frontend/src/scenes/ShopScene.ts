@@ -46,7 +46,7 @@ export class ShopScene extends Phaser.Scene {
   }
 
   preload() {
-    if (!this.textures.exists('menu-bg')) this.load.image('menu-bg', 'assets/menu-bg.png');
+    if (!this.textures.exists('menu-bg')) this.load.image('menu-bg', 'assets/menu-bg.webp');
     if (!this.textures.exists('shop-title')) this.load.image('shop-title', 'assets/tienda-titulo.png');
   }
 

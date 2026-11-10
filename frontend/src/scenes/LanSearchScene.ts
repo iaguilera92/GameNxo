@@ -109,7 +109,7 @@ export class LanSearchScene extends Phaser.Scene {
           if (!this.matched) tr.emit(EV.CANCEL);
         });
       })
-      .catch(() => this.noRival('Servidor LAN no disponible'));
+      .catch(() => this.noRival('Servidor no disponible'));
   }
 
   private matched = false;

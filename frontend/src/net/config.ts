@@ -1,36 +1,34 @@
 /**
- * Dirección del servidor multijugador (LAN hoy, Render mañana). Se guarda en este dispositivo y se cambia en
- * Ajustes > SERVIDOR LAN sin tocar la lógica del juego. Vacía = sin multijugador (JUGAR va directo al BOT).
+ * Dirección del servidor multijugador: ÚNICA fuente de verdad de la red del cliente (WebSocket y, si algún día
+ * hay, HTTP). Todo lo que necesite el servidor llama a `serverUrl()` justo antes de conectar: así siempre lee
+ * el estado actual del interruptor MODO ONLINE de Ajustes (nada se cachea al arrancar).
  *
- * Formatos aceptados: "192.168.1.20" (puerto por defecto), "192.168.1.20:3001" o una URL completa
- * ("http://192.168.1.20:3001", "https://mi-backend.onrender.com").
+ *  - MODO ONLINE = ON  → servidor de producción en AWS (`ONLINE_URL`).
+ *  - MODO ONLINE = OFF → sin multijugador: `serverUrl()` devuelve null y JUGAR va directo al BOT.
+ * El interruptor se guarda en este dispositivo (localStorage) y persiste al cerrar la app.
  */
-const KEY = 'gamenxo.lanServer';
-export const DEFAULT_PORT = 3001;
-/** servidor por defecto (PC de pruebas en la LAN). Si cambia la IP del PC, cámbiala aquí o en Ajustes. */
-export const DEFAULT_SERVER = '192.168.1.101';
+const KEY_ONLINE = 'gamenxo.onlineMode';
+/** servidor de producción (AWS EC2, São Paulo) */
+export const ONLINE_URL = 'http://18.228.46.227:3001';
 
-export function getServerAddress(): string {
+/** ¿Modo Online activo? Sin valor guardado = ON (servidor de producción). */
+export function getOnlineMode(): boolean {
   try {
-    // sin valor guardado = servidor por defecto; '' guardado = el jugador lo dejó vacío (solo BOT)
-    return localStorage.getItem(KEY) ?? DEFAULT_SERVER;
+    return localStorage.getItem(KEY_ONLINE) !== '0';
   } catch {
-    return DEFAULT_SERVER;
+    return true;
   }
 }
 
-export function setServerAddress(v: string) {
+export function setOnlineMode(on: boolean) {
   try {
-    localStorage.setItem(KEY, v.trim()); // vacío se guarda tal cual: desactiva el multijugador
+    localStorage.setItem(KEY_ONLINE, on ? '1' : '0');
   } catch {
     /* sin almacenamiento */
   }
 }
 
-/** URL completa del servidor, o null si no hay dirección configurada. */
-export function serverUrl(addr = getServerAddress()): string | null {
-  const t = addr.trim();
-  if (!t) return null;
-  if (/^https?:\/\//i.test(t)) return t.replace(/\/+$/, '');
-  return /:\d+$/.test(t) ? `http://${t}` : `http://${t}:${DEFAULT_PORT}`;
+/** URL del servidor ACTIVO según el interruptor (se lee en cada llamada), o null si el Modo Online está apagado. */
+export function serverUrl(): string | null {
+  return getOnlineMode() ? ONLINE_URL : null;
 }

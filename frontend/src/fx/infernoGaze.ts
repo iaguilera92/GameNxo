@@ -2,14 +2,14 @@ import Phaser from 'phaser';
 
 /**
  * INFERNO DRIVE · "mirada": entra de lado a lado una franja con
- * los OJOS del personaje (public/personajes/Nxo/pj-nxo-mirada.png), estilo corte de anime: entra apenas empieza
+ * los OJOS del personaje (public/personajes/Nxo/pj-nxo-mirada.webp), estilo corte de anime: entra apenas empieza
  * el INFERNO, dura ~2 s con resplandor de fuego en los bordes y un rayo saliendo de los ojos (tipo "zona"). Fijo en pantalla (cámara de interfaz).
  * Si la imagen no está cargada no muestra nada.
  */
 /** franja visible (una sola a la vez) */
 let current: Phaser.GameObjects.Container | null = null;
 
-export const GAZE_ART = { key: 'nxo-gaze', file: 'personajes/Nxo/pj-nxo-mirada.png' };
+export const GAZE_ART = { key: 'nxo-gaze', file: 'personajes/Nxo/pj-nxo-mirada.webp' };
 
 export function queueGazeArt(load: Phaser.Loader.LoaderPlugin) {
   if (!load.textureManager.exists(GAZE_ART.key)) load.image(GAZE_ART.key, GAZE_ART.file);
@@ -62,7 +62,7 @@ export function showInfernoGaze(scene: Phaser.Scene, holdMs = 700, centerY?: num
   // rayo de los ojos (estilo "zona"): estelas eléctricas que salen de cada ojo hacia atrás
   const bolt = scene.add.graphics().setBlendMode(Phaser.BlendModes.ADD);
   root.add(bolt);
-  /** ojos en la imagen (fracción del ancho / alto de pj-nxo-mirada.png) */
+  /** ojos en la imagen (fracción del ancho / alto de pj-nxo-mirada.webp) */
   const EYES = [
     { fx: 0.505, fy: 0.58 },
     { fx: 0.682, fy: 0.705 },

@@ -27,19 +27,20 @@ export interface Ambiente {
   /** borde superior del muro sólido y de la valla de malla que hay encima (px de imagen; medidos a ojo) */
   wallTopY: number;
   fenceTopY: number;
-  /** color para rellenar bajo la imagen si la pantalla es más alta */
-  foreground: number;
   surface: Surface;
 }
 
-/** Ambientes disponibles. Para añadir uno: imagen 1024x1536 en public/ + una entrada aquí. */
+/** Ambientes panorámicos optimizados en WebP, cargados aleatoriamente al iniciar cada partido. */
 export const AMBIENTES: Ambiente[] = [
-  { key: 'ambiente-1', file: 'ambiente-1.png', w: 1536, h: 1024, wallBottomY: 318, wallTopY: 265, fenceTopY: 205, foreground: 0x061447, surface: 'hard' },
-  { key: 'ambiente-2', file: 'ambiente-2.png', w: 1536, h: 1024, wallBottomY: 345, wallTopY: 268, fenceTopY: 196, foreground: 0xa83c14, surface: 'clay' },
+  { key: 'ambiente-1', file: 'ambiente-1.webp', w: 1536, h: 1024, wallBottomY: 318, wallTopY: 265, fenceTopY: 205, surface: 'hard' },
+  { key: 'ambiente-2', file: 'ambiente-2.webp', w: 1536, h: 1024, wallBottomY: 345, wallTopY: 268, fenceTopY: 196, surface: 'clay' },
+  { key: 'ambiente-3', file: 'ambiente-3.webp', w: 1536, h: 1024, wallBottomY: 418, wallTopY: 359, fenceTopY: 222, surface: 'hard' },
 ];
 
 /** y en pantalla donde debe quedar el muro del fondo (un poco por detrás de la cancha) */
 const WALL_AT_Y = 302;
+/** Relleno común al pie de todos los ambientes y detrás de los controles. */
+const SHARED_FOOTER = 0x07152f;
 /** ancho mínimo a cubrir (la cámara sigue al jugador en lateral) */
 const COVER_W = VIEW.W + 400;
 
@@ -76,9 +77,12 @@ export function drawCourtView(scene: Phaser.Scene): DrawnWall | null {
   const s = Math.max(H / amb.h, COVER_W / amb.w);
   const top = WALL_AT_Y - amb.wallBottomY * s;
   const imgBottom = top + amb.h * s;
-  // relleno por si la pantalla es más alta o la cámara se desplaza más de lo previsto
-  scene.add.rectangle(-1000, imgBottom - 4, VIEW.W + 2000, Math.max(0, H - imgBottom) + 400, amb.foreground).setOrigin(0).setDepth(-21);
+  // Relleno común bajo el escenario. La transición encima suaviza el borde inferior de cada imagen.
+  scene.add.rectangle(-1000, imgBottom - 4, VIEW.W + 2000, Math.max(0, H - imgBottom) + 440, SHARED_FOOTER).setOrigin(0).setDepth(-21);
   scene.add.image(VIEW.W / 2, top, amb.key).setOrigin(0.5, 0).setScale(s).setDepth(-20);
+  const fade = scene.add.graphics().setDepth(-19);
+  fade.fillGradientStyle(SHARED_FOOTER, SHARED_FOOTER, SHARED_FOOTER, SHARED_FOOTER, 0, 0, 1, 1)
+    .fillRect(-1000, imgBottom - 220, VIEW.W + 2000, 270);
 
   // ---------------------------------------------------------------- cancha (código)
   const g = scene.make.graphics({}, false);

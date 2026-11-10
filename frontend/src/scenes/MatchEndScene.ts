@@ -601,7 +601,9 @@ export class MatchEndScene extends Phaser.Scene {
     const cont = arcadeButton(this, x0, y, bw, bh, 'CONTINUAR', () => {
       resetMatchEnd(this.scene.get(matchKey));
       this.scene.stop(matchKey);
-      this.scene.start(d.ranked ? 'Ranked' : 'Menu'); // Ranked vuelve a su pantalla (ascenso / recompensas)
+      // siempre al menú principal: si esta victoria desbloqueó una ruleta, el menú la abre sola de inmediato
+      // (MenuScene.dailyWheels → wheelToPresent), antes que cualquier otra cosa
+      this.scene.start('Menu');
     }, { palette: 'yellow' });
     // REVANCHA: misma lógica que ya existía (reiniciar el partido con el mismo rival).
     // En Ranked se vuelve a buscar partida con la misma apuesta (la entrada se paga de nuevo al empezar).

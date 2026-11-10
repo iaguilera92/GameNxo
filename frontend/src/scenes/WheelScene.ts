@@ -31,10 +31,10 @@ const BG_KEY = 'wheel-bg';
 const GLOW_KEY = 'wheel-glow';
 
 /**
- * Marco de la ruleta (public/assets/ruleta-frame.png, sacado de ruleta.png): aro metálico, luces,
+ * Marco de la ruleta (public/assets/ruleta-frame.webp): aro metálico, luces,
  * indicador dorado y centro; fondo e interior del disco transparentes. Medidas en píxeles de la imagen.
  */
-const FRAME = { key: 'ruleta-frame', file: 'assets/ruleta-frame.png', size: 900, disc: 336, outer: 450 };
+const FRAME = { key: 'ruleta-frame', file: 'assets/ruleta-frame.webp', size: 900, disc: 336, outer: 450 };
 
 export class WheelScene extends Phaser.Scene {
   static readonly KEY = 'Wheel';

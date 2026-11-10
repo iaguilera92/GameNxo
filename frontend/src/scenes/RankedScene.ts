@@ -53,7 +53,7 @@ export class RankedScene extends Phaser.Scene {
   }
 
   preload() {
-    if (!this.textures.exists('menu-bg')) this.load.image('menu-bg', 'assets/menu-bg.png');
+    if (!this.textures.exists('menu-bg')) this.load.image('menu-bg', 'assets/menu-bg.webp');
     if (!this.textures.exists(NAV.key)) this.load.image(NAV.key, NAV.file);
     if (!this.textures.exists('ranked-title')) this.load.image('ranked-title', 'assets/ranked-titulo.png');
     preloadRankBadges(this.load); // todas: tabla de líderes y lista de ligas

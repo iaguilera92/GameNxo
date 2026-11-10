@@ -26,10 +26,10 @@ export class BootScene extends Phaser.Scene {
     queueSkinLoads(this.load);
     queuePortraitLoads(this.load);
     queueNxoSpriteLoads(this.load); // animaciones de NXO en el partido (si falta algo, se usa el dibujo de siempre)
-    this.load.image('nxo-logo', 'assets/nxo-logo.png');
-    this.load.image('loading-bg', 'assets/loading-bg.png');
+    this.load.image('nxo-logo', 'assets/nxo-logo.webp');
+    this.load.image('loading-bg', 'assets/loading-bg.webp');
     // recursos del menú: así el menú aparece al instante detrás del cargando
-    this.load.image('menu-bg', 'assets/menu-bg.png');
+    this.load.image('menu-bg', 'assets/menu-bg.webp');
     this.load.image('btn-jugar', 'assets/btn-jugar.png');
     this.load.image('nav-bar', 'assets/nav-bar.png');
     this.load.audio('vs', 'mp3/vs.mp3'); // sonido de la pantalla VS (la cache de audio es global)

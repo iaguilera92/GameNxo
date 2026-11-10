@@ -18,7 +18,7 @@ interface PortraitDef {
 const PORTRAITS: Partial<Record<SkinId, PortraitDef>> = {
   nxo: {
     key: 'portrait-nxo',
-    file: 'assets/characters/nxo_portrait.png',
+    file: 'personajes/Nxo/pj-nxo.webp',
     w: 1132,
     h: 1390,
     box: { x0: 186, y0: 8, x1: 1072, y1: 1371 },

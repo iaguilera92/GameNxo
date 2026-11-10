@@ -44,7 +44,7 @@ export class MatchmakingScene extends Phaser.Scene {
   }
 
   preload() {
-    if (!this.textures.exists('menu-bg')) this.load.image('menu-bg', 'assets/menu-bg.png');
+    if (!this.textures.exists('menu-bg')) this.load.image('menu-bg', 'assets/menu-bg.webp');
     if (this.rankedBet || this.unranked) preloadRankBadges(this.load, [rankedView().league]);
   }
 

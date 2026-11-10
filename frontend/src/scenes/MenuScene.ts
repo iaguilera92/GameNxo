@@ -63,7 +63,7 @@ export class MenuScene extends Phaser.Scene {
   }
 
   preload() {
-    if (!this.textures.exists('menu-bg')) this.load.image('menu-bg', 'assets/menu-bg.png');
+    if (!this.textures.exists('menu-bg')) this.load.image('menu-bg', 'assets/menu-bg.webp');
     if (!this.textures.exists('btn-jugar')) this.load.image('btn-jugar', 'assets/btn-jugar.png');
     if (!this.textures.exists('daily-coins-art')) this.load.image('daily-coins-art', 'assets/monedas.png');
     if (!this.textures.exists('daily-cash-art')) this.load.image('daily-cash-art', 'assets/billetes.png');

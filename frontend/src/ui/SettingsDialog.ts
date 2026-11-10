@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import { FONT } from './theme';
 import { arcadeButton } from './modeButtons';
-import { getServerAddress, setServerAddress } from '../net/config';
+import { ONLINE_URL, getOnlineMode, setOnlineMode } from '../net/config';
 import { disconnect } from '../net/NetClient';
 import { RIVAL_OPTIONS, type RivalSetting, type ShakeLevel, getSettings, setSettings } from '../logic/Settings';
 
@@ -68,7 +68,9 @@ export function showSettings(scene: Phaser.Scene, o: { depth?: number; onClose?:
     icon(ic);
     panel.add(ic);
     panel.add(scene.add.text(x + 108, rowY(i) - 14, title, { fontFamily: FONT, fontSize: '28px', color: '#ffffff' }).setOrigin(0, 0.5));
-    panel.add(scene.add.text(x + 109, rowY(i) + 18, sub, { fontFamily: FONT, fontSize: '16px', color: '#7f93bf' }).setOrigin(0, 0.5));
+    const subTxt = scene.add.text(x + 109, rowY(i) + 18, sub, { fontFamily: FONT, fontSize: '16px', color: '#7f93bf' }).setOrigin(0, 0.5);
+    panel.add(subTxt);
+    return subTxt;
   };
 
   // ---------------------------------------------------------------- filas
@@ -94,9 +96,25 @@ export function showSettings(scene: Phaser.Scene, o: { depth?: number; onClose?:
   label(3, 'RIVAL', 'AUTO = según tu nivel', rivalIcon);
   panel.add(cycler(scene, x + pw - 34, rowY(3), s.rival, (v) => setSettings({ rival: v })));
 
-  // servidor multijugador (LAN): IPv4 del PC que ejecuta el backend (ipconfig). Vacío = solo BOT.
-  label(4, 'SERVIDOR LAN', 'IP del PC (ipconfig) · vacío = BOT', wifiIcon);
-  panel.add(serverField(scene, x + pw - 34, rowY(4)));
+  // MODO ONLINE: ON = servidor de AWS (buscar rival real); OFF = sin multijugador (JUGAR va directo al BOT). Se guarda en el dispositivo.
+  const onlineHost = ONLINE_URL.replace(/^https?:\/\//, '');
+  const onlineSub = (on: boolean) => (on ? 'Servidor AWS · ' + onlineHost : 'Sin conexión · solo contra BOT');
+  const subOnline = label(4, 'MODO ONLINE', onlineSub(getOnlineMode()), globeIcon);
+  panel.add(
+    toggle(
+      scene,
+      x + pw - 92,
+      rowY(4),
+      getOnlineMode(),
+      (on) => {
+        setOnlineMode(on);
+        disconnect(); // cierra la conexión anterior: la próxima búsqueda usa el servidor del nuevo modo
+        subOnline.setText(onlineSub(on));
+      },
+      'ON',
+      'OFF',
+    ),
+  );
 
   // ---------------------------------------------------------------- pie
   const btnY = y + ph - 92;
@@ -112,7 +130,7 @@ export function showSettings(scene: Phaser.Scene, o: { depth?: number; onClose?:
 
 // ---------------------------------------------------------------- controles
 /** Interruptor ON/OFF (pastilla con bolita que se desliza). */
-function toggle(scene: Phaser.Scene, x: number, y: number, initial: boolean, onChange: (on: boolean) => void) {
+function toggle(scene: Phaser.Scene, x: number, y: number, initial: boolean, onChange: (on: boolean) => void, onLabel = 'SÍ', offLabel = 'NO') {
   const w = 104;
   const h = 50;
   const c = scene.add.container(x, y);
@@ -130,7 +148,7 @@ function toggle(scene: Phaser.Scene, x: number, y: number, initial: boolean, onC
     track.fillStyle(0x0a1638, 1).fillRoundedRect(-w / 2 - 3, -h / 2 - 3, w + 6, h + 6, (h + 6) / 2);
     track.fillStyle(on ? ON : 0x3a4560, 1).fillRoundedRect(-w / 2, -h / 2, w, h, h / 2);
     track.fillStyle(0xffffff, on ? 0.18 : 0.06).fillRoundedRect(-w / 2 + 4, -h / 2 + 3, w - 8, h * 0.4, h * 0.2);
-    txt.setText(on ? 'SÍ' : 'NO').setX(on ? -w / 4 + 2 : w / 4 - 2).setColor(on ? '#ffffff' : '#9aa6c4');
+    txt.setText(on ? onLabel : offLabel).setX(on ? -w / 4 + 2 : w / 4 - 2).setColor(on ? '#ffffff' : '#9aa6c4');
     const kx = on ? w / 2 - h / 2 : -w / 2 + h / 2;
     scene.tweens.killTweensOf(knob);
     if (anim) scene.tweens.add({ targets: knob, x: kx, duration: 140, ease: 'Quad.easeOut' });
@@ -227,38 +245,10 @@ function cycler(scene: Phaser.Scene, right: number, y: number, initial: RivalSet
 }
 
 // ---------------------------------------------------------------- iconos (dibujados)
-/** Campo de la dirección del servidor: muestra la actual; al tocarlo se edita (diálogo del sistema). */
-function serverField(scene: Phaser.Scene, right: number, y: number) {
-  const c = scene.add.container(0, 0);
-  const w = 230;
-  const h = 52;
-  const g = scene.add.graphics();
-  const t = scene.add.text(right - w / 2, y, '', { fontFamily: FONT, fontSize: '19px', color: '#ffffff' }).setOrigin(0.5);
-  const draw = () => {
-    const v = getServerAddress();
-    g.clear();
-    g.fillStyle(0x0a1638, 1).fillRoundedRect(right - w, y - h / 2, w, h, 14);
-    g.lineStyle(2, v ? 0x62d935 : 0x3a4a6a, 1).strokeRoundedRect(right - w, y - h / 2, w, h, 14);
-    t.setText(v || 'SIN CONFIGURAR').setColor(v ? '#ffffff' : '#7f93bf');
-    t.setScale(Math.min(1, (w - 20) / Math.max(1, t.width / t.scaleX)));
-  };
-  draw();
-  const hit = scene.add.rectangle(right - w / 2, y, w, h, 0, 0.001).setInteractive({ useHandCursor: true });
-  hit.on('pointerup', () => {
-    const v = window.prompt('IPv4 del PC con el servidor (ver "ipconfig"), p. ej. 192.168.1.101 o 192.168.1.101:3001. Vacío = solo BOT.', getServerAddress());
-    if (v === null) return;
-    setServerAddress(v);
-    disconnect(); // la próxima búsqueda usa la nueva dirección
-    draw();
-  });
-  c.add([g, t, hit]);
-  return c;
-}
-
-function wifiIcon(g: Phaser.GameObjects.Graphics) {
-  g.lineStyle(3.5, 0xffffff, 1);
-  for (const r of [16, 10]) g.beginPath().arc(0, 6, r, Math.PI * 1.22, Math.PI * 1.78).strokePath();
-  g.fillStyle(0xffffff, 1).fillCircle(0, 6, 3.5);
+function globeIcon(g: Phaser.GameObjects.Graphics) {
+  g.lineStyle(3, 0xffffff, 1).strokeCircle(0, 0, 14);
+  g.lineBetween(-14, 0, 14, 0);
+  g.strokeEllipse(0, 0, 14, 28);
 }
 
 function rivalIcon(g: Phaser.GameObjects.Graphics) {

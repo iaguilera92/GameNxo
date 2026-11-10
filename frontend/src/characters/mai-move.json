@@ -1,0 +1,27 @@
+{
+  "source": "pj-mai-1.png (fila 5)",
+  "view": "back",
+  "cell": {
+    "w": 212,
+    "h": 150
+  },
+  "origin": {
+    "x": 0.5,
+    "y": 0.93333
+  },
+  "standHeight": 112,
+  "turnExit": 5,
+  "turnRate": 2.2,
+  "landFrom": 1,
+  "landExit": 3,
+  "landEnd": 4,
+  "landRate": 2.6,
+  "animations": {
+    "brake-turn": {
+      "file": "brake-turn.png",
+      "frames": 8,
+      "fps": 14,
+      "loop": false
+    }
+  }
+}

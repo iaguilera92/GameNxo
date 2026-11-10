@@ -1,4 +1,13 @@
 import Phaser from 'phaser';
+import type { InfernoElement } from './InfernoFx';
+
+/** Colores del choque de una pelota con poder según su elemento (destello y onda). */
+const POWER_WALL: Record<InfernoElement, { hot: number; ring: number }> = {
+  fire: { hot: 0xffb347, ring: 0xff7a1e },
+  ice: { hot: 0xbff0ff, ring: 0x4aa8ff },
+  wind: { hot: 0xd8ffe0, ring: 0x3fd68a },
+  lightning: { hot: 0xfff36b, ring: 0x3a7bff },
+};
 
 /**
  * Impacto de la pelota contra la pared del fondo (todo por código, sin sprites):
@@ -19,11 +28,14 @@ export class WallFx {
     return this.live.size;
   }
 
-  /** (x, y) de pantalla del contacto; k = escala de perspectiva en la pared; depth = por delante de la pared. */
-  impact(kind: 'pad' | 'fence', x: number, y: number, k: number, depth: number, power: boolean) {
+  /**
+   * (x, y) de pantalla del contacto; k = escala de perspectiva en la pared; depth = por delante de la pared.
+   * `el`: poder de la bola del INFERNO que choca (colores de hielo, viento o rayo); el SMASH es siempre fuego.
+   */
+  impact(kind: 'pad' | 'fence', x: number, y: number, k: number, depth: number, power: boolean, el: InfernoElement = 'fire') {
     const sc = this.scene;
-    const hot = power ? 0xffb347 : 0xffffff;
-    const ring = power ? 0xff7a1e : kind === 'pad' ? 0xffe066 : 0xbfe8ff;
+    const hot = power ? POWER_WALL[el].hot : 0xffffff;
+    const ring = power ? POWER_WALL[el].ring : kind === 'pad' ? 0xffe066 : 0xbfe8ff;
     if (kind === 'pad') {
       // marca del golpe en la pared (se queda un momento)
       const mark = sc.add.ellipse(x, y + 2 * k, 30 * k, 22 * k, 0x0a1638, 0.45).setDepth(1.5); // marca (sombra) pegada a la pared: SIEMPRE detrás de los personajes y la pelota

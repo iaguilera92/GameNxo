@@ -1,0 +1,27 @@
+{
+  "source": "pj-mai-inferno.png (1 fila x 9: INFERNO DRIVE)",
+  "view": "back",
+  "cell": {
+    "w": 167,
+    "h": 162
+  },
+  "origin": {
+    "x": 0.41916,
+    "y": 0.97531
+  },
+  "standHeight": 140,
+  "cols": 3,
+  "hold": 4,
+  "preStrike": 5,
+  "strikeFrom": 5,
+  "impact": 6,
+  "animations": {
+    "inferno-swing": {
+      "file": "inferno-swing.png",
+      "frames": 9,
+      "fps": 15,
+      "loop": false,
+      "impact": 6
+    }
+  }
+}

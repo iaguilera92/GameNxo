@@ -2,6 +2,11 @@
  MOVIMIENTOS Y SPRITES DE LOS PERSONAJES - GAME NXO
 ==========================================================================
 Última actualización: 06-11-2026
+
+AVISO (10-11-2026): este archivo queda como HISTÓRICO. Lo vigente sobre las hojas de sprites (carpeta
+frontend/public/personajes/, qué es cada fila, reglas de dibujo y comandos) está en docs/SPRITES.md.
+Las secciones 1-9 describen hojas antiguas y la 10 tiene medidas y fotogramas clave desactualizados.
+
 Complementa a README.txt. Es solo documentación (no se usa en el juego).
 Hecho tras una auditoría de lectura: no se modificó código ni sprites.
 

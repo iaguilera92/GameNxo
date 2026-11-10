@@ -2,6 +2,8 @@ import Phaser from 'phaser';
 import { FONT, restartOnResize, textStyle } from '../ui/theme';
 import { UI, flatButton, stadiumBg } from '../ui/ui';
 import { showConfirm } from '../ui/ConfirmDialog';
+import { totalWins } from '../logic/Stats';
+import { playMatchMusic, prepareMatchMusic, stopMatchMusic } from '../fx/matchMusic';
 import { showVersus as showVersusScreen } from '../ui/VersusScreen';
 import { lookForSkin, playerLook } from '../objects/Character';
 import type { SkinId } from '../characters/skins';
@@ -45,6 +47,12 @@ export class LanSearchScene extends Phaser.Scene {
     this.cameras.main.fadeIn(200, 0, 0, 0);
     stadiumBg(this, 0.55);
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.cleanup.forEach((f) => f()));
+    // ambiente del próximo partido elegido ya: su música se carga mientras se busca y suena desde el VS
+    this.toMatch = false;
+    this.ambiente = prepareMatchMusic(this);
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      if (!this.toMatch) stopMatchMusic(this); // búsqueda cancelada / sin rival: la música no sigue sonando
+    });
 
     const c = this.add.container(W / 2, H * 0.42);
     const ringR = 92;
@@ -103,7 +111,7 @@ export class LanSearchScene extends Phaser.Scene {
           tr.off('disconnect', onDisc as (d: never) => void);
         });
         const p = getProfile();
-        tr.emit(EV.FIND, { profile: { name: p.name, level: p.level, skin: p.skin } });
+        tr.emit(EV.FIND, { profile: { name: p.name, level: p.level, skin: p.skin, zoneStats: p.zoneStats } });
         this.cleanup.push(() => {
           // salir de la escena sin emparejar = cancelar la búsqueda (no queda sala fantasma)
           if (!this.matched) tr.emit(EV.CANCEL);
@@ -113,6 +121,8 @@ export class LanSearchScene extends Phaser.Scene {
   }
 
   private matched = false;
+  private toMatch = false;
+  private ambiente = '';
 
   private cancelSearch() {
     if (this.done) return;
@@ -142,16 +152,20 @@ export class LanSearchScene extends Phaser.Scene {
     const opp = net.opponent;
     showVersusScreen(
       this,
-      { name: p.name, level: p.level, look: playerLook(p.skin), portraitSkin: p.skin as SkinId },
+      { name: p.name, level: p.level, look: playerLook(p.skin), portraitSkin: p.skin as SkinId, wins: totalWins() },
       // el rival con SU personaje (opponent.skin); si no se conoce, el respaldo de siempre
       { name: opp.name, level: opp.level, look: lookForSkin(opp.skin, 'front', p.skin), portraitSkin: opp.skin as SkinId },
     );
+    // 1 s después del sonido del VS entra la música de la cancha (sigue sonando en el partido)
+    const musicIn = this.time.delayedCall(1000, () => playMatchMusic(this, this.ambiente));
     // durante la pantalla VS el rival puede irse (o caerse la conexión): se avisa y NO se entra al partido
     let toMatch: Phaser.Time.TimerEvent | null = null;
     let goingToMatch = false;
     const offEnd = net.onEnd((e) => {
       if (goingToMatch) return; // ya en camino: lo resuelve la escena del partido (recibe el aviso guardado)
       toMatch?.remove();
+      musicIn.remove();
+      stopMatchMusic(this, false); // partida cancelada: se calla la música (se libera al salir de la escena)
       offEnd();
       net.dispose();
       showConfirm(this, {
@@ -172,7 +186,10 @@ export class LanSearchScene extends Phaser.Scene {
       goingToMatch = true;
       offEnd();
       this.cameras.main.fadeOut(250, 0, 0, 0);
-      this.cameras.main.once('camerafadeoutcomplete', () => this.scene.start('Match', { botName: opp.name, rivalLevel: opp.level, net }));
+      this.cameras.main.once('camerafadeoutcomplete', () => {
+        this.toMatch = true;
+        this.scene.start('Match', { botName: opp.name, rivalLevel: opp.level, net, ambiente: this.ambiente });
+      });
     });
   }
 }

@@ -227,7 +227,7 @@ export class RankedScene extends Phaser.Scene {
       if (i < v.weekMatches) pg.fillStyle(0xb6ff7a, 0.6).fillRoundedRect(sx + 3, pgY - 5, Math.max(0, segW - 6), 4, 2);
     }
     this.add.text(tx + pbw + 10, pgY, progressCount, { fontFamily: FONT, fontSize: '14px', color: '#ffffff' }).setOrigin(0, 0.5);
-    this.rewardAmounts(rx0 + rw - 20, ry, v.estimate.coins, v.estimate.cash, !elig);
+    this.rewardAmounts(rx0 + rw - 20, ry, v.estimate.coins, v.estimate.cash, v.estimate.rays, !elig);
 
     // ---- clasificación semanal: podio, puestos siguientes y tabla completa
     const py = 730 + e2;
@@ -341,8 +341,15 @@ export class RankedScene extends Phaser.Scene {
     this.cameras.main.setScroll(0, this.scrollY);
   }
 
-  private rewardAmounts(right: number, y: number, coins: number, cash: number, dim: boolean) {
+  private rewardAmounts(right: number, y: number, coins: number, cash: number, rays: number, dim: boolean) {
     let x = right;
+    if (rays > 0) {
+      const label = this.add.text(x, y, `+${rays}`, { fontFamily: FONT, fontSize: '22px', color: dim ? '#7893a2' : '#66e8ff' }).setOrigin(1, 0.5);
+      const icon = this.add.graphics({ x: x - label.width - 22, y });
+      icon.fillStyle(dim ? 0x426274 : 0x46dfff, 1).fillPoints([{ x: 3, y: -13 }, { x: 14, y: -13 }, { x: 8, y: -2 }, { x: 15, y: -2 }, { x: 0, y: 14 }, { x: 5, y: 2 }, { x: -2, y: 2 }], true);
+      if (dim) icon.setAlpha(0.5);
+      x -= label.width + 44;
+    }
     if (cash > 0) {
       const t = this.add.text(x, y, `${cash}`, { fontFamily: FONT, fontSize: '26px', color: dim ? '#6f8a76' : '#9fe8a0' }).setOrigin(1, 0.5);
       x -= t.width + 24;
@@ -758,6 +765,11 @@ export class RankedScene extends Phaser.Scene {
         p.add(cc);
         p.add(this.add.text(126, -ph / 2 + 428, `${w.cash}`, { fontFamily: FONT, fontSize: '36px', color: '#9fe8a0' }).setOrigin(0, 0.5));
       }
+      const rayY = -ph / 2 + 455;
+      const rayIcon = this.add.graphics({ x: -44, y: rayY });
+      rayIcon.fillStyle(0x47dfff, 1).fillPoints([{ x: 2, y: -11 }, { x: 12, y: -11 }, { x: 6, y: -1 }, { x: 13, y: -1 }, { x: -1, y: 12 }, { x: 4, y: 2 }, { x: -2, y: 2 }], true);
+      p.add(rayIcon);
+      p.add(this.add.text(-25, rayY, `+${w.rays} RAYO${w.rays === 1 ? '' : 'S'}`, { fontFamily: FONT, fontSize: '17px', color: '#79e8ff' }).setOrigin(0, 0.5));
       this.confetti(objs, [GOLD, st.color, 0xffffff]);
     } else {
       const t = this.add.text(0, -ph / 2 + 428, `Necesitabas ${RANKED.minMatchesForReward} partidas completadas (jugaste ${w.matches}).\nSigues en tu liga: ¡esta semana sí!`, { fontFamily: FONT, fontSize: '19px', color: '#9fb4e0', align: 'center', wordWrap: { width: pw - 70 } }).setOrigin(0.5);
@@ -766,7 +778,7 @@ export class RankedScene extends Phaser.Scene {
     p.add(arcadeButton(this, 0, ph / 2 - 62, 300, 80, w.eligible ? 'RECLAMAR' : 'ENTENDIDO', () => {
       const res = claimWeekly(w.week);
       this.closeOverlay();
-      if (res.ok && res.given) this.toast(`+${fmtCoins(w.coins)} monedas${w.cash ? ` · +${w.cash} dinero` : ''}`);
+      if (res.ok && res.given) this.toast(`+${fmtCoins(w.coins)} monedas${w.cash ? ` · +${w.cash} dinero` : ''}${w.rays ? ` · +${w.rays} Rayo` : ''}`);
       this.time.delayedCall(300, () => this.presentQueue());
     }, { palette: 'yellow' }));
   }

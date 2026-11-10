@@ -10,9 +10,11 @@ import type { SkinId } from '../characters/skins';
 import { type WheelState, cloneWheel, newWheelState } from './wheelState';
 import { type BattlePassState, cloneBattlePass, newBattlePass } from './battlePassState';
 import { type RankedState, cloneRanked, newRankedState } from './rankedState';
+import { type ZoneProgress, cloneZoneProgress, newZoneProgress } from './zoneProgress';
+import type { InfernoPower } from './infernoPowers';
 
 /** v3: + ruletas diarias (`wheel`) · v4: + pase de batalla (`bp`) · v5: + Ranked (`ranked`) y premio diario (`login`) */
-export const PLAYER_SCHEMA_VERSION = 6;
+export const PLAYER_SCHEMA_VERSION = 7;
 
 /** Recompensa por iniciar sesión (domain/dailyLogin.ts). */
 export interface LoginState {
@@ -34,6 +36,8 @@ export interface Loadout {
   skin: SkinId;
   style: StyleId;
   abilities: [AbilityId, AbilityId];
+  /** poder del INFERNO elegido (domain/infernoPowers.ts); sin elegir = el del personaje */
+  inferno?: InfernoPower;
 }
 
 export interface PlayerState {
@@ -53,6 +57,8 @@ export interface PlayerState {
   ranked: RankedState;
   /** recompensa por iniciar sesión (domain/dailyLogin.ts) */
   login: LoginState;
+  /** Rayos y atributos que mejoran al entrar en Zona. */
+  zone: ZoneProgress;
 }
 
 export const itemId = {
@@ -61,7 +67,7 @@ export const itemId = {
   style: (id: StyleId): ItemId => `style:${id}`,
 };
 
-export const STARTER_ITEMS: ItemId[] = ['ability:dash', 'ability:smash', 'skin:nxo', 'skin:mai', 'style:classic'];
+export const STARTER_ITEMS: ItemId[] = ['ability:dash', 'ability:smash', 'skin:nxo', 'style:classic'];
 /** alcanza para 3 entradas de Bronce (500): se compite desde la primera partida */
 export const STARTING_COINS = 1500;
 
@@ -79,6 +85,7 @@ export function newPlayer(): PlayerState {
     bp: newBattlePass(),
     ranked: newRankedState(),
     login: newLoginState(),
+    zone: newZoneProgress(),
   };
 }
 
@@ -88,5 +95,5 @@ export function owns(s: PlayerState, id: ItemId) {
 
 /** Copia profunda (las operaciones nunca mutan el estado recibido). */
 export function clonePlayer(s: PlayerState): PlayerState {
-  return { ...s, owned: [...s.owned], equipped: { ...s.equipped, abilities: [...s.equipped.abilities] }, wheel: cloneWheel(s.wheel), bp: cloneBattlePass(s.bp), ranked: cloneRanked(s.ranked), login: { ...s.login } };
+  return { ...s, owned: [...s.owned], equipped: { ...s.equipped, abilities: [...s.equipped.abilities] }, wheel: cloneWheel(s.wheel), bp: cloneBattlePass(s.bp), ranked: cloneRanked(s.ranked), login: { ...s.login }, zone: cloneZoneProgress(s.zone) };
 }

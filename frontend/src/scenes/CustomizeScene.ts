@@ -3,7 +3,7 @@ import { FONT, restartOnResize, textStyle } from '../ui/theme';
 import { stadiumBg } from '../ui/ui';
 import { Character, playerLook } from '../objects/Character';
 import { MAX_LEVEL } from '../config';
-import { getProfile, levelProgress, setSkin } from '../logic/Profile';
+import { getProfile, levelProgress, setInferno, setSkin } from '../logic/Profile';
 import { CATALOG, skinById } from '../characters/catalog';
 import { addPortrait } from '../characters/portrait';
 import type { SkinId } from '../characters/skins';
@@ -12,18 +12,13 @@ import { bakeImage } from '../ui/bakeImage';
 import { drawAbilityIcon, drawDisc } from '../ui/icons';
 import { roundedPoly } from '../ui/shapes';
 import { playButton } from '../ui/modeButtons';
+import { hyperTexture } from '../ui/AbilityButton';
+import { BUTTON_ART } from '../ui/buttonArt';
 import { commit, getPlayer } from '../domain/playerStore';
-import { equipStyle } from '../domain/operations';
-import { type StyleId, itemId, owns } from '../domain/player';
-import { shopItem } from '../domain/shopCatalog';
-
-/** Estilos (colores) que se muestran. Datos de tienda (precio/nivel) en domain/shopCatalog. */
-const STYLES: { id: StyleId; name: string; color: number; dark: number }[] = [
-  { id: 'classic', name: 'CLÁSICO', color: 0x3a8bff, dark: 0x1a4fb0 },
-  { id: 'red', name: 'ROJO', color: 0xff4f5e, dark: 0xb3202f },
-  { id: 'green', name: 'VERDE', color: 0x62d935, dark: 0x2f8f14 },
-  { id: 'gold', name: 'ORO', color: 0xffc42e, dark: 0xc98600 },
-];
+import { upgradeZoneStat } from '../domain/operations';
+import { ZONE_STAT_KEYS, ZONE_STAT_MAX, type ZoneStatKey } from '../domain/zoneProgress';
+import { INFERNO_POWERS, infernoPowerDef, type InfernoPower } from '../domain/infernoPowers';
+import { BALL_ART, ensureBallAnims, queueInfernoArt } from '../fx/InfernoFx';
 
 /** Arte de los botones de habilidad. `box` = círculo visible en px de la imagen (sin margen transparente). */
 const ABILITY_ART: Partial<Record<AbilityId, { key: string; file: string; w: number; h: number; box: { x0: number; y0: number; x1: number; y1: number } }>> = {
@@ -34,11 +29,66 @@ const ABILITY_ART: Partial<Record<AbilityId, { key: string; file: string; w: num
 const NAVY = 0x0b1733;
 const NEON = 0x3a7bff;
 
+/** Separación entre tarjetas (filas y columnas) de la cuadrícula de habilidades: la misma en todas. */
+const GRID_GAP = 12;
+/** Columna de la cuadrícula: izquierda (0) o derecha (1). Mismos márgenes que el resto de la pantalla (30 px). */
+const gridCol = (W: number, col: 0 | 1) => {
+  const w = (W - 60 - GRID_GAP) / 2;
+  return { x: 30 + col * (w + GRID_GAP), w };
+};
+
+/** Habilidad pasiva del personaje (se muestra sin recarga): lo que hace y su icono. */
+interface PassiveDef {
+  name: string;
+  desc: string;
+  color: number;
+  colorDark: number;
+  /** textura del botón del partido, si la hay (se carga en `preload`) */
+  art?: string;
+  /** icono dibujado (si no hay textura): centrado en (0,0) con radio R */
+  draw?: (g: Phaser.GameObjects.Graphics, R: number) => void;
+}
+
+const PASSIVES: Record<'spin' | 'charge', PassiveDef> = {
+  // saque con efecto (botón morado del saque): la pelota curva hacia el lado que apuntas
+  spin: {
+    name: 'Efecto pelota',
+    desc: 'Saque con efecto: la pelota curva hacia el lado que apuntas.',
+    color: 0x8a6bff,
+    colorDark: 0x4a35b8,
+    art: BUTTON_ART.spin.key,
+    draw: (g, R) => drawAbilityIcon(g, 'serveSpin', R),
+  },
+  // golpe cargado: se mantiene para cargar (arco azul que pasa a dorado); con el joystick sale cortita, globo o cruzado
+  charge: {
+    name: 'Cargando golpe',
+    desc: 'Mantén para cargar más fuerza. Con el joystick: cortita, globo o cruzado.',
+    color: 0x2f9bff,
+    colorDark: 0x1a5fb4,
+    draw: (g, R) => {
+      // arco semicircular segmentado (como el medidor del partido): azul y los últimos tramos en dorado
+      const n = 7;
+      for (let i = 0; i < n; i++) {
+        const a0 = Math.PI + (i / n) * Math.PI + 0.06;
+        const a1 = Math.PI + ((i + 1) / n) * Math.PI - 0.06;
+        g.lineStyle(R * 0.2, i >= n - 2 ? 0xffc72e : 0xffffff, 1).beginPath().arc(0, R * 0.32, R * 0.68, a0, a1).strokePath();
+      }
+      // pelota en el centro del arco, con su destello
+      g.fillStyle(0x0a1638).fillCircle(0, R * 0.32, R * 0.3);
+      g.fillStyle(0xd7f53a).fillCircle(0, R * 0.32, R * 0.23);
+      g.lineStyle(2, 0xffffff, 0.9).beginPath().arc(-R * 0.06, R * 0.32, R * 0.16, -0.9, 0.9).strokePath();
+    },
+  },
+};
+
 /**
- * Pantalla PERSONAJE (vertical): vitrina del personaje, nivel + XP, estilos y habilidades.
+ * Pantalla PERSONAJE (vertical): vitrina del personaje, nivel + XP, habilidades, poder del Inferno (selector) y Zona.
  * Mientras no haya base de datos el personaje es siempre Nxo (logic/Profile FORCED_SKIN).
  */
 export class CustomizeScene extends Phaser.Scene {
+  /** tarjeta del INFERNO (se redibuja al elegir otro poder) */
+  private infernoBox?: Phaser.GameObjects.Container;
+
   constructor() {
     super('Customize');
   }
@@ -46,12 +96,16 @@ export class CustomizeScene extends Phaser.Scene {
   preload() {
     if (!this.textures.exists('menu-bg')) this.load.image('menu-bg', 'assets/menu-bg.webp');
     for (const art of Object.values(ABILITY_ART)) if (art && !this.textures.exists(art.key)) this.load.image(art.key, art.file);
+    queueInfernoArt(this.load); // bolas de los poderes del INFERNO (vista previa del selector)
+    if (!this.textures.exists(BUTTON_ART.spin.key)) this.load.image(BUTTON_ART.spin.key, BUTTON_ART.spin.file); // icono de EFECTO PELOTA
   }
 
   create() {
     const W = this.scale.width;
     const H = this.scale.height;
     restartOnResize(this);
+    this.infernoBox = undefined; // la escena se reinicia (p. ej. al subir un atributo de Zona)
+    ensureBallAnims(this);
     this.cameras.main.fadeIn(200, 0, 0, 0);
     stadiumBg(this, 0.55);
     const p = getProfile();
@@ -71,9 +125,11 @@ export class CustomizeScene extends Phaser.Scene {
 
     // reparto vertical (de arriba abajo, medidas fijas); la vitrina usa lo que sobra
     const TOP = 110;
-    const L = { gapHero: 22, level: 96, gapA: 40, titleToRow: 34, styles: 118, gapB: 44, titleToCard: 34, ability: 104, abilityGap: 14, gapC: 30, play: 104, bottom: 34 };
+    // cuadrícula de 3 filas × 2 columnas, todas con la misma separación (GRID_GAP): fila 1 EFECTO PELOTA | CARGANDO GOLPE,
+    // fila 2 las dos habilidades equipadas (DASH | SMASH), fila 3 INFERNO | ZONA
+    const L = { gapHero: 22, level: 96, gapA: 26, titleToCard: 28, ability: 104, abilityGap: GRID_GAP, gapFeatures: GRID_GAP, features: 190, gapC: 22, play: 96, bottom: 28 };
     const below =
-      L.gapHero + L.level + L.gapA + L.titleToRow + L.styles + L.gapB + L.titleToCard + L.ability * 2 + L.abilityGap + L.gapC + L.play + L.bottom;
+      L.gapHero + L.level + L.gapA + L.titleToCard + L.ability * 2 + L.abilityGap + L.gapFeatures + L.features + L.gapC + L.play + L.bottom;
     const free = H - TOP - below;
     const heroH = Phaser.Math.Clamp(free, 300, 560);
     const extra = Math.max(0, free - heroH); // pantallas muy altas: aire repartido arriba y antes de JUGAR
@@ -87,15 +143,16 @@ export class CustomizeScene extends Phaser.Scene {
     this.levelCard(W, y, p.level, levelProgress(p));
     y += L.level + L.gapA;
 
-    // ---------------------------------------------------------------- estilos
-    this.sectionTitle(W, y, 'ESTILO');
-    this.styleRow(W, y + L.titleToRow);
-    y += L.titleToRow + L.styles + L.gapB;
-
     // ---------------------------------------------------------------- habilidades
     this.sectionTitle(W, y, 'HABILIDADES');
-    p.abilities.forEach((id, i) => this.abilityCard(W, y + L.titleToCard + i * (L.ability + L.abilityGap), ABILITIES[id], i + 1));
-    y += L.titleToCard + L.ability * 2 + L.abilityGap + L.gapC + extra * 0.5;
+    const row1 = y + L.titleToCard;
+    const row2 = row1 + L.ability + L.abilityGap;
+    this.passiveCard(W, row1, L.ability, 0, PASSIVES.spin);
+    this.passiveCard(W, row1, L.ability, 1, PASSIVES.charge);
+    p.abilities.forEach((id, i) => this.abilityCard(W, row2, L.ability, i as 0 | 1, ABILITIES[id], i + 1));
+    y += L.titleToCard + L.ability * 2 + L.abilityGap + L.gapFeatures;
+    this.featureCards(W, y, L.features);
+    y += L.features + L.gapC + extra * 0.5;
 
     // ---------------------------------------------------------------- JUGAR
     const playH = L.play;
@@ -250,59 +307,156 @@ export class CustomizeScene extends Phaser.Scene {
     this.tweens.add({ targets: state, v: Phaser.Math.Clamp(prog, 0, 1), delay: 250, duration: 700, ease: 'Cubic.easeOut', onUpdate: draw });
   }
 
-  /** Fila de estilos: el equipado resaltado, los no comprados con candado y nivel requerido. */
-  private styleRow(W: number, top: number) {
-    const s = getPlayer();
-    const n = STYLES.length;
-    const gap = 14;
-    const cw = (W - 60 - gap * (n - 1)) / n;
-    const ch = 118;
-    STYLES.forEach((st, i) => {
-      const x = 30 + i * (cw + gap);
-      const has = owns(s, itemId.style(st.id));
-      const equipped = s.equipped.style === st.id;
-      const c = this.add.container(0, 0);
-      c.add(this.card(x, top, cw, ch, { line: equipped ? 0xffffff : has ? NEON : 0x2c3d66, glow: equipped ? 0.3 : 0, r: 16 }));
-      // muestra de color
-      const sw = this.add.graphics();
-      const sx = x + cw / 2;
-      const sy = top + 46;
-      sw.fillStyle(0x0a1638, 1).fillRoundedRect(sx - 30, sy - 30, 60, 60, 14);
-      sw.fillStyle(st.dark, 1).fillRoundedRect(sx - 26, sy - 26, 52, 52, 12);
-      sw.fillStyle(st.color, 1).fillRoundedRect(sx - 26, sy - 26, 52, 40, 12);
-      sw.fillStyle(0xffffff, 0.3).fillRoundedRect(sx - 20, sy - 22, 40, 8, 4);
-      c.add(sw);
-      if (!has) {
-        sw.setAlpha(0.45);
-        const lk = this.add.graphics({ x: sx, y: sy });
-        lk.lineStyle(4, 0xdbe5ff).beginPath().arc(0, -4, 9, Math.PI, 0).strokePath();
-        lk.fillStyle(0xdbe5ff).fillRoundedRect(-13, -4, 26, 20, 5);
-        lk.fillStyle(0x0a1638).fillCircle(0, 5, 3);
-        c.add(lk);
+  /** Dos paneles debajo de las habilidades: INFERNO (poder elegido + selector) y ZONA (atributos). */
+  private featureCards(W: number, top: number, h: number) {
+    const left = gridCol(W, 0);
+    const right = gridCol(W, 1);
+    const w = left.w;
+    this.infernoCard(left.x, top, w, h);
+    const item = { x: right.x, title: 'ZONA', subtitle: 'ESTADO DE REMONTADA', color: 0x45d9ff };
+    {
+      this.card(item.x, top, w, h, { line: item.color, glow: 0.24, r: 16 });
+      const icon = this.add.graphics({ x: item.x + 34, y: top + 35 });
+      icon.lineStyle(4, item.color, 0.5).strokeCircle(0, 0, 24);
+      icon.lineStyle(4, item.color, 0.9).strokeCircle(0, 0, 16);
+      icon.fillStyle(0xffffff, 1).fillCircle(0, 0, 7);
+      const tx = item.x + 66;
+      const tw = w - 76;
+      const title = this.add.text(tx, top + 18, item.title, { fontFamily: FONT, fontSize: '20px', color: '#75e7ff', stroke: '#061431', strokeThickness: 3 }).setOrigin(0, 0);
+      title.setScale(Math.min(1, tw / title.width));
+      const subtitle = this.add.text(tx, top + 43, item.subtitle, { fontFamily: FONT, fontSize: '12px', color: '#d4e5ff', letterSpacing: 0.5 }).setOrigin(0, 0);
+      subtitle.setScale(Math.min(1, tw / subtitle.width));
+      {
+        const zone = getPlayer().zone;
+        this.add.text(item.x + w / 2, top + 65, `RAYOS ${zone.rays}  ·  1 RAYO = +1%`, { fontFamily: FONT, fontSize: '11px', color: '#91eaff' }).setOrigin(0.5);
+        const labels: Record<ZoneStatKey, string> = { strength: 'FUERZA', speed: 'VELOCIDAD', precision: 'PRECISIÓN', agility: 'AGILIDAD', resistance: 'RESISTENCIA' };
+        ZONE_STAT_KEYS.forEach((key, index) => {
+          const level = zone.stats[key];
+          const cy = top + 86 + index * 19;
+          this.add.text(item.x + 12, cy, labels[key], { fontFamily: FONT, fontSize: '11px', color: '#e5f8ff' }).setOrigin(0, 0.5);
+          const bx = item.x + 98;
+          const bw = Math.max(38, w - 168);
+          const bar = this.add.graphics();
+          bar.fillStyle(0x04132e, 1).fillRoundedRect(bx, cy - 4, bw, 8, 4);
+          bar.lineStyle(1, 0x3472a2, 0.8).strokeRoundedRect(bx, cy - 4, bw, 8, 4);
+          if (level > 0) {
+            const fw = bw * level / ZONE_STAT_MAX;
+            bar.fillStyle(item.color, 1).fillRoundedRect(bx, cy - 4, fw, 8, 4);
+            bar.fillStyle(0xffffff, 0.45).fillRoundedRect(bx + 2, cy - 3, Math.max(0, fw - 4), 2, 1);
+          }
+          this.add.text(bx + bw + 5, cy, `${level}/20`, { fontFamily: FONT, fontSize: '10px', color: '#b9d9f2' }).setOrigin(0, 0.5);
+          const plusX = item.x + w - 18;
+          const enabled = level < ZONE_STAT_MAX && zone.rays > 0;
+          const plus = this.add.graphics({ x: plusX, y: cy }).setAlpha(enabled ? 1 : 0.42);
+          plus.fillStyle(enabled ? item.color : 0x54637d, 1).fillCircle(0, 0, 9);
+          plus.lineStyle(2, 0xffffff, 0.95).lineBetween(-4, 0, 4, 0).lineBetween(0, -4, 0, 4);
+          const hit = this.add.zone(plusX, cy, 28, 20).setInteractive({ useHandCursor: true });
+          hit.on('pointerup', () => {
+            const result = commit((state) => upgradeZoneStat(state, key));
+            if (!result.ok) return this.toast(result.error === 'not_enough_rays' ? 'Gana Rayos en las recompensas semanales de Ranked' : 'Este atributo ya llegó al 20%');
+            this.scene.restart();
+          });
+        });
       }
-      const item = shopItem(itemId.style(st.id));
-      const sub = equipped ? 'EN USO' : has ? 'USAR' : `NV ${item?.minLevel ?? 1}`;
-      c.add(this.add.text(sx, top + 92, st.name, { fontFamily: FONT, fontSize: '18px', color: has ? '#ffffff' : '#8d99b5' }).setOrigin(0.5));
-      c.add(this.add.text(sx, top + 110, sub, { fontFamily: FONT, fontSize: '13px', color: equipped ? '#9fe8a0' : '#7f93bf' }).setOrigin(0.5));
+    }
+  }
 
-      const hit = this.add.rectangle(x + cw / 2, top + ch / 2, cw, ch, 0x000000, 0.001).setInteractive({ useHandCursor: true });
-      hit.on('pointerdown', () => {
-        this.tweens.add({ targets: c, scale: { from: 0.97, to: 1 }, duration: 160 });
-        if (equipped) return;
-        if (has) {
-          commit((st0) => equipStyle(st0, st.id));
-          this.scene.restart();
-        } else this.toast(`Consigue el estilo ${st.name.toLowerCase()} en la Tienda`);
+  /**
+   * INFERNO: el poder elegido (bola animada, nombre y descripción) y debajo el selector con los cuatro poderes
+   * (domain/infernoPowers.ts). Tocar uno lo equipa al momento y la tarjeta se redibuja (sin reiniciar la escena).
+   */
+  private infernoCard(x: number, top: number, w: number, h: number) {
+    this.infernoBox?.destroy();
+    const box = this.add.container(0, 0);
+    this.infernoBox = box;
+    const power = getProfile().inferno;
+    const def = infernoPowerDef(power);
+    box.add(this.card(x, top, w, h, { line: def.color, glow: 0.24, r: 16 }));
+    box.add(this.purpleRacketIcon(x + 34, top + 35, 52));
+    const tx = x + 66;
+    const tw = w - 76;
+    const title = this.add.text(tx, top + 18, 'INFERNO', { fontFamily: FONT, fontSize: '20px', color: def.css, stroke: '#061431', strokeThickness: 3 }).setOrigin(0, 0);
+    title.setScale(Math.min(1, tw / title.width));
+    const name = this.add.text(tx, top + 43, def.ball, { fontFamily: FONT, fontSize: '14px', color: '#ffffff' }).setOrigin(0, 0).setLetterSpacing(1);
+    name.setScale(Math.min(1, tw / name.width));
+    const desc = this.add.text(x + w / 2, top + 70, def.desc, { fontFamily: FONT, fontSize: '13px', color: '#c3d4f2', align: 'center', wordWrap: { width: w - 24 } }).setOrigin(0.5, 0);
+    box.add([title, name, desc]);
+
+    // selector: los cuatro poderes en fila; el elegido con aro de su color, animado y con su nombre resaltado
+    const slotW = (w - 16) / INFERNO_POWERS.length;
+    const cy = top + 126;
+    INFERNO_POWERS.forEach((p, i) => {
+      const cx = x + 8 + slotW * (i + 0.5);
+      const on = p.id === power;
+      const ring = this.add.graphics();
+      if (on) ring.lineStyle(8, p.color, 0.25).strokeCircle(cx, cy, 27);
+      ring.fillStyle(0x05112c, 0.9).fillCircle(cx, cy, 25);
+      ring.lineStyle(on ? 3 : 2, on ? p.color : 0x2a4a8a, 1).strokeCircle(cx, cy, 25);
+      const ball = this.ballIcon(p.id, cx, cy, 46, on).setAlpha(on ? 1 : 0.55);
+      const label = this.add.text(cx, cy + 33, p.name, { fontFamily: FONT, fontSize: '11px', color: on ? p.css : '#8ea3ce' }).setOrigin(0.5, 0);
+      if (label.width > slotW - 4) label.setScale((slotW - 4) / label.width);
+      const hit = this.add.zone(cx, cy + 8, slotW, 72).setInteractive({ useHandCursor: true });
+      hit.on('pointerup', () => {
+        if (on) return;
+        setInferno(p.id);
+        // se redibuja en el siguiente fotograma (no se destruye la zona tocada dentro de su propio evento)
+        this.time.delayedCall(0, () => this.infernoCard(x, top, w, h));
       });
+      box.add([ring, ball, label, hit]);
     });
   }
 
-  /** Tarjeta de habilidad equipada: icono, nombre, recarga y descripción. */
-  private abilityCard(W: number, y: number, a: AbilityDef, slot: number) {
-    const x = 30;
-    const w = W - 60;
-    const h = 104;
-    this.card(x, y, w, h, { line: a.color, glow: 0.2, r: 18 });
+  /**
+   * Icono del INFERNO en su tarjeta: el botón del SMASH (raqueta golpeando la pelota) en MORADO, el mismo que toma
+   * el botón en el partido al cargar el INFERNO. `size` = diámetro del círculo visible.
+   */
+  private purpleRacketIcon(x: number, y: number, size: number) {
+    const art = ABILITY_ART.smash!;
+    const baked = bakeImage(this, art.key, 150);
+    const key = baked ? hyperTexture(this, baked) : null;
+    if (!baked) return this.add.circle(x, y, size / 2, 0x9a45ff, 1);
+    const img = this.add.image(x, y, key ?? baked);
+    if (!key) img.setTint(0xb46bff, 0xe0b0ff, 0x6a1fe0, 0x9a45ff); // sin filtros de canvas: tinte morado
+    const { x0, y0, x1, y1 } = art.box;
+    img.setOrigin((x0 + x1) / 2 / art.w, (y0 + y1) / 2 / art.h); // centro del círculo, no de la imagen
+    img.setScale(size / (((y1 - y0) / art.h) * img.height));
+    return img;
+  }
+
+  /** Bola de un poder: su hoja de sprites (animada si `animate`) o, si no cargó, un círculo de su color. */
+  private ballIcon(power: InfernoPower, x: number, y: number, size: number, animate: boolean) {
+    const art = BALL_ART[power];
+    if (this.textures.exists(art.key)) {
+      const s = this.add.sprite(x, y, art.key, 0).setDisplaySize(size, size);
+      if (animate && this.anims.exists(art.anim)) s.play(art.anim);
+      return s;
+    }
+    return this.add.circle(x, y, size * 0.3, infernoPowerDef(power).color, 1);
+  }
+
+  /**
+   * Tarjeta de media pantalla de la cuadrícula: caja, icono a la izquierda y nombre + descripción a su derecha.
+   * `rightPad` = espacio libre a la derecha del nombre (p. ej. la píldora de recarga). Devuelve el origen del texto.
+   */
+  private gridCard(x: number, y: number, w: number, h: number, color: number, name: string, desc: string, rightPad = 0) {
+    this.card(x, y, w, h, { line: color, glow: 0.2, r: 18 });
+    const tx = x + 92;
+    const title = this.add.text(tx, y + 13, name.toUpperCase(), textStyle(22)).setOrigin(0, 0);
+    const maxTitleW = w - 92 - 14 - rightPad;
+    if (title.width > maxTitleW) title.setScale(maxTitleW / title.width); // nombres largos ("CARGANDO GOLPE") se encogen
+    this.add
+      .text(tx, y + 44, desc, { fontFamily: FONT, fontSize: '13px', color: '#b9cbef', wordWrap: { width: w - 92 - 14 } })
+      .setOrigin(0, 0)
+      .setLineSpacing(-2);
+    return tx;
+  }
+
+  /** Tarjeta de habilidad equipada: número de ranura, icono, nombre, recarga y descripción. */
+  private abilityCard(W: number, y: number, h: number, col: 0 | 1, a: AbilityDef, slot: number) {
+    const { x, w } = gridCol(W, col);
+    // recarga como píldora (arriba a la derecha); el nombre se encoge para no tocarla
+    const cd = `${a.cooldown}s`;
+    this.gridCard(x, y, w, h, a.color, a.name, a.desc, 78);
     // número de ranura
     const sb = this.add.graphics();
     sb.fillStyle(a.color, 1).fillRoundedRect(x + 14, y - 12, 34, 26, 8);
@@ -311,31 +465,44 @@ export class CustomizeScene extends Phaser.Scene {
     const art = ABILITY_ART[a.id];
     const baked = art ? bakeImage(this, art.key, 150) : null;
     if (art && baked) {
-      const img = this.add.image(x + 66, y + h / 2, baked);
+      const img = this.add.image(x + 48, y + h / 2, baked);
       const { x0, y0, x1, y1 } = art.box;
       img.setOrigin((x0 + x1) / 2 / art.w, (y0 + y1) / 2 / art.h); // centro del círculo, no de la imagen
-      img.setScale(84 / (((y1 - y0) / art.h) * img.height)); // el círculo visible mide ~84 px
+      img.setScale(64 / (((y1 - y0) / art.h) * img.height)); // el círculo visible mide ~64 px
     } else {
-      const icon = this.add.graphics({ x: x + 66, y: y + h / 2 });
-      drawDisc(icon, 36, a.color, a.colorDark);
-      drawAbilityIcon(icon, a.icon, 36);
+      const icon = this.add.graphics({ x: x + 48, y: y + h / 2 });
+      drawDisc(icon, 28, a.color, a.colorDark);
+      drawAbilityIcon(icon, a.icon, 28);
     }
-    const tx = x + 120;
-    this.add.text(tx, y + 18, a.name.toUpperCase(), textStyle(26)).setOrigin(0, 0);
-    // recarga como píldora
-    const cd = `${a.cooldown}s`;
-    const pill = this.add.text(x + w - 22, y + 24, cd, { fontFamily: FONT, fontSize: '17px', color: '#ffe9a8' }).setOrigin(1, 0);
+    const pill = this.add.text(x + w - 18, y + 16, cd, { fontFamily: FONT, fontSize: '14px', color: '#ffe9a8' }).setOrigin(1, 0);
     const pg = this.add.graphics();
-    pg.fillStyle(0x0a1638, 1).fillRoundedRect(pill.x - pill.width - 30, y + 18, pill.width + 42, 30, 15);
-    pg.lineStyle(2, 0xffc42e, 0.8).strokeRoundedRect(pill.x - pill.width - 30, y + 18, pill.width + 42, 30, 15);
+    const px0 = pill.x - pill.width - 28;
+    pg.fillStyle(0x0a1638, 1).fillRoundedRect(px0, y + 11, pill.width + 38, 26, 13);
+    pg.lineStyle(2, 0xffc42e, 0.8).strokeRoundedRect(px0, y + 11, pill.width + 38, 26, 13);
     // reloj
-    pg.lineStyle(2, 0xffe9a8, 1).strokeCircle(pill.x - pill.width - 14, y + 33, 7);
-    pg.lineBetween(pill.x - pill.width - 14, y + 33, pill.x - pill.width - 14, y + 28).lineBetween(pill.x - pill.width - 14, y + 33, pill.x - pill.width - 10, y + 33);
+    const cx = px0 + 14;
+    pg.lineStyle(2, 0xffe9a8, 1).strokeCircle(cx, y + 24, 6);
+    pg.lineBetween(cx, y + 24, cx, y + 20).lineBetween(cx, y + 24, cx + 3, y + 24);
     pill.setDepth(1);
-    this.add
-      .text(tx, y + 54, a.desc, { fontFamily: FONT, fontSize: '17px', color: '#b9cbef', wordWrap: { width: w - 140 } })
-      .setOrigin(0, 0)
-      .setLineSpacing(-2);
+  }
+
+  /**
+   * Tarjeta de una habilidad pasiva del personaje (sin recarga ni ranura): EFECTO PELOTA y CARGANDO GOLPE.
+   * Su icono es el del botón del partido (saque con efecto) o un disco con el arco de carga.
+   */
+  private passiveCard(W: number, y: number, h: number, col: 0 | 1, def: PassiveDef) {
+    const { x, w } = gridCol(W, col);
+    this.gridCard(x, y, w, h, def.color, def.name, def.desc);
+    const cx = x + 48;
+    const cy = y + h / 2;
+    const art = def.art ? this.textures.exists(def.art) : false;
+    if (def.art && art) {
+      this.add.image(cx, cy, def.art).setDisplaySize(64, 64);
+      return;
+    }
+    const icon = this.add.graphics({ x: cx, y: cy });
+    drawDisc(icon, 28, def.color, def.colorDark);
+    def.draw?.(icon, 28);
   }
 
   private toast(msg: string) {

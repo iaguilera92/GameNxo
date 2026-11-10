@@ -9,7 +9,7 @@
  * Configuración (temporada, niveles, premios, precio) en BP_SEASON.
  */
 import { grantItem } from './operations';
-import { type PlayerState, clonePlayer, owns } from './player';
+import { type PlayerState, clonePlayer, itemId, owns } from './player';
 import { newBattlePass } from './battlePassState';
 import { grantBonusSpin } from './dailyWheel';
 import { BP_SEASON, type BpReward, type BpTrack } from './battlePassConfig';
@@ -54,16 +54,9 @@ export function bpClaim(s: PlayerState, track: BpTrack, tier: number): BpResult<
   if (err) return { ok: false, error: err };
   const reward = BP_SEASON.tiers[tier - 1][track];
   let n = clonePlayer(synced);
-  let given = reward;
-  if (reward.kind === 'cash') {
-    n.gems += reward.amount; // dinero (billetes)
-  } else if (owns(n, reward.item)) {
-    given = { kind: 'cash', amount: BP_SEASON.duplicateCash };
-    n.gems += BP_SEASON.duplicateCash;
-  } else {
-    const r = grantItem(n, reward.item);
-    if (r.ok) n = r.state;
-  }
+  const granted = grantBpReward(n, reward);
+  n = granted.state;
+  const given = granted.given;
   n = clonePlayer(n);
   (track === 'free' ? n.bp.free : n.bp.prem).push(tier);
   return { ok: true, state: n, given };
@@ -76,19 +69,32 @@ export function bpClaimWelcome(s: PlayerState, track: BpTrack): BpResult<{ given
   if (claimed) return { ok: false, error: 'already_claimed' };
   if (track === 'prem' && !synced.bp.premium) return { ok: false, error: 'not_premium' };
   const reward = BP_SEASON.welcome[track];
-  const n = clonePlayer(synced);
-  let given = reward;
-  if (reward.kind === 'cash') n.gems += reward.amount;
-  else if (owns(n, reward.item)) {
-    given = { kind: 'cash', amount: BP_SEASON.duplicateCash };
-    n.gems += BP_SEASON.duplicateCash;
-  } else {
-    const res = grantItem(n, reward.item);
-    if (res.ok) Object.assign(n, res.state);
-  }
+  const { state: n, given } = grantBpReward(clonePlayer(synced), reward);
   if (track === 'free') n.bp.welcomeFreeClaimed = true;
   else n.bp.welcomePremClaimed = true;
   return { ok: true, state: n, given };
+}
+
+/** Entrega dinero, cosméticos o un personaje con estilo; compensa solo si ya se posee todo. */
+function grantBpReward(player: PlayerState, reward: BpReward): { state: PlayerState; given: BpReward } {
+  const n = clonePlayer(player);
+  if (reward.kind === 'cash') {
+    n.gems += reward.amount;
+    return { state: n, given: reward };
+  }
+  const ids = reward.kind === 'character'
+    ? [itemId.skin(reward.skin), ...(reward.style ? [itemId.style(reward.style)] : [])]
+    : [reward.item];
+  const newItems = ids.filter((id) => !owns(n, id));
+  if (!newItems.length) {
+    n.gems += BP_SEASON.duplicateCash;
+    return { state: n, given: { kind: 'cash', amount: BP_SEASON.duplicateCash } };
+  }
+  for (const id of newItems) {
+    const result = grantItem(n, id);
+    if (result.ok) Object.assign(n, result.state);
+  }
+  return { state: n, given: reward };
 }
 
 /** Reclama el bonus único compartido por ambos caminos al completar la temporada. */

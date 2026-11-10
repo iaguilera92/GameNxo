@@ -121,6 +121,7 @@ function weeklyReward(s: PlayerState, week: string): WeeklyReward {
     position,
     coins: eligible ? base.coins + (pp?.coins ?? 0) : 0,
     cash: eligible ? base.cash + (pp?.cash ?? 0) : 0,
+    rays: eligible ? 1 : 0,
     positionLabel: pp?.label ?? null,
     claimed: false,
   };
@@ -266,6 +267,7 @@ export function claimWeekly(s: PlayerState, week: string): RankedResult<{ reward
   if (nw.eligible) {
     n.coins += nw.coins;
     n.gems += nw.cash;
+    n.zone.rays += nw.rays;
   }
   n.ranked.rewards = n.ranked.rewards.filter((x) => !x.claimed || x.week === week).slice(-8);
   return { ok: true, state: n, reward: nw, given: nw.eligible };
@@ -296,7 +298,7 @@ export interface RankedView {
   minMatches: number;
   msLeft: number;
   /** recompensa semanal estimada si terminara ahora (0 si aún no cumple el mínimo) */
-  estimate: { coins: number; cash: number; label: string | null; eligible: boolean };
+  estimate: { coins: number; cash: number; rays: number; label: string | null; eligible: boolean };
   season: PlayerState['ranked']['season'];
   total: PlayerState['ranked']['total'];
   stakes: { bet: number; entry: number; prize: number; affordable: boolean }[];
@@ -324,7 +326,7 @@ export function rankedView(s0: PlayerState, now: number): RankedView {
     weekMatches: r.weekMatches,
     minMatches: RANKED.minMatchesForReward,
     msLeft: msToWeekEnd(now),
-    estimate: { coins: base.coins + (pp?.coins ?? 0), cash: base.cash + (pp?.cash ?? 0), label: pp?.label ?? null, eligible },
+    estimate: { coins: base.coins + (pp?.coins ?? 0), cash: base.cash + (pp?.cash ?? 0), rays: eligible ? 1 : 0, label: pp?.label ?? null, eligible },
     season: r.season,
     total: r.total,
     stakes: RANKED.bets.map((bet) => {
@@ -371,6 +373,7 @@ export function sanitizeRanked(raw: unknown): PlayerState['ranked'] {
       position: typeof w.position === 'number' && w.position > 0 ? Math.floor(w.position) : null,
       coins: int0(w.coins),
       cash: int0(w.cash),
+      rays: int0(w.rays),
       positionLabel: typeof w.positionLabel === 'string' ? w.positionLabel : null,
       claimed: !!w.claimed,
     }));

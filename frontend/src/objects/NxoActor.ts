@@ -11,6 +11,11 @@ import nxoFHits from '../characters/nxo-front-hits.json';
 import nxoFSpecial from '../characters/nxo-front-special.json';
 import nxoFMove from '../characters/nxo-front-move.json';
 import nxoFExtra from '../characters/nxo-front-extra.json';
+import maiHits from '../characters/mai-hits.json';
+import maiSpecial from '../characters/mai-special.json';
+import maiMove from '../characters/mai-move.json';
+import maiExtra from '../characters/mai-extra.json';
+import maiInferno from '../characters/mai-inferno.json';
 import { runAnimRate } from '../logic/PlayerMotion';
 
 /**
@@ -22,7 +27,9 @@ const V2_DIR = 'nxo-v2';
 const sheetDir = (id: SheetId) => PACKS[id]?.dir ?? `${id}-sprites`;
 type ExtraAnim = keyof typeof nxoExtra.animations;
 const EXTRA = nxoExtra as { cell: { w: number; h: number }; origin: { x: number; y: number }; standHeight: number; animations: Record<ExtraAnim, AnimInfo> };
-const EXTRA_ANIMS = Object.keys(EXTRA.animations) as ExtraAnim[];
+/** animaciones extra de un pack: cada personaje trae las que tiene su hoja (MAI no trae el bote ni el lanzamiento del saque) */
+type ExtraCfg = Omit<typeof EXTRA, 'animations'> & { animations: Partial<Record<ExtraAnim, AnimInfo>> };
+const extrasOf = (p: { extra: ExtraCfg }) => Object.entries(p.extra.animations) as [ExtraAnim, AnimInfo][];
 const extraKey = (a: ExtraAnim, pk = 'nxo') => `${pk}-x-${a}`;
 
 /** Raqueta suelta (sale volando al recibir el INFERNO): imagen generada por cÃ³digo. */
@@ -147,7 +154,8 @@ const INFERNO_HOLD_MAX_MS = 3500;
 
 /**
  * Juego de hojas v2 de un personaje: tiras en assets/characters/<dir>/ y sus JSON. `key` prefija las texturas/animaciones.
- * 'nxo' = NXO de espaldas (jugador); 'nxo-front' = el rival (NXO de frente, tools/build-nxo-v2.mjs front).
+ * 'nxo' = NXO de espaldas (jugador); 'nxo-front' = el rival (NXO de frente, tools/build-nxo-v2.mjs front);
+ * 'mai' = MAI de espaldas (jugadora, tools/build-nxo-v2.mjs mai).
  */
 type Pack = {
   dir: string;
@@ -155,7 +163,7 @@ type Pack = {
   hits: typeof HITS;
   special: typeof SPECIAL;
   move: typeof MOVE;
-  extra: typeof EXTRA;
+  extra: ExtraCfg;
   /** el reposo del saque es el bote de la pelota (clip y alturas medidas solo en la hoja de espaldas) */
   bounce: boolean;
   /** INFERNO DRIVE (hoja de 9 frames) y su carpeta */
@@ -175,7 +183,19 @@ const PACKS = {
     inf: nxoFInferno as InfCfg,
     infDir: 'nxo-front-inferno',
   },
-} as Record<'nxo' | 'nxo-front', Pack> & Partial<Record<SheetId, Pack>>;
+  // MAI de espaldas: sin bote ni lanzamiento del saque en su hoja (reposo normal y saque desde su frame 1)
+  mai: {
+    dir: 'mai-v2',
+    key: 'mai',
+    hits: maiHits as typeof HITS,
+    special: maiSpecial as typeof SPECIAL,
+    move: maiMove as typeof MOVE,
+    extra: maiExtra as ExtraCfg,
+    bounce: false,
+    inf: maiInferno as InfCfg,
+    infDir: 'mai-inferno',
+  },
+} as Record<'nxo' | 'nxo-front' | 'mai', Pack> & Partial<Record<SheetId, Pack>>;
 const PACK_LIST = Object.values(PACKS) as Pack[];
 
 export function queueNxoSpriteLoads(load: Phaser.Loader.LoaderPlugin) {
@@ -184,8 +204,8 @@ export function queueNxoSpriteLoads(load: Phaser.Loader.LoaderPlugin) {
       for (const a of Object.keys(p.move.animations) as MoveAnim[]) {
         load.spritesheet(moveKey(a, p.key), `assets/characters/${p.dir}/${p.move.animations[a].file}`, { frameWidth: p.move.cell.w, frameHeight: p.move.cell.h });
       }
-      for (const a of EXTRA_ANIMS) {
-        load.spritesheet(extraKey(a, p.key), `assets/characters/${p.dir}/${p.extra.animations[a].file}`, { frameWidth: p.extra.cell.w, frameHeight: p.extra.cell.h });
+      for (const [a, info] of extrasOf(p)) {
+        load.spritesheet(extraKey(a, p.key), `assets/characters/${p.dir}/${info.file}`, { frameWidth: p.extra.cell.w, frameHeight: p.extra.cell.h });
       }
     }
   }
@@ -243,7 +263,7 @@ export function registerNxoAnims(scene: Phaser.Scene) {
   };
   for (const p of PACK_LIST) {
     for (const a of Object.keys(p.move.animations) as MoveAnim[]) mk(moveKey(a, p.key), p.move.animations[a], 0);
-    for (const a of EXTRA_ANIMS) mk(extraKey(a, p.key), p.extra.animations[a], p.extra.animations[a].loop ? -1 : 0);
+    for (const [a, info] of extrasOf(p)) mk(extraKey(a, p.key), info, info.loop ? -1 : 0);
     for (const a of Object.keys(p.special.animations) as SpecialAnim[]) mk(specialKey(a, p.key), p.special.animations[a], 0);
     mk(infernoKey(p.key), p.inf.animations['inferno-swing'], 0);
     if (hitsReady(scene, p)) for (const a of HIT_ANIMS) mk(hitKey(a, p.key), p.hits.animations[a], 0);
@@ -622,13 +642,14 @@ export class NxoActor {
     this.swingInferno = inferno;
     const useSpecial = !inferno && special && overhead && !!this.pk && this.specialOk();
     // volea en la red: clip 'volley' de las hojas nuevas (hoja 4, fila 5) si estÃ¡ cargado
-    const useVolley = !inferno && !useSpecial && volley && !overhead && this.v2 && this.xr('volley');
+    const volleyInfo = this.P.extra.animations.volley;
+    const useVolley = !inferno && !useSpecial && volley && !overhead && this.v2 && this.xr('volley') && !!volleyInfo;
     const { key, info } = inferno
       ? { key: infernoKey(this.P.key), info: this.P.inf.animations['inferno-swing'] }
       : useSpecial
         ? { key: this.sk('smash-power'), info: this.P.special.animations['smash-power'] }
-        : useVolley
-          ? { key: this.xk('volley'), info: this.P.extra.animations.volley }
+        : useVolley && volleyInfo
+          ? { key: this.xk('volley'), info: volleyInfo }
           : this.clip(anim);
     const geo = this.geo;
     // desde la preparaciÃ³n se continÃºa justo despuÃ©s; sin ella se arranca EN la preparaciÃ³n (se ve la raqueta atrÃ¡s)
@@ -676,7 +697,8 @@ export class NxoActor {
 
   /** golpe del saque: con efecto usa su propio clip (hojas nuevas) */
   private serveClip(): { key: string; info: AnimInfo } {
-    if (this.serveKind === 'spin' && this.v2 && this.xr('serve-spin')) return { key: this.xk('serve-spin'), info: this.P.extra.animations['serve-spin'] };
+    const spin = this.P.extra.animations['serve-spin'];
+    if (this.serveKind === 'spin' && this.v2 && this.xr('serve-spin') && spin) return { key: this.xk('serve-spin'), info: spin };
     return this.clip('serve');
   }
 
@@ -784,13 +806,17 @@ export class NxoActor {
 
   /** Texturas + último frame de las poses de victoria / derrota (para dibujarlas fuera del partido). */
   endPoses(): { victory: { key: string; frame: number }; defeat: { key: string; frame: number } } | null {
-    if (!this.v2) return null;
+    // En las tarjetas del resultado todos miran a cámara, incluso el personaje que jugó de espaldas.
+    const frontId: SpriteCharId = this.id === 'nxo' ? 'nxo-front' : this.id === 'mai' ? 'mai-front' : this.id;
+    const frontPack = PACKS[frontId];
     const last = (k: string) => {
       const a = this.scene.anims.get(k);
       return a && this.scene.textures.exists(k) ? { key: k, frame: a.frames.length - 1 } : null;
     };
-    const victory = last(this.k('victory'));
-    const defeat = last(this.xk('defeat'));
+    const idleKey = spriteKey(frontId, 'idle');
+    const fallback = this.scene.textures.exists(idleKey) ? { key: idleKey, frame: 0 } : null;
+    const victory = last(spriteKey(frontId, 'victory')) ?? fallback;
+    const defeat = (frontPack ? last(extraKey('defeat', frontPack.key)) : null) ?? fallback;
     return victory && defeat ? { victory, defeat } : null;
   }
 

@@ -257,7 +257,7 @@ export class AbilityButton extends Phaser.GameObjects.Container {
  * Copia de una textura con el tono girado a morado (canvas con filtro hue-rotate). null si no se puede
  * (sin canvas / sin filtros): entonces se usa un tinte.
  */
-function hyperTexture(scene: Phaser.Scene, key: string): string | null {
+export function hyperTexture(scene: Phaser.Scene, key: string): string | null {
   const out = `${key}-hyper`;
   if (scene.textures.exists(out)) return out;
   const srcImg = scene.textures.get(key)?.getSourceImage() as HTMLImageElement | HTMLCanvasElement | undefined;

@@ -7,7 +7,7 @@ Juego de tenis 1 vs 1 vertical para móvil. Se juega contra un BOT o contra otro
 NxoGames/
 ├── frontend/   juego: Phaser 3 + TypeScript + Vite, Android con Capacitor 6
 ├── backend/    servidor: Node.js + TypeScript + Express + Socket.IO
-└── docs/       MULTIJUGADOR.md (LAN 1v1, eventos, pruebas) · RANKED.md (ligas)
+└── docs/       MULTIJUGADOR.md (LAN 1v1, eventos, pruebas) · RANKED.md (ligas) · SPRITES.md (hojas de sprites)
 ```
 
 > El juego estaba antes en la raíz del repositorio. Ahora todo lo del juego (`src/`, `public/`, `android/`,
@@ -33,6 +33,16 @@ npm run apk       # build + cap sync + gradle → android/app/build/outputs/apk/
 ```
 
 Herramientas de sprites y pruebas: `node tools/<script>.mjs`, desde `frontend/`.
+
+## Sprites de personajes
+
+Las imágenes con las que se trabajan los sprites están siempre en `frontend/public/personajes/<Personaje>/`
+(la vista de frente del rival, en su subcarpeta `rival/`). Cada personaje tiene, por vista, 4 hojas de movimientos
+de 8 filas × 8 frames y una hoja del INFERNO DRIVE; más adelante habrá más hojas. `frontend/tools/build-nxo-v2.mjs`
+y `build-nxo-inferno.mjs` las cortan en las tiras que carga el juego (`public/assets/characters/`).
+
+Qué es cada hoja y cada fila, las reglas de dibujo y los comandos: [docs/SPRITES.md](docs/SPRITES.md). Léelo antes
+de cambiar o añadir una hoja.
 
 ## Servidor (backend)
 

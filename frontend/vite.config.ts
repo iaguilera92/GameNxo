@@ -5,9 +5,9 @@ import { join } from 'node:path';
 /**
  * public/personajes contiene las hojas FUENTE de los sprites (las que procesan tools/build-nxo-*.mjs) y copias
  * de seguridad ("Old sprites"): ~50 MB que el juego no usa y que acabarían dentro del APK. El juego solo lee de
- * personajes/ el retrato WebP de Nxo, la franja de la mirada (INFERNO) y los emojis; el resto se quita de dist.
+ * personajes/ el retrato WebP de Nxo, las franjas de la mirada (INFERNO de Nxo y Mai) y los emojis; el resto se quita de dist.
  */
-const KEEP_IN_PERSONAJES = ['Nxo/pj-nxo.webp', 'Nxo/pj-nxo-mirada.webp', 'Nxo/emojis'];
+const KEEP_IN_PERSONAJES = ['Nxo/pj-nxo.webp', 'Nxo/pj-nxo-mirada.webp', 'Nxo/emojis', 'Mai/pj-mai-mirada.webp'];
 function trimSourceArt(): Plugin {
   let outDir = 'dist';
   return {
@@ -28,7 +28,8 @@ function trimSourceArt(): Plugin {
       rmSync(root, { recursive: true, force: true });
       cpSync(keep, root, { recursive: true });
       rmSync(keep, { recursive: true, force: true });
-      console.log('trim-source-art: personajes/ reducido a', readdirSync(join(root, 'Nxo')).join(', '));
+      const dirs = readdirSync(root);
+      console.log('trim-source-art: personajes/ reducido a', dirs.map((d) => `${d}/{${readdirSync(join(root, d)).join(', ')}}`).join(' '));
     },
   };
 }

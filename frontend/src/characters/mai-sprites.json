@@ -1,78 +1,78 @@
 {
-  "source": "pj-mai-sprite.png",
-  "view": "front",
+  "source": "pj-mai-1.png / pj-mai-2.png (tools/build-nxo-v2.mjs)",
+  "view": "back",
   "cell": {
-    "w": 217,
-    "h": 165
+    "w": 212,
+    "h": 150
   },
   "origin": {
-    "x": 0.41014,
-    "y": 0.93939
+    "x": 0.5,
+    "y": 0.93333
   },
-  "standHeight": 140,
+  "standHeight": 112,
   "hold": 1,
-  "serveWait": 3,
-  "smashStart": 3,
+  "serveWait": 2,
+  "smashStart": 2,
   "animations": {
     "idle": {
       "file": "idle.png",
-      "frames": 7,
-      "fps": 9,
+      "frames": 8,
+      "fps": 8,
       "loop": true,
       "scale": 1
     },
     "run": {
       "file": "run.png",
-      "frames": 7,
+      "frames": 8,
       "fps": 14,
       "loop": true,
-      "scale": 0.907
+      "scale": 1
     },
     "runstop": {
       "file": "runstop.png",
-      "frames": 6,
+      "frames": 8,
       "fps": 14,
       "loop": false,
-      "scale": 0.964
+      "scale": 1
     },
     "forehand": {
       "file": "forehand.png",
       "frames": 8,
       "fps": 15,
       "loop": false,
-      "impact": 4,
-      "scale": 1.113
+      "impact": 5,
+      "scale": 1
     },
     "backhand": {
       "file": "backhand.png",
       "frames": 8,
       "fps": 15,
       "loop": false,
-      "impact": 4,
-      "scale": 1.033
+      "impact": 5,
+      "scale": 1
     },
     "serve": {
       "file": "serve.png",
       "frames": 8,
       "fps": 12,
       "loop": false,
-      "impact": 5,
-      "scale": 1.225
+      "impact": 4,
+      "scale": 1
     },
     "smash": {
       "file": "smash.png",
       "frames": 8,
       "fps": 14,
       "loop": false,
-      "impact": 5,
-      "scale": 1.052
+      "impact": 4,
+      "scale": 1
     },
     "victory": {
       "file": "victory.png",
-      "frames": 6,
+      "frames": 8,
       "fps": 10,
       "loop": false,
-      "scale": 1.253
+      "scale": 1
     }
   }
 }

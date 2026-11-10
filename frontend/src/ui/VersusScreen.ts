@@ -16,6 +16,8 @@ export interface VersusSide {
   look: CharacterLook;
   /** skin para usar su retrato estático si existe (solo el jugador) */
   portraitSkin?: SkinId;
+  /** victorias totales: se muestran bajo la placa con un trofeo. 0 o sin dato = no se muestra nada */
+  wins?: number;
 }
 
 const BLUE = { main: 0x2f7bff, deep: 0x0b2a78, glow: 0x6fb2ff, text: '#9fd0ff' };
@@ -142,6 +144,7 @@ export function showVersus(scene: Phaser.Scene, player: VersusSide, rival: Versu
     c.add(lv);
     c.add(scene.add.text(0, 38, `NIVEL ${side.level}`, { fontFamily: FONT, fontSize: '20px', color: pal.text }).setOrigin(0.5).setLetterSpacing(1));
     scene.tweens.add({ targets: c, x, delay: 260, duration: 460, ease: 'Back.easeOut' });
+    if (side.wins && side.wins > 0) winsBadge(scene, c, ph, side.wins);
   };
   plate(player, true);
   plate(rival, false);
@@ -203,4 +206,81 @@ export function showVersus(scene: Phaser.Scene, player: VersusSide, rival: Versu
   // destello de entrada
   const flash = scene.add.rectangle(0, 0, W, H, 0xffffff, 0).setOrigin(0).setDepth(50);
   scene.tweens.add({ targets: flash, alpha: { from: 0.55, to: 0 }, duration: 300 });
+}
+
+/**
+ * Insignia dorada de victorias bajo la placa del nombre: trofeo + número que cuenta hacia arriba + "VICTORIAS".
+ * Entra con un pequeño golpe al terminar de llegar la placa y luego brilla con un destello que la recorre.
+ */
+function winsBadge(scene: Phaser.Scene, plate: Phaser.GameObjects.Container, ph: number, wins: number) {
+  const label = wins === 1 ? 'VICTORIA' : 'VICTORIAS';
+  const b = scene.add.container(0, ph / 2 + 30).setScale(0);
+  plate.add(b);
+  const num = scene.add.text(0, 0, '0', { fontFamily: FONT, fontSize: '26px', color: '#3a2200' }).setOrigin(0, 0.5);
+  const txt = scene.add.text(0, 1, label, { fontFamily: FONT, fontSize: '17px', color: '#5a3600' }).setOrigin(0, 0.5).setLetterSpacing(1);
+  // ancho según el número final (para que la pastilla no cambie de tamaño mientras cuenta)
+  num.setText(wins.toLocaleString('es-CL'));
+  const iconW = 30;
+  const gap = 8;
+  const w = 26 + iconW + gap + num.width + 7 + txt.width + 24;
+  const h = 40;
+  num.setText('0');
+  const g = scene.add.graphics();
+  g.fillStyle(0x000000, 0.35).fillRoundedRect(-w / 2 + 3, -h / 2 + 5, w, h, h / 2);
+  g.fillStyle(0x7a4a00, 1).fillRoundedRect(-w / 2 - 3, -h / 2 - 3, w + 6, h + 6, (h + 6) / 2);
+  g.fillStyle(0xffc42e, 1).fillRoundedRect(-w / 2, -h / 2, w, h, h / 2);
+  g.fillStyle(0xfff1b8, 0.55).fillRoundedRect(-w / 2 + 6, -h / 2 + 3, w - 12, h * 0.4, h * 0.2);
+  b.add(g);
+  // trofeo dibujado (copa, asas, pie)
+  const x0 = -w / 2 + 26;
+  const cup = scene.add.graphics({ x: x0 + iconW / 2 - 6, y: 0 });
+  cup.lineStyle(3, 0x5a3600, 1);
+  cup.beginPath().arc(-8, -5, 5, Math.PI * 0.5, Math.PI * 1.5).strokePath();
+  cup.beginPath().arc(8, -5, 5, -Math.PI * 0.5, Math.PI * 0.5).strokePath();
+  cup.fillStyle(0x5a3600, 1).fillRoundedRect(-8, -12, 16, 13, { tl: 2, tr: 2, bl: 7, br: 7 });
+  cup.fillRect(-2, 1, 4, 5).fillRoundedRect(-7, 6, 14, 4, 2);
+  cup.fillStyle(0xfff1b8, 0.9).fillRect(-5, -10, 3, 7);
+  b.add(cup);
+  num.setX(x0 + iconW + gap - 6);
+  b.add(num);
+  b.add(txt);
+  const place = () => txt.setX(num.x + num.width + 7);
+  place();
+  // brillo que recorre la pastilla (enmascarado a su forma)
+  const shine = scene.add.rectangle(-w / 2 - 30, 0, 18, h + 10, 0xffffff, 0.5).setAngle(18).setBlendMode(Phaser.BlendModes.ADD);
+  const maskG = scene.make.graphics({}, false);
+  b.add(shine);
+  // la máscara sigue la posición en pantalla de la insignia
+  const syncMask = () => {
+    const m = b.getWorldTransformMatrix();
+    maskG.clear().fillStyle(0xffffff).fillRoundedRect(m.tx - (w / 2) * m.scaleX, m.ty - (h / 2) * m.scaleY, w * m.scaleX, h * m.scaleY, (h / 2) * m.scaleY);
+  };
+  shine.setMask(maskG.createGeometryMask());
+  scene.events.on(Phaser.Scenes.Events.UPDATE, syncMask);
+  b.once(Phaser.GameObjects.Events.DESTROY, () => {
+    scene.events.off(Phaser.Scenes.Events.UPDATE, syncMask);
+    maskG.destroy();
+  });
+
+  // entrada: tras llegar la placa, golpe de escala y conteo
+  const at = 760;
+  scene.tweens.add({ targets: b, scale: 1, delay: at, duration: 340, ease: 'Back.easeOut', easeParams: [2] });
+  const cnt = { v: 0 };
+  scene.tweens.add({
+    targets: cnt,
+    v: wins,
+    delay: at + 120,
+    duration: Math.min(900, 300 + wins * 20),
+    ease: 'Cubic.easeOut',
+    onUpdate: () => {
+      num.setText(Math.round(cnt.v).toLocaleString('es-CL'));
+      place();
+    },
+    onComplete: () => {
+      num.setText(wins.toLocaleString('es-CL'));
+      place();
+      scene.tweens.add({ targets: b, scale: { from: 1.12, to: 1 }, duration: 220, ease: 'Back.easeOut' });
+    },
+  });
+  scene.tweens.add({ targets: shine, x: w / 2 + 30, delay: at + 600, duration: 700, repeat: -1, repeatDelay: 1100, ease: 'Sine.easeInOut' });
 }

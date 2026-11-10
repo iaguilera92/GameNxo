@@ -6,6 +6,8 @@ import { rivalFor } from '../characters/catalog';
 import { rivalLevelFor } from '../ai/BotProfile';
 import { getProfile } from '../logic/Profile';
 import type { SkinId } from '../characters/skins';
+import { totalWins } from '../logic/Stats';
+import { playMatchMusic, prepareMatchMusic, stopMatchMusic } from '../fx/matchMusic';
 import { showVersus as showVersusScreen } from '../ui/VersusScreen';
 import { enterRanked, newMatchId, rankedView } from '../logic/Ranked';
 import { rankDef } from '../domain/ranks';
@@ -38,6 +40,11 @@ export class MatchmakingScene extends Phaser.Scene {
     this.from = data?.from ?? 'Menu';
   }
 
+  /** se va al partido (la música del VS sigue); si no, al salir se para */
+  private toMatch = false;
+  /** ambiente del próximo partido (elegido al empezar la búsqueda para cargar ya su música) */
+  private ambiente = '';
+
   /** Vuelve a donde se pidió la partida (Menú o Ranked). */
   private back(toast?: string) {
     this.scene.start(this.from, toast ? { toast } : undefined);
@@ -54,6 +61,12 @@ export class MatchmakingScene extends Phaser.Scene {
     restartOnResize(this);
     this.cameras.main.fadeIn(200, 0, 0, 0);
     stadiumBg(this, 0.55);
+    // ambiente del próximo partido elegido ya: su música se carga mientras se busca y suena desde el VS
+    this.toMatch = false;
+    this.ambiente = prepareMatchMusic(this);
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      if (!this.toMatch) stopMatchMusic(this); // vuelta atrás / sin monedas: la música no sigue sonando
+    });
 
     const searching = this.add.container(W / 2, H * 0.44);
 
@@ -163,7 +176,7 @@ export class MatchmakingScene extends Phaser.Scene {
     const rivalLevel = Math.min(30, rivalLevelFor(p.level) + tier * 2);
     showVersusScreen(
       this,
-      { name: p.name, level: p.level, look: playerLook(p.skin), portraitSkin: p.skin as SkinId },
+      { name: p.name, level: p.level, look: playerLook(p.skin), portraitSkin: p.skin as SkinId, wins: totalWins() },
       {
         name: botName,
         level: rivalLevel,
@@ -171,6 +184,8 @@ export class MatchmakingScene extends Phaser.Scene {
         portraitSkin: rivalFor(p.skin),
       },
     );
+    // 1 s después del sonido del VS entra la música de la cancha (sigue sonando en el partido)
+    this.time.delayedCall(1000, () => playMatchMusic(this, this.ambiente));
 
     // transición al partido
     this.time.delayedCall(2700, () => {
@@ -181,7 +196,8 @@ export class MatchmakingScene extends Phaser.Scene {
           const res = enterRanked(newMatchId(), this.rankedBet);
           if (!res.ok) return this.back(res.error === 'not_enough_coins' ? 'No te alcanzan las monedas' : 'No se pudo entrar a Ranked');
         }
-        this.scene.start('Match', { botName, rivalLevel });
+        this.toMatch = true;
+        this.scene.start('Match', { botName, rivalLevel, ambiente: this.ambiente });
       });
     });
   }

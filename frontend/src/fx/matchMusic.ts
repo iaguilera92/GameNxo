@@ -1,0 +1,76 @@
+import Phaser from 'phaser';
+import { pickAmbiente } from '../view/CourtView';
+
+/**
+ * Música de la cancha (soundtrack del ambiente), compartida entre la pantalla VS y el partido.
+ *
+ *  - Al empezar la búsqueda se ELIGE el ambiente del próximo partido y se empieza a cargar su soundtrack
+ *    (`prepareMatchMusic`), así ya está listo cuando sale el VS.
+ *  - En el VS, 1 s después del sonido "vs", arranca la música (`playMatchMusic`) y SIGUE sonando al pasar al
+ *    partido (el gestor de sonido es del juego, no de la escena): el partido usa ese mismo ambiente y no la corta.
+ *  - Al terminar el partido o cancelar la búsqueda se para y se libera de la memoria (`stopMatchMusic`).
+ *
+ * Solo se carga el soundtrack que va a sonar (decodificado ocupa mucha RAM: soundtrack-1 ~57 MB).
+ */
+const VOLUME = 0.22;
+
+/** soundtrack de cada ambiente: 2 → soundtrack-3, 3 → soundtrack-2, el resto → soundtrack-1 */
+export const trackFor = (ambiente: string) => (ambiente === 'ambiente-3' ? 'soundtrack-2' : ambiente === 'ambiente-2' ? 'soundtrack-3' : 'soundtrack-1');
+
+let picked: string | null = null;
+let music: Phaser.Sound.BaseSound | null = null;
+let musicKey = '';
+/** cada play/stop invalida las cargas anteriores (una carga que termina tarde no arranca música vieja) */
+let token = 0;
+
+function ensureLoaded(scene: Phaser.Scene, key: string, onReady?: () => void) {
+  if (scene.cache.audio.exists(key)) {
+    onReady?.();
+    return;
+  }
+  scene.load.audio(key, `mp3/${key}.mp3`);
+  // si el archivo falta, COMPLETE llega igual y simplemente no suena (sin error)
+  if (onReady) scene.load.once(Phaser.Loader.Events.COMPLETE, onReady);
+  if (!scene.load.isLoading()) scene.load.start();
+}
+
+/** Elige (una vez) el ambiente del próximo partido y empieza a cargar su música. Devuelve su clave ('' = sin imagen). */
+export function prepareMatchMusic(scene: Phaser.Scene): string {
+  if (picked === null) picked = pickAmbiente(scene) ?? '';
+  ensureLoaded(scene, trackFor(picked));
+  return picked;
+}
+
+/** Ambiente ya elegido para este partido (lo consume el partido: una revancha vuelve a sortear). */
+export function takePickedAmbiente(): string | null {
+  const p = picked;
+  picked = null;
+  return p;
+}
+
+/** Hace sonar en bucle la música de `ambiente` (si ya suena, no la reinicia). */
+export function playMatchMusic(scene: Phaser.Scene, ambiente: string) {
+  const key = trackFor(ambiente);
+  if (music && musicKey === key && music.isPlaying) return;
+  stopMatchMusic(scene, false);
+  const my = ++token;
+  musicKey = key;
+  ensureLoaded(scene, key, () => {
+    if (my !== token || music || !scene.cache.audio.exists(key)) return;
+    music = scene.sound.add(key, { loop: true, volume: VOLUME });
+    music.play();
+  });
+}
+
+/** Para la música. `release` = además la saca de la memoria (fin del partido / búsqueda cancelada). */
+export function stopMatchMusic(scene: Phaser.Scene, release = true) {
+  token++;
+  music?.stop();
+  music?.destroy();
+  music = null;
+  if (release) {
+    for (const k of new Set([musicKey, picked ? trackFor(picked) : ''])) if (k && scene.cache.audio.exists(k)) scene.cache.audio.remove(k);
+    picked = null;
+  }
+  musicKey = '';
+}

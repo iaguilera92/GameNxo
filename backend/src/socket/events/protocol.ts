@@ -50,6 +50,7 @@ export interface PlayerProfile {
   name: string;
   level: number;
   skin: string;
+  zoneStats?: { strength: number; speed: number; precision: number; agility: number; resistance: number };
 }
 
 export interface FindRequest {
@@ -140,7 +141,7 @@ export interface HitMsg {
  *  emote                        carita del chat (data: kind = happy | cool | wow)
  *  smash-armed / smash-disarmed el emisor arma / consume su SMASH (aura en el rival)
  *  smash-cine                   empieza la cinemática del SMASH del emisor (data: x, y, overhead, ms)
- *  inferno-cine                 empieza la cinemática del INFERNO del emisor (data: x, y, tx, ty, ms)
+ *  inferno-cine                 empieza la cinemática del INFERNO del emisor (data: x, y, tx, ty, ms, power)
  */
 export type ActionKind =
   | 'toss'

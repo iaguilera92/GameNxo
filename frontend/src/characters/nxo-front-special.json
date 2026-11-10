@@ -2,14 +2,14 @@
   "source": "pj-nxo-rival-2.png (fila 8)",
   "view": "front",
   "cell": {
-    "w": 234,
-    "h": 193
+    "w": 250,
+    "h": 206
   },
   "origin": {
     "x": 0.5,
-    "y": 0.69948
+    "y": 0.69903
   },
-  "standHeight": 117,
+  "standHeight": 125,
   "start": 2,
   "animations": {
     "smash-power": {

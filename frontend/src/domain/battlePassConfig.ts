@@ -4,12 +4,14 @@
  *
  * El pase entrega dinero (billetes) y cosméticos; las monedas quedan reservadas para Ranked.
  */
-import type { ItemId, PlayerState } from './player';
+import type { ItemId, PlayerState, StyleId } from './player';
+import type { SkinId } from '../characters/skins';
 import { newBattlePass } from './battlePassState';
 
 export type BpReward =
   | { kind: 'cash'; amount: number }
-  | { kind: 'item'; item: ItemId; name: string };
+  | { kind: 'item'; item: ItemId; name: string }
+  | { kind: 'character'; skin: SkinId; style?: StyleId; name: string };
 
 export type BpTrack = 'free' | 'prem';
 
@@ -71,7 +73,7 @@ export const BP_SEASON = {
     { free: cashReward(210), prem: $(50) },
     { free: $(40), prem: cashReward(650) },
     { free: cashReward(230), prem: $(60) },
-    { free: $(60), prem: cashReward(1500) },
+    { free: { kind: 'character', skin: 'mai', name: 'Mai' }, prem: { kind: 'character', skin: 'mai', style: 'gold', name: 'Mai · Estilo Oro' } },
   ] as BpTier[],
 };
 

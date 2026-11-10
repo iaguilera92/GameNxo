@@ -33,6 +33,7 @@ export class BattlePassScene extends Phaser.Scene {
   private firstRenderedTier = -1;
   private listOffset = 0;
   private bottomIndicator?: Phaser.GameObjects.Text;
+  private bottomArrowGraphics?: Phaser.GameObjects.Graphics;
 
   constructor() {
     super('BattlePass');
@@ -42,6 +43,7 @@ export class BattlePassScene extends Phaser.Scene {
     if (!this.textures.exists('menu-bg')) this.load.image('menu-bg', 'assets/menu-bg.webp');
     if (!this.textures.exists('battle-pass-title')) this.load.image('battle-pass-title', 'assets/titulo-pase-batalla.png');
     if (!this.textures.exists('battle-pass-insignia')) this.load.image('battle-pass-insignia', 'assets/insignia-pase-batalla.png');
+    if (!this.textures.exists('bp-mai-portrait')) this.load.image('bp-mai-portrait', 'assets/characters/mai_portrait.png');
   }
 
   create() {
@@ -258,6 +260,15 @@ export class BattlePassScene extends Phaser.Scene {
     const ic = this.add.graphics({ x: -w / 2 + 44, y: 0 });
     this.drawReward(ic, reward);
     c.add(ic);
+    if (reward.kind === 'character' && this.textures.exists('bp-mai-portrait')) {
+      c.add(this.add.image(-w / 2 + 44, 0, 'bp-mai-portrait').setDisplaySize(47, 62));
+      if (reward.style) {
+        const styleBadge = this.add.graphics({ x: -w / 2 + 63, y: -h / 2 + 14 });
+        styleBadge.fillStyle(GOLD, 1).fillCircle(0, 0, 11).lineStyle(2, 0xffffff, 1).strokeCircle(0, 0, 11);
+        c.add(styleBadge);
+        c.add(this.add.text(-w / 2 + 63, -h / 2 + 14, '★', { fontFamily: FONT, fontSize: '13px', color: '#3b2600' }).setOrigin(0.5));
+      }
+    }
     const label = rewardLabel(reward);
     const t = this.add.text(-w / 2 + 78, -8, label.top, { fontFamily: FONT, fontSize: '26px', color: prem ? '#ffd23f' : '#ffffff', fontStyle: 'bold', stroke: '#06122e', strokeThickness: 3 }).setOrigin(0, 0.5);
     fitText(t, w - 115);
@@ -368,6 +379,12 @@ export class BattlePassScene extends Phaser.Scene {
 
   private drawReward(g: Phaser.GameObjects.Graphics, r: BpReward) {
     if (r.kind === 'cash') drawCashIcon(g, 1.3);
+    else if (r.kind === 'character') {
+      const accent = r.style ? GOLD : NEON;
+      g.fillStyle(0x07152f, 1).fillCircle(0, 0, 29);
+      g.lineStyle(3, accent, 1).strokeCircle(0, 0, 27);
+      g.fillStyle(accent, 0.25).fillCircle(0, 0, 23);
+    }
     else {
       const col = STYLE_SWATCH[r.item] ?? 0x8a93a6;
       g.fillStyle(0x0a1638, 1).fillRoundedRect(-24, -24, 48, 48, 12);
@@ -442,9 +459,24 @@ export class BattlePassScene extends Phaser.Scene {
     const { level, progress } = bpLevel(s.bp.xp);
     const cardW = (this.scale.width - 48 - 96) / 2;
     this.renderVisibleRows(s, level, progress, cardW, this.numberColumnX(this.scale.width, cardW));
+    this.refreshBottomControl();
+  }
+
+  private refreshBottomControl() {
+    const maxOffset = -this.scrollMin;
+    const atBonus = maxOffset > 0 && this.listOffset >= maxOffset - 12;
     if (this.bottomIndicator) {
-      const row = Math.min(BP_TIERS + 1, Math.max(1, Math.floor(this.listOffset / ROW_H)));
-      this.bottomIndicator.setText(row > BP_TIERS ? 'BONUS' : `NIVEL ${row}`).setVisible(this.listOffset >= ROW_H / 2);
+      const row = Math.min(BP_TIERS, Math.max(1, Math.floor(this.listOffset / ROW_H)));
+      this.bottomIndicator.setText(atBonus ? 'BONUS' : `NIVEL ${row}`).setVisible(this.listOffset >= ROW_H / 2);
+    }
+    if (this.bottomArrowGraphics) {
+      const g = this.bottomArrowGraphics;
+      g.clear();
+      g.fillStyle(0x07152f, 0.96).fillCircle(0, 0, 30);
+      g.lineStyle(3, GOLD, 1).strokeCircle(0, 0, 30);
+      g.lineStyle(6, 0xffffff, 1).beginPath();
+      if (atBonus) g.moveTo(-10, 5).lineTo(0, -6).lineTo(10, 5).strokePath();
+      else g.moveTo(-10, -5).lineTo(0, 6).lineTo(10, -5).strokePath();
     }
   }
 
@@ -463,6 +495,7 @@ export class BattlePassScene extends Phaser.Scene {
     g.lineStyle(3, GOLD, 1).strokeCircle(0, 0, 30);
     g.lineStyle(6, 0xffffff, 1).beginPath().moveTo(-10, -5).lineTo(0, 6).lineTo(10, -5).strokePath();
     button.add(g);
+    this.bottomArrowGraphics = g;
     button.setSize(64, 64).setInteractive({ useHandCursor: true });
     this.bottomIndicator = this.add.text(x, y - 44, '', { fontFamily: FONT, fontSize: '14px', color: '#ffffff', backgroundColor: '#07152f', padding: { x: 9, y: 5 } })
       .setOrigin(0.5)
@@ -471,9 +504,10 @@ export class BattlePassScene extends Phaser.Scene {
     button.on('pointerdown', () => {
       this.tweens.killTweensOf(this.scrollMotion);
       this.scrollMotion.offset = this.listOffset;
+      const atBonus = this.listOffset >= -this.scrollMin - 12;
       this.tweens.add({
         targets: this.scrollMotion,
-        offset: -this.scrollMin,
+        offset: atBonus ? 0 : -this.scrollMin,
         duration: 650,
         ease: 'Cubic.easeInOut',
         onUpdate: () => this.updateListScroll(this.scrollMotion.offset),
@@ -541,5 +575,6 @@ export function drawCashIcon(g: Phaser.GameObjects.Graphics, k = 1, x = 0, y = 0
 /** Textos del premio. */
 function rewardLabel(r: BpReward): { top: string; sub: string } {
   if (r.kind === 'cash') return { top: String(r.amount), sub: 'DINERO' };
+  if (r.kind === 'character') return { top: r.name.toUpperCase(), sub: r.style ? 'PERSONAJE · ESTILO ORO' : 'PERSONAJE NUEVO' };
   return { top: r.name.replace('Estilo ', '').toUpperCase(), sub: 'ESTILO' };
 }

@@ -46,10 +46,13 @@ export const EV = {
 /** rol en la sala: host = quien la creó (saca el primer juego), guest = quien se unió */
 export type Role = 'host' | 'guest';
 
+import type { ZoneStatLevels } from '../domain/zoneProgress';
+
 export interface PlayerProfile {
   name: string;
   level: number;
   skin: string;
+  zoneStats?: ZoneStatLevels;
 }
 
 export interface FindRequest {
@@ -140,7 +143,7 @@ export interface HitMsg {
  *  emote                        carita del chat (data: kind = happy | cool | wow)
  *  smash-armed / smash-disarmed el emisor arma / consume su SMASH (aura en el rival)
  *  smash-cine                   empieza la cinemática del SMASH del emisor (data: x, y, overhead, ms)
- *  inferno-cine                 empieza la cinemática del INFERNO del emisor (data: x, y, tx, ty, ms)
+ *  inferno-cine                 empieza la cinemática del INFERNO del emisor (data: x, y, tx, ty, ms, power)
  */
 export type ActionKind =
   | 'toss'

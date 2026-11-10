@@ -1,13 +1,13 @@
 {
-  "source": "pj-nxo-inferno.png (1 fila x 9: INFERNO DRIVE)",
+  "source": "pj-nxo-rival-inferno.png (1 fila x 9: INFERNO DRIVE)",
   "view": "front",
   "cell": {
-    "w": 175,
-    "h": 186
+    "w": 180,
+    "h": 176
   },
   "origin": {
-    "x": 0.44,
-    "y": 0.87634
+    "x": 0.5,
+    "y": 0.90909
   },
   "standHeight": 140,
   "cols": 3,

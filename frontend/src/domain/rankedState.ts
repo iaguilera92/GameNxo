@@ -28,6 +28,8 @@ export interface WeeklyReward {
   /** premio de liga + premio por posición (0 si no es elegible) */
   coins: number;
   cash: number;
+  /** Rayos entregados al reclamar una semana elegible. */
+  rays: number;
   positionLabel: string | null;
   claimed: boolean;
 }

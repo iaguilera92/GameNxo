@@ -10,9 +10,12 @@ import { sanitizeWheel } from './dailyWheel';
 import { sanitizeBattlePass } from './battlePass';
 import { sanitizeRanked } from './ranked';
 import { sanitizeLogin } from './dailyLogin';
+import { sanitizeZoneProgress } from './zoneProgress';
+import { isInfernoPower } from './infernoPowers';
 
 /** Todos los ítems que existen (los demás ids guardados se descartan). */
-const KNOWN_ITEMS = new Set<string>([...STARTER_ITEMS, ...SHOP_ITEMS.map((i) => i.id)]);
+// Mai deja de ser inicial para quedar como gran premio del nivel 30; se conserva en perfiles antiguos.
+const KNOWN_ITEMS = new Set<string>([...STARTER_ITEMS, 'skin:mai', ...SHOP_ITEMS.map((i) => i.id)]);
 
 const V1_STYLE: Record<string, StyleId> = { Clásico: 'classic' };
 
@@ -25,14 +28,16 @@ export function migratePlayer(raw: unknown): PlayerState {
   if (!raw || typeof raw !== 'object') return s;
   const r = raw as Raw;
   // v3 = v2 + ruletas diarias · v4 = v3 + pase de batalla: mismo formato para el resto de campos
-  // v5 = v4 + Ranked + premio diario · v6 = giros bonus persistentes del pase
-  const isV2 = r.version === 2 || r.version === 3 || r.version === 4 || r.version === 5 || r.version === 6;
-  if (r.version === 3 || r.version === 4 || r.version === 5 || r.version === 6) s.wheel = sanitizeWheel(r.wheel);
-  s.bp = sanitizeBattlePass(r.version === 4 || r.version === 5 || r.version === 6 ? r.bp : undefined);
-  if (r.version === 5 || r.version === 6) {
+  // v5 = Ranked + premio diario · v6 = giros bonus del pase · v7 = Rayos y atributos Zona
+  const version = typeof r.version === 'number' ? r.version : 0;
+  const isV2 = version >= 2 && version <= 7;
+  if (version >= 3 && version <= 7) s.wheel = sanitizeWheel(r.wheel);
+  s.bp = sanitizeBattlePass(version >= 4 && version <= 7 ? r.bp : undefined);
+  if (version >= 5 && version <= 7) {
     s.ranked = sanitizeRanked(r.ranked);
     s.login = sanitizeLogin(r.login);
   }
+  if (version >= 7) s.zone = sanitizeZoneProgress(r.zone);
 
   s.name = str(r.name, s.name);
   s.level = Math.min(MAX_LEVEL, Math.max(1, Math.floor(num(r.level, 1))));
@@ -55,6 +60,8 @@ export function migratePlayer(raw: unknown): PlayerState {
     const ab = eq.abilities;
     if (Array.isArray(ab) && ab.length === 2 && ab[0] !== ab[1] && ab.every((a) => typeof a === 'string' && s.owned.includes(itemId.ability(a as never))))
       s.equipped.abilities = [ab[0], ab[1]];
+    // poder del INFERNO elegido (opcional: sin él, cada personaje usa el suyo)
+    if (isInfernoPower(eq.inferno)) s.equipped.inferno = eq.inferno;
   }
   return s;
 }

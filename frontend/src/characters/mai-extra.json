@@ -1,0 +1,126 @@
+{
+  "source": "pj-mai-1.png..4 (tools/build-nxo-v2.mjs): animaciones nuevas",
+  "view": "back",
+  "cell": {
+    "w": 212,
+    "h": 150
+  },
+  "origin": {
+    "x": 0.5,
+    "y": 0.93333
+  },
+  "standHeight": 112,
+  "animations": {
+    "run-left": {
+      "file": "run-left.png",
+      "frames": 8,
+      "fps": 14,
+      "loop": true
+    },
+    "dash": {
+      "file": "dash.png",
+      "frames": 8,
+      "fps": 18,
+      "loop": true
+    },
+    "defeat": {
+      "file": "defeat.png",
+      "frames": 8,
+      "fps": 10,
+      "loop": false
+    },
+    "serve-spin": {
+      "file": "serve-spin.png",
+      "frames": 8,
+      "fps": 12,
+      "loop": false,
+      "impact": 4
+    },
+    "dive-right": {
+      "file": "dive-right.png",
+      "frames": 8,
+      "fps": 18,
+      "loop": false
+    },
+    "dive-left": {
+      "file": "dive-left.png",
+      "frames": 8,
+      "fps": 18,
+      "loop": false
+    },
+    "recover-right": {
+      "file": "recover-right.png",
+      "frames": 8,
+      "fps": 14,
+      "loop": false
+    },
+    "recover-left": {
+      "file": "recover-left.png",
+      "frames": 2,
+      "fps": 14,
+      "loop": false
+    },
+    "stunned": {
+      "file": "stunned.png",
+      "frames": 8,
+      "fps": 12,
+      "loop": true
+    },
+    "point-won": {
+      "file": "point-won.png",
+      "frames": 8,
+      "fps": 12,
+      "loop": false
+    },
+    "point-lost": {
+      "file": "point-lost.png",
+      "frames": 8,
+      "fps": 10,
+      "loop": false
+    },
+    "wait": {
+      "file": "wait.png",
+      "frames": 8,
+      "fps": 10,
+      "loop": true
+    },
+    "walk": {
+      "file": "walk.png",
+      "frames": 9,
+      "fps": 10,
+      "loop": true
+    },
+    "inferno-hit": {
+      "file": "inferno-hit.png",
+      "frames": 9,
+      "fps": 14,
+      "loop": false
+    },
+    "volley": {
+      "file": "volley.png",
+      "frames": 9,
+      "fps": 16,
+      "loop": false,
+      "impact": 4
+    },
+    "dropshot": {
+      "file": "dropshot.png",
+      "frames": 9,
+      "fps": 14,
+      "loop": false,
+      "impact": 4
+    },
+    "intro": {
+      "file": "intro.png",
+      "frames": 9,
+      "fps": 10,
+      "loop": false
+    },
+    "greet": {
+      "file": "greet.png",
+      "frames": 9,
+      "fps": 10,
+      "loop": false
+    }
+  }
+}

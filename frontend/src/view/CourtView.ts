@@ -59,8 +59,24 @@ export interface DrawnWall {
   key: string;
 }
 
-/** Dibuja ambiente + cancha. Devuelve la pared dibujada, o null si falta la imagen (la escena dibuja la suya). */
-export function drawCourtView(scene: Phaser.Scene): DrawnWall | null {
+/** Sortea el ambiente del partido (respeta 'dev.ambiente'). null = no hay imagen de ambiente cargada. */
+export function pickAmbiente(scene: Phaser.Scene): string | null {
+  const available = AMBIENTES.filter((a) => scene.textures.exists(a.key));
+  if (!available.length) return null;
+  let forced: string | null = null;
+  try {
+    forced = localStorage.getItem('dev.ambiente');
+  } catch {
+    /* sin almacenamiento */
+  }
+  return (available.find((a) => a.key === forced) ?? (Phaser.Utils.Array.GetRandom(available) as Ambiente)).key;
+}
+
+/**
+ * Dibuja ambiente + cancha. Devuelve la pared dibujada, o null si falta la imagen (la escena dibuja la suya).
+ * preferred: ambiente ya elegido (en la búsqueda, para que su música empiece en el VS); si no, se sortea.
+ */
+export function drawCourtView(scene: Phaser.Scene, preferred?: string | null): DrawnWall | null {
   const available = AMBIENTES.filter((a) => scene.textures.exists(a.key));
   if (!available.length) return null;
   // pruebas: localStorage 'dev.ambiente' = 'ambiente-2' fuerza uno concreto
@@ -70,7 +86,7 @@ export function drawCourtView(scene: Phaser.Scene): DrawnWall | null {
   } catch {
     /* sin almacenamiento */
   }
-  const amb = available.find((a) => a.key === forced) ?? (Phaser.Utils.Array.GetRandom(available) as Ambiente);
+  const amb = available.find((a) => a.key === forced) ?? available.find((a) => a.key === preferred) ?? (Phaser.Utils.Array.GetRandom(available) as Ambiente);
   const H = Math.max(scene.scale.height, VIEW.H);
 
   // ---------------------------------------------------------------- ambiente (imagen)

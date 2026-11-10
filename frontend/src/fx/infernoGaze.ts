@@ -2,36 +2,63 @@ import Phaser from 'phaser';
 
 /**
  * INFERNO DRIVE · "mirada": entra de lado a lado una franja con
- * los OJOS del personaje (public/personajes/Nxo/pj-nxo-mirada.webp), estilo corte de anime: entra apenas empieza
+ * los OJOS del personaje (public/personajes/<Personaje>/pj-<id>-mirada.webp), estilo corte de anime: entra apenas empieza
  * el INFERNO, dura ~2 s con resplandor de fuego en los bordes y un rayo saliendo de los ojos (tipo "zona"). Fijo en pantalla (cámara de interfaz).
- * Si la imagen no está cargada no muestra nada.
+ * Si el personaje no tiene mirada o la imagen no está cargada no muestra nada.
  */
 /** franja visible (una sola a la vez) */
 let current: Phaser.GameObjects.Container | null = null;
 
-export const GAZE_ART = { key: 'nxo-gaze', file: 'personajes/Nxo/pj-nxo-mirada.webp' };
+/**
+ * Mirada de cada personaje. `eyeFy` = altura (fracción del alto de la imagen) que queda en el centro de la franja;
+ * `eyes` = pupilas (fracción del ancho / alto de la imagen), de donde salen los rayos.
+ */
+type GazeArt = { key: string; file: string; eyeFy: number; eyes: { fx: number; fy: number }[] };
+export const GAZE_ARTS: Record<string, GazeArt> = {
+  nxo: {
+    key: 'nxo-gaze',
+    file: 'personajes/Nxo/pj-nxo-mirada.webp',
+    eyeFy: 0.64,
+    eyes: [
+      { fx: 0.505, fy: 0.58 },
+      { fx: 0.682, fy: 0.705 },
+    ],
+  },
+  // mismos puntos que NXO respecto al brillo de cada pupila (sus ojos quedan algo más abajo, bajo la visera)
+  mai: {
+    key: 'mai-gaze',
+    file: 'personajes/Mai/pj-mai-mirada.webp',
+    eyeFy: 0.69,
+    eyes: [
+      { fx: 0.513, fy: 0.637 },
+      { fx: 0.662, fy: 0.745 },
+    ],
+  },
+};
 
-export function queueGazeArt(load: Phaser.Loader.LoaderPlugin) {
-  if (!load.textureManager.exists(GAZE_ART.key)) load.image(GAZE_ART.key, GAZE_ART.file);
+/** Carga la mirada del personaje que juega (los que no tienen, nada). */
+export function queueGazeArt(load: Phaser.Loader.LoaderPlugin, skin: string) {
+  const art = GAZE_ARTS[skin];
+  if (art && !load.textureManager.exists(art.key)) load.image(art.key, art.file);
 }
 
 /** Muestra la franja de la mirada. `holdMs` = cuánto tiempo queda visible (sale antes del desplazamiento). */
 /** Altura de la franja respecto a la imagen completa (se recorta alrededor de los ojos; el ancho sigue siendo toda la pantalla). */
 const BAND = 0.5;
-/** Muestra la franja. `centerY` = y de pantalla donde queda centrada (por defecto, la red; ver MatchScene.gazeY). */
-export function showInfernoGaze(scene: Phaser.Scene, holdMs = 700, centerY?: number) {
-  if (!scene.textures.exists(GAZE_ART.key)) return;
+/** Muestra la franja de `skin`. `centerY` = y de pantalla donde queda centrada (por defecto, la red; ver MatchScene.gazeY). */
+export function showInfernoGaze(scene: Phaser.Scene, holdMs = 700, centerY?: number, skin = 'nxo') {
+  const art = GAZE_ARTS[skin];
+  if (!art || !scene.textures.exists(art.key)) return;
   // una sola a la vez: pulsar varias veces no la duplica
   if (current?.active) return;
   const W = scene.scale.width;
   const H = scene.scale.height;
-  const src = scene.textures.get(GAZE_ART.key).getSourceImage() as HTMLImageElement;
+  const src = scene.textures.get(art.key).getSourceImage() as HTMLImageElement;
   const full = Math.round(W * (src.height / src.width)); // alto de la imagen a todo el ancho (sin deformarla)
   const bh = Math.round(full * BAND); // alto de la franja visible
   const cy = Math.round(centerY ?? H * 0.45);
   /** la imagen se desplaza para que los ojos queden en el centro de la franja */
-  const EYE_FY = 0.64;
-  const iy = Math.round(-(EYE_FY - 0.5) * full);
+  const iy = Math.round(-(art.eyeFy - 0.5) * full);
   const root = scene.add.container(0, cy).setScrollFactor(0).setDepth(7600);
   current = root;
 
@@ -40,7 +67,7 @@ export function showInfernoGaze(scene: Phaser.Scene, holdMs = 700, centerY?: num
   frame.fillStyle(0x000000, 0.92).fillRect(0, -bh / 2 - 14, W, bh + 28);
   frame.fillStyle(0xff5a1a, 1).fillRect(0, -bh / 2 - 14, W, 4).fillRect(0, bh / 2 + 10, W, 4);
   frame.fillStyle(0xffd27a, 1).fillRect(0, -bh / 2 - 10, W, 2).fillRect(0, bh / 2 + 8, W, 2);
-  const img = scene.add.image(W / 2, iy, GAZE_ART.key).setDisplaySize(W, full);
+  const img = scene.add.image(W / 2, iy, art.key).setDisplaySize(W, full);
   // máscara: la imagen solo se ve dentro de la franja
   const maskG = scene.make.graphics({}, false);
   maskG.fillRect(0, cy - bh / 2, W, bh);
@@ -62,11 +89,8 @@ export function showInfernoGaze(scene: Phaser.Scene, holdMs = 700, centerY?: num
   // rayo de los ojos (estilo "zona"): estelas eléctricas que salen de cada ojo hacia atrás
   const bolt = scene.add.graphics().setBlendMode(Phaser.BlendModes.ADD);
   root.add(bolt);
-  /** ojos en la imagen (fracción del ancho / alto de pj-nxo-mirada.webp) */
-  const EYES = [
-    { fx: 0.505, fy: 0.58 },
-    { fx: 0.682, fy: 0.705 },
-  ];
+  /** ojos en la imagen (fracción del ancho / alto de su mirada) */
+  const EYES = art.eyes;
   let t = 0;
   const draw = () => {
     t += 1;

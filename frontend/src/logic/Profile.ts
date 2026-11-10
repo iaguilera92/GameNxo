@@ -2,6 +2,8 @@ import type { AbilityId } from './Abilities';
 import { getPlayer, commit } from '../domain/playerStore';
 import * as ops from '../domain/operations';
 import type { SkinId } from '../characters/skins';
+import type { ZoneStatLevels } from '../domain/zoneProgress';
+import { type InfernoPower, infernoPowerOf } from '../domain/infernoPowers';
 
 /**
  * Fachada de compatibilidad: las escenas (incluida MatchScene) siguen usando esta API.
@@ -15,6 +17,9 @@ export interface Profile {
   abilities: [AbilityId, AbilityId]; // habilidad 1 y 2 equipadas
   /** personaje elegido (id de skin del catálogo) */
   skin: string;
+  zoneStats: ZoneStatLevels;
+  /** poder del INFERNO en uso: el elegido o, sin elegir, el del personaje (domain/infernoPowers.ts) */
+  inferno: InfernoPower;
 }
 
 /**
@@ -26,13 +31,16 @@ export const FORCED_SKIN: SkinId | null = null;
 /** Vista de solo lectura del jugador con la forma antigua. */
 export function getProfile(): Profile {
   const s = getPlayer();
+  const skin = FORCED_SKIN ?? s.equipped.skin;
   return {
     name: s.name,
     level: s.level,
     xp: s.xp,
     style: s.equipped.style,
     abilities: [...s.equipped.abilities] as [AbilityId, AbilityId],
-    skin: FORCED_SKIN ?? s.equipped.skin,
+    skin,
+    zoneStats: { ...s.zone.stats },
+    inferno: infernoPowerOf(s.equipped.inferno, skin),
   };
 }
 
@@ -59,4 +67,9 @@ export function addCoins(amount: number): { gained: number; before: number; afte
 /** Cambia el personaje elegido y lo guarda (solo si el jugador lo posee). */
 export function setSkin(id: string) {
   commit((s) => ops.equipSkin(s, id as SkinId));
+}
+
+/** Cambia el poder del INFERNO y lo guarda. */
+export function setInferno(id: InfernoPower) {
+  commit((s) => ops.equipInferno(s, id));
 }

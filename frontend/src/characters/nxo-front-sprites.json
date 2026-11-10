@@ -2,14 +2,14 @@
   "source": "pj-nxo-rival-1.png / pj-nxo-rival-2.png (tools/build-nxo-v2.mjs)",
   "view": "front",
   "cell": {
-    "w": 234,
-    "h": 193
+    "w": 250,
+    "h": 206
   },
   "origin": {
     "x": 0.5,
-    "y": 0.69948
+    "y": 0.69903
   },
-  "standHeight": 117,
+  "standHeight": 125,
   "hold": 2,
   "serveWait": 2,
   "smashStart": 2,

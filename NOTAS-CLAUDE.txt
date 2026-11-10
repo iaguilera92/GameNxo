@@ -74,3 +74,16 @@ NOTAS PARA CLAUDE (pendientes detectados por Kiro, sin corregir)
  - MatchScene: zone.onPoint en pointTo; multiplicadores en maxSp (jugador), ai.speed (bot, temporal en el tick),
    speed antes de aimShot (playerHit y botHit), inReach (alcance) e inmunidad a la bola de fuego (checkHits/playerHit/
    fireImpact). zoneStart/zoneRender antes de la sección de red. Respaldo previo: _tmp/MatchScene.pre-zona.ts.
+
+[10-11-2026] KIRO: CONTRATO DE LAS HOJAS DE SPRITES -> docs/SPRITES.md (leer antes de tocar sprites)
+ - Las imágenes fuente de los sprites están SIEMPRE en frontend/public/personajes/<Personaje>/ (vista de frente del
+   rival en rival/). Por personaje y vista: 4 hojas de movimientos (8 filas x 8 frames) + 1 hoja del INFERNO (1 fila
+   x 9) + mirada, retrato y emojis. Habrá más hojas (5, 6…): sus filas se definen primero en docs/SPRITES.md.
+ - docs/SPRITES.md tiene qué es cada fila de cada hoja, los fotogramas clave, las reglas de dibujo (raqueta en la mano
+   derecha, sin pelota, frame 1 de cada fila de pie), las diferencias de Mai y del rival y los comandos de corte.
+   Si se cambia una hoja, una fila o tools/build-nxo-*.mjs, se actualiza ese documento en el mismo cambio.
+ - MOVIMIENTOS-PERSONAJES.txt queda como histórico; lo vigente es docs/SPRITES.md.
+ - Rival NXO (10-11-2026): hojas 2, 4 e INFERNO nuevas (las anteriores en personajes/Nxo/rival/Old sprites/
+   *-antes-new.png). La hoja 3 nueva no sigue el orden de filas ni la mano: sin instalar, pendiente del usuario.
+   build-nxo-v2.mjs: fondo negro (blackToAlpha), fila espejada (FLIP_ROWS) y los trozos que el corte entre filas separa
+   de un cuerpo vuelven a ese cuerpo. build-nxo-inferno.mjs: argumento 'front' (rival sin espejo).

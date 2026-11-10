@@ -113,9 +113,12 @@ export function showPointSplash(scene: Phaser.Scene, o: PointSplashOpts) {
   }
   // PUNTO DE PARTIDO: placa roja con borde dorado que late
   if (o.matchPoint) {
-    const mp = scene.add.container(cx, cy + BAND_H + (o.status ? 96 : 50)).setAlpha(0);
+    const mp = scene.add.container(0, 0).setScrollFactor(0).setDepth(6200).setAlpha(0);
     const lbl = scene.add.text(0, 0, '¡PUNTO DE PARTIDO!', { fontFamily: FONT, fontSize: '34px', color: '#ffffff', stroke: '#5a0010', strokeThickness: 6 }).setOrigin(0.5).setLetterSpacing(2);
-    const pw = lbl.width + 48;
+    const maxLabelW = Math.min(250, W * 0.38);
+    if (lbl.width > maxLabelW) lbl.setScale(maxLabelW / lbl.width);
+    const pw = lbl.displayWidth + 48;
+    mp.setPosition(10 + pw / 2, 188); // lado opuesto a Rendirse/Emojis, a media altura entre ambos
     const pg = scene.add.graphics();
     pg.fillStyle(0x000000, 0.35).fillRoundedRect(-pw / 2 + 3, -27, pw, 56, 28);
     pg.fillStyle(0xd81e3a, 1).fillRoundedRect(-pw / 2, -30, pw, 56, 28);

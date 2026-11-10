@@ -209,7 +209,7 @@ Están definidos en `backend/src/socket/events/protocol.ts`, con una copia idén
 | `emote` | `kind` (happy\|cool\|wow) | globo con la carita sobre su cabeza |
 | `smash-armed` / `smash-disarmed` | — | aura del SMASH armado |
 | `smash-cine` | `x, y` (posición del emisor), `overhead`, `ms` (parte congelada del emisor) | partido congelado el mismo tiempo (`ms` es informativo: los dos teléfonos usan el mismo perfil de `SMASH_CINE`) y pose del remate (con salto) |
-| `inferno-cine` | `x, y` (desde), `tx, ty` (punto de contacto), `ms` (informativo, perfil `INFERNO_CINE`) | partido congelado, concentración y desplazamiento con sombras |
+| `inferno-cine` | `x, y` (desde), `tx, ty` (punto de contacto), `ms` (informativo, perfil `INFERNO_CINE`), `power` (poder elegido: `fire`, `ice`, `wind` o `lightning`; sin él, el del personaje) | partido congelado, concentración y desplazamiento con sombras; su bola del INFERNO es la de ese poder |
 
 Las coordenadas de `data` son las del emisor; el receptor las espeja (`mirror.ts`). La carga (`charging`)
 viaja en `game:state` y se ve como la pose de carga del rival.

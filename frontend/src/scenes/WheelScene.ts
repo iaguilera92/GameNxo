@@ -1,13 +1,13 @@
 import Phaser from 'phaser';
 import { FONT, restartOnResize } from '../ui/theme';
-import { arcadeButton } from '../ui/modeButtons';
 import { GOLD, NAVY, SECTOR, addSectorContent, drawSlotIcon, drawWheelFace, isSpecial, sectorCenter } from '../ui/wheelArt';
 import { WHEEL, type WheelSlot } from '../domain/wheelConfig';
 import type { WheelReward } from '../domain/wheelState';
 import { slotById } from '../domain/dailyWheel';
 import { claimWheel, claimWheelAdBonus, spinWheel, wheelSpin } from '../logic/Wheels';
 import { wheelClaim, wheelStart, wheelTick, wheelWin } from '../fx/wheelSound';
-import { canShowRewardedAds, showRewarded } from '../ads/ads';
+import { showRewarded } from '../ads/ads';
+import { arcadeButton } from '../ui/modeButtons';
 
 /**
  * Pantalla de RULETA DIARIA (overlay sobre el menú).
@@ -561,26 +561,63 @@ export class WheelScene extends Phaser.Scene {
       this.tweens.add({ targets: nt, alpha: 1, delay: t0 + 800, duration: 300 });
     }
 
+    // x2 con anuncio: SOLO monedas o EXP (un cosmético no se duplica), mientras el giro no haya usado su bonus.
+    // Se muestra siempre, igual que el x2 del PREMIO DIARIO: si no hay anuncio disponible, avisa y el premio queda igual.
+    // Completar el anuncio entrega otra vez el mismo premio (domain/dailyWheel.claimAdBonus).
     const savedSpin = wheelSpin(this.index, this.bonus);
-    if (canShowRewardedAds() && savedSpin?.claimed && !savedSpin.adBonusClaimed) {
-      let bonusBtn!: Phaser.GameObjects.Container;
-      bonusBtn = arcadeButton(this, cx, H * 0.8, Math.min(410, W - 48), 70, 'VER ANUNCIO · PREMIO x2', async () => {
-        bonusBtn.disableInteractive();
-        const earned = await showRewarded('wheel_reward_bonus');
-        if (earned) {
-          const extra = claimWheelAdBonus(this.index, this.bonus);
-          const text = bonusBtn.getData('label') as Phaser.GameObjects.Text | undefined;
-          if (extra) text?.setText(extra.kind === 'item' ? 'BONUS RECLAMADO' : `BONUS +${extra.amount.toLocaleString('es-CL')}`);
-        } else {
-          bonusBtn.setInteractive({ useHandCursor: true });
-          const msg = this.add.text(cx, H * 0.865, 'Anuncio no disponible · premio conservado', { fontFamily: FONT, fontSize: '18px', color: '#ffffff', stroke: '#0a1638', strokeThickness: 5 }).setOrigin(0.5);
-          this.time.delayedCall(2400, () => msg.destroy());
-        }
-      }, { palette: 'blue' });
-      bonusBtn.on('pointerdown', (_p: Phaser.Input.Pointer, _x: number, _y: number, event: Phaser.Types.Input.EventData) => event.stopPropagation());
-      bonusBtn.setDepth(100);
+    if (reward.kind !== 'item' && savedSpin?.claimed && !savedSpin.adBonusClaimed) {
+      const bx = cx;
+      const by = label.y + (note ? 118 : 92);
+      let busy = false;
+      let msg: Phaser.GameObjects.Text | undefined;
+      const x2 = adDoubleButton(this, bx, by, () => {
+        if (busy) return;
+        busy = true;
+        x2.disableInteractive();
+        const couldContinue = this.canContinue;
+        this.canContinue = false; // mientras se ve el anuncio no se cierra la ruleta
+        void showRewarded('wheel_reward_bonus').then((earned) => {
+          if (!this.scene.isActive()) return;
+          this.canContinue = couldContinue || this.canContinue;
+          const extra = earned ? claimWheelAdBonus(this.index, this.bonus) : null;
+          if (!extra || extra.kind === 'item') {
+            busy = false;
+            x2.setInteractive({ useHandCursor: true });
+            // un solo aviso aunque se pulse varias veces
+            msg?.destroy();
+            const shown = this.add.text(cx, by + 64, 'Anuncio no disponible · premio conservado', { fontFamily: FONT, fontSize: '18px', color: '#ffffff', stroke: '#0a1638', strokeThickness: 5 }).setOrigin(0.5).setDepth(100);
+            msg = shown;
+            this.time.delayedCall(2400, () => shown.destroy());
+            return;
+          }
+          // premio doblado: el número sube de +X a +2X y el botón queda como sello "x2"
+          msg?.destroy();
+          this.tweens.killTweensOf(x2);
+          this.tweens.add({ targets: x2, scale: 0, alpha: 0, duration: 220, ease: 'Back.easeIn', onComplete: () => x2.destroy() });
+          const total = target + extra.amount;
+          const c2 = { v: target };
+          this.tweens.add({
+            targets: c2,
+            v: total,
+            duration: 700,
+            ease: 'Cubic.easeOut',
+            onUpdate: () => amount.setText(`+${n(Math.round(c2.v))}`),
+            onComplete: () => {
+              amount.setText(`+${n(total)}`).setColor('#ffd23f');
+              this.tweens.add({ targets: amount, scale: { from: 1.25, to: 1 }, duration: 320, ease: 'Back.easeOut' });
+            },
+          });
+          const seal = this.add.text(amount.x + amount.width / 2 + 10, amount.y - 40, 'x2', { fontFamily: FONT, fontSize: '44px', color: '#ffffff', stroke: '#b8146a', strokeThickness: 10 }).setOrigin(0, 0.5).setAngle(-12).setScale(0).setDepth(100);
+          this.tweens.add({ targets: seal, scale: 1, delay: 200, duration: 360, ease: 'Back.easeOut', easeParams: [3] });
+          this.burst(amount.x, amount.y, false);
+          wheelClaim(this);
+        });
+      });
+      x2.setAlpha(0).setScale(0.6).setDepth(100);
+      this.tweens.add({ targets: x2, alpha: 1, scale: 1, delay: t0 + 1000, duration: 320, ease: 'Back.easeOut' });
+      // invita a pulsarlo: late suave (el rebote al pulsar es del contenido interior: no choca con este latido)
+      this.tweens.add({ targets: x2, scale: 1.06, delay: t0 + 1400, duration: 520, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
     }
-
     // 5) tocar para continuar (cualquier parte)
     const cont = this.add.text(cx, H * 0.9, 'TOCA PARA CONTINUAR', { fontFamily: FONT, fontSize: '30px', color: '#ffffff', stroke: '#0a1638', strokeThickness: 7 }).setOrigin(0.5).setAlpha(0).setLetterSpacing(2);
     this.time.delayedCall(t0 + 1100, () => {
@@ -652,4 +689,23 @@ export function openWheel(scene: Phaser.Scene, index: number): WheelScene {
   else scene.scene.add(key, WheelScene, true, data);
   scene.scene.bringToTop(key);
   return scene.scene.get(key) as WheelScene;
+}
+
+/**
+ * Botón "x2" con icono de anuncio, igual al del PREMIO DIARIO (ui/DailyLoginButton.ts, showDailyRewardReveal): botón
+ * arcade azul con "x2" y una pantallita con ▶ a la derecha. `onPress` se llama al soltar. Tocarlo no cuenta como
+ * "toca para continuar".
+ */
+function adDoubleButton(scene: Phaser.Scene, x: number, y: number, onPress: () => void) {
+  const btn = arcadeButton(scene, x, y, Math.min(300, scene.scale.width - 80), 82, 'x2', onPress, { palette: 'blue' });
+  const label = btn.getData('label') as Phaser.GameObjects.Text | undefined;
+  if (label) label.x = -18;
+  const videoIcon = scene.add.graphics({ x: 38, y: 0 });
+  videoIcon.fillStyle(0x0a1638, 1).fillRoundedRect(-16, -12, 32, 24, 5);
+  videoIcon.fillStyle(0xffffff, 1).fillPoints([{ x: -4, y: -7 }, { x: 8, y: 0 }, { x: -4, y: 7 }], true);
+  btn.add(videoIcon);
+  const stop = (_p: Phaser.Input.Pointer, _x: number, _y: number, event: Phaser.Types.Input.EventData) => event.stopPropagation();
+  btn.on('pointerdown', stop);
+  btn.on('pointerup', stop);
+  return btn;
 }

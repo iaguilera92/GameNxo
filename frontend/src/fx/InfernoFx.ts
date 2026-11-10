@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import type { BallState } from '../objects/Ball';
 import { project } from '../view/projection';
 import { INFERNO, shakeLevel } from '../logic/InfernoDrive';
+import { type InfernoPower, infernoPowerOf } from '../domain/infernoPowers';
 
 /**
  * Efectos de INFERNO DRIVE (procedurales, sin hojas de sprites nuevas):
@@ -58,8 +59,40 @@ const TONGUE = 'fx-inferno-tongue';
  */
 export const FIREBALL_ART = { key: 'inferno-ball', file: 'assets/inferno-ball.png', cell: 192, frames: 9, fps: 14, anim: 'inferno-ball-spin', fill: 0.6 }; // 9 frames (hoja de 5 columnas, tools/build-inferno-ball.mjs); fill = parte de la celda que ocupa el cuerpo de la bola
 
+/**
+ * BOLA DE HIELO (INFERNO de Mai, public/assets/inferno-ball-ice.png): misma rejilla, frames y ritmo que la de fuego
+ * (tools/build-ice-ball.mjs). Su remolino ocupa ~88 % de la celda; con fill 0,7 se ve de un tamaño parecido a la
+ * bola de fuego (cuyas llamas sobresalen más de su cuerpo).
+ */
+export const ICEBALL_ART = { key: 'inferno-ball-ice', file: 'assets/inferno-ball-ice.png', cell: 192, frames: 9, fps: 14, anim: 'inferno-ball-ice-spin', fill: 0.7 };
+
+/** Bolas de VIENTO y RAYO (tools/build-power-ball.mjs): 10 frames (5 + 5), mismo ritmo; fill con el mismo criterio que el hielo. */
+const WINDBALL_ART = { key: 'inferno-ball-wind', file: 'assets/inferno-ball-wind.png', cell: 192, frames: 10, fps: 14, anim: 'inferno-ball-wind-spin', fill: 0.67 };
+const LIGHTNINGBALL_ART = { key: 'inferno-ball-lightning', file: 'assets/inferno-ball-lightning.png', cell: 192, frames: 10, fps: 14, anim: 'inferno-ball-lightning-spin', fill: 0.64 };
+
+/** Elemento de la bola del INFERNO = el poder que eligió el jugador (domain/infernoPowers.ts). */
+export type InfernoElement = InfernoPower;
+export const BALL_ART: Record<InfernoElement, typeof FIREBALL_ART> = { fire: FIREBALL_ART, ice: ICEBALL_ART, wind: WINDBALL_ART, lightning: LIGHTNINGBALL_ART };
+/**
+ * Elemento de la bola de un jugador: el poder que eligió (`chosen`, p. ej. el que llega por red) o, si no hay, el de
+ * su personaje (Mai = hielo; el resto = fuego).
+ */
+export function infernoElementFor(skin: string | undefined, chosen?: unknown): InfernoElement {
+  return infernoPowerOf(chosen, skin);
+}
+
+/** Crea (una vez) la animación de cada bola cargada: la usan el partido y la vista previa de PERSONALIZACIÓN. */
+export function ensureBallAnims(scene: Phaser.Scene) {
+  for (const a of Object.values(BALL_ART)) {
+    if (scene.textures.exists(a.key) && !scene.anims.exists(a.anim))
+      scene.anims.create({ key: a.anim, frames: scene.anims.generateFrameNumbers(a.key, { start: 0, end: a.frames - 1 }), frameRate: a.fps, repeat: -1 });
+  }
+}
+
 export function queueInfernoArt(load: Phaser.Loader.LoaderPlugin) {
-  if (!load.scene.textures.exists(FIREBALL_ART.key)) load.spritesheet(FIREBALL_ART.key, FIREBALL_ART.file, { frameWidth: FIREBALL_ART.cell, frameHeight: FIREBALL_ART.cell });
+  for (const art of Object.values(BALL_ART)) {
+    if (!load.scene.textures.exists(art.key)) load.spritesheet(art.key, art.file, { frameWidth: art.cell, frameHeight: art.cell });
+  }
 }
 
 // ---------------------------------------------------------------- sombras
@@ -203,6 +236,18 @@ interface Hist {
   size: number;
 }
 const TONGUE_COLS = [0xff2a0a, 0xff6a12, 0xffa21a, 0xffd23a];
+/**
+ * Colores de lo que acompaña a la bola (con hoja de sprites) según su elemento: halo, núcleo, estela, partículas que
+ * salen por detrás (`rise` = cuánto suben: el calor sube las brasas; la escarcha cae un poco) y destello del contacto.
+ */
+const BALL_FX: Record<InfernoElement, { halo: number; core: number; trail: [number, number]; bits: [number, number]; rise: number; glow: [number, number]; sparks: number[] }> = {
+  fire: { halo: 0xff4a10, core: 0xfff1c0, trail: [0xffb347, 0xff5a1a], bits: [0xffd23a, 0xff6a12], rise: 0.8, glow: [0xfff1c8, 0xff7a1a], sparks: [0xfff2a0, 0xffa31a, 0xff3d1a] },
+  ice: { halo: 0x2f8cff, core: 0xe6fbff, trail: [0xbff0ff, 0x4aa8ff], bits: [0xe6fbff, 0x8fdcff], rise: -0.15, glow: [0xeafcff, 0x3a9bff], sparks: [0xffffff, 0xbff0ff, 0x4aa8ff] },
+  // viento: hojas verdes que flotan un poco
+  wind: { halo: 0x2fd68a, core: 0xeaffe0, trail: [0xd0ffe0, 0x3fd68a], bits: [0x9cf06a, 0x5fd16f], rise: 0.35, glow: [0xf0fff0, 0x3fd68a], sparks: [0xffffff, 0xb8ff9a, 0x5fd16f] },
+  // rayo: chispas eléctricas amarillas y azules que saltan sin subir
+  lightning: { halo: 0x2f6bff, core: 0xfffbe0, trail: [0xbfe0ff, 0x3a7bff], bits: [0xfff36b, 0x7fc8ff], rise: 0, glow: [0xfffbe0, 0x3a7bff], sparks: [0xffffff, 0xfff36b, 0x5aa8ff] },
+};
 
 /**
  * La pelota convertida en una esfera de fuego: halo, cuerpo y núcleo luminoso + lenguas de fuego que
@@ -225,13 +270,12 @@ export class InfernoFire {
   private artCore?: Phaser.GameObjects.Image;
   private embers: Ember[] = [];
   private emberAcc = 0;
+  /** elemento de la bola en vuelo (setElement): cambia la hoja de sprites y los colores de sus efectos */
+  private el: InfernoElement = 'fire';
 
-  constructor(scene: Phaser.Scene) {
-    if (scene.textures.exists(FIREBALL_ART.key)) {
-      if (!scene.anims.exists(FIREBALL_ART.anim))
-        scene.anims.create({ key: FIREBALL_ART.anim, frames: scene.anims.generateFrameNumbers(FIREBALL_ART.key, { start: 0, end: FIREBALL_ART.frames - 1 }), frameRate: FIREBALL_ART.fps, repeat: -1 });
-      this.art = scene.add.sprite(0, 0, FIREBALL_ART.key, 0).setVisible(false);
-    }
+  constructor(private readonly scene: Phaser.Scene) {
+    ensureBallAnims(scene); // animación de cada bola con hoja cargada (fuego, hielo, viento, rayo)
+    if (scene.textures.exists(FIREBALL_ART.key)) this.art = scene.add.sprite(0, 0, FIREBALL_ART.key, 0).setVisible(false);
     ensureRadial(scene, GLOW, 64, [
       [0, 1],
       [0.35, 0.85],
@@ -242,8 +286,8 @@ export class InfernoFire {
     if (this.art) {
       const add = Phaser.BlendModes.ADD;
       for (let i = 0; i < TRAIL; i++) this.trail.push(scene.add.image(0, 0, FIREBALL_ART.key, 0).setBlendMode(add).setVisible(false));
-      this.artHalo = scene.add.image(0, 0, GLOW).setTint(0xff4a10).setBlendMode(add).setVisible(false);
-      this.artCore = scene.add.image(0, 0, GLOW).setTint(0xfff1c0).setBlendMode(add).setVisible(false);
+      this.artHalo = scene.add.image(0, 0, GLOW).setTint(BALL_FX.fire.halo).setBlendMode(add).setVisible(false);
+      this.artCore = scene.add.image(0, 0, GLOW).setTint(BALL_FX.fire.core).setBlendMode(add).setVisible(false);
       for (let i = 0; i < EMBERS; i++) this.embers.push({ o: scene.add.image(0, 0, GLOW).setTint(0xffa21a).setBlendMode(add).setVisible(false), life: 0, max: 1, vx: 0, vy: 0, s: 1 });
     }
     this.body = [
@@ -254,6 +298,23 @@ export class InfernoFire {
     ];
     for (let i = 0; i < TONGUES; i++) this.tongues.push(scene.add.image(0, 0, TONGUE).setOrigin(0.5, 0.9).setTint(TONGUE_COLS[i % TONGUE_COLS.length]).setBlendMode(Phaser.BlendModes.ADD));
     this.hide();
+  }
+
+  /**
+   * Elemento de la bola que se va a lanzar (llamar al empezar su vuelo): el hielo usa su hoja y colores fríos.
+   * Si la hoja de ese elemento no cargó, sigue la de fuego.
+   */
+  setElement(el: InfernoElement) {
+    const want: InfernoElement = this.scene.textures.exists(BALL_ART[el].key) ? el : 'fire';
+    if (want === this.el) return;
+    this.hide(); // la bola anterior ya terminó: la nueva empieza su animación desde cero
+    this.el = want;
+    if (!this.art) return;
+    const key = BALL_ART[want].key;
+    this.art.setTexture(key, 0);
+    this.trail.forEach((g) => g.setTexture(key, 0));
+    this.artHalo?.setTint(BALL_FX[want].halo);
+    this.artCore?.setTint(BALL_FX[want].core);
   }
 
   /** Cada fotograma: `on` = la pelota vuela como INFERNO DRIVE. */
@@ -318,9 +379,11 @@ export class InfernoFire {
     }
     const bx = sp > 0.05 ? -vx / sp : 0, by = sp > 0.05 ? -vy / sp : 1; // hacia atras
     const pulse = 1 + 0.05 * Math.sin(this.t * 26) + 0.03 * Math.sin(this.t * 13);
-    const size = ((R * 2) / FIREBALL_ART.fill) * pulse;
+    const ART = BALL_ART[this.el];
+    const P = BALL_FX[this.el];
+    const size = ((R * 2) / ART.fill) * pulse;
     const first = !art.visible;
-    if (first) art.play(FIREBALL_ART.anim, true);
+    if (first) art.play(ART.anim, true);
     // halo grande que late
     this.artHalo!.setPosition(air.sx, air.sy).setDisplaySize(size * 1.9, size * 1.9).setAlpha(0.5 + 0.2 * Math.sin(this.t * 21)).setDepth(d - 0.02).setVisible(true);
     // estela: siluetas de posiciones anteriores, cada vez mas chicas y tenues
@@ -343,7 +406,7 @@ export class InfernoFire {
         continue;
       }
       const f = 1 - (i + 1) / (TRAIL + 1);
-      g.setFrame(frame).setPosition(h.x, h.y).setRotation(h.a).setDisplaySize(h.size * (0.55 + 0.4 * f), h.size * (0.55 + 0.4 * f)).setAlpha(0.5 * f).setTint(i < 2 ? 0xffb347 : 0xff5a1a).setDepth(d - 0.01).setVisible(true);
+      g.setFrame(frame).setPosition(h.x, h.y).setRotation(h.a).setDisplaySize(h.size * (0.55 + 0.4 * f), h.size * (0.55 + 0.4 * f)).setAlpha(0.5 * f).setTint(i < 2 ? P.trail[0] : P.trail[1]).setDepth(d - 0.01).setVisible(true);
     }
     // la bola
     art.setPosition(air.sx, air.sy).setRotation(this.ang).setDisplaySize(size, size).setDepth(d).setVisible(true);
@@ -361,9 +424,9 @@ export class InfernoFire {
       const spd = R * (2.2 + Math.random() * 3.2);
       e.max = e.life = 0.3 + Math.random() * 0.3;
       e.vx = bx * spd + (Math.random() - 0.5) * R * 1.2;
-      e.vy = by * spd + (Math.random() - 0.5) * R * 1.2 - R * 0.8; // el calor las sube un poco
+      e.vy = by * spd + (Math.random() - 0.5) * R * 1.2 - R * P.rise; // fuego: el calor las sube; hielo: la escarcha cae un poco
       e.s = R * (0.14 + Math.random() * 0.22);
-      e.o.setPosition(px, py).setTint(Math.random() < 0.5 ? 0xffd23a : 0xff6a12).setVisible(true);
+      e.o.setPosition(px, py).setTint(Math.random() < 0.5 ? P.bits[0] : P.bits[1]).setVisible(true);
     }
     for (const e of this.embers) {
       if (e.life <= 0) continue;
@@ -406,8 +469,9 @@ export class InfernoFire {
 }
 
 // ---------------------------------------------------------------- impacto, vibración y sonido
-/** Anillo de energía + chispas en el punto de contacto (mundo). */
-export function infernoImpactFx(scene: Phaser.Scene, x: number, y: number, k: number) {
+/** Anillo de energía + chispas en el punto de contacto (mundo), con los colores del elemento de la bola. */
+export function infernoImpactFx(scene: Phaser.Scene, x: number, y: number, k: number, el: InfernoElement = 'fire') {
+  const P = BALL_FX[el];
   // brillo de energía suave (sin anillos ni contornos)
   ensureRadial(scene, GLOW, 64, [
     [0, 1],
@@ -416,8 +480,8 @@ export function infernoImpactFx(scene: Phaser.Scene, x: number, y: number, k: nu
     [1, 0],
   ]);
   for (const [col, size, delay] of [
-    [0xfff1c8, 110, 0],
-    [0xff7a1a, 150, 40],
+    [P.glow[0], 110, 0],
+    [P.glow[1], 150, 40],
   ] as const) {
     const glow = scene.add.image(x, y, GLOW).setTint(col).setDisplaySize(size * k, size * k).setDepth(3650).setBlendMode(Phaser.BlendModes.ADD);
     scene.tweens.add({ targets: glow, scale: glow.scale * 2.2, alpha: 0, delay, duration: 320, ease: 'Cubic.easeOut', onComplete: () => glow.destroy() });
@@ -425,7 +489,7 @@ export function infernoImpactFx(scene: Phaser.Scene, x: number, y: number, k: nu
   for (let i = 0; i < 18; i++) {
     const a = (i / 18) * Math.PI * 2;
     const d = Phaser.Math.FloatBetween(60, 150) * Math.max(0.6, k);
-    const sp = scene.add.circle(x, y, Phaser.Math.FloatBetween(3, 6), Phaser.Utils.Array.GetRandom([0xfff2a0, 0xffa31a, 0xff3d1a]), 1).setDepth(3651).setBlendMode(Phaser.BlendModes.ADD);
+    const sp = scene.add.circle(x, y, Phaser.Math.FloatBetween(3, 6), Phaser.Utils.Array.GetRandom(P.sparks), 1).setDepth(3651).setBlendMode(Phaser.BlendModes.ADD);
     scene.tweens.add({ targets: sp, x: x + Math.cos(a) * d, y: y + Math.sin(a) * d * 0.7, alpha: 0, scale: 0.3, duration: Phaser.Math.Between(320, 520), ease: 'Cubic.easeOut', onComplete: () => sp.destroy() });
   }
 }

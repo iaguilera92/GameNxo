@@ -124,7 +124,20 @@ export function registerSocketHandlers(io: Server) {
           socket.emit(EV.ERROR, { code: 'invalid', message: 'Perfil inválido' });
           return;
         }
-        const clean = { name: profile.name.slice(0, 16), level: Math.max(1, Math.floor(Number(profile.level) || 1)), skin: String(profile.skin ?? 'nxo').slice(0, 16) };
+        const rawZone = profile.zoneStats && typeof profile.zoneStats === 'object' ? profile.zoneStats : {};
+        const clampZone = (value: unknown) => Number.isFinite(Number(value)) ? Math.max(0, Math.min(20, Math.floor(Number(value)))) : 0;
+        const clean = {
+          name: profile.name.slice(0, 16),
+          level: Math.max(1, Math.floor(Number(profile.level) || 1)),
+          skin: String(profile.skin ?? 'nxo').slice(0, 16),
+          zoneStats: {
+            strength: clampZone(rawZone.strength),
+            speed: clampZone(rawZone.speed),
+            precision: clampZone(rawZone.precision),
+            agility: clampZone(rawZone.agility),
+            resistance: clampZone(rawZone.resistance),
+          },
+        };
         const res = rooms.find(socket.id, clean);
         if (res.type === 'error') {
           socket.emit(EV.ERROR, { code: res.code, message: res.code === 'already_searching' ? 'Ya estás buscando partida' : 'Ya estás en una partida' });

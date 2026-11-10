@@ -14,6 +14,7 @@ import { WHEEL } from '../domain/wheelConfig';
 import { getPlayer } from '../domain/playerStore';
 import { RANKED } from '../domain/rankedConfig';
 import { myPosition, rankedState, settleCurrentRanked } from '../logic/Ranked';
+import { recordWin } from '../logic/Stats';
 import { showInterstitial } from '../ads/ads';
 
 /** Id único de partida (ruletas: cada partida se cuenta una sola vez). */
@@ -112,6 +113,7 @@ export class MatchEndScene extends Phaser.Scene {
     if (!d.surrendered && !wstore._matchId) {
       wstore._matchId = newMatchId();
       wstore._wheel = recordMatchWin(wstore._matchId); // índice de la ruleta desbloqueada (o null)
+      if (win) recordWin(wstore._matchId); // victorias totales (se muestran en la pantalla VS)
     }
 
     // oscurecido ligero (el partido sigue visible)
@@ -485,7 +487,9 @@ export class MatchEndScene extends Phaser.Scene {
     const lx = -w / 2 + 20 + bw / 2;
     const rx = w / 2 - 20 - bw / 2;
     const box = (x: number, name: string, color: number, amount: number, pose?: { key: string; frame: number }) => {
-      const ox = pose ? 34 : 0; // con personaje, el texto se corre a la derecha
+      const hasPose = !!pose && this.textures.exists(pose.key);
+      const useDefault = !hasPose && this.textures.exists('portrait-nxo');
+      const ox = hasPose || useDefault ? 34 : 0; // con personaje, el texto se corre a la derecha
       const bc = this.add.container(x, by);
       const g = this.add.graphics();
       g.fillStyle(0x0a1638, 1).fillRoundedRect(-bw / 2, -bh / 2, bw, bh, 16);
@@ -495,11 +499,14 @@ export class MatchEndScene extends Phaser.Scene {
       fitText(nm, bw - 20 - ox * 2);
       bc.add(nm);
       const coin = this.add.graphics({ x: -28, y: 12 });
-      if (pose && this.textures.exists(pose.key)) {
+      if (pose && hasPose) {
         const fr = this.textures.getFrame(pose.key, pose.frame);
         const ch = this.add.image(-bw / 2 + 50, bh / 2 - 8, pose.key, pose.frame).setOrigin(0.5, 0.94);
         ch.setScale(Math.min(1.1, (bh - 22) / (fr.height * 0.94)));
         bc.add(ch);
+      } else if (useDefault) {
+        // Retrato frontal de NXO como respaldo para animaciones ausentes o skins sin hoja de poses finales.
+        bc.add(this.add.image(-bw / 2 + 50, bh / 2 - 8, 'portrait-nxo').setOrigin(0.5, 1).setDisplaySize(58, 74));
       }
       drawCoin(coin, 13);
       const val = this.add.text(-10, 12, amount.toLocaleString('es-CL'), { fontFamily: FONT, fontSize: '30px', color: '#ffffff', stroke: '#0a1638', strokeThickness: 5 }).setOrigin(0, 0.5);

@@ -10,35 +10,64 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { decode, save } from './png-lite.mjs';
+import { keepEnclosedGreen } from './keep-enclosed-green.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 // node tools/build-nxo-v2.mjs [front]  -> 'front' = el RIVAL (NXO de frente, public/personajes/Nxo/rival/pj-nxo-rival-1..4.png)
-const FRONT = process.argv[2] === 'front';
+//      node tools/build-nxo-v2.mjs mai  -> MAI de espaldas (public/personajes/Mai/pj-mai-1..4.png -> mai-v2, JSON mai-*)
+const ARGS = process.argv.slice(2);
+const FRONT = ARGS.includes('front');
+const MAI = ARGS.includes('mai');
+if (MAI && FRONT) throw new Error('mai front: aún no hay hojas del rival de Mai');
 const VIEW = FRONT ? 'front' : 'back';
-const SRC_DIR = join(ROOT, 'public', 'personajes', 'Nxo', ...(FRONT ? ['rival'] : []));
-const SRC_NAME = (s) => (FRONT ? `pj-nxo-rival-${s}.png` : `pj-nxo-sprites-${s}.png`);
-const DIR = FRONT ? 'nxo-front-v2' : 'nxo-v2';
-const PFX = FRONT ? 'nxo-front-' : 'nxo-';
+const SRC_DIR = MAI ? join(ROOT, 'public', 'personajes', 'Mai') : join(ROOT, 'public', 'personajes', 'Nxo', ...(FRONT ? ['rival'] : []));
+const SRC_NAME = (s) => (MAI ? `pj-mai-${s}.png` : FRONT ? `pj-nxo-rival-${s}.png` : `pj-nxo-sprites-${s}.png`);
+const DIR = MAI ? 'mai-v2' : FRONT ? 'nxo-front-v2' : 'nxo-v2';
+const PFX = MAI ? 'mai-' : FRONT ? 'nxo-front-' : 'nxo-';
 /** hojas del rival que vienen con la raqueta en la mano izquierda (se espejan para dejarla en la derecha, como el resto) */
 const FLIP_SHEETS = FRONT ? new Set([1]) : new Set();
+/** filas sueltas dibujadas con la raqueta en la mano izquierda: se espeja cada frame al copiarlo a su tira (hoja -> filas, 1-based) */
+const FLIP_ROWS = FRONT ? { 4: new Set([1]) } : {}; // rival hoja 4 (10-11-2026): el bote del saque viene espejado
 const OUT = join(ROOT, 'public', 'assets', 'characters', DIR);
 const CW = 192;
 const CH = 128;
 const N = 8; // filas por hoja (y columnas por defecto)
 /** columnas (frames por fila) de cada hoja: las 4 hojas actuales tienen 8 (la hoja 2 de golpes: impacto en el frame 6) */
-const COLS = { 1: 8, 2: 8, 3: 8, 4: 8 };
+const COLS = MAI ? { 1: 8, 2: 8, 3: 8, 4: 9 } : { 1: 8, 2: 8, 3: 8, 4: 8 }; // Mai: la hoja 4 tiene 9 frames por fila
 
 /**
  * Registro de filas (1-based como en la hoja). `keep`: 'main' = quedarse solo con la pieza principal
  * (quita marcas sueltas como los "( )" de la espera activa).
  */
-const ROWS = {
+const ROWS_NXO = {
   1: { 1: 'idle', 2: 'run', 3: 'runstop', 4: 'victory', 5: 'brake-turn', 6: 'run-left', 7: 'dash', 8: 'defeat' },
   2: { 1: 'forehand', 2: 'backhand', 3: 'forehand-power', 4: 'backhand-power', 5: 'serve', 6: 'serve-spin', 7: 'smash', 8: 'smash-power' },
   3: { 1: 'dive-right', 2: 'dive-left', 3: 'recover-right', 4: 'recover-left', 5: 'stunned', 6: 'point-won', 7: 'point-lost', 8: 'wait' },
   4: { 1: 'serve-bounce', 2: 'serve-toss', 3: 'walk', 4: 'inferno-hit', 5: 'volley', 6: 'dropshot', 7: 'intro', 8: 'greet' },
 };
-const KEEP_MAIN = new Set(['wait']);
+/**
+ * MAI (pj-mai-1..4): las hojas 1 y 2 siguen el orden de NXO; la 3 y la 4 vienen distintas.
+ *   hoja 3: 1 estirada der · 2 estirada izq (ya se levanta en los frames 7-8) · 3 recuperación der · 4 aturdido ·
+ *           5 punto ganado · 6 se agacha hasta el suelo y se levanta (= punto perdido) · 7 salto (sin uso) ·
+ *           8 paso largo a la derecha (= espera activa, como la fila 8 de NXO)
+ *   hoja 4 (9 frames por fila): 1 y 2 sin uso (no son el bote ni el lanzamiento del saque) · 3 caminar ·
+ *           4 recibe el INFERNO · 5 volea · 6 dejada · 7 intro · 8 saludo
+ * Sin bote ni lanzamiento propios: su pack (NxoActor) va con `bounce: false` y el saque arranca desde su frame 1.
+ */
+const ROWS_MAI = {
+  1: ROWS_NXO[1],
+  2: ROWS_NXO[2],
+  3: { 1: 'dive-right', 2: 'dive-left', 3: 'recover-right', 4: 'stunned', 5: 'point-won', 6: 'point-lost', 8: 'wait' },
+  4: { 3: 'walk', 4: 'inferno-hit', 5: 'volley', 6: 'dropshot', 7: 'intro', 8: 'greet' },
+};
+const ROWS = MAI ? ROWS_MAI : ROWS_NXO;
+/**
+ * Clips armados con frames (0-based) de otra fila ya cortada. MAI no trae recuperación izquierda: su estirada
+ * izquierda ya termina de pie, así que la "recuperación" son sus dos últimos frames (de pie y guardia).
+ */
+const DERIVED = MAI ? { 'recover-left': { from: 'dive-left', frames: [6, 7] } } : {};
+// espera activa de NXO: quita los "( )" sueltos (en MAI no hay marcas y podría quitar la raqueta)
+const KEEP_MAIN = new Set(MAI ? [] : ['wait']);
 
 // ------------------------------------------------------------------ fondo blanco / espejo (hojas del rival)
 /** espeja cada celda de la hoja en horizontal (celda a celda, para que las columnas no se inviertan) */
@@ -87,7 +116,37 @@ function whiteToAlpha(img) {
     }
   for (let p = 0; p < w * h; p++) if (gone[p]) px[p * 4 + 3] = 0;
   for (const [p, a] of edge) px[p * 4 + 3] = Math.min(px[p * 4 + 3], a);
-}// ------------------------------------------------------------------ chroma
+}
+/**
+ * fondo NEGRO -> transparente (hoja 2 del rival, 10-11-2026): relleno desde los bordes por los píxeles casi negros
+ * (canal máximo <= 12; el fondo viene a 0-1). El pelo y la ropa de NXO son negros pero su contorno es algo más claro,
+ * así que el relleno se para ahí; el negro encerrado (sombras del pelo) se conserva. Devuelve true si la hoja era así.
+ */
+function blackToAlpha(img) {
+  const { w, h, px } = img;
+  const T = 12;
+  const mx = (p) => Math.max(px[p * 4], px[p * 4 + 1], px[p * 4 + 2]);
+  const bg = (p) => px[p * 4 + 3] === 255 && mx(p) <= T;
+  let n = 0, k = 0;
+  for (let x = 0; x < w; x += 4) { n += 2; k += bg(x) + bg((h - 1) * w + x); }
+  for (let y = 0; y < h; y += 4) { n += 2; k += bg(y * w) + bg(y * w + w - 1); }
+  if (k < n * 0.95) return false; // el borde no es negro opaco: no es una hoja de fondo negro
+  const gone = new Uint8Array(w * h);
+  const st = [];
+  const push = (p) => { if (!gone[p] && bg(p)) { gone[p] = 1; st.push(p); } };
+  for (let x = 0; x < w; x++) { push(x); push((h - 1) * w + x); }
+  for (let y = 0; y < h; y++) { push(y * w); push(y * w + w - 1); }
+  while (st.length) {
+    const p = st.pop(), x = p % w;
+    if (x > 0) push(p - 1);
+    if (x < w - 1) push(p + 1);
+    if (p >= w) push(p - w);
+    if (p < w * (h - 1)) push(p + w);
+  }
+  for (let p = 0; p < w * h; p++) if (gone[p]) px[p * 4 + 3] = 0;
+  return true;
+}
+// ------------------------------------------------------------------ chroma
 function chroma(px, i) {
   const r = px[i], g = px[i + 1], b = px[i + 2];
   const m = Math.max(r, b);
@@ -144,6 +203,7 @@ for (const sheet of [1, 2, 3, 4]) {
   const img = decode(join(SRC_DIR, SRC_NAME(sheet)));
   if (FLIP_SHEETS.has(sheet)) flipX(img);
   whiteToAlpha(img);
+  if (blackToAlpha(img)) console.log(`  hoja ${sheet}: fondo negro -> alfa`);
   const { w, h } = img;
   const NC = COLS[sheet];
   // celda REAL de esta hoja: cada hoja puede venir con otro tamaÃ±o (p. ej. 1330x1182); el corte usa la rejilla NC x N
@@ -160,6 +220,8 @@ for (const sheet of [1, 2, 3, 4]) {
     if (hasAlpha && a < 80) a = 0;
     px[i] = r; px[i + 1] = g; px[i + 2] = b; px[i + 3] = a;
   }
+  // MAI: las hojas verdes de la flor de la gorra no son fondo (el croma las dejaba como agujeros en la gorra)
+  if (MAI) console.log(`  hoja ${sheet}: ${keepEnclosedGreen(img.px, px, w, h).length} detalles verdes recuperados (gorra)`);
   // cortes entre filas, por columna: la lÃ­nea con menos pÃ­xeles cerca del lÃ­mite nominal (una raqueta
   // levantada puede tocar los pies del frame de arriba y unir dos frames en una sola pieza)
   const cutAt = []; // [col][r] = y: no se une y con y+1
@@ -228,8 +290,33 @@ for (const sheet of [1, 2, 3, 4]) {
     }
   });
   // el resto (raqueta suelta, estrellas, polvo, marcas) va con el cuerpo mÃ¡s cercano de su columna
-  for (const c of comps) {
+  // ...salvo el trozo que la línea de corte entre filas separó de un cuerpo (p. ej. la suela de un salto que roza
+  // la cabeza del frame de abajo): ese va con el cuerpo del que se cortó, aunque el otro quede más cerca
+  const cutOwner = (ci) => {
+    const c = comps[ci];
+    const votes = new Map();
+    for (const [y, ny] of [[c.y0, c.y0 - 1], [c.y1, c.y1 + 1]]) {
+      if (ny < 0 || ny >= h) continue;
+      for (let x = c.x0; x <= c.x1; x++) {
+        if (lab[y * w + x] !== ci) continue;
+        for (let nx = Math.max(0, x - 1); nx <= Math.min(w - 1, x + 1); nx++) {
+          const o = lab[ny * w + nx];
+          if (o >= 0 && o !== ci && comps[o].body && isCut(x, y, ny)) votes.set(o, (votes.get(o) || 0) + 1);
+        }
+      }
+    }
+    let own = -1, nv = 0;
+    for (const [o, v] of votes) if (v > nv) { nv = v; own = o; }
+    return own;
+  };
+  for (const [ci, c] of comps.entries()) {
     if (c.body) continue;
+    const own = cutOwner(ci);
+    if (own >= 0) {
+      c.row = comps[own].row;
+      c.col = comps[own].col;
+      continue;
+    }
     let best = null, bd = 1e9;
     for (const b of bodies) {
       if (b.col !== c.col) continue;
@@ -274,12 +361,18 @@ for (const sheet of [1, 2, 3, 4]) {
       // tope del CUERPO (sin estrellas, destellos ni humo que sobresalen): con Ã©l se mide el alto del personaje
       const bodyIds = ids.filter((i) => comps[i].body);
       const top = bodyIds.length ? Math.min(...bodyIds.map((i) => comps[i].y0)) : y0;
-      list.push({ sheet, set, x0, x1, y0, y1, top, bot: solidBot, dark: sn, headW, cxDark: sn ? sx / sn : (x0 + x1) / 2, cell0: f * cw + cw / 2 });
+      const flip = !!FLIP_ROWS[sheet]?.has(Number(row));
+      list.push({ sheet, set, x0, x1, y0, y1, top, bot: solidBot, dark: sn, headW, cxDark: sn ? sx / sn : (x0 + x1) / 2, cell0: f * cw + cw / 2, flip });
     }
     const ground = med(list.map((f) => f.bot));
     for (const f of list) f.ground = ground;
     frames[name] = list;
   }
+}
+// clips derivados: copia de los frames elegidos (conservan el suelo de su fila; la escala se calcula aparte)
+for (const [name, d] of Object.entries(DERIVED)) {
+  frames[name] = d.frames.map((i) => ({ ...frames[d.from][i] }));
+  console.log(`${name}: frames ${d.frames.map((i) => i + 1).join(',')} de ${d.from}`);
 }
 
 // escala por hoja: alto de pie (frame 1, fila 1) igual al de la hoja 1
@@ -287,7 +380,7 @@ const standH = (name) => {
   const f = frames[name][0];
   return f.ground - f.top;
 };
-const REF = { 1: 'idle', 2: 'forehand', 3: 'dive-right', 4: 'serve-bounce' };
+const REF = { 1: 'idle', 2: 'forehand', 3: 'dive-right', 4: MAI ? 'walk' : 'serve-bounce' }; // MAI no usa la fila 1 de la hoja 4
 // todas al alto de la hoja mÃ¡s pequeÃ±a (solo se reduce, nunca se amplÃ­a)
 const STAND_SRC = Math.min(...[1, 2, 3, 4].map((s) => standH(REF[s])));
 const sheetScale = {};
@@ -310,6 +403,18 @@ for (const [name, list] of Object.entries(frames)) {
   rowScale[name] = target;
   for (const f of list) f.sc = target;
 }
+/**
+ * Misma escala que otra fila: las que NO empiezan de pie (el aturdido de MAI ya empieza agachada) copian la de una
+ * fila vecina de su hoja, y los clips derivados la de la fila de donde salen (sin saltos de tamaño al encadenarlos).
+ */
+const SCALE_AS = {
+  ...(MAI ? { stunned: 'point-won' } : {}),
+  ...Object.fromEntries(Object.entries(DERIVED).map(([name, d]) => [name, d.from])),
+};
+for (const [name, as] of Object.entries(SCALE_AS)) {
+  rowScale[name] = rowScale[as];
+  for (const f of frames[name]) f.sc = rowScale[as];
+}
 console.log('escala por fila:', Object.fromEntries(Object.entries(rowScale).map(([n, v]) => [n, +v.toFixed(3)])));
 
 // celda de salida: cabe todo (con el ancla en el suelo y en el centro de la celda original)
@@ -317,8 +422,9 @@ let L = 0, R = 0, T = 0, B = 0;
 for (const list of Object.values(frames))
   for (const f of list) {
     const sc = f.sc;
-    L = Math.max(L, (f.cell0 - f.x0) * sc);
-    R = Math.max(R, (f.x1 + 1 - f.cell0) * sc);
+    const l = (f.cell0 - f.x0) * sc, r = (f.x1 + 1 - f.cell0) * sc; // espejado: izquierda y derecha se cambian
+    L = Math.max(L, f.flip ? r : l);
+    R = Math.max(R, f.flip ? l : r);
     T = Math.max(T, (f.ground - f.y0) * sc);
     B = Math.max(B, (f.y1 + 1 - f.ground) * sc);
   }
@@ -338,7 +444,9 @@ for (const [name, list] of Object.entries(frames)) {
     const sc = f.sc;
     for (let dy = 0; dy < OH; dy++)
       for (let dx = 0; dx < OW; dx++) {
-        const sx0 = f.cell0 + (dx - HALF) / sc, sx1 = f.cell0 + (dx + 1 - HALF) / sc;
+        // fila espejada (FLIP_ROWS): se lee la celda reflejada respecto a su centro
+        const u0 = (dx - HALF) / sc, u1 = (dx + 1 - HALF) / sc;
+        const sx0 = f.flip ? f.cell0 - u1 : f.cell0 + u0, sx1 = f.flip ? f.cell0 - u0 : f.cell0 + u1;
         const sy0 = f.ground + (dy - AY) / sc, sy1 = f.ground + (dy + 1 - AY) / sc;
         let r = 0, g = 0, b = 0, a = 0, n = 0;
         for (let y = Math.floor(sy0); y < Math.ceil(sy1); y++)
@@ -458,13 +566,19 @@ write(PFX + 'special', {
   animations: { 'smash-power': { file: 'smash-power.png', frames: nf('smash-power'), fps: 14, loop: false, impact: K.smashImpact, scale: SMASH_POWER_SCALE } },
 });
 const ex = (file, fps, loop = false, extra = {}) => ({ file: `${file}.png`, frames: nf(file), fps, loop, ...extra });
+// solo las que tienen tira (MAI no trae bote ni lanzamiento del saque: el juego usa el reposo y el saque normal)
+const onlyBuilt = (anims) => {
+  const gone = Object.keys(anims).filter((k) => !frames[k]);
+  if (gone.length) console.log('sin fila en estas hojas (no van en el JSON):', gone.join(', '));
+  return Object.fromEntries(Object.entries(anims).filter(([k]) => frames[k]));
+};
 write(PFX + 'extra', {
   source: `${SRC_NAME(1)}..4 (tools/build-nxo-v2.mjs): animaciones nuevas`,
   view: VIEW,
   cell,
   origin,
   standHeight: STAND_H,
-  animations: {
+  animations: onlyBuilt({
     'run-left': ex('run-left', 14, true),
     dash: ex('dash', 18, true),
     defeat: ex('defeat', 10),
@@ -485,6 +599,6 @@ write(PFX + 'extra', {
     dropshot: ex('dropshot', 14, false, { impact: 4 }),
     intro: ex('intro', 10),
     greet: ex('greet', 10),
-  },
+  }),
 });
 console.log(`alto ${STAND_H}  origen ${JSON.stringify(origin)}  â†’ ${OUT}`);

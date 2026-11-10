@@ -9,6 +9,8 @@ import type { SkinId } from '../characters/skins';
 import { type ItemId, type PlayerState, type StyleId, clonePlayer, itemId, owns } from './player';
 import { shopItem } from './shopCatalog';
 import { bpAddXpInPlace } from './battlePassConfig';
+import { ZONE_STAT_MAX, type ZoneStatKey } from './zoneProgress';
+import { type InfernoPower, isInfernoPower } from './infernoPowers';
 
 export type OpError =
   | 'invalid_amount'
@@ -19,7 +21,9 @@ export type OpError =
   | 'already_owned'
   | 'not_owned'
   | 'duplicate_ability'
-  | 'not_enough_cash';
+  | 'not_enough_cash'
+  | 'not_enough_rays'
+  | 'stat_maxed';
 
 export type OpResult<T = object> = ({ ok: true; state: PlayerState } & T) | { ok: false; error: OpError };
 
@@ -87,6 +91,16 @@ export function buyCoinsWithCash(s: PlayerState, cash: number, coins: number): O
   return { ok: true, state: n };
 }
 
+/** Gasta 1 Rayo para mejorar exactamente 1% un atributo de Zona, hasta 20 niveles. */
+export function upgradeZoneStat(s: PlayerState, stat: ZoneStatKey): OpResult {
+  if (s.zone.rays < 1) return fail('not_enough_rays');
+  if (s.zone.stats[stat] >= ZONE_STAT_MAX) return fail('stat_maxed');
+  const n = clonePlayer(s);
+  n.zone.rays -= 1;
+  n.zone.stats[stat] += 1;
+  return { ok: true, state: n };
+}
+
 // ---------------------------------------------------------------- tienda / inventario
 
 export function purchase(s: PlayerState, id: ItemId): OpResult {
@@ -125,6 +139,14 @@ export function equipStyle(s: PlayerState, style: StyleId): OpResult {
   if (!owns(s, itemId.style(style))) return fail('not_owned');
   const n = clonePlayer(s);
   n.equipped.style = style;
+  return { ok: true, state: n };
+}
+
+/** Elige el poder del INFERNO (todos están disponibles). */
+export function equipInferno(s: PlayerState, power: InfernoPower): OpResult {
+  if (!isInfernoPower(power)) return fail('not_found');
+  const n = clonePlayer(s);
+  n.equipped.inferno = power;
   return { ok: true, state: n };
 }
 

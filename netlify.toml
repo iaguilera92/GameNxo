@@ -1,0 +1,9 @@
+# Despliegue del JUEGO (frontend) en Netlify: cada push a main reconstruye y publica.
+# El repo es un monorepo (frontend/ + backend/); Netlify solo construye el frontend.
+[build]
+  base = "frontend"
+  command = "npm run build"   # tsc --noEmit && vite build
+  publish = "frontend/dist"   # desde la RAÍZ del repo (incluye la carpeta base)
+
+[build.environment]
+  NODE_VERSION = "22"

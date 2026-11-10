@@ -645,10 +645,11 @@ export function rewardText(r: WheelReward): { line1: string; line2?: string } {
 }
 
 /** Abre la ruleta `index` encima de la escena actual. */
-export function openWheel(scene: Phaser.Scene, index: number) {
+export function openWheel(scene: Phaser.Scene, index: number): WheelScene {
   const key = WheelScene.KEY;
   const data: WheelSceneData = { index };
   if (scene.scene.get(key)) scene.scene.launch(key, data);
   else scene.scene.add(key, WheelScene, true, data);
   scene.scene.bringToTop(key);
+  return scene.scene.get(key) as WheelScene;
 }

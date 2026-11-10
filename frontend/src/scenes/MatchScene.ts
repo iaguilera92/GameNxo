@@ -1790,7 +1790,10 @@ export class MatchScene extends Phaser.Scene {
     this.serveAim.setVisible(false);
     this.serveCtl.state = 'SERVE_RESULT';
     this.serving = true;
-    this.lastHitter = this.server;
+    // NO se usa el setter: en red marcaría un golpe pendiente y se enviaría al rival un HIT FANTASMA (la pelota ni se
+    // golpeó). El rival lo aplicaría como un saque real y juzgaría esa pelota, sumando puntos extra. La falta se avisa
+    // sola (netGate → 'fault' / 'point') desde serviceFault.
+    this._lastHitter = this.server;
     this.phase = 'rally';
     this.netForceAuthority = this.server === 'player';
     this.serviceFault();

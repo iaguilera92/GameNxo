@@ -98,7 +98,9 @@ export class RankedScene extends Phaser.Scene {
     const headY = 60;
     const headerStart = this.children.list.length;
     this.backButton(50, headY);
-    const titleW = Math.min(300, Math.max(140, W - 250));
+    // ranked-titulo.png incluye márgenes transparentes amplios: darle más ancho hace visible el arte
+    // sin cambiar la proporción ni depender de una variante WebP inexistente.
+    const titleW = Math.min(370, Math.max(220, W - 360));
     this.add.image(W / 2, headY + 3, 'ranked-title').setDisplaySize(titleW, titleW / 3);
     this.coinPill(W - 24, headY, v.coins);
     const headerObjects = this.children.list.slice(headerStart);

@@ -7,7 +7,8 @@ import { fitText } from '../ui/fitText';
 import { RankBadge } from '../ui/RankBadge';
 import type { RankId } from '../domain/ranks';
 import { resetMatchEnd } from '../fx/matchEnd';
-import { recordMatchWin, wheelStatuses } from '../logic/Wheels';
+import { markWheelPresented, recordMatchWin, wheelToPresent, wheelStatuses } from '../logic/Wheels';
+import { openWheel } from './WheelScene';
 import { drawWheelFace, drawXpIcon } from '../ui/wheelArt';
 import { WHEEL } from '../domain/wheelConfig';
 import { getPlayer } from '../domain/playerStore';
@@ -601,8 +602,19 @@ export class MatchEndScene extends Phaser.Scene {
     const cont = arcadeButton(this, x0, y, bw, bh, 'CONTINUAR', () => {
       resetMatchEnd(this.scene.get(matchKey));
       this.scene.stop(matchKey);
-      // siempre al menú principal: si esta victoria desbloqueó una ruleta, el menú la abre sola de inmediato
-      // (MenuScene.dailyWheels → wheelToPresent), antes que cualquier otra cosa
+      // Si la partida desbloqueó una ruleta, mostrarla antes de entrar al menú.
+      const wheelIndex = wheelToPresent();
+      if (wheelIndex >= 0) {
+        markWheelPresented(wheelIndex);
+        const wheelScene = openWheel(this, wheelIndex);
+        wheelScene.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+          if (!this.scene.isActive()) return;
+          this.scene.stop(matchKey);
+          this.scene.stop();
+          this.scene.start('Menu');
+        });
+        return;
+      }
       this.scene.start('Menu');
     }, { palette: 'yellow' });
     // REVANCHA: misma lógica que ya existía (reiniciar el partido con el mismo rival).

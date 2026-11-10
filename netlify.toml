@@ -3,7 +3,7 @@
 [build]
   base = "frontend"
   command = "npm run build"   # tsc --noEmit && vite build
-  publish = "frontend/dist"   # desde la RAÍZ del repo (incluye la carpeta base)
+  publish = "dist"            # en netlify.toml, relativo a base (comprobado: con "frontend/dist" busca frontend/frontend/dist)
 
 [build.environment]
   NODE_VERSION = "22"

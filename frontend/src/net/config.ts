@@ -10,8 +10,13 @@
 import { Capacitor } from '@capacitor/core';
 
 const KEY_ONLINE = 'gamenxo.onlineMode';
-/** servidor de producción (AWS EC2, São Paulo) */
-export const ONLINE_URL = 'http://18.228.46.227:3001';
+/**
+ * servidor de producción (AWS EC2, São Paulo) por HTTPS/WSS: Caddy en la EC2 (puerto 443, certificado de Let's
+ * Encrypt) reenvía al servidor Node del puerto 3001. Necesario para que la versión web (https) pueda conectar.
+ * 18-228-46-227.sslip.io resuelve a la IP de la EC2; si algún día hay dominio propio, cambiar solo esta línea
+ * (y el Caddyfile de la EC2).
+ */
+export const ONLINE_URL = 'https://18-228-46-227.sslip.io';
 
 /** ¿Modo Online activo? Sin valor guardado = ON (servidor de producción). */
 export function getOnlineMode(): boolean {

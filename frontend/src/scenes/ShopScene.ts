@@ -5,7 +5,7 @@ import { arcadeButton } from '../ui/modeButtons';
 import { drawCoinIcon } from '../ui/wheelArt';
 import { commit, getPlayer, onPlayerChange } from '../domain/playerStore';
 import { buyCoinsWithCash, equipStyle, purchase } from '../domain/operations';
-import { BP_SEASON, bpBuyPremium, syncSeason } from '../domain/battlePass';
+import { BP_SEASON, syncSeason } from '../domain/battlePass';
 import type { PlayerState } from '../domain/player';
 import { drawCashIcon } from './BattlePassScene';
 import { type ItemId, type StyleId, owns } from '../domain/player';
@@ -18,8 +18,7 @@ import { styleLook } from '../ui/styleLook';
  * Usa el catálogo y las operaciones que ya existían (domain/shopCatalog + domain/operations.purchase):
  * precio, nivel mínimo, disponibilidad y "ya lo tienes" los valida la operación, no la pantalla.
  *   ESTILOS      se compran y se equipan aquí (también en PERSONAJE)
- *   NUEVOS PODERES  Hielo, Rayo y Viento como PRÓXIMAMENTE (aún no existen en el partido)
- *   CON DINERO      bolsa de monedas · PASE PREMIUM solo con dinero real ($3.990 CLP, pagos pendientes)
+ *   COSMÉTICOS      catálogo visual; el Premium no procesa pagos sin una integración
  */
 const NAVY = 0x0b1733;
 const NEON = 0x3a7bff;
@@ -40,6 +39,7 @@ export class ShopScene extends Phaser.Scene {
   private coinText!: Phaser.GameObjects.Text;
   private cashText!: Phaser.GameObjects.Text;
   private modal: Phaser.GameObjects.GameObject[] = [];
+  private selectedCategory = 0;
 
   constructor() {
     super('Shop');
@@ -81,7 +81,7 @@ export class ShopScene extends Phaser.Scene {
     let y = 150;
 
     // destacado: de dónde salen las monedas
-    const tip = this.add.text(W / 2, y, 'La Tienda cobra DINERO · el Pase Premium, dinero real', { fontFamily: FONT, fontSize: '19px', color: '#9fb4e0' }).setOrigin(0.5);
+    const tip = this.add.text(W / 2, y, 'Precios de muestra · compras aún no habilitadas', { fontFamily: FONT, fontSize: '19px', color: '#9fb4e0' }).setOrigin(0.5);
     fitText(tip, W - 60);
     this.body.add(tip);
     y += 44;
@@ -100,12 +100,34 @@ export class ShopScene extends Phaser.Scene {
     styles.forEach((it, i) => this.styleCard(30 + i * (cw + gap), y, cw, ch, it));
     y += ch + 52;
 
-    // ---------------------------------------------------------------- nuevos poderes (próximamente)
-    this.sectionTitle(W, y, 'NUEVOS PODERES');
-    y += 34;
-    const ah = 104;
-    POWERS_SOON.forEach((pw, i) => this.powerRow(30, y + i * (ah + 14), W - 60, ah, pw));
-    y += POWERS_SOON.length * (ah + 14) + 38;
+    // ---------------------------------------------------------------- catálogo cosmético
+    this.sectionTitle(W, y, 'COSMÉTICOS');
+    y += 32;
+    const categories = ['DEFENSA', 'ATAQUE', 'CARGA', 'PELOTA', 'ZONA'];
+    const tabGap = 5;
+    const tabW = (W - 60 - tabGap * (categories.length - 1)) / categories.length;
+    categories.forEach((label, i) => {
+      const tab = this.add.container(30 + i * (tabW + tabGap) + tabW / 2, y);
+      const active = i === this.selectedCategory;
+      const bg = this.add.graphics();
+      bg.fillStyle(active ? 0x0758c9 : NAVY, 0.98).fillRoundedRect(-tabW / 2, -19, tabW, 38, 12);
+      bg.lineStyle(2, active ? 0x43dfff : 0x38558d).strokeRoundedRect(-tabW / 2, -19, tabW, 38, 12);
+      const text = this.add.text(0, 0, label, { fontFamily: FONT, fontSize: '13px', color: active ? '#ffffff' : '#9fb4e0' }).setOrigin(0.5);
+      fitText(text, tabW - 8);
+      tab.add([bg, text]);
+      tab.setSize(tabW, 40).setInteractive({ useHandCursor: true });
+      tab.on('pointerup', () => {
+        this.selectedCategory = i;
+        this.build();
+      });
+      this.body.add(tab);
+    });
+    y += 28;
+    const products = COSMETIC_PRODUCTS[this.selectedCategory];
+    const productGap = 8;
+    const productW = (W - 60 - productGap * 2) / 3;
+    products.forEach((product, i) => this.cosmeticCard(30 + i * (productW + productGap), y, productW, 172, product));
+    y += 204;
 
     // ---------------------------------------------------------------- con dinero (billetes)
     this.sectionTitle(W, y, 'CON DINERO');
@@ -136,7 +158,44 @@ export class ShopScene extends Phaser.Scene {
     this.realOffer(30, y, W - 60, oh, premium);
   }
 
-  /** Pase Premium: se paga con dinero real ($3.990 CLP). Sin pagos integrados todavía: muestra el precio y avisa. */
+  /** Ficha de catálogo. El producto se anuncia aquí; su efecto se habilitará al integrar su cosmético. */
+  private cosmeticCard(x: number, y: number, w: number, h: number, product: CosmeticProduct) {
+    const rarityColor = product.rarity === 'NORMAL' ? 0x4b8dff : product.rarity === 'ESPECIAL' ? 0x25d5e8 : GOLD;
+    const c = this.add.container(0, 0);
+    c.add(this.card(x, y, w, h, { line: rarityColor, glow: product.rarity === 'ÉPICA' ? 0.3 : 0.12, r: 16 }));
+    const icon = this.add.graphics({ x: x + w / 2, y: y + 40 });
+    icon.fillStyle(rarityColor, 0.22).fillCircle(0, 0, 24);
+    icon.lineStyle(3, rarityColor).strokeCircle(0, 0, 19);
+    if (product.category === 'PELOTA') {
+      icon.fillStyle(0xd7f53a).fillCircle(0, 0, 10);
+      icon.lineStyle(1.5, 0xffffff, 0.9).beginPath().arc(0, 0, 7, -1.1, 1.1).strokePath();
+    } else if (product.category === 'ZONA') {
+      icon.lineStyle(3, rarityColor, 0.95).strokeEllipse(-14, -6, 24, 10).strokeEllipse(0, 5, 24, 10);
+    } else if (product.category === 'CARGA') {
+      icon.fillStyle(rarityColor).fillPoints([{ x: 4, y: -15 }, { x: -8, y: 2 }, { x: 0, y: 2 }, { x: -3, y: 15 }, { x: 10, y: -4 }, { x: 3, y: -4 }], true);
+    } else if (product.category === 'DEFENSA') {
+      icon.lineStyle(4, rarityColor).beginPath().moveTo(-12, -12).lineTo(0, -18).lineTo(12, -12).lineTo(10, 6).lineTo(0, 15).lineTo(-10, 6).closePath().strokePath();
+    } else {
+      icon.fillStyle(rarityColor).fillPoints([{ x: -13, y: -11 }, { x: 0, y: -17 }, { x: 13, y: -11 }, { x: 8, y: 2 }, { x: 0, y: 14 }, { x: -8, y: 2 }], true);
+    }
+    c.add(icon);
+    const rarity = this.add.text(x + w / 2, y + 76, product.rarity, { fontFamily: FONT, fontSize: '12px', color: product.rarity === 'ÉPICA' ? '#ffd23f' : '#c8dcff' }).setOrigin(0.5);
+    fitText(rarity, w - 8);
+    c.add(rarity);
+    const title = this.add.text(x + w / 2, y + 97, product.name, { fontFamily: FONT, fontSize: '15px', color: '#ffffff', align: 'center', wordWrap: { width: w - 12 } }).setOrigin(0.5);
+    fitText(title, w - 12);
+    c.add(title);
+    const price = product.rarity === 'ÉPICA' ? String(product.price) : `${Number(product.price).toLocaleString('es-CL')} dinero`;
+    const status = this.add.text(x + w / 2, y + h - 43, 'PRÓXIMAMENTE', { fontFamily: FONT, fontSize: '10px', color: '#91a8d5' }).setOrigin(0.5);
+    fitText(status, w - 8);
+    c.add(status);
+    const priceText = this.add.text(x + w / 2, y + h - 22, price, { fontFamily: FONT, fontSize: '14px', color: product.rarity === 'ÉPICA' ? '#ffd23f' : '#ffe69a' }).setOrigin(0.5);
+    fitText(priceText, w - 8);
+    c.add(priceText);
+    this.body.add(c);
+  }
+
+  /** Pase Premium: se muestra sin ofrecer cobros hasta que exista integración de pagos. */
   private realOffer(x: number, y: number, w: number, h: number, active: boolean) {
     const c = this.add.container(0, 0);
     this.body.add(c);
@@ -147,7 +206,7 @@ export class ShopScene extends Phaser.Scene {
     ic.fillStyle(0x0a1638, 1).fillPoints([{ x: -18, y: 10 }, { x: -20, y: -10 }, { x: -9, y: -1 }, { x: 0, y: -15 }, { x: 9, y: -1 }, { x: 20, y: -10 }, { x: 18, y: 10 }], true);
     c.add(ic);
     c.add(this.add.text(x + 112, y + h / 2 - 16, 'PASE PREMIUM', { fontFamily: FONT, fontSize: '26px', color: '#ffd23f' }).setOrigin(0, 0.5));
-    const sub = this.add.text(x + 113, y + h / 2 + 18, `${BP_SEASON.name} · premios dorados · pago real`, { fontFamily: FONT, fontSize: '15px', color: '#c9b98a' }).setOrigin(0, 0.5);
+    const sub = this.add.text(x + 113, y + h / 2 + 18, `${BP_SEASON.name} · premios dorados`, { fontFamily: FONT, fontSize: '15px', color: '#c9b98a' }).setOrigin(0, 0.5);
     fitText(sub, w - 300);
     c.add(sub);
     const bx = x + w - 92;
@@ -155,42 +214,13 @@ export class ShopScene extends Phaser.Scene {
       c.add(this.pill(bx, y + h / 2, 150, 'ACTIVO', 0x1f6b35, '#9fe8a0'));
       return;
     }
-    const cc = this.add.container(bx, y + h / 2);
-    const g = this.add.graphics();
-    const bw = 150;
-    const bh = 50;
-    g.fillStyle(0x0a1638, 1).fillRoundedRect(-bw / 2 - 3, -bh / 2 - 3, bw + 6, bh + 6, 16);
-    g.fillStyle(0xf29a0c, 1).fillRoundedRect(-bw / 2, -bh / 2, bw, bh, 14);
-    g.fillStyle(0xffcc1f, 1).fillRoundedRect(-bw / 2, -bh / 2, bw, bh * 0.6, { tl: 14, tr: 14, bl: 6, br: 6 });
-    const t = this.add.text(0, 0, BP_SEASON.premiumRealPrice, { fontFamily: FONT, fontSize: '26px', color: '#0a1638' }).setOrigin(0.5);
-    cc.add([g, t]);
-    cc.setSize(bw, bh + 10).setInteractive({ useHandCursor: true });
-    cc.on('pointerup', () => {
-      this.tweens.add({ targets: cc, scale: { from: 0.9, to: 1 }, duration: 200, ease: 'Back.easeOut' });
-      // sin integración de pagos todavía: no se cobra ni se activa nada
-      const res = commit((s) => bpBuyPremium(s));
-      if (!res.ok && res.error === 'real_money') this.toast(`Pago con dinero real (${BP_SEASON.premiumRealPrice}): próximamente`);
-      else if (res.ok) this.build();
-    });
-    c.add(cc);
-  }
-
-  /** Fila de poder futuro: icono propio, nombre, descripción y PRÓXIMAMENTE. */
-  private powerRow(x: number, y: number, w: number, h: number, pw: PowerSoon) {
-    const c = this.add.container(0, 0);
-    this.body.add(c);
-    c.add(this.card(x, y, w, h, { line: pw.color, glow: 0.18 }));
-    const ic = this.add.graphics({ x: x + 58, y: y + h / 2 });
-    ic.fillStyle(0x0a1638, 1).fillCircle(0, 0, 36);
-    ic.fillStyle(pw.color, 1).fillCircle(0, 0, 32);
-    ic.fillStyle(pw.dark, 1).fillCircle(0, 4, 26);
-    drawPowerIcon(ic, pw.id);
-    c.add(ic);
-    c.add(this.add.text(x + 112, y + h / 2 - 16, pw.name.toUpperCase(), { fontFamily: FONT, fontSize: '26px', color: '#ffffff' }).setOrigin(0, 0.5));
-    const d = this.add.text(x + 113, y + h / 2 + 18, pw.desc, { fontFamily: FONT, fontSize: '15px', color: '#9fb4e0' }).setOrigin(0, 0.5);
-    fitText(d, w - 300);
-    c.add(d);
-    c.add(this.pill(x + w - 100, y + h / 2, 160, 'PRÓXIMAMENTE', 0x2a3556, '#9aa6c4'));
+    const price = this.add.container(bx, y + h / 2);
+    const priceBg = this.add.graphics();
+    priceBg.fillStyle(0x0a1638).fillRoundedRect(-78, -27, 156, 54, 16);
+    priceBg.fillStyle(0xf29a0c).fillRoundedRect(-74, -23, 148, 46, 14);
+    priceBg.fillStyle(0xffcc1f).fillRoundedRect(-74, -23, 148, 26, { tl: 14, tr: 14, bl: 6, br: 6 });
+    price.add([priceBg, this.add.text(0, 0, BP_SEASON.premiumRealPrice, { fontFamily: FONT, fontSize: '21px', color: '#0a1638' }).setOrigin(0.5)]);
+    c.add(price);
   }
 
   /** Tarjeta de estilo: muestra de color, nombre y botón (precio / nivel / USAR / EN USO). */
@@ -491,35 +521,23 @@ export class ShopScene extends Phaser.Scene {
   }
 }
 
-// ---------------------------------------------------------------- poderes que vienen (solo vitrina)
-type PowerId = 'ice' | 'thunder' | 'wind';
-interface PowerSoon {
-  id: PowerId;
+// ---------------------------------------------------------------- catálogo visual del módulo de tienda
+type CosmeticCategory = 'DEFENSA' | 'ATAQUE' | 'CARGA' | 'PELOTA' | 'ZONA';
+interface CosmeticProduct {
+  category: CosmeticCategory;
+  rarity: 'NORMAL' | 'ESPECIAL' | 'ÉPICA';
   name: string;
-  desc: string;
-  color: number;
-  dark: number;
+  price: number | string;
 }
-/** Nuevos poderes anunciados (aún no existen en el partido: solo se muestran como PRÓXIMAMENTE). */
-const POWERS_SOON: PowerSoon[] = [
-  { id: 'ice', name: 'Hielo', desc: 'Congela un instante al rival', color: 0x6fd3ff, dark: 0x1f5f8a },
-  { id: 'thunder', name: 'Rayo', desc: 'Golpe eléctrico ultrarrápido', color: 0xffd23f, dark: 0x7a5a00 },
-  { id: 'wind', name: 'Viento', desc: 'Desvía la pelota en el aire', color: 0x7dff9a, dark: 0x1f7a3a },
+const product = (category: CosmeticCategory, normal: string, special: string, epic: string): CosmeticProduct[] => [
+  { category, rarity: 'NORMAL', name: normal, price: 1500 },
+  { category, rarity: 'ESPECIAL', name: special, price: 5000 },
+  { category, rarity: 'ÉPICA', name: epic, price: '$1.490 CLP' },
 ];
-
-function drawPowerIcon(g: Phaser.GameObjects.Graphics, id: PowerId) {
-  g.lineStyle(4, 0xffffff, 1);
-  if (id === 'ice') {
-    for (let i = 0; i < 3; i++) {
-      const a = (i * Math.PI) / 3;
-      g.lineBetween(Math.cos(a) * -16, 4 + Math.sin(a) * -16, Math.cos(a) * 16, 4 + Math.sin(a) * 16);
-    }
-    g.fillStyle(0xffffff, 1).fillCircle(0, 4, 4);
-  } else if (id === 'thunder') {
-    g.fillStyle(0xffffff, 1).fillPoints([{ x: 4, y: -16 }, { x: -10, y: 6 }, { x: -1, y: 6 }, { x: -5, y: 22 }, { x: 11, y: -1 }, { x: 2, y: -1 }], true);
-  } else {
-    g.beginPath().arc(-2, 0, 12, Math.PI * 1.1, Math.PI * 2.2).strokePath();
-    g.lineBetween(-16, 8, 12, 8);
-    g.lineBetween(-12, 16, 6, 16);
-  }
-}
+const COSMETIC_PRODUCTS: CosmeticProduct[][] = [
+  product('DEFENSA', 'Escudo azul', 'Barrera neón', 'Guardián estelar'),
+  product('ATAQUE', 'Golpe rojo', 'Impacto eléctrico', 'Estallido infernal'),
+  product('CARGA', 'Carga celeste', 'Pulso brillante', 'Energía cósmica'),
+  product('PELOTA', 'Estela verde', 'Chispas azules', 'Cometa dorado'),
+  product('ZONA', 'Círculo clásico', 'Cancha luminosa', 'Zona galáctica'),
+];

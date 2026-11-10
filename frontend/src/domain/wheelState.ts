@@ -22,6 +22,8 @@ export interface WheelSpin {
   claimed: boolean;
   /** ya se abrió automáticamente en el menú (solo una vez por victoria) */
   presented: boolean;
+  /** ya cobró una vez el bonus de anuncio asociado a este giro */
+  adBonusClaimed?: boolean;
 }
 
 export interface WheelState {

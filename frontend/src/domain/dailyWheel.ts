@@ -107,7 +107,7 @@ export function slotById(id: string): WheelSlot | undefined {
 
 // ---------------------------------------------------------------- operaciones
 
-type WheelError = 'no_spin' | 'already_spun' | 'not_spun' | 'invalid';
+type WheelError = 'no_spin' | 'already_spun' | 'not_spun' | 'invalid' | 'already_bonus';
 export type WheelResult<T = object> = ({ ok: true; state: PlayerState } & T) | { ok: false; error: WheelError };
 const fail = (error: WheelError): { ok: false; error: WheelError } => ({ ok: false, error });
 
@@ -234,6 +234,25 @@ export function claim(s: PlayerState, index: number, now: number, bonus = false)
   return { ok: true, state: n, given, already: false };
 }
 
+/** Duplica una recompensa ya cobrada tras completar un anuncio; una sola vez por giro. */
+export function claimAdBonus(s: PlayerState, index: number, now: number, bonus = false): WheelResult<{ given: WheelReward | null }> {
+  const synced = syncCycle(s, now);
+  const sp0 = (bonus ? synced.wheel.bonusSpins : synced.wheel.spins)[index];
+  if (!sp0) return fail('no_spin');
+  if (!sp0.claimed || !sp0.reward) return fail('not_spun');
+  if (sp0.adBonusClaimed) return fail('already_bonus');
+
+  // Un cosmético no se puede duplicar; entrega la compensación habitual en monedas.
+  const extra: WheelReward = sp0.reward.kind === 'item'
+    ? { kind: 'coins', amount: WHEEL.duplicateCoins, duplicateOf: sp0.reward.item }
+    : sp0.reward;
+  const applied = applyReward(synced, extra);
+  const n = clonePlayer(applied.state);
+  const spin = (bonus ? n.wheel.bonusSpins : n.wheel.spins)[index];
+  spin.adBonusClaimed = true;
+  return { ok: true, state: n, given: applied.given };
+}
+
 // ---------------------------------------------------------------- consultas
 
 export type WheelStatus = 'locked' | 'ready' | 'spun' | 'done';
@@ -277,6 +296,7 @@ export function sanitizeWheel(raw: unknown): WheelState {
         reward,
         claimed: !!o.claimed && !!reward,
         presented: !!o.presented,
+        adBonusClaimed: !!o.adBonusClaimed,
       });
     }
   };

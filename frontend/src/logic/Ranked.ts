@@ -80,3 +80,9 @@ export const loginStatus = () => login.loginStatus(getPlayer() as never, now());
 export function claimLogin() {
   return commit((s) => login.claimLogin(s, now()));
 }
+export function claimLoginRewardAdBonus() {
+  return commit((s) => {
+    const res = login.claimLoginAdBonus(s, now());
+    return { ok: true as const, state: res.state, given: res.given };
+  });
+}

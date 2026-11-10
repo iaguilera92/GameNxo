@@ -9,3 +9,4 @@ frontend/android/local.properties
 # backend
 backend/dist
 backend/.env
+backend/deploy.log

@@ -50,6 +50,11 @@ export function claimWheel(index: number, bonus = false): { given: WheelReward |
   return res.ok ? { given: res.given, already: res.already } : null;
 }
 
+export function claimWheelAdBonus(index: number, bonus = false) {
+  const res = commit((s) => wheel.claimAdBonus(s, index, now(), bonus));
+  return res.ok ? res.given : null;
+}
+
 /** Giro guardado de la ruleta `index` del ciclo actual (si existe). */
 export function wheelSpin(index: number, bonus = false) {
   const state = wheel.syncCycle(getPlayer() as never, now()).wheel;

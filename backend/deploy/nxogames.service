@@ -1,0 +1,24 @@
+﻿# /etc/systemd/system/nxogames.service   →   sudo systemctl enable --now nxogames
+# Un SOLO proceso: las salas viven en memoria (no usar varias instancias sin Redis).
+[Unit]
+Description=NxoGames backend (Socket.IO)
+After=network.target
+
+[Service]
+Type=simple
+User=nxo
+WorkingDirectory=/opt/nxogames/backend
+EnvironmentFile=/etc/nxogames.env
+ExecStart=/usr/bin/node dist/server.js
+Restart=always
+RestartSec=2
+# SIGTERM = apagado ordenado (espera los partidos hasta DRAIN_TIMEOUT_MS=120 s); damos margen antes del SIGKILL
+KillSignal=SIGTERM
+TimeoutStopSec=140
+LimitNOFILE=65536
+NoNewPrivileges=true
+ProtectSystem=full
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

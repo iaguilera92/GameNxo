@@ -10,6 +10,8 @@ import { serverUrl } from './config';
 export interface NetTransport {
   readonly connected: boolean;
   emit(ev: string, data?: unknown): void;
+  /** como emit, pero si la red va congestionada el mensaje se descarta (estado que se repite: posición del jugador) */
+  emitVolatile(ev: string, data?: unknown): void;
   on(ev: string, cb: (data: never) => void): void;
   off(ev: string, cb: (data: never) => void): void;
 }
@@ -21,6 +23,9 @@ class SocketTransport implements NetTransport {
   }
   emit(ev: string, data?: unknown) {
     this.socket.emit(ev, data);
+  }
+  emitVolatile(ev: string, data?: unknown) {
+    this.socket.volatile.emit(ev, data);
   }
   on(ev: string, cb: (data: never) => void) {
     this.socket.on(ev, cb as (d: unknown) => void);

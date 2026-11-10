@@ -53,8 +53,24 @@ export function claimLogin(s: PlayerState, now: number): { ok: true; state: Play
   return { ok: true, state: n, given: st.reward, day: st.day };
 }
 
+/** Duplica el premio diario tras completar un anuncio; solo una vez por día y después del reclamo base. */
+export function claimLoginAdBonus(s: PlayerState, now: number): { state: PlayerState; given: LoginReward | null } {
+  const today = cycleIdAt(now);
+  const st = loginStatus(s, now);
+  if (!st.claimed || s.login.adBonusDay === today) return { state: s, given: null };
+  const n = clonePlayer(s);
+  n.coins += st.reward.coins;
+  n.gems += st.reward.cash;
+  n.login.adBonusDay = today;
+  return { state: n, given: st.reward };
+}
+
 export function sanitizeLogin(raw: unknown): LoginState {
   const o = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
   const streak = typeof o.streak === 'number' && Number.isFinite(o.streak) ? Math.min(LOGIN.rewards.length, Math.max(0, Math.floor(o.streak))) : 0;
-  return { last: typeof o.last === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(o.last) ? o.last : '', streak };
+  return {
+    last: typeof o.last === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(o.last) ? o.last : '',
+    streak,
+    adBonusDay: typeof o.adBonusDay === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(o.adBonusDay) ? o.adBonusDay : '',
+  };
 }

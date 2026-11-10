@@ -219,7 +219,15 @@ viaja en `game:state` y se ve como la pose de carga del rival.
 |---|---|---|
 | `PORT` | 3001 | puerto (Render lo define solo) |
 | `HOST` | 0.0.0.0 | interfaz; 0.0.0.0 = toda la red local |
-| `CORS_ORIGIN` | `*` | orígenes permitidos (en producción, el dominio del juego) |
+| `CORS_ORIGIN` | `*` | orígenes permitidos, separados por coma (en producción: `https://localhost,capacitor://localhost,...`) |
+| `TRUST_PROXY` | 0 | 1 detrás de nginx / ALB (IP real por X-Forwarded-For) |
+| `MAX_MATCH_MS` | 1800000 | duración máxima de un partido; al pasarla se cierra por tiempo (gana quien vaya arriba) |
+| `MAX_PAYLOAD_BYTES` | 8192 | tamaño máximo de un mensaje del cliente; más grande corta la conexión |
+| `DRAIN_TIMEOUT_MS` | 120000 | al recibir SIGTERM, espera máxima a que terminen los partidos en curso |
+
+Producción (AWS): `npm run build` y `npm run start:prod` con **un solo proceso** (las salas viven en memoria).
+Archivos listos en `backend/deploy/` (systemd y pm2) y `backend/.env.example`. Los mensajes del cliente se validan y
+limitan por segundo (`src/socket/guard.ts`); `STATE` se envía como volátil.
 | `SEARCH_TIMEOUT_MS` | 5000 | tiempo máximo de búsqueda |
 | `READY_TIMEOUT_MS` | 12000 | espera máxima a que los dos carguen |
 | `GAMES_TO_WIN` / `GOLDEN_POINT` | 2 / 0 | reglas (las mismas que `frontend/src/config.ts`) |

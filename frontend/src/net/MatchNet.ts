@@ -145,7 +145,7 @@ export class MatchNet {
   }
 
   sendState(s: StateMsg) {
-    this.transport.emit(EV.STATE, s);
+    this.transport.emitVolatile(EV.STATE, s);
   }
 
   sendHit(h: Omit<HitMsg, 'seq'>) {

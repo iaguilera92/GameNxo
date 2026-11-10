@@ -15,7 +15,7 @@ let url = '';
 const sockets: Socket[] = [];
 before(async () => {
   http = createServer();
-  registerSocketHandlers(new Server(http, { cors: { origin: true } }));
+  registerSocketHandlers(new Server(http, { cors: { origin: true }, maxHttpBufferSize: 8192 }));
   await new Promise<void>((r) => http.listen(0, '127.0.0.1', r));
   url = `http://127.0.0.1:${(http.address() as AddressInfo).port}`;
 });
@@ -38,6 +38,7 @@ const once = <T>(s: Socket, ev: string, ms = 2000) =>
       res(d);
     });
   });
+const validHit = { seq: 0, kind: 'hit', ball: { x: 1, y: 2, z: 3, vx: 4, vy: 5, vz: 6 }, x: 10, y: 20, shotKind: 'normal', power: false, inferno: false, charged: false, overhead: false, volley: false };
 const profile = (name: string) => ({ profile: { name, level: 3, skin: 'nxo' } });
 
 test('dos clientes: buscando → emparejados → START → reenvío → marcador oficial → fin', async () => {
@@ -60,8 +61,10 @@ test('dos clientes: buscando → emparejados → START → reenvío → marcador
   await Promise.all([sa, sb]);
   // reenvío de golpe
   const hit = once<{ seq: number }>(b, EV.HIT);
-  a.emit(EV.HIT, { seq: 7 });
-  assert.equal((await hit).seq, 7);
+  a.emit(EV.HIT, { ...validHit, seq: 7, basura: 'x'.repeat(100) });
+  const got = await hit;
+  assert.equal(got.seq, 7);
+  assert.equal('basura' in got, false, 'los campos desconocidos no se reenvían');
   // 8 puntos para el host (avisa el juez B: "para el rival") → 2 juegos → fin oficial
   const overA = once<{ winner: string; reason: string }>(a, EV.OVER);
   for (let i = 0; i < 8; i++) b.emit(EV.POINT, { seq: i, kind: 'point', to: 'opponent', reason: '', color: '' });
@@ -97,4 +100,55 @@ test('desconexión en partido: el rival recibe OPPONENT_LEFT y gana', async () =
   const o = await over;
   assert.equal(o.winner, 'host');
   assert.equal(o.reason, 'disconnect');
+});
+
+/** Dos clientes ya emparejados y con el partido empezado. */
+const playing = async () => {
+  const a = await client();
+  const b = await client();
+  a.emit(EV.FIND, profile('A'));
+  await once(a, EV.SEARCHING);
+  const ma = once(a, EV.MATCHED);
+  const mb = once(b, EV.MATCHED);
+  b.emit(EV.FIND, profile('B'));
+  await Promise.all([ma, mb]);
+  const sa = once(a, EV.START);
+  const sb = once(b, EV.START);
+  a.emit(EV.READY);
+  b.emit(EV.READY);
+  await Promise.all([sa, sb]);
+  return { a, b };
+};
+
+test('mensajes inválidos no se reenvían; los válidos siguen pasando', async () => {
+  const { a, b } = await playing();
+  const got: unknown[] = [];
+  b.on(EV.STATE, (d: unknown) => got.push(d));
+  a.emit(EV.STATE, { x: 'hola', y: 1 }); // x no es número
+  a.emit(EV.STATE, null);
+  a.emit(EV.STATE, { t: 1, x: 5, y: 6, moving: true, dirX: 1, facing: 1, charging: false, stunned: false, extra: 1 });
+  await new Promise((r) => setTimeout(r, 300));
+  assert.equal(got.length, 1);
+  assert.deepEqual(got[0], { t: 1, x: 5, y: 6, moving: true, dirX: 1, facing: 1, charging: false, stunned: false });
+  a.close();
+  b.close();
+});
+
+test('un mensaje mayor que el tope corta esa conexión (y el rival gana)', async () => {
+  const { a, b } = await playing();
+  const left = once<{ reason: string }>(b, EV.OPPONENT_LEFT);
+  a.emit(EV.ACTION, { kind: 'emote', data: { kind: 'x'.repeat(20000) } });
+  assert.equal((await left).reason, 'disconnect');
+  b.close();
+});
+
+test('exceso de mensajes por segundo: se descartan los sobrantes', async () => {
+  const { a, b } = await playing();
+  let n = 0;
+  b.on(EV.ACTION, () => n++);
+  for (let i = 0; i < 100; i++) a.emit(EV.ACTION, { kind: 'emote', data: { kind: 'happy' } });
+  await new Promise((r) => setTimeout(r, 400));
+  assert.ok(n > 0 && n < 100, `pasaron ${n} de 100`);
+  a.close();
+  b.close();
 });

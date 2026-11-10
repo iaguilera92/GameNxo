@@ -72,7 +72,7 @@ export interface MatchedMsg {
 }
 
 export interface ErrorMsg {
-  code: 'already_searching' | 'already_in_room' | 'invalid' | 'not_in_room';
+  code: 'already_searching' | 'already_in_room' | 'invalid' | 'not_in_room' | 'maintenance';
   message: string;
 }
 
@@ -181,7 +181,7 @@ export interface ScoreMsg {
 
 export interface OverMsg {
   winner: Role;
-  reason: 'score' | 'abandon' | 'disconnect';
+  reason: 'score' | 'abandon' | 'disconnect' | 'timeout';
   games: { host: number; guest: number };
 }
 

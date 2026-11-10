@@ -183,6 +183,8 @@ export class MatchScene extends Phaser.Scene {
   /** el próximo saque es segundo saque (para adelantar el punto si el rival ya sacó) */
   private netNextSecond = false;
   private netStateAt = 0;
+  /** último estado enviado al rival (para no repetirlo mientras el jugador está quieto) */
+  private netLastState: { x: number; y: number; moving: boolean; dirX: number; facing: number; charging: boolean; stunned: boolean } | null = null;
   private netPrev = { x: 0, y: 0 };
   /** último estado del rival (ya espejado) */
   private netRemote: StateMsg | null = null;
@@ -410,6 +412,7 @@ export class MatchScene extends Phaser.Scene {
     this.emotes = new Emotes(this, () => this.headPos(this.player));
     // en red: tus emotes también los ve el rival; el aura del SMASH armado del rival; sin restos de una partida anterior
     this.netHit = {};
+    this.netLastState = null;
     this.netRemoteCine = false;
     this.netDeferred = [];
     this.botAura = null;
@@ -2958,12 +2961,19 @@ export class MatchScene extends Phaser.Scene {
     if (!this.net) return;
     const now = this.time.now;
     if (now - this.netStateAt < 50) return;
-    this.netStateAt = now;
     const pl = this.player;
     const dx = pl.y - this.netPrev.y; // en pantalla, derecha = +y de la cancha
     const moving = Math.hypot(pl.x - this.netPrev.x, dx) > 0.6;
+    const dirX = Math.abs(dx) > 0.3 ? Math.sign(dx) : 0;
+    const st = { x: pl.x, y: pl.y, moving, dirX, facing: pl.ch.facing, charging: this.charging, stunned: pl.stun > 0 };
+    // quieto y sin cambios: solo un latido cada 250 ms (en vez de 20 mensajes por segundo)
+    const l = this.netLastState;
+    const same = !!l && l.x === st.x && l.y === st.y && l.moving === st.moving && l.dirX === st.dirX && l.facing === st.facing && l.charging === st.charging && l.stunned === st.stunned;
+    if (same && now - this.netStateAt < 250) return;
+    this.netStateAt = now;
     this.netPrev = { x: pl.x, y: pl.y };
-    this.net.sendState({ t: now, x: pl.x, y: pl.y, moving, dirX: Math.abs(dx) > 0.3 ? Math.sign(dx) : 0, facing: pl.ch.facing, charging: this.charging, stunned: pl.stun > 0 });
+    this.netLastState = st;
+    this.net.sendState({ t: now, ...st });
   }
 
   /** El rival se mueve hacia su último estado conocido (suavizado). */

@@ -20,8 +20,10 @@ export interface LoginState {
   last: string;
   /** día de la racha ya reclamado (1..7; 0 = nunca) */
   streak: number;
+  /** día del último bonus por anuncio para evitar reclamarlo más de una vez */
+  adBonusDay?: string;
 }
-export const newLoginState = (): LoginState => ({ last: '', streak: 0 });
+export const newLoginState = (): LoginState => ({ last: '', streak: 0, adBonusDay: '' });
 
 export type StyleId = 'classic' | 'red' | 'green' | 'gold';
 export type ItemKind = 'ability' | 'skin' | 'style';

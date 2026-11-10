@@ -1,11 +1,13 @@
 import Phaser from 'phaser';
 import { FONT, restartOnResize } from '../ui/theme';
+import { arcadeButton } from '../ui/modeButtons';
 import { GOLD, NAVY, SECTOR, addSectorContent, drawSlotIcon, drawWheelFace, isSpecial, sectorCenter } from '../ui/wheelArt';
 import { WHEEL, type WheelSlot } from '../domain/wheelConfig';
 import type { WheelReward } from '../domain/wheelState';
 import { slotById } from '../domain/dailyWheel';
-import { claimWheel, spinWheel, wheelSpin } from '../logic/Wheels';
+import { claimWheel, claimWheelAdBonus, spinWheel, wheelSpin } from '../logic/Wheels';
 import { wheelClaim, wheelStart, wheelTick, wheelWin } from '../fx/wheelSound';
+import { canShowRewardedAds, showRewarded } from '../ads/ads';
 
 /**
  * Pantalla de RULETA DIARIA (overlay sobre el menú).
@@ -350,6 +352,7 @@ export class WheelScene extends Phaser.Scene {
   /** Un toque en cualquier parte: gira (1.º), da más potencia (2.º a 4.º) o continúa (con el premio ya a la vista). */
   private onTap(p: Phaser.Input.Pointer) {
     if (this.phase === 'result') {
+      if (p.y > this.scale.height * 0.74 && p.y < this.scale.height * 0.86) return; // reserva táctil del botón bonus
       if (this.canContinue) this.close();
       return;
     }
@@ -556,6 +559,26 @@ export class WheelScene extends Phaser.Scene {
     if (note) {
       const nt = this.add.text(cx, label.y + 48, note, { fontFamily: FONT, fontSize: '22px', color: '#cfe0ff', stroke: '#0a1638', strokeThickness: 5 }).setOrigin(0.5).setAlpha(0);
       this.tweens.add({ targets: nt, alpha: 1, delay: t0 + 800, duration: 300 });
+    }
+
+    const savedSpin = wheelSpin(this.index, this.bonus);
+    if (canShowRewardedAds() && savedSpin?.claimed && !savedSpin.adBonusClaimed) {
+      let bonusBtn!: Phaser.GameObjects.Container;
+      bonusBtn = arcadeButton(this, cx, H * 0.8, Math.min(410, W - 48), 70, 'VER ANUNCIO · PREMIO x2', async () => {
+        bonusBtn.disableInteractive();
+        const earned = await showRewarded('wheel_reward_bonus');
+        if (earned) {
+          const extra = claimWheelAdBonus(this.index, this.bonus);
+          const text = bonusBtn.getData('label') as Phaser.GameObjects.Text | undefined;
+          if (extra) text?.setText(extra.kind === 'item' ? 'BONUS RECLAMADO' : `BONUS +${extra.amount.toLocaleString('es-CL')}`);
+        } else {
+          bonusBtn.setInteractive({ useHandCursor: true });
+          const msg = this.add.text(cx, H * 0.865, 'Anuncio no disponible · premio conservado', { fontFamily: FONT, fontSize: '18px', color: '#ffffff', stroke: '#0a1638', strokeThickness: 5 }).setOrigin(0.5);
+          this.time.delayedCall(2400, () => msg.destroy());
+        }
+      }, { palette: 'blue' });
+      bonusBtn.on('pointerdown', (_p: Phaser.Input.Pointer, _x: number, _y: number, event: Phaser.Types.Input.EventData) => event.stopPropagation());
+      bonusBtn.setDepth(100);
     }
 
     // 5) tocar para continuar (cualquier parte)

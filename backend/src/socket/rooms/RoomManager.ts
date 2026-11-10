@@ -26,7 +26,7 @@ export interface RoomPlayer {
 
 export interface RoomResult {
   winner: Role;
-  reason: 'score' | 'abandon' | 'disconnect';
+  reason: 'score' | 'abandon' | 'disconnect' | 'timeout';
   games: { host: number; guest: number };
 }
 
@@ -188,6 +188,21 @@ export class RoomManager {
       return { room, matchOver: true };
     }
     return { room, matchOver: false };
+  }
+
+  /**
+   * El partido superó la duración máxima: se cierra la sala. Gana quien vaya arriba en juegos y, si empatan,
+   * en puntos del juego actual; con empate total, el host. Devuelve null si ya no estaba en juego.
+   */
+  endByTimeout(roomId: string): Room | null {
+    const room = this.rooms.get(roomId);
+    if (!room || room.status !== 'PLAYING') return null;
+    const [gh, gg] = room.score.games;
+    const [ph, pg] = room.score.points;
+    const hostAhead = gh !== gg ? gh > gg : ph >= pg;
+    room.status = 'FINISHED';
+    room.result = { winner: hostAhead ? 'host' : 'guest', reason: 'timeout', games: this.gamesOf(room) };
+    return room;
   }
 
   gamesOf(room: Room) {

@@ -13,6 +13,7 @@ import { WHEEL } from '../domain/wheelConfig';
 import { getPlayer } from '../domain/playerStore';
 import { RANKED } from '../domain/rankedConfig';
 import { myPosition, rankedState, settleCurrentRanked } from '../logic/Ranked';
+import { showInterstitial } from '../ads/ads';
 
 /** Id único de partida (ruletas: cada partida se cuenta una sola vez). */
 function newMatchId(): string {
@@ -131,6 +132,7 @@ export class MatchEndScene extends Phaser.Scene {
     this.resultPanel(W, panelTop, panelH);
     this.buttons(W, btnY, btnH);
     if (win) this.confetti(W, H);
+    if (win) this.time.delayedCall(900, () => { void showInterstitial('match_victory'); });
   }
 
   // ---------------------------------------------------------------- anuncio

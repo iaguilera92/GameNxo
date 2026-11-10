@@ -5,7 +5,8 @@ import { arcadeButton } from './modeButtons';
 import { drawCoinIcon, drawGiftIcon } from './wheelArt';
 import { drawCashIcon } from '../scenes/BattlePassScene';
 import { LOGIN } from '../domain/dailyLogin';
-import { claimLogin, loginStatus } from '../logic/Ranked';
+import { claimLogin, claimLoginRewardAdBonus, loginStatus } from '../logic/Ranked';
+import { canShowRewardedAds, showInterstitial, showRewarded } from '../ads/ads';
 
 const NAVY = 0x0b1733;
 const NEON = 0x3a7bff;
@@ -175,14 +176,36 @@ export function openDailyLogin(scene: Phaser.Scene, onChange: () => void, onToas
   if (st.claimed) {
     p.add(arcadeButton(scene, 0, by, 310, 72, 'VUELVE MAÑANA', close, { palette: 'blue' }));
   } else {
-    p.add(
-      arcadeButton(scene, 0, by, 330, 78, 'RECLAMAR', () => {
+    let claimBtn!: Phaser.GameObjects.Container;
+    claimBtn = arcadeButton(scene, 0, by, 330, 78, 'RECLAMAR', () => {
         const res = claimLogin();
-        close();
         onChange();
-        if (res.given) onToast(`+${res.given.coins.toLocaleString('es-CL')} monedas${res.given.cash ? ` · +${res.given.cash} dinero` : ''}`);
-      }, { palette: 'yellow' }),
-    );
+        if (!res.given) return;
+        onToast(`+${res.given.coins.toLocaleString('es-CL')} monedas${res.given.cash ? ` · +${res.given.cash} dinero` : ''}`);
+        void showInterstitial('daily_reward');
+        if (!canShowRewardedAds()) { close(); return; }
+        claimBtn.destroy();
+        let bonusBtn!: Phaser.GameObjects.Container;
+        bonusBtn = arcadeButton(scene, 0, by, 360, 72, 'VER ANUNCIO · PREMIO x2', async () => {
+          bonusBtn.disableInteractive();
+          if (await showRewarded('daily_reward_bonus')) {
+            const bonus = claimLoginRewardAdBonus();
+            if (bonus.given) {
+              onToast(`Bonus: +${bonus.given.coins.toLocaleString('es-CL')} monedas${bonus.given.cash ? ` · +${bonus.given.cash} dinero` : ''}`);
+              bonusBtn.destroy();
+            }
+          } else {
+            bonusBtn.setInteractive({ useHandCursor: true });
+            onToast('Anuncio no disponible; conservas tu premio diario');
+          }
+        }, { palette: 'blue' });
+        bonusBtn.on('pointerdown', (_p: Phaser.Input.Pointer, _x: number, _y: number, event: Phaser.Types.Input.EventData) => event.stopPropagation());
+        bonusBtn.on('pointerup', (_p: Phaser.Input.Pointer, _x: number, _y: number, event: Phaser.Types.Input.EventData) => event.stopPropagation());
+        p.add(bonusBtn);
+      }, { palette: 'yellow' });
+    claimBtn.on('pointerdown', (_p: Phaser.Input.Pointer, _x: number, _y: number, event: Phaser.Types.Input.EventData) => event.stopPropagation());
+    claimBtn.on('pointerup', (_p: Phaser.Input.Pointer, _x: number, _y: number, event: Phaser.Types.Input.EventData) => event.stopPropagation());
+    p.add(claimBtn);
   }
   if (scene.textures.exists('daily-coins-art')) {
     p.add(scene.add.image(-pw / 2 + 82, ph / 2 - 61, 'daily-coins-art').setDisplaySize(88, 88));

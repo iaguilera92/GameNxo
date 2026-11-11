@@ -493,6 +493,17 @@ const K = {
   hitImpact: 5, // derecha / revÃ©s (normal y potente): el contacto se ve en el frame 6
   serveImpact: 4, // saque, saque con efecto, remate y smash potenciado: contacto en el frame 5
   smashImpact: 4,
+  /**
+   * Centro del cordaje en el frame de impacto del saque (frame 5 de serve.png / serve-spin.png), MEDIDO sobre las
+   * tiras: `z` = altura sobre los pies y `dx` = desplazamiento lateral (+ = derecha de la pantalla), en unidades del
+   * personaje (alto 150). El juego pone ahí la pelota y calcula el salto del saque (MatchScene.serveJump). Si cambian
+   * las hojas del saque hay que volver a medirlo (ver docs/SPRITES.md).
+   */
+  serveRacket: MAI
+    ? { normal: { dx: 12, z: 128 }, spin: { dx: 20, z: 146 } }
+    : FRONT
+      ? { normal: { dx: 35, z: 143 }, spin: { dx: -4, z: 144 } }
+      : { normal: { dx: 5, z: 129 }, spin: { dx: 14, z: 145 } },
 };
 /**
  * Smash potenciado (hoja 2, fila 8): viene dibujado mÃ¡s chico (~80 px). La escala POR FILA de arriba ya lo
@@ -530,6 +541,7 @@ write(PFX + 'hits', {
   hold: K.hold,
   serveWait: K.serveWait,
   smashStart: K.smashStart,
+  serveRacket: K.serveRacket,
   holdForehand: K.fhHold,
   holdPower: K.powerHold,
   holdPowerForehand: K.powerHoldFh,

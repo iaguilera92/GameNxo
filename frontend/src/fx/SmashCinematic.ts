@@ -4,7 +4,8 @@ import Phaser from 'phaser';
  * CINEMÁTICAS DE GOLPE ESPECIAL sobre la misma cancha (sin cambiar de escena ni cámara).
  * Un solo motor con perfiles:
  *   SMASH_CINE     SMASH de habilidad — 1 s (pausa, energía, destello, golpe)
- *   INFERNO_CINE   INFERNO DRIVE (logic/InfernoDrive.ts) — 2 s (concentración, desplazamiento, impacto)
+ *   INFERNO_CINE   INFERNO DRIVE (logic/InfernoDrive.ts) — 2 s (concentración, desplazamiento, impacto); con los
+ *                  colores y la forma de la energía de cada poder: infernoCine(poder) en fx/InfernoFx.ts
  *
  * La escena la lanza SOLO con el contacto ya confirmado/validado. Mientras `active`:
  *   - la simulación del partido no avanza (la escena salta su update: física, jugadores, IA, relojes),
@@ -42,6 +43,13 @@ export interface CineProfile {
   colors: { core: number; gold: number; hot: number; cyan: number };
   /** capas del aura ceñida detrás del personaje: [escala sobre su silueta, color, alfa] (por defecto, la del SMASH) */
   aura?: [number, number, number][];
+  /**
+   * forma de la energía que llega al personaje: 'beam' (líneas de luz, por defecto) o 'ice' (esquirlas de hielo
+   * con escarcha y cristales en vez de puntos)
+   */
+  rayStyle?: 'beam' | 'ice';
+  /** color del destello en la raqueta al golpear (por defecto, blanco cálido) */
+  flashTint?: number;
 }
 
 export const SMASH_CINE: CineProfile & { enabled: boolean } = {
@@ -292,6 +300,7 @@ export class SmashCinematic {
     const D = P.durationMs;
     const C = P.colors;
     const G = P.glow;
+    const ice = P.rayStyle === 'ice';
     // durante la cola el ejecutor ya se mueve: se sigue su posición si aún hay opciones
     const f = this.opts ? this.opts.focus() : this.lastFocus;
     if (!f) return;
@@ -366,6 +375,10 @@ export class SmashCinematic {
         const x1 = f.x + cx * head;
         const y1 = f.y + cy * head;
         const wk = (e < P.focusMs ? 1 : 1.35) * G;
+        if (ice) {
+          this.iceShard(g, x0, y0, x1, y1, col, fade, wk);
+          continue;
+        }
         g.lineStyle(18 * wk, col, 0.14 * fade).lineBetween(x0, y0, x1, y1); // halo suave
         g.lineStyle(8 * wk, col, 0.5 * fade).lineBetween(x0, y0, x1, y1);
         g.lineStyle(3 * wk, 0xffffff, 1 * fade).lineBetween(x0, y0, x1, y1); // núcleo luminoso
@@ -394,7 +407,13 @@ export class SmashCinematic {
         } else p.life = 0;
       }
       if (p.life <= 0) continue;
-      g.fillStyle(p.col, 0.9 * clamp01(energy + 0.2)).fillCircle(f.x + Math.cos(p.a) * p.r, f.y + Math.sin(p.a) * p.r * 0.8, p.size * (0.7 + 0.5 * k));
+      const px = f.x + Math.cos(p.a) * p.r;
+      const py = f.y + Math.sin(p.a) * p.r * 0.8;
+      const pa = 0.9 * clamp01(energy + 0.2);
+      const ps = p.size * (0.7 + 0.5 * k);
+      // hielo: cristales que apuntan hacia el personaje y giran un poco al caer; si no, puntos de luz
+      if (ice) this.iceCrystal(g, px, py, ps * 1.3, p.a + p.r * 0.02, p.col, pa);
+      else g.fillStyle(p.col, pa).fillCircle(px, py, ps);
     }
     // brillo en la raqueta: suave y latiendo en la máxima energía (sin anillos ni ondas)
     if (e < P.hitAtMs) {
@@ -411,12 +430,72 @@ export class SmashCinematic {
       const w = atHit ? (60 + 220 * q) * k : hh * (1.8 + 0.6 * q);
       const h = atHit ? w : hh * (3.2 + 0.7 * q);
       this.flashImg
-        .setTint(atHit ? 0xfff1c8 : 0xffffff)
+        .setTint(atHit ? (P.flashTint ?? 0xfff1c8) : 0xffffff)
         .setPosition(atHit ? f.racketX : f.x, atHit ? f.racketY : f.y)
         .setDisplaySize(w, h)
         .setAlpha(0.85 * (1 - q) * (1 - q))
         .setVisible(true);
     } else this.flashImg.setVisible(false);
+  }
+
+  /**
+   * Rayo de hielo (`rayStyle: 'ice'`): esquirla alargada de la cola (x0, y0) a la punta (x1, y1), más ancha cerca de
+   * la punta, con halo tenue, arista blanca, ramitas de escarcha que apuntan hacia la punta y un destello de cristal en ella.
+   */
+  private iceShard(g: Phaser.GameObjects.Graphics, x0: number, y0: number, x1: number, y1: number, col: number, fade: number, wk: number) {
+    const dx = x1 - x0;
+    const dy = y1 - y0;
+    const len = Math.hypot(dx, dy);
+    if (len < 1) return;
+    const ux = dx / len;
+    const uy = dy / len;
+    const nx = -uy;
+    const ny = ux;
+    const mx = x0 + dx * 0.72; // parte más ancha
+    const my = y0 + dy * 0.72;
+    for (const [w, a] of [
+      [9 * wk, 0.2],
+      [5 * wk, 0.6],
+    ] as const) {
+      g.fillStyle(col, a * fade);
+      g.fillTriangle(x0, y0, mx + nx * w, my + ny * w, mx - nx * w, my - ny * w);
+      g.fillTriangle(x1, y1, mx + nx * w, my + ny * w, mx - nx * w, my - ny * w);
+    }
+    g.lineStyle(2 * wk, 0xffffff, 0.95 * fade).lineBetween(x0 + dx * 0.25, y0 + dy * 0.25, x1, y1);
+    // escarcha: ramitas hacia la punta, como los brazos de un copo (cada vez más cortas)
+    g.lineStyle(1.4 * wk, 0xe6fbff, 0.75 * fade);
+    for (const [at, f] of [
+      [0.32, 0.09],
+      [0.5, 0.07],
+      [0.66, 0.05],
+    ] as const) {
+      const bx = x0 + dx * at;
+      const by = y0 + dy * at;
+      const bl = len * f;
+      g.lineBetween(bx, by, bx + ux * bl + nx * bl * 0.75, by + uy * bl + ny * bl * 0.75);
+      g.lineBetween(bx, by, bx + ux * bl - nx * bl * 0.75, by + uy * bl - ny * bl * 0.75);
+    }
+    const ang = Math.atan2(uy, ux);
+    this.iceCrystal(g, x1, y1, 4.5 * wk, ang, 0xffffff, fade);
+    this.iceCrystal(g, x1, y1, 2.8 * wk, ang + Math.PI / 2, 0xffffff, 0.8 * fade);
+  }
+
+  /** Cristal de hielo: rombo alargado según `ang` (eje largo 1,6·r) con un rombo blanco más pequeño dentro. */
+  private iceCrystal(g: Phaser.GameObjects.Graphics, x: number, y: number, r: number, ang: number, col: number, alpha: number) {
+    const ca = Math.cos(ang);
+    const sa = Math.sin(ang);
+    for (const [k, c, a] of [
+      [1, col, alpha],
+      [0.45, 0xffffff, alpha * 0.9],
+    ] as const) {
+      const lx = ca * r * 1.6 * k;
+      const ly = sa * r * 1.6 * k;
+      const wx = -sa * r * 0.6 * k;
+      const wy = ca * r * 0.6 * k;
+      g.fillStyle(c, a);
+      g.fillTriangle(x + lx, y + ly, x + wx, y + wy, x - wx, y - wy);
+      g.fillTriangle(x - lx, y - ly, x + wx, y + wy, x - wx, y - wy);
+    }
   }
 }
 

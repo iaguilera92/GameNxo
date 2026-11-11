@@ -16,6 +16,23 @@ export function drawDisc(g: Phaser.GameObjects.Graphics, R: number, color: numbe
   g.fillStyle(0xffffff, 0.3).fillEllipse(-R * 0.15, -R * 0.45, R * 1.2, R * 0.55);
 }
 
+/**
+ * Icono del poder DESTELLO (domain/defensivePowers.ts), centrado en (0,0) con radio R: tres haces de luz que
+ * convergen en una chispa de cuatro puntas (el teletransporte a la pelota).
+ */
+export function drawBlinkIcon(g: Phaser.GameObjects.Graphics, R: number) {
+  const lines: [number, number, number][] = [[-0.68, -0.34, 0.1], [-0.82, 0, 0.14], [-0.68, 0.34, 0.1]];
+  for (const [x0, y, wk] of lines) {
+    g.lineStyle(R * wk + 6, C.outline).lineBetween(R * x0, R * y, R * 0.1, R * y * 0.35);
+    g.lineStyle(R * wk, 0xffffff).lineBetween(R * x0, R * y, R * 0.1, R * y * 0.35);
+  }
+  const cx = R * 0.38;
+  const star = [0, -0.62, 0.14, -0.14, 0.62, 0, 0.14, 0.14, 0, 0.62, -0.14, 0.14, -0.62, 0, -0.14, -0.14].map((v) => v * R * 0.8);
+  g.fillStyle(C.outline).fillPoints(pts(star.map((v, i) => (i % 2 ? v * 1.2 : v * 1.2 + cx))), true);
+  g.fillStyle(0xfff36b).fillPoints(pts(star.map((v, i) => (i % 2 ? v : v + cx))), true);
+  g.fillStyle(0xffffff).fillCircle(cx, 0, R * 0.12);
+}
+
 /** Dibuja el icono de una habilidad centrado en (0,0) con radio de referencia R. */
 export function drawAbilityIcon(g: Phaser.GameObjects.Graphics, icon: AbilityIcon, R: number) {
   if (icon === 'dash') {

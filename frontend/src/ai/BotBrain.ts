@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { COURT, DASH_COOLDOWN, HIT_MAX_Z, HIT_RANGE, NET_X, PLAYER_SPEED, SHOT_SPEED, SMASH_COOLDOWN, SMASH_SPEED_MULT } from '../config';
 import { BotAI } from '../logic/BotAI';
+import { INFERNO } from '../logic/InfernoDrive';
 import type { BallState, ShotKind } from '../objects/Ball';
 import type { BotProfile, BotTier } from './BotProfile';
 import { type BotMode, MOOD, isKeyPoint, nextMode } from './BotMood';
@@ -96,6 +97,8 @@ export interface ShotPlan {
   quality: number;
   /** SMASH del rival: bola de fuego (si la tocas, quedas aturdido) */
   power?: boolean;
+  /** ULTI del rival (INFERNO DRIVE): además de `power`, la escena pone la esfera de fuego y los efectos del poder */
+  ulti?: boolean;
 }
 
 /** Estrategia de golpes (Etapa 4). */
@@ -112,16 +115,21 @@ const STRAT = {
 };
 
 /**
- * Habilidades del rival (como el jugador): DASH (sprint cuando no llega) y SMASH (bola de fuego).
- * Por tramo: `dash` / `smash` = probabilidad de usarla cuando la situación lo pide (0 = no la tiene);
- * `cd` = multiplicador del enfriamiento (los flojos tardan más en recargar).
+ * Habilidades del rival (como el jugador): DEFENSIVO (DASH: sprint cuando no llega), ESPECIAL (SMASH: bola de fuego)
+ * y ULTI (INFERNO: se carga con 3 puntos ganados, como la tuya).
+ * Por tramo: `dash` / `smash` / `ulti` = probabilidad de usarla cuando la situación lo pide (0 = no la tiene);
+ * `cd` = multiplicador del enfriamiento (los flojos tardan más en recargar). Todos los tramos tienen ESPECIAL y ULTI
+ * (si no, contra rivales de nivel bajo nunca se verían); los más flojos la usan menos.
+ * power = velocidad de sus tiros de poder (ESPECIAL y ULTI) respecto a SMASH_AI.speedK: los niveles bajos los lanzan más
+ * lentos para que un jugador nuevo pueda alcanzarlos (medido con tools/sim-balance.mjs: a velocidad completa, el
+ * ESPECIAL del nivel más bajo ganaba el 99 % de los puntos en que lo usaba; con 0,7 baja a ~60 %).
  */
-const ABIL: Record<BotTier, { dash: number; smash: number; cd: number }> = {
-  principiante: { dash: 0, smash: 0, cd: 1.6 },
-  facil: { dash: 0.4, smash: 0, cd: 1.4 },
-  normal: { dash: 0.65, smash: 0.22, cd: 1.2 },
-  dificil: { dash: 0.85, smash: 0.4, cd: 1 },
-  experto: { dash: 1, smash: 0.6, cd: 0.85 },
+const ABIL: Record<BotTier, { dash: number; smash: number; ulti: number; cd: number; power: number }> = {
+  principiante: { dash: 0, smash: 0.2, ulti: 0.4, cd: 1.6, power: 0.7 },
+  facil: { dash: 0.4, smash: 0.3, ulti: 0.55, cd: 1.4, power: 0.75 },
+  normal: { dash: 0.65, smash: 0.42, ulti: 0.7, cd: 1.2, power: 0.85 },
+  dificil: { dash: 0.85, smash: 0.55, ulti: 0.85, cd: 1, power: 0.9 },
+  experto: { dash: 1, smash: 0.7, ulti: 1, cd: 0.85, power: 1 },
 };
 const DASH_AI = {
   /** se lanza si al punto previsto le faltan más de estos s a su velocidad normal */
@@ -131,10 +139,20 @@ const DASH_AI = {
   mult: 2.4,
 };
 const SMASH_AI = {
-  /** contacto mínimo para intentarlo (no remata estirado) */
-  minQuality: 0.6,
+  /**
+   * contacto mínimo para intentarlo. 0 = sin exigencia: el rival golpea en cuanto la pelota entra en su alcance, así que su
+   * calidad de contacto casi nunca pasa de 0,15 (medido con tools/sim-balance.mjs: 100 % de los golpes < 0,3). Con 0,6 el
+   * ESPECIAL no salía nunca.
+   */
+  minQuality: 0,
   /** velocidad respecto al SMASH del jugador (algo menos: que se pueda leer) */
   speedK: 0.9,
+};
+const ULTI_AI = {
+  /** contacto mínimo para lanzar la ulti (0 = sin exigencia, por lo mismo que SMASH_AI.minQuality) */
+  minQuality: 0,
+  /** el desplazamiento de la ulti acerca al rival a la pelota esta fracción de la distancia (como el jugador) */
+  moveToBall: 0.35,
 };
 
 /** Evento del sprint del DASH en este paso (la escena pone la animación). */
@@ -144,6 +162,8 @@ export class BotBrain {
   /** enfriamientos restantes de las habilidades (s) */
   private dashCd = 0;
   private smashCd = 0;
+  /** carga de la ULTI: puntos ganados por el rival (INFERNO.pointsToCharge = lista), como la del jugador */
+  private ultiCharge = 0;
   /** s que le quedan de sprint (DASH en curso) */
   private dashT = 0;
   /** ya decidió si usar el DASH para la pelota que viene */
@@ -173,6 +193,51 @@ export class BotBrain {
     this.ai = new BotAI(profile?.difficulty);
     // el SMASH no está listo desde el primer punto (tarda medio enfriamiento)
     this.smashCd = SMASH_COOLDOWN * 0.5 * this.abil.cd;
+  }
+
+  /** El rival ganó un punto: +1 de carga de la ULTI (hasta el máximo). */
+  onPointWon() {
+    this.ultiCharge = Math.min(INFERNO.pointsToCharge, this.ultiCharge + 1);
+  }
+
+  /** ULTI cargada (se consume al lanzarla: planShot con `ulti`). */
+  get ultiReady() {
+    return this.ultiCharge >= INFERNO.pointsToCharge;
+  }
+
+  /** Puntos de carga de la ULTI (para pruebas). */
+  get ultiPoints() {
+    return this.ultiCharge;
+  }
+
+  /**
+   * Calidad del contacto (0..1): lo estirado que llega a la pelota (mismo cálculo de alcance que el juego) y la altura.
+   * La usan planShot y wantsUlti.
+   */
+  private contactQuality(ball: BallState, ctx: ShotContext): number {
+    const cdx = ball.x - (ctx.botX - 15);
+    const cdy = (ball.y - ctx.botY) * 1.25;
+    const stretch = Math.hypot(cdx, cdy) / HIT_RANGE;
+    let q = 1 - clamp((stretch - STRAT.cleanReach) / (1 - STRAT.cleanReach), 0, 1);
+    if (ball.z > HIT_MAX_Z * 0.75) q *= 0.8;
+    return q;
+  }
+
+  /**
+   * ¿Lanza la ULTI con este golpe? Cargada, con buen contacto y según su tramo (más a menudo en puntos con tensión).
+   * La escena lo pregunta UNA vez por golpe, cuando la pelota ya está a su alcance; si es true, hace la cinemática y
+   * luego llama a planShot(…, true).
+   */
+  wantsUlti(ball: BallState, ctx: ShotContext): boolean {
+    if (!this.ultiReady || this.abil.ulti <= 0) return false;
+    if (this.contactQuality(ball, ctx) < ULTI_AI.minQuality) return false;
+    const mood = this._mode === 'competitivo' ? 1.2 : this._mode === 'concentrado' ? 1.1 : 1;
+    return Math.random() < Math.min(1, this.abil.ulti * mood);
+  }
+
+  /** Fracción de la distancia a la pelota que avanza el rival durante el desplazamiento de la ULTI. */
+  get ultiMoveToBall() {
+    return ULTI_AI.moveToBall;
   }
 
   /** Modo de comportamiento del punto en curso (NORMAL / CONCENTRADO / COMPETITIVO). */
@@ -298,20 +363,33 @@ export class BotBrain {
    *  3. EJECUCIÓN: destino, velocidad y margen sobre la red; con error según la calidad y, a veces, fuera.
    * Solo decide números: la física la aplica la escena con aimShot, igual que siempre.
    */
-  planShot(ball: BallState, ctx: ShotContext): ShotPlan {
+  planShot(ball: BallState, ctx: ShotContext, ulti = false): ShotPlan {
     const ai = this.ai;
     const d = ai.d;
     const away = ctx.playerY > LAT_C ? -1 : 1; // lado contrario al jugador
     const ownLen = NET_X - COURT.left; // largo del campo del jugador
 
     // 1) calidad de contacto: lo estirado que llega (mismo cálculo de alcance que el juego) y la altura
-    const cdx = ball.x - (ctx.botX - 15);
-    const cdy = (ball.y - ctx.botY) * 1.25;
-    const stretch = Math.hypot(cdx, cdy) / HIT_RANGE;
-    let q = 1 - clamp((stretch - STRAT.cleanReach) / (1 - STRAT.cleanReach), 0, 1);
-    if (ball.z > HIT_MAX_Z * 0.75) q *= 0.8;
+    const q = this.contactQuality(ball, ctx);
 
     const depth = (ctx.playerX - COURT.left) / ownLen; // 0 = en su línea de fondo, 1 = en la red
+
+    // ULTI (INFERNO DRIVE): la escena ya hizo la cinemática; golpe de máxima potencia lejos del jugador. Gasta la carga.
+    if (ulti) {
+      this.ultiCharge = 0;
+      this.lastIntents = ['deep', this.lastIntents[0]];
+      return {
+        tx: NET_X - ownLen * rand(0.75, 0.92),
+        ty: ctx.playerY > LAT_C ? COURT.top + rand(25, 60) : COURT.bottom - rand(25, 60),
+        speed: SHOT_SPEED * SMASH_SPEED_MULT * INFERNO.speedMult * SMASH_AI.speedK * this.abil.power,
+        kind: 'normal',
+        margin: 6,
+        intent: 'deep',
+        quality: q,
+        power: true,
+        ulti: true,
+      };
+    }
 
     // SMASH (habilidad): con buen contacto y la habilidad cargada; más a menudo en puntos con tensión
     // (modo COMPETITIVO) o con el jugador en la red (poco tiempo para esquivarla)
@@ -323,7 +401,7 @@ export class BotBrain {
         return {
           tx: NET_X - ownLen * rand(0.7, 0.9),
           ty: ctx.playerY > LAT_C ? COURT.top + rand(25, 60) : COURT.bottom - rand(25, 60), // lejos del jugador
-          speed: SHOT_SPEED * SMASH_SPEED_MULT * SMASH_AI.speedK,
+          speed: SHOT_SPEED * SMASH_SPEED_MULT * SMASH_AI.speedK * this.abil.power,
           kind: 'normal',
           margin: 6,
           intent: 'deep',

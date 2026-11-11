@@ -160,7 +160,7 @@ export class BattlePassScene extends Phaser.Scene {
     const { level, progress } = bpLevel(s.bp.xp);
     const cardW = (W - 48 - 96) / 2;
     const cx = this.numberColumnX(W, cardW);
-    const total = (BP_TIERS + 2) * ROW_H;
+    const total = this.rowTop(BP_TIERS + 2);
     this.scrollMin = Math.min(0, this.listH - total - 10);
     if (scrollToCurrent) {
       this.listOffset = 0;
@@ -169,36 +169,54 @@ export class BattlePassScene extends Phaser.Scene {
     this.renderVisibleRows(s, level, progress, cardW, cx);
   }
 
+  /**
+   * y (dentro de la lista) donde empieza cada fila. Todas miden ROW_H salvo la del ÚLTIMO nivel (el personaje nuevo),
+   * que mide el doble para que luzca; la fila del bonus queda después.
+   */
+  private rowTop(row: number) {
+    return row * ROW_H + (row > BP_TIERS ? ROW_H : 0);
+  }
+
+  private rowHeight(row: number) {
+    return row === BP_TIERS ? ROW_H * 2 : ROW_H;
+  }
+
   /** Mantiene solo las filas visibles y un pequeño margen, para reducir el trabajo gráfico en móvil. */
   private renderVisibleRows(s: PlayerState, level: number, progress: number, cardW: number, cx: number) {
     // Conserva un margen amplio: así no reconstruimos tarjetas cada vez que cruza una fila.
-    const first = Math.max(0, Math.floor(this.listOffset / (ROW_H * 3)) * 3 - 1);
+    const first = Math.max(0, Math.floor(this.listOffset / (ROW_H * 3)) * 3 - 2);
     if (first === this.firstRenderedTier) {
-      this.list.y = this.listTop + first * ROW_H - this.listOffset;
+      this.list.y = this.listTop + this.rowTop(first) - this.listOffset;
       return;
     }
     this.firstRenderedTier = first;
+    // los destellos animados de la tarjeta del personaje se recrean con ella: se quitan los anteriores
+    for (const t of this.tallTweens) t.remove();
+    this.tallTweens = [];
     this.list.removeAll(true);
-    const last = Math.min(BP_TIERS + 2, first + Math.ceil(this.listH / ROW_H) + 5);
-    const count = last - first;
-    const baseY = first * ROW_H;
+    const last = Math.min(BP_TIERS + 2, first + Math.ceil(this.listH / ROW_H) + 6);
+    const baseY = this.rowTop(first);
+    const rangeH = this.rowTop(last) - baseY; // alto de las filas dibujadas
     const panels = this.add.graphics();
     const panelW = cardW + 30;
     const leftX = 24 + cardW / 2;
     const rightX = this.scale.width - 24 - cardW / 2;
-    panels.fillStyle(0x061534, 0.82).fillRoundedRect(leftX - panelW / 2, 0, panelW, count * ROW_H, 30);
-    panels.lineStyle(3, 0x174c9b, 0.9).strokeRoundedRect(leftX - panelW / 2, 0, panelW, count * ROW_H, 30);
-    panels.fillStyle(0x251a06, 0.84).fillRoundedRect(rightX - panelW / 2, 0, panelW, count * ROW_H, 30);
-    panels.lineStyle(3, 0x806012, 0.9).strokeRoundedRect(rightX - panelW / 2, 0, panelW, count * ROW_H, 30);
+    panels.fillStyle(0x061534, 0.82).fillRoundedRect(leftX - panelW / 2, 0, panelW, rangeH, 30);
+    panels.lineStyle(3, 0x174c9b, 0.9).strokeRoundedRect(leftX - panelW / 2, 0, panelW, rangeH, 30);
+    panels.fillStyle(0x251a06, 0.84).fillRoundedRect(rightX - panelW / 2, 0, panelW, rangeH, 30);
+    panels.lineStyle(3, 0x806012, 0.9).strokeRoundedRect(rightX - panelW / 2, 0, panelW, rangeH, 30);
     this.list.add(panels);
     const path = this.add.graphics();
-    path.fillStyle(0x0a1638, 1).fillRoundedRect(cx - 9, ROW_H / 2, 18, count * ROW_H - ROW_H, 9);
-    path.fillStyle(0x223156, 1).fillRoundedRect(cx - 6, ROW_H / 2, 12, count * ROW_H - ROW_H, 6);
-    const doneY = (level + progress) * ROW_H - baseY;
-    if (level > first || progress > 0) path.fillStyle(0x5fd0ff, 1).fillRoundedRect(cx - 6, ROW_H / 2, 12, Phaser.Math.Clamp(doneY, 0, count * ROW_H - ROW_H), 6);
+    path.fillStyle(0x0a1638, 1).fillRoundedRect(cx - 9, ROW_H / 2, 18, rangeH - ROW_H, 9);
+    path.fillStyle(0x223156, 1).fillRoundedRect(cx - 6, ROW_H / 2, 12, rangeH - ROW_H, 6);
+    // el relleno llega al centro del nodo del nivel; el último nivel está más abajo (su fila es el doble de alta)
+    const v = level + progress;
+    const doneAbs = v <= BP_TIERS - 1 ? v * ROW_H : (BP_TIERS - 1) * ROW_H + (v - (BP_TIERS - 1)) * ROW_H * 1.5;
+    const doneY = doneAbs - baseY;
+    if (level > first || progress > 0) path.fillStyle(0x5fd0ff, 1).fillRoundedRect(cx - 6, ROW_H / 2, 12, Phaser.Math.Clamp(doneY, 0, rangeH - ROW_H), 6);
     this.list.add(path);
     for (let row = first; row < last; row++) {
-      const y = row * ROW_H + ROW_H / 2 - baseY;
+      const y = this.rowTop(row) + this.rowHeight(row) / 2 - baseY;
       if (row === 0) {
         const node = this.add.graphics({ x: cx, y });
         node.fillStyle(0x0a1638, 1).fillCircle(0, 0, 26);
@@ -240,7 +258,9 @@ export class BattlePassScene extends Phaser.Scene {
     const claimed = err === 'already_claimed';
     const ready = err === null;
     const prem = track === 'prem';
-    const h = ROW_H - 10;
+    // el último nivel (el personaje nuevo) ocupa el doble de alto
+    const tall = !welcome && tier === BP_TIERS && reward.kind === 'character' && this.textures.exists('bp-mai-portrait');
+    const h = (tall ? ROW_H * 2 : ROW_H) - 10;
     const c = this.add.container(x, y);
     c.setScale(prem ? 1.02 : 0.94);
     const g = this.add.graphics();
@@ -256,24 +276,27 @@ export class BattlePassScene extends Phaser.Scene {
     c.add(g);
     const needPrem = prem && !s.bp.premium;
 
-    // icono + texto del premio
-    const ic = this.add.graphics({ x: -w / 2 + 44, y: 0 });
-    this.drawReward(ic, reward);
-    c.add(ic);
-    if (reward.kind === 'character' && this.textures.exists('bp-mai-portrait')) {
-      c.add(this.add.image(-w / 2 + 44, 0, 'bp-mai-portrait').setDisplaySize(47, 62));
-      if (reward.style) {
-        const styleBadge = this.add.graphics({ x: -w / 2 + 63, y: -h / 2 + 14 });
-        styleBadge.fillStyle(GOLD, 1).fillCircle(0, 0, 11).lineStyle(2, 0xffffff, 1).strokeCircle(0, 0, 11);
-        c.add(styleBadge);
-        c.add(this.add.text(-w / 2 + 63, -h / 2 + 14, '★', { fontFamily: FONT, fontSize: '13px', color: '#3b2600' }).setOrigin(0.5));
+    if (tall && reward.kind === 'character') this.characterShowcase(c, w, h, prem, reward, ready ? accent : prem ? 0xc9962a : 0x2c3d66);
+    else {
+      // icono + texto del premio
+      const ic = this.add.graphics({ x: -w / 2 + 44, y: 0 });
+      this.drawReward(ic, reward);
+      c.add(ic);
+      if (reward.kind === 'character' && this.textures.exists('bp-mai-portrait')) {
+        c.add(this.add.image(-w / 2 + 44, 0, 'bp-mai-portrait').setDisplaySize(47, 62));
+        if (reward.style) {
+          const styleBadge = this.add.graphics({ x: -w / 2 + 63, y: -h / 2 + 14 });
+          styleBadge.fillStyle(GOLD, 1).fillCircle(0, 0, 11).lineStyle(2, 0xffffff, 1).strokeCircle(0, 0, 11);
+          c.add(styleBadge);
+          c.add(this.add.text(-w / 2 + 63, -h / 2 + 14, '★', { fontFamily: FONT, fontSize: '13px', color: '#3b2600' }).setOrigin(0.5));
+        }
       }
+      const label = rewardLabel(reward);
+      const t = this.add.text(-w / 2 + 78, -8, label.top, { fontFamily: FONT, fontSize: '26px', color: prem ? '#ffd23f' : '#ffffff', fontStyle: 'bold', stroke: '#06122e', strokeThickness: 3 }).setOrigin(0, 0.5);
+      fitText(t, w - 115);
+      c.add(t);
+      c.add(this.add.text(-w / 2 + 80, 20, label.sub, { fontFamily: FONT, fontSize: '14px', color: '#d1e3ff', stroke: '#06122e', strokeThickness: 2 }).setOrigin(0, 0.5).setLetterSpacing(1));
     }
-    const label = rewardLabel(reward);
-    const t = this.add.text(-w / 2 + 78, -8, label.top, { fontFamily: FONT, fontSize: '26px', color: prem ? '#ffd23f' : '#ffffff', fontStyle: 'bold', stroke: '#06122e', strokeThickness: 3 }).setOrigin(0, 0.5);
-    fitText(t, w - 115);
-    c.add(t);
-    c.add(this.add.text(-w / 2 + 80, 20, label.sub, { fontFamily: FONT, fontSize: '14px', color: '#d1e3ff', stroke: '#06122e', strokeThickness: 2 }).setOrigin(0, 0.5).setLetterSpacing(1));
 
     if (claimed) {
       c.add(this.add.rectangle(0, 0, w, h, 0x02060f, 0.5));
@@ -305,6 +328,106 @@ export class BattlePassScene extends Phaser.Scene {
       });
     }
     this.list.add(c);
+  }
+
+  /**
+   * Contenido de la tarjeta grande del último nivel: el personaje nuevo a casi todo el alto de la tarjeta, con rayos de
+   * luz y un resplandor detrás, destellos que titilan, su nombre grande y una etiqueta (GRATIS / ESTILO ORO).
+   * (0,0) = centro de la tarjeta. `line` = color del borde (se vuelve a trazar encima de los rayos).
+   */
+  private characterShowcase(c: Phaser.GameObjects.Container, w: number, h: number, prem: boolean, reward: Extract<BpReward, { kind: 'character' }>, line: number) {
+    const accent = prem ? GOLD : 0x6fc3ff;
+    const box = { x0: 118, y0: 4, x1: 1070, y1: 1356 }; // caja visible de mai_portrait.png (1130 × 1392), como en characters/portrait.ts
+    const vh = h - 24;
+    const vw = ((box.x1 - box.x0) / (box.y1 - box.y0)) * vh;
+    const feetY = h / 2 - 10;
+    const px = -w / 2 + 10 + vw / 2;
+
+    // rayos de luz que salen de detrás del personaje (recortados al interior de la tarjeta)
+    const rays = this.add.graphics();
+    this.sunburst(rays, px, -h * 0.06, w, h, prem ? 0xffd23f : 0x8fd8ff, 0.1);
+    c.add(rays);
+    // resplandor
+    const glow = this.add.graphics().setBlendMode(Phaser.BlendModes.ADD);
+    for (const [k, a] of [[1.5, 0.08], [1.2, 0.1], [0.9, 0.12]] as const) glow.fillStyle(accent, a).fillEllipse(px, -h * 0.04, vw * k, vh * 0.95 * (k / 1.5 + 0.3));
+    c.add(glow);
+    this.tallTweens.push(this.tweens.add({ targets: glow, alpha: { from: 0.55, to: 1 }, duration: 1500, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' }));
+    // sombra en el suelo
+    c.add(this.add.ellipse(px, feetY + 2, vw * 0.95, 14, 0x000000, 0.4));
+
+    // personaje
+    const img = this.add.image(px, feetY, 'bp-mai-portrait');
+    img.setOrigin(((box.x0 + box.x1) / 2) / img.width, box.y1 / img.height);
+    img.setScale(vh / (box.y1 - box.y0));
+    c.add(img);
+
+    // destellos que titilan (en la columna del texto y alrededor del personaje)
+    const spark: [number, number, number][] = [[0.1, -0.36, 7], [0.62, -0.42, 5], [0.9, -0.12, 6], [0.78, 0.3, 5], [0.04, 0.08, 4], [0.5, 0.44, 4]];
+    spark.forEach(([fx, fy, r], i) => {
+      const st = this.add.star(-w / 2 + w * fx, h * fy, 4, r * 0.35, r, prem ? 0xfff1b8 : 0xe6f8ff).setBlendMode(Phaser.BlendModes.ADD);
+      c.add(st);
+      this.tallTweens.push(this.tweens.add({ targets: st, alpha: { from: 0.1, to: 1 }, scale: { from: 0.5, to: 1.15 }, angle: 45, duration: 700 + i * 140, delay: i * 190, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' }));
+    });
+
+    // texto: nombre grande + etiqueta
+    const left = -w / 2 + 10 + vw + 6;
+    const right = w / 2 - 12;
+    const colW = right - left;
+    const cx = (left + right) / 2;
+    const name = this.add.text(cx, -h * 0.14, reward.name.split(' · ')[0].toUpperCase(), { fontFamily: FONT, fontSize: '48px', color: prem ? '#ffd23f' : '#ffffff', fontStyle: 'bold', stroke: '#06122e', strokeThickness: 5 }).setOrigin(0.5);
+    fitText(name, colW);
+    c.add(name);
+    c.add(this.add.text(cx, -h * 0.14 + 36, 'PERSONAJE NUEVO', { fontFamily: FONT, fontSize: '13px', color: '#d1e3ff', stroke: '#06122e', strokeThickness: 2, align: 'center', wordWrap: { width: colW } }).setOrigin(0.5, 0).setLetterSpacing(1));
+    const tagY = h * 0.26;
+    const tagW = Math.min(colW, 118);
+    const tag = this.add.graphics();
+    tag.fillStyle(0x06122e, 1).fillRoundedRect(cx - tagW / 2 - 2, tagY - 15, tagW + 4, 30, 15);
+    tag.fillStyle(prem ? GOLD : 0x2f8bff, 1).fillRoundedRect(cx - tagW / 2, tagY - 13, tagW, 26, 13);
+    tag.fillStyle(0xffffff, 0.3).fillRoundedRect(cx - tagW / 2 + 6, tagY - 11, tagW - 12, 8, 4);
+    c.add(tag);
+    const tagText = this.add.text(cx, tagY, reward.style ? '★ ESTILO ORO' : 'GRATIS', { fontFamily: FONT, fontSize: '15px', color: prem ? '#3b2600' : '#ffffff' }).setOrigin(0.5);
+    fitText(tagText, tagW - 10);
+    c.add(tagText);
+
+    // borde encima de los rayos
+    const frame = this.add.graphics();
+    frame.lineStyle(prem ? 4 : 3, line, 1).strokeRoundedRect(-w / 2, -h / 2, w, h, 16);
+    c.add(frame);
+  }
+
+  /** Rayos de luz (cuñas alternas) desde (cx, cy), recortados al rectángulo de la tarjeta (centrada en 0,0, con 4 px de margen). */
+  private sunburst(g: Phaser.GameObjects.Graphics, cx: number, cy: number, w: number, h: number, color: number, alpha: number) {
+    const R = w / 2 - 4;
+    const L = -R;
+    const B = h / 2 - 4;
+    const T = -B;
+    const TAU = Math.PI * 2;
+    const norm = (a: number) => ((a % TAU) + TAU) % TAU;
+    const hit = (a: number) => {
+      const dx = Math.cos(a);
+      const dy = Math.sin(a);
+      let t = Infinity;
+      if (dx > 1e-6) t = Math.min(t, (R - cx) / dx);
+      else if (dx < -1e-6) t = Math.min(t, (L - cx) / dx);
+      if (dy > 1e-6) t = Math.min(t, (B - cy) / dy);
+      else if (dy < -1e-6) t = Math.min(t, (T - cy) / dy);
+      return { x: cx + dx * t, y: cy + dy * t };
+    };
+    const corners = [[R, B], [L, B], [L, T], [R, T]].map(([x, y]) => ({ x, y, a: norm(Math.atan2(y - cy, x - cx)) }));
+    const n = 12;
+    g.fillStyle(color, alpha);
+    for (let i = 0; i < n; i++) {
+      const a0 = norm((i / n) * TAU + 0.12);
+      const span = (TAU / n) * 0.5;
+      const pts = [{ x: cx, y: cy }, hit(a0)];
+      // esquinas dentro de la cuña, en orden de ángulo
+      corners
+        .filter((k) => norm(k.a - a0) < span)
+        .sort((p, q) => norm(p.a - a0) - norm(q.a - a0))
+        .forEach((k) => pts.push({ x: k.x, y: k.y }));
+      pts.push(hit(a0 + span));
+      g.fillPoints(pts, true);
+    }
   }
 
   private bonusCard(x: number, y: number, w: number, s: PlayerState, level: number) {
@@ -452,6 +575,8 @@ export class BattlePassScene extends Phaser.Scene {
   }
 
   private scrollMotion = { offset: 0 };
+  /** animaciones de la tarjeta grande del personaje (se quitan al volver a dibujar las filas) */
+  private tallTweens: Phaser.Tweens.Tween[] = [];
 
   private updateListScroll(offset: number) {
     this.listOffset = Phaser.Math.Clamp(offset, 0, -this.scrollMin);

@@ -73,6 +73,37 @@ export class DashFx {
     }
   }
 
+  /**
+   * Estela de movimiento rápido de (ax, ay) a (bx, by), en coordenadas de pantalla (DESTELLO): haces de luz paralelos
+   * en la dirección del recorrido que avanzan un poco hacia el destino y se desvanecen. `k` = escala del personaje.
+   */
+  streak(ax: number, ay: number, bx: number, by: number, k: number, depth: number, color = 0x6fe3ff) {
+    const dx = bx - ax;
+    const dy = by - ay;
+    const len = Math.hypot(dx, dy);
+    if (len < 8) return;
+    const ux = dx / len;
+    const uy = dy / len;
+    const nx = -uy;
+    const ny = ux;
+    const g = this.scene.add.graphics().setDepth(depth + 2).setBlendMode('ADD');
+    this.track(g);
+    const lines = 9;
+    for (let i = 0; i < lines; i++) {
+      const off = (i / (lines - 1) - 0.5) * 120 * k + (Math.random() - 0.5) * 8 * k;
+      const tail = len * Math.random() * 0.3;
+      const head = len * (0.7 + Math.random() * 0.3);
+      const x0 = ax + ux * tail + nx * off;
+      const y0 = ay + uy * tail + ny * off;
+      const x1 = ax + ux * head + nx * off;
+      const y1 = ay + uy * head + ny * off;
+      const w = (2 + Math.random() * 5) * k;
+      g.lineStyle(w * 2.6, color, 0.16).lineBetween(x0, y0, x1, y1); // halo
+      g.lineStyle(w, i % 3 === 0 ? 0xffffff : color, 0.85).lineBetween(x0, y0, x1, y1); // núcleo
+    }
+    this.scene.tweens.add({ targets: g, x: ux * len * 0.12, y: uy * len * 0.12, alpha: 0, duration: 340, ease: 'Quad.easeOut', onComplete: () => this.kill(g) });
+  }
+
   /** Quita todo al instante (cancelación, fin de punto, cierre de escena). */
   clear() {
     for (const o of [...this.live]) {

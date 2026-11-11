@@ -213,6 +213,10 @@ Están definidos en `backend/src/socket/events/protocol.ts`, con una copia idén
 
 Las coordenadas de `data` son las del emisor; el receptor las espeja (`mirror.ts`). La carga (`charging`)
 viaja en `game:state` y se ve como la pose de carga del rival.
+
+El aro del suelo de esa carga (efecto de carga: `classic`, `fire`, `energy` o `tulip`) lo elige cada jugador en
+PERSONALIZACIÓN y viaja en el perfil de la búsqueda (`PlayerProfile.charge`, opcional). El servidor solo lo deja pasar si
+es uno de esos cuatro; sin él, el rival usa el de su personaje (Nxo = `fire`, Mai = `tulip`). Es solo visual.
 ## Configuración del backend (variables de entorno)
 
 | Variable | Por defecto | Uso |

@@ -124,12 +124,15 @@ export function registerSocketHandlers(io: Server) {
           socket.emit(EV.ERROR, { code: 'invalid', message: 'Perfil inválido' });
           return;
         }
-        const rawZone = profile.zoneStats && typeof profile.zoneStats === 'object' ? profile.zoneStats : {};
+        const rawZone: Record<string, unknown> = profile.zoneStats && typeof profile.zoneStats === 'object' ? profile.zoneStats : {};
         const clampZone = (value: unknown) => Number.isFinite(Number(value)) ? Math.max(0, Math.min(20, Math.floor(Number(value)))) : 0;
+        // efecto de carga elegido (solo cosmético): si no es uno conocido se omite y el rival usa el de su personaje
+        const charge = typeof profile.charge === 'string' && ['classic', 'fire', 'energy', 'tulip'].includes(profile.charge) ? profile.charge : undefined;
         const clean = {
           name: profile.name.slice(0, 16),
           level: Math.max(1, Math.floor(Number(profile.level) || 1)),
           skin: String(profile.skin ?? 'nxo').slice(0, 16),
+          ...(charge ? { charge } : {}),
           zoneStats: {
             strength: clampZone(rawZone.strength),
             speed: clampZone(rawZone.speed),

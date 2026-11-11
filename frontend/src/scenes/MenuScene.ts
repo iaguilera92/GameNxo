@@ -11,6 +11,7 @@ import { arcadeButton, lockedModeButton } from '../ui/modeButtons';
 import { fitText } from '../ui/fitText';
 import { myLeague, myPosition, rankedState, syncRanked } from '../logic/Ranked';
 import { dailyLoginButton } from '../ui/DailyLoginButton';
+import { friendsButton } from '../ui/FriendsButton';
 import { rankedPlayButton } from '../ui/PlayEntry';
 import { serverUrl } from '../net/config';
 import { getPlayer, onPlayerChange } from '../domain/playerStore';
@@ -110,12 +111,15 @@ export class MenuScene extends Phaser.Scene {
     // premio diario: bajo TIENDA, mitad de su ancho (214/2); se marca en dorado pero NUNCA se abre solo
     // (sin pisar el panel de ruletas en pantallas bajas)
     const dailyH = 84;
-    const dailyW = 214 / 2;
+    const dailyGap = 10; // hueco entre DIARIO y AMIGOS
+    const dailyW = (214 - dailyGap) / 2; // entre los dos ocupan lo mismo que TIENDA
     // misma separación que PERSONAJE–TIENDA (166 entre centros con 136 de alto = 30 de hueco)
     const gapSide = 166 - 136;
     const dailyY = Math.min(sideY + 166 + 136 / 2 + gapSide + dailyH / 2, playY - 124 - 52 - 30 - dailyH / 2);
     // alineado a la izquierda con TIENDA (su borde izquierdo está en 128 − 214/2)
     dailyLoginButton(this, 128 - 214 / 2 + dailyW / 2, dailyY, (m) => this.toast(m), dailyW, dailyH);
+    // AMIGOS: a su derecha, mismo diseño pero bloqueado (la sección aún no existe)
+    friendsButton(this, 128 - 214 / 2 + dailyW + dailyGap + dailyW / 2, dailyY, (m) => this.toast(m), dailyW, dailyH);
 
     // --- JUGAR
     // JUGAR = partida Ranked en tu liga con la apuesta elegida (monto tocable + info). Sin monedas: amistosa gratis

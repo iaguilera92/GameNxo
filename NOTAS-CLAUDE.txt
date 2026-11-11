@@ -87,3 +87,34 @@ NOTAS PARA CLAUDE (pendientes detectados por Kiro, sin corregir)
    *-antes-new.png). La hoja 3 nueva no sigue el orden de filas ni la mano: sin instalar, pendiente del usuario.
    build-nxo-v2.mjs: fondo negro (blackToAlpha), fila espejada (FLIP_ROWS) y los trozos que el corte entre filas separa
    de un cuerpo vuelven a ese cuerpo. build-nxo-inferno.mjs: argumento 'front' (rival sin espejo).
+
+[10-11-2026] KIRO: EFECTOS DEL INFERNO SEGÚN EL PODER (el fuego no cambia)
+ - frontend/src/fx/InfernoFx.ts → INFERNO_LOOK[poder]: color de las 4 sombras del desplazamiento, aspecto de la
+   cinemática de carga (infernoCine(poder) = INFERNO_CINE con sus colores, aura y forma de la energía) y anillo,
+   chispas y destello del golpe de la raqueta. infernoCine('fire') devuelve INFERNO_CINE tal cual.
+ - Hielo: sombras azul hielo (GhostTrail.setLook: ColorMatrix de un solo tono, así el rosa de Mai no tiñe la sombra),
+   energía en esquirlas con escarcha y cristales (CineProfile.rayStyle 'ice': SmashCinematic.iceShard/iceCrystal),
+   destello de la raqueta (CineProfile.flashTint) y golpe con esquirlas y copo de nieve (iceBurst en infernoImpactFx).
+ - La franja de la mirada (fx/infernoGaze.ts, GAZE_FX) usa los colores del poder. Viento y rayo: formas del fuego con
+   sus colores.
+ - MatchScene: hitFx/hitFxAt reciben `el` (poder del INFERNO; sin él, los colores del SMASH de siempre). Local:
+   getProfile().inferno; en red: infernoElementFor(skin del rival, netRivalInferno).
+
+[10-11-2026] KIRO: HABILIDADES DEL RIVAL (BOT) — DEFENSIVO (dash), ESPECIAL (smash) y ULTI (inferno)
+ - Nombres en PERSONALIZACIÓN: Defensivo (8 s), Especial (20 s), Ulti (se carga con 3 puntos ganados: INFERNO.pointsToCharge).
+ - ai/BotBrain.ts: ABIL por tramo con dash / smash / ulti (todos los tramos tienen Especial y Ulti; antes principiante y
+   fácil nunca usaban el SMASH). Carga de la ulti: onPointWon() (MatchScene.pointTo) y wantsUlti() / planShot(…, true).
+ - MatchScene.checkHits (rama del bot) → botUlti(): cinemática del INFERNO con el personaje del rival (mirada, energía,
+   desplazamiento con sombras hacia la pelota) y botHit(true, poder) al terminar. playerImpact() usa el impacto 'inferno'
+   si la bola en vuelo es una ulti (infernoFlight). Solo modo BOT; en red el INFERNO del rival llega por 'inferno-cine'.
+
+[10-11-2026] KIRO: PODER DESTELLO del DEFENSIVO (teletransporte + revés)
+ - domain/defensivePowers.ts: DASH (de todos) y DESTELLO (ítem 'defensive:blink' en la Tienda: 50 de dinero / $1.790 CLP,
+   precio provisional). Se equipa en PERSONALIZACIÓN › DEFENSIVO › PODERES o en la Tienda (PODERES DEFENSIVOS) y se guarda en
+   PlayerState.equipped.defensive (migrate / operations.equipDefensive / Profile.setDefensive).
+ - MatchScene: activateDash() → startBlink() si el poder es 'blink'. Desaparece con estela de movimiento rápido (DashFx.streak
+   + sombras por el camino + portal cian), reaparece con la pelota a su izquierda (BLINK.side) y devuelve con REVÉS: el
+   swing arranca BLINK.swingLead antes del contacto (updateDashHit, dashHit.blink) y el golpe forzado fija facing = -1.
+   La devolución está asegurada igual que con el DASH. Mismo botón y recarga (DASH_COOLDOWN); su etiqueta pasa a DESTELLO.
+ - Solo en local: en red el rival ve el salto de posición, sin estela (haría falta una acción 'blink' en protocol.ts y en la
+   lista ACTIONS de backend/src/socket/guard.ts).

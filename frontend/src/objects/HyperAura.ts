@@ -1,10 +1,10 @@
-﻿import Phaser from 'phaser';
+import Phaser from 'phaser';
 import type { Character } from './Character';
+import type { SmashPower } from '../domain/smashPowers';
+import { SMASH_LOOK } from '../fx/smashFx';
 
-/** Colores de la "hipercarga" (morado/rosa eléctrico). */
-const COL = 0xb44bff;
-const COL_HOT = 0xff6ae6;
-const COL_CORE = 0xffffff;
+/** Colores de la "hipercarga" por poder del SMASH: fuego = morado/rosa eléctrico (el de siempre); hielo = azul y cian (SMASH_LOOK). */
+type Pal = { col: number; hot: number; core: number };
 
 /** Altura aproximada del personaje en unidades locales (antes de escalar). */
 const BODY_H = 150;
@@ -47,10 +47,12 @@ function ensureTextures(scene: Phaser.Scene) {
  * Los efectos usan emisores de partículas (con pool) para no crear objetos por frame.
  */
 export class HyperAura {
-  private halo: Phaser.GameObjects.Image;
-  private ring: Phaser.GameObjects.Ellipse;
-  private flames: Phaser.GameObjects.Particles.ParticleEmitter;
-  private sparks: Phaser.GameObjects.Particles.ParticleEmitter;
+  private halo!: Phaser.GameObjects.Image;
+  private ring!: Phaser.GameObjects.Ellipse;
+  private flames!: Phaser.GameObjects.Particles.ParticleEmitter;
+  private sparks!: Phaser.GameObjects.Particles.ParticleEmitter;
+  /** poder del SMASH con el que están creados los elementos (start lo cambia si hace falta) */
+  private el: SmashPower = 'fire';
   private glowFx?: Phaser.FX.Glow;
   private tweens: Phaser.Tweens.Tween[] = [];
   private t = 0;
@@ -61,6 +63,14 @@ export class HyperAura {
 
   constructor(private scene: Phaser.Scene, private ch: Character) {
     ensureTextures(scene);
+    this.build('fire');
+  }
+
+  /** Crea halo, anillo y emisores con los colores del poder (se vuelve a llamar solo si cambia de poder). */
+  private build(el: SmashPower) {
+    const scene = this.scene;
+    const { col: COL, hot: COL_HOT, core: COL_CORE }: Pal = SMASH_LOOK[el].aura;
+    this.el = el;
     this.halo = scene.add.image(0, 0, 'fx-glow').setTint(COL).setBlendMode(Phaser.BlendModes.ADD).setVisible(false);
     this.ring = scene.add
       .ellipse(0, 0, 120, 40, COL, 0.35)
@@ -99,8 +109,14 @@ export class HyperAura {
     });
   }
 
-  start() {
+  /** Enciende el aura con los colores del poder del SMASH (el); si cambió respecto al anterior, se rehace. */
+  start(el: SmashPower = 'fire') {
     if (this.active) return;
+    if (el !== this.el) {
+      this.destroyParts();
+      this.build(el);
+    }
+    const COL_HOT = SMASH_LOOK[this.el].aura.hot;
     this.active = true;
     this.t = 0;
     this.halo.setVisible(true);
@@ -176,12 +192,16 @@ export class HyperAura {
     this.sparks.setPosition(ch.x, ch.y).setDepth(ch.depth + 0.5);
   }
 
-  destroy() {
-    this.stop();
+  private destroyParts() {
     this.halo.destroy();
     this.ring.destroy();
     this.flames.destroy();
     this.sparks.destroy();
+  }
+
+  destroy() {
+    this.stop();
+    this.destroyParts();
   }
 }
 

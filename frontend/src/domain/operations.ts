@@ -10,7 +10,10 @@ import { type ItemId, type PlayerState, type StyleId, clonePlayer, itemId, owns 
 import { shopItem } from './shopCatalog';
 import { bpAddXpInPlace } from './battlePassConfig';
 import { ZONE_STAT_MAX, type ZoneStatKey } from './zoneProgress';
-import { type InfernoPower, isInfernoPower } from './infernoPowers';
+import { type InfernoPower, infernoOwned, isInfernoPower } from './infernoPowers';
+import { type ChargeFxId, chargeFxOwned, isChargeFx } from './chargeFx';
+import { type SmashPower, isSmashPower, smashOwned } from './smashPowers';
+import { type DefensivePower, defensiveOwned, isDefensivePower } from './defensivePowers';
 
 export type OpError =
   | 'invalid_amount'
@@ -81,16 +84,6 @@ export function spendCoins(s: PlayerState, amount: number): OpResult {
   return { ok: true, state: n };
 }
 
-/** Canje en la Tienda: paga DINERO (billetes, PlayerState.gems) y recibe monedas. */
-export function buyCoinsWithCash(s: PlayerState, cash: number, coins: number): OpResult {
-  if (!Number.isInteger(cash) || cash <= 0 || !Number.isInteger(coins) || coins <= 0) return fail('invalid_amount');
-  if (s.gems < cash) return fail('not_enough_cash');
-  const n = clonePlayer(s);
-  n.gems -= cash;
-  n.coins += coins;
-  return { ok: true, state: n };
-}
-
 /** Gasta 1 Rayo para mejorar exactamente 1% un atributo de Zona, hasta 20 niveles. */
 export function upgradeZoneStat(s: PlayerState, stat: ZoneStatKey): OpResult {
   if (s.zone.rays < 1) return fail('not_enough_rays');
@@ -142,9 +135,37 @@ export function equipStyle(s: PlayerState, style: StyleId): OpResult {
   return { ok: true, state: n };
 }
 
-/** Elige el poder del INFERNO (todos están disponibles). */
+/** Elige el poder del INFERNO (solo uno que tengas: fuego, el de tu personaje o uno comprado). */
+/** Elige el poder del ESPECIAL / SMASH (solo uno que tengas: fuego o uno comprado). */
+export function equipSmash(s: PlayerState, power: SmashPower): OpResult {
+  if (!isSmashPower(power)) return fail('not_found');
+  if (!smashOwned(s.owned, power)) return fail('not_owned');
+  const n = clonePlayer(s);
+  n.equipped.smash = power;
+  return { ok: true, state: n };
+}
+
+/** Elige el efecto de CARGA (solo uno que tengas: el clásico, el de tu personaje o uno comprado). */
+export function equipCharge(s: PlayerState, fx: ChargeFxId): OpResult {
+  if (!isChargeFx(fx)) return fail('not_found');
+  if (!chargeFxOwned(s.owned, fx, s.equipped.skin)) return fail('not_owned');
+  const n = clonePlayer(s);
+  n.equipped.charge = fx;
+  return { ok: true, state: n };
+}
+
+/** Elige el poder del DEFENSIVO (solo uno que tengas: el DASH o uno comprado). */
+export function equipDefensive(s: PlayerState, power: DefensivePower): OpResult {
+  if (!isDefensivePower(power)) return fail('not_found');
+  if (!defensiveOwned(s.owned, power)) return fail('not_owned');
+  const n = clonePlayer(s);
+  n.equipped.defensive = power;
+  return { ok: true, state: n };
+}
+
 export function equipInferno(s: PlayerState, power: InfernoPower): OpResult {
   if (!isInfernoPower(power)) return fail('not_found');
+  if (!infernoOwned(s.owned, power, s.equipped.skin)) return fail('not_owned');
   const n = clonePlayer(s);
   n.equipped.inferno = power;
   return { ok: true, state: n };

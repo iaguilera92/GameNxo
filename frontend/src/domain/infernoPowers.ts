@@ -1,8 +1,8 @@
 /**
  * PODERES del INFERNO DRIVE: la bola que lanza el golpe (fuego, hielo, viento, rayo). Datos puros, sin Phaser.
  *
- * - Todos están disponibles para todos (sin desbloqueo por ahora). Se elige en PERSONALIZACIÓN y se guarda en
- *   `PlayerState.equipped.inferno`.
+ * - FUEGO es de todos y el de cada personaje viene con él; HIELO, VIENTO y RAYO se compran en la Tienda (dinero o CLP).
+ *   Se elige en PERSONALIZACIÓN y se guarda en `PlayerState.equipped.inferno`.
  * - Sin elegir, cada personaje usa el suyo: Mai = hielo; el resto = fuego.
  * - Solo cambia cómo se ve la bola y sus efectos (fx/InfernoFx.ts, fx/ImpactFx.ts); el golpe es el mismo.
  */
@@ -39,6 +39,14 @@ export function isInfernoPower(v: unknown): v is InfernoPower {
 export function infernoPowerOf(chosen: unknown, skin?: string): InfernoPower {
   if (isInfernoPower(chosen)) return chosen;
   return (skin && DEFAULT_BY_SKIN[skin]) || 'fire';
+}
+
+/**
+ * ¿Tiene el jugador este poder? FUEGO es de todos; el del personaje (Mai = hielo) viene con él; el resto se compra en la
+ * Tienda (ítem `inferno:<poder>`). `owned` = PlayerState.owned.
+ */
+export function infernoOwned(owned: readonly string[], power: InfernoPower, skin?: string): boolean {
+  return power === 'fire' || owned.includes(`inferno:${power}`) || infernoPowerOf(undefined, skin) === power;
 }
 
 export function infernoPowerDef(id: InfernoPower): InfernoPowerDef {

@@ -1,14 +1,16 @@
 import Phaser from 'phaser';
 import type { BallState } from '../objects/Ball';
 import { project } from '../view/projection';
-import { INFERNO, shakeLevel } from '../logic/InfernoDrive';
+import { INFERNO, INFERNO_CINE, shakeLevel } from '../logic/InfernoDrive';
 import { type InfernoPower, infernoPowerOf } from '../domain/infernoPowers';
+import type { CineProfile } from './SmashCinematic';
 
 /**
  * Efectos de INFERNO DRIVE (procedurales, sin hojas de sprites nuevas):
  *   GhostTrail   4 siluetas del personaje en posiciones anteriores reales del desplazamiento
  *   InfernoFire  la pelota convertida en esfera de fuego (llamas animadas a su alrededor, SIN estela)
  *   infernoShake vibración de cámara de 250 ms que se reduce sola (solo la cámara del mundo)
+ *   INFERNO_LOOK lo que cambia con el poder (sombras, cinemática de carga, golpe de la raqueta): infernoCine(poder)
  *   sonidos      carga de energía, desplazamiento e impacto (Web Audio, sin archivos)
  * Todo se anima con tiempo REAL (el partido puede estar congelado por la cinemática) y con objetos
  * creados UNA vez (no se crean gráficos nuevos en cada fotograma).
@@ -81,6 +83,83 @@ export function infernoElementFor(skin: string | undefined, chosen?: unknown): I
   return infernoPowerOf(chosen, skin);
 }
 
+/**
+ * Lo que cambia con el poder del INFERNO además de la bola (BALL_FX) y de las explosiones (fx/ImpactFx.ts):
+ *   ghostTint  tinte de las 4 sombras del desplazamiento (fuego); `ghostRamp` [oscuro, claro]: sombras de un solo tono
+ *              (GhostTrail.setLook)
+ *   cine       cinemática de carga (fx/SmashCinematic.ts): aura, energía que llega al personaje, brillo de la raqueta y
+ *              destello del golpe. El hielo trae su propia forma: esquirlas con escarcha y cristales.
+ *   hit        golpe de la raqueta con la pelota (MatchScene.hitFx): anillo, chispas en estrella y destello de cámara (RGB)
+ * El fuego conserva los valores de siempre. Viento y rayo, de momento, las formas del fuego con sus colores.
+ */
+export interface InfernoLook {
+  ghostTint: number;
+  ghostRamp?: [number, number];
+  cine: Pick<CineProfile, 'colors' | 'aura' | 'rayStyle' | 'flashTint'>;
+  hit: { ring: number; star: number; flash: [number, number, number] };
+}
+export const INFERNO_LOOK: Record<InfernoElement, InfernoLook> = {
+  fire: {
+    ghostTint: INFERNO.dash.tint,
+    cine: { colors: INFERNO_CINE.colors, aura: INFERNO_CINE.aura },
+    hit: { ring: 0xff8a1e, star: 0xffd23f, flash: [255, 200, 120] },
+  },
+  ice: {
+    ghostTint: 0x7fd4ff,
+    ghostRamp: [0x1e5fc8, 0xe6fbff],
+    cine: {
+      colors: { core: 0xe6fbff, gold: 0x9fe2ff, hot: 0x2f8cff, cyan: 0x4aa8ff },
+      aura: [
+        [1.3, 0x1f6bff, 0.22],
+        [1.08, 0x3a9bff, 0.24],
+        [0.86, 0x9fe6ff, 0.22],
+      ],
+      rayStyle: 'ice',
+      flashTint: 0xeafcff,
+    },
+    hit: { ring: 0x8fdcff, star: 0xeafcff, flash: [170, 225, 255] },
+  },
+  wind: {
+    ghostTint: 0x6fe0a0,
+    ghostRamp: [0x146b3a, 0xe0ffe8],
+    cine: {
+      colors: { core: 0xeaffe0, gold: 0x9cf0b0, hot: 0x2fbf6a, cyan: 0x5fd68a },
+      aura: [
+        [1.3, 0x1f9f5a, 0.22],
+        [1.08, 0x3fd68a, 0.24],
+        [0.86, 0xb8ffcc, 0.22],
+      ],
+      flashTint: 0xf0fff0,
+    },
+    hit: { ring: 0x5fd68a, star: 0xd0ffe0, flash: [180, 255, 200] },
+  },
+  lightning: {
+    ghostTint: 0xffe36b,
+    ghostRamp: [0x7a5a00, 0xfff8c0],
+    cine: {
+      colors: { core: 0xfffbe0, gold: 0xfff36b, hot: 0x2f6bff, cyan: 0x5aa8ff },
+      aura: [
+        [1.3, 0x2f6bff, 0.22],
+        [1.08, 0x5aa8ff, 0.24],
+        [0.86, 0xfff36b, 0.22],
+      ],
+      flashTint: 0xfffbe0,
+    },
+    hit: { ring: 0xfff36b, star: 0xfffbe0, flash: [255, 245, 170] },
+  },
+};
+
+const CINES: Partial<Record<InfernoElement, CineProfile>> = { fire: INFERNO_CINE };
+/** Perfil de la cinemática del INFERNO para un poder: los tiempos de INFERNO_CINE con su aspecto (fuego = INFERNO_CINE). */
+export function infernoCine(el: InfernoElement): CineProfile {
+  let p = CINES[el];
+  if (!p) {
+    p = { ...INFERNO_CINE, ...INFERNO_LOOK[el].cine };
+    CINES[el] = p;
+  }
+  return p;
+}
+
 /** Crea (una vez) la animación de cada bola cargada: la usan el partido y la vista previa de PERSONALIZACIÓN. */
 export function ensureBallAnims(scene: Phaser.Scene) {
   for (const a of Object.values(BALL_ART)) {
@@ -96,6 +175,19 @@ export function queueInfernoArt(load: Phaser.Loader.LoaderPlugin) {
 }
 
 // ---------------------------------------------------------------- sombras
+/**
+ * Matriz de color (Phaser.Display.ColorMatrix: 4 filas de 5, desplazamientos en 0-255) que pasa la luminosidad del
+ * dibujo a un degradado de `dark` (zonas oscuras) a `light` (zonas claras), conservando el alfa.
+ */
+function rampMatrix(dark: number, light: number): number[] {
+  const row = (shift: number) => {
+    const d = (dark >> shift) & 0xff;
+    const k = (((light >> shift) & 0xff) - d) / 255;
+    return [0.299 * k, 0.587 * k, 0.114 * k, 0, d];
+  };
+  return [...row(16), ...row(8), ...row(0), 0, 0, 0, 1, 0];
+}
+
 /** Retardo entre sombras (ms): cada una muestra dónde estaba el personaje hace k × LAG. */
 const GHOST_LAG_MS = 45;
 const GHOST_FADE_MS = 320;
@@ -130,6 +222,25 @@ export class GhostTrail {
     for (let i = 0; i < INFERNO.dash.ghosts; i++) this.imgs.push(scene.add.image(0, 0, '__DEFAULT').setVisible(false).setTint(INFERNO.dash.tint));
     scene.events.on(Phaser.Scenes.Events.POST_UPDATE, this.tick, this);
     scene.events.once(Phaser.Scenes.Events.SHUTDOWN, () => scene.events.off(Phaser.Scenes.Events.POST_UPDATE, this.tick, this));
+  }
+
+  /**
+   * Color de las sombras según el poder del INFERNO (INFERNO_LOOK). Sin `ramp` (fuego): el tinte multiplica los
+   * colores del dibujo, como siempre. Con `ramp` [oscuro, claro] (hielo, viento, rayo): el dibujo pasa a un solo tono
+   * según su luminosidad (ColorMatrix de WebGL), para que sus colores (p. ej. el rosa de Mai) no se mezclen con el
+   * tinte y salgan de otro color. Sin efectos de WebGL (Canvas), el tinte.
+   */
+  setLook(tint: number, ramp?: [number, number]) {
+    for (const o of this.imgs) {
+      if (o.preFX?.list.length) {
+        o.preFX.clear();
+        o.resetPipeline();
+      }
+      if (ramp && o.preFX) {
+        o.setTint(0xffffff);
+        o.preFX.addColorMatrix().set(rampMatrix(ramp[0], ramp[1]));
+      } else o.setTint(tint);
+    }
   }
 
   /**
@@ -469,7 +580,10 @@ export class InfernoFire {
 }
 
 // ---------------------------------------------------------------- impacto, vibración y sonido
-/** Anillo de energía + chispas en el punto de contacto (mundo), con los colores del elemento de la bola. */
+/**
+ * Brillo de energía + chispas en el punto de contacto (mundo), con los colores del elemento de la bola. Con hielo, en
+ * vez de chispas redondas: esquirlas y un copo de nieve (iceBurst).
+ */
 export function infernoImpactFx(scene: Phaser.Scene, x: number, y: number, k: number, el: InfernoElement = 'fire') {
   const P = BALL_FX[el];
   // brillo de energía suave (sin anillos ni contornos)
@@ -486,12 +600,71 @@ export function infernoImpactFx(scene: Phaser.Scene, x: number, y: number, k: nu
     const glow = scene.add.image(x, y, GLOW).setTint(col).setDisplaySize(size * k, size * k).setDepth(3650).setBlendMode(Phaser.BlendModes.ADD);
     scene.tweens.add({ targets: glow, scale: glow.scale * 2.2, alpha: 0, delay, duration: 320, ease: 'Cubic.easeOut', onComplete: () => glow.destroy() });
   }
+  if (el === 'ice') {
+    iceBurst(scene, x, y, k, P.sparks);
+    return;
+  }
   for (let i = 0; i < 18; i++) {
     const a = (i / 18) * Math.PI * 2;
     const d = Phaser.Math.FloatBetween(60, 150) * Math.max(0.6, k);
     const sp = scene.add.circle(x, y, Phaser.Math.FloatBetween(3, 6), Phaser.Utils.Array.GetRandom(P.sparks), 1).setDepth(3651).setBlendMode(Phaser.BlendModes.ADD);
     scene.tweens.add({ targets: sp, x: x + Math.cos(a) * d, y: y + Math.sin(a) * d * 0.7, alpha: 0, scale: 0.3, duration: Phaser.Math.Between(320, 520), ease: 'Cubic.easeOut', onComplete: () => sp.destroy() });
   }
+}
+
+/**
+ * Golpe de hielo en la raqueta: esquirlas (rombos alargados, sin círculos) que salen disparadas girando y un copo de
+ * nieve de 6 brazos que se abre y se desvanece en el punto de contacto. Objetos de vida corta (~17).
+ */
+function iceBurst(scene: Phaser.Scene, x: number, y: number, k: number, cols: number[]) {
+  const kk = Math.max(0.6, k);
+  const ADD = Phaser.BlendModes.ADD;
+  for (let i = 0; i < 16; i++) {
+    const a = (i / 16) * Math.PI * 2 + Phaser.Math.FloatBetween(-0.15, 0.15);
+    const d = Phaser.Math.FloatBetween(60, 150) * kk;
+    const L = Phaser.Math.FloatBetween(10, 20) * kk;
+    const W = Phaser.Math.FloatBetween(3, 5) * kk;
+    // rombo con su caja en (0,0)-(W,L): el origen 0,5 lo deja centrado en (x, y); el eje largo apunta hacia fuera
+    const shard = scene.add
+      .polygon(x, y, [W / 2, 0, W, L / 2, W / 2, L, 0, L / 2], Phaser.Utils.Array.GetRandom(cols), 1)
+      .setRotation(a + Math.PI / 2)
+      .setDepth(3651)
+      .setBlendMode(ADD);
+    scene.tweens.add({
+      targets: shard,
+      x: x + Math.cos(a) * d,
+      y: y + Math.sin(a) * d * 0.7,
+      rotation: shard.rotation + Phaser.Math.FloatBetween(-1.2, 1.2),
+      scaleY: 0.4,
+      alpha: 0,
+      duration: Phaser.Math.Between(320, 520),
+      ease: 'Cubic.easeOut',
+      onComplete: () => shard.destroy(),
+    });
+  }
+  const R = 34 * kk;
+  const flake = scene.add.graphics({ x, y }).setDepth(3652).setBlendMode(ADD);
+  for (const [w, col, alpha] of [
+    [6, 0x8fdcff, 0.5],
+    [2.5, 0xffffff, 1],
+  ] as const) {
+    flake.lineStyle(w * kk, col, alpha);
+    for (let i = 0; i < 6; i++) {
+      const ang = (i / 6) * Math.PI * 2;
+      const ca = Math.cos(ang);
+      const sa = Math.sin(ang);
+      flake.lineBetween(0, 0, ca * R, sa * R);
+      for (const at of [0.45, 0.7]) {
+        const bx = ca * R * at;
+        const by = sa * R * at;
+        const bl = R * 0.25;
+        flake.lineBetween(bx, by, bx + Math.cos(ang + 0.7) * bl, by + Math.sin(ang + 0.7) * bl);
+        flake.lineBetween(bx, by, bx + Math.cos(ang - 0.7) * bl, by + Math.sin(ang - 0.7) * bl);
+      }
+    }
+  }
+  flake.setScale(0.3);
+  scene.tweens.add({ targets: flake, scale: 1.5, angle: 30, alpha: 0, duration: 460, ease: 'Cubic.easeOut', onComplete: () => flake.destroy() });
 }
 
 /** Vibración breve de la cámara del mundo que se reduce sola (el HUD va en otra cámara). */

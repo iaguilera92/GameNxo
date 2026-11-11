@@ -1,7 +1,8 @@
-import Phaser from 'phaser';
+﻿import Phaser from 'phaser';
 import { C, textStyle } from './theme';
 import { drawAbilityIcon, drawDisc } from './icons';
 import type { AbilityIcon } from '../logic/Abilities';
+import type { SmashPower } from '../domain/smashPowers';
 
 /** Botón de habilidad circular con cooldown visible (relleno radial + anillo + segundos). */
 export class AbilityButton extends Phaser.GameObjects.Container {
@@ -19,7 +20,9 @@ export class AbilityButton extends Phaser.GameObjects.Container {
   private infernoMode = false;
   private hyperWave?: Phaser.GameObjects.Arc;
   private labelText!: Phaser.GameObjects.Text;
+  private subText!: Phaser.GameObjects.Text;
   private baseLabel = '';
+  private baseSub = '';
   private fireRing?: Phaser.GameObjects.Arc;
   private meter?: Phaser.GameObjects.Container;
   private meterText?: Phaser.GameObjects.Text;
@@ -63,11 +66,24 @@ export class AbilityButton extends Phaser.GameObjects.Container {
     this.baseLabel = label;
     this.labelText = scene.add.text(0, R + 22, label, textStyle(20)).setOrigin(0.5);
     this.add(this.labelText);
+    // nombre del poder equipado, en pequeño bajo la etiqueta
+    this.subText = scene.add.text(0, R + 43, '', { fontFamily: '"Lilita One", "Arial Black", sans-serif', fontSize: '14px', color: '#cfe0ff', stroke: '#0a1638', strokeThickness: 3 }).setOrigin(0.5);
+    this.add(this.subText);
 
     this.setSize(R * 2 + 20, R * 2 + 20);
     this.setInteractive(new Phaser.Geom.Circle(R + 10, R + 10, R + 14), Phaser.Geom.Circle.Contains);
     this.on('pointerdown', () => this.tryActivate());
     scene.add.existing(this);
+    this.redraw();
+  }
+
+  /** color del aro y del brillo con el botón armado (SMASH: el del poder elegido, SMASH_LOOK[el].ring) */
+  private armedColor = 0xff9a2e;
+
+  /** Cambia el color del aro y del brillo de "armado" (fuego = naranja de siempre). */
+  setArmedColor(color: number) {
+    this.armedColor = color;
+    this.glow.setFillStyle(color, this.glow.fillAlpha);
     this.redraw();
   }
 
@@ -98,8 +114,18 @@ export class AbilityButton extends Phaser.GameObjects.Container {
    * Cambia el botón a INFERNO DRIVE (tonos de fuego, aura y texto) o lo devuelve a su aspecto original.
    * Misma posición, tamaño y zona táctil.
    */
-  setInferno(on: boolean) {
-    if (on === this.infernoMode) return;
+  /** Nombre del poder equipado (FUEGO, HIELO, DESTELLO…), bajo la etiqueta del botón. */
+  setSubLabel(text: string) {
+    this.baseSub = text;
+    if (!this.infernoMode) this.subText.setText(text);
+  }
+
+  /** `sub` = nombre del poder de la ULTI mientras el botón está en ese modo. */
+  setInferno(on: boolean, sub = '') {
+    if (on === this.infernoMode) {
+      if (on) this.subText.setText(sub);
+      return;
+    }
     this.infernoMode = on;
     const R = this.radius;
     for (const o of this.face.list) {
@@ -135,11 +161,12 @@ export class AbilityButton extends Phaser.GameObjects.Container {
       // disponible: rebote + destello
       this.scene.tweens.add({ targets: this.face, scale: { from: 1.3, to: 1 }, duration: 420, ease: 'Back.easeOut' });
     }
-    this.labelText.setText(on ? 'INFERNO' : this.baseLabel).setColor(on ? '#e0b0ff' : '#ffffff');
+    this.labelText.setText(on ? 'ULTI' : this.baseLabel).setColor(on ? '#e0b0ff' : '#ffffff');
+    this.subText.setText(on ? sub : this.baseSub).setColor(on ? '#e0b0ff' : '#cfe0ff');
     this.redraw();
   }
 
-  /** Medidor discreto de carga encima del botón: "INFERNO n/max" + pips. */
+  /** Medidor discreto de carga encima del botón: "ULTI n/max" + pips. */
   setMeter(n: number, max: number) {
     const R = this.radius;
     if (!this.meter) {
@@ -153,7 +180,7 @@ export class AbilityButton extends Phaser.GameObjects.Container {
       this.add(this.meter);
     }
     const full = n >= max;
-    this.meterText!.setText(`INFERNO ${n}/${max}`).setColor(full ? '#f0d6ff' : '#e6ccff');
+    this.meterText!.setText(`ULTI ${n}/${max}`).setColor(full ? '#f0d6ff' : '#e6ccff');
     const g = this.meterPips!.clear();
     const w = 14;
     const x0 = -((max - 1) * (w + 3)) / 2;
@@ -249,7 +276,7 @@ export class AbilityButton extends Phaser.GameObjects.Container {
     } else {
       this.secs.setText('');
     }
-    if (this.armed) this.ring.lineStyle(6, 0xff9a2e, 1).strokeCircle(0, 0, R + 16);
+    if (this.armed) this.ring.lineStyle(6, this.armedColor, 1).strokeCircle(0, 0, R + 16);
   }
 }
 
@@ -267,6 +294,27 @@ export function hyperTexture(scene: Phaser.Scene, key: string): string | null {
   if (!tex || !ctx || !('filter' in ctx)) return null;
   // rojo/naranja → morado
   ctx.filter = 'hue-rotate(-95deg) saturate(1.25) brightness(1.05)';
+  ctx.drawImage(srcImg, 0, 0);
+  ctx.filter = 'none';
+  tex.refresh();
+  return out;
+}
+
+/**
+ * Copia de una textura con el tono girado al color de un poder del SMASH (hielo = azul). El fuego devuelve la misma textura.
+ * null si no se puede (sin canvas / sin filtros): quien llama deja el arte como está.
+ */
+export function elementTexture(scene: Phaser.Scene, key: string, el: SmashPower): string | null {
+  if (el === 'fire') return key;
+  const out = `${key}-${el}`;
+  if (scene.textures.exists(out)) return out;
+  const srcImg = scene.textures.get(key)?.getSourceImage() as HTMLImageElement | HTMLCanvasElement | undefined;
+  if (!srcImg || !srcImg.width) return null;
+  const tex = scene.textures.createCanvas(out, srcImg.width, srcImg.height);
+  const ctx = tex?.getContext();
+  if (!tex || !ctx || !('filter' in ctx)) return null;
+  // rojo/naranja → azul hielo
+  ctx.filter = 'hue-rotate(205deg) saturate(1.15) brightness(1.1)';
   ctx.drawImage(srcImg, 0, 0);
   ctx.filter = 'none';
   tex.refresh();

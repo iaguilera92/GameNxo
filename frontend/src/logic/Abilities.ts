@@ -18,13 +18,14 @@ export interface AbilityDef {
 }
 
 /**
- * Catálogo de habilidades. Solo `dash` y `smash` están implementadas.
+ * Catálogo de habilidades. Nombres que ve el jugador en PERSONALIZACIÓN: `dash` = DEFENSIVO, `smash` = ESPECIAL
+ * (y el INFERNO, ULTI); los ids internos no cambian (perfiles guardados y mensajes de red). Solo `dash` y `smash` están implementadas.
  * Las demás aparecen bloqueadas en Personalizar ("Tienda: próximamente").
  */
 export const ABILITIES: Record<AbilityId, AbilityDef> = {
   dash: {
     id: 'dash',
-    name: 'Dash',
+    name: 'Defensivo',
     desc: 'Sprint explosivo hasta donde llegará la pelota.',
     cooldown: DASH_COOLDOWN,
     icon: 'dash',
@@ -34,7 +35,7 @@ export const ABILITIES: Record<AbilityId, AbilityDef> = {
   },
   smash: {
     id: 'smash',
-    name: 'Smash',
+    name: 'Especial',
     desc: 'Bola de fuego. Si el rival la toca, sale despedido y queda aturdido 1 s.',
     cooldown: SMASH_COOLDOWN,
     icon: 'smash',

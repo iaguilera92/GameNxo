@@ -522,6 +522,14 @@ export class Character extends Phaser.GameObjects.Container {
     return this.nxo?.serveContactDelay() ?? 0.12;
   }
 
+  /**
+   * Centro del cordaje en el frame de impacto del saque: `z` (altura sobre los pies) y `dx` (lado en pantalla, + =
+   * derecha), en unidades del personaje. Personajes vectoriales (sin hoja): los valores de siempre.
+   */
+  serveRacket(): { dx: number; z: number } {
+    return this.nxo?.serveRacket() ?? { dx: 28 * this.facing, z: 185 };
+  }
+
   /** Celebración de partido ganado. */
   victory() {
     this.nxo?.victory();

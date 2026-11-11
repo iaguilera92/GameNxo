@@ -111,7 +111,7 @@ export class LanSearchScene extends Phaser.Scene {
           tr.off('disconnect', onDisc as (d: never) => void);
         });
         const p = getProfile();
-        tr.emit(EV.FIND, { profile: { name: p.name, level: p.level, skin: p.skin, zoneStats: p.zoneStats } });
+        tr.emit(EV.FIND, { profile: { name: p.name, level: p.level, skin: p.skin, zoneStats: p.zoneStats, charge: p.charge } });
         this.cleanup.push(() => {
           // salir de la escena sin emparejar = cancelar la búsqueda (no queda sala fantasma)
           if (!this.matched) tr.emit(EV.CANCEL);

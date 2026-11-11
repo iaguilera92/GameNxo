@@ -13,7 +13,7 @@
 export type Side = 'player' | 'bot';
 
 export const ZONE = {
-  minPoints: 6,
+  minPoints: 4,
   lead: 2,
   durationPoints: 2,
   /** velocidad de desplazamiento */

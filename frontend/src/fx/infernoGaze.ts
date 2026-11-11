@@ -1,9 +1,10 @@
 import Phaser from 'phaser';
+import type { InfernoPower } from '../domain/infernoPowers';
 
 /**
  * INFERNO DRIVE · "mirada": entra de lado a lado una franja con
  * los OJOS del personaje (public/personajes/<Personaje>/pj-<id>-mirada.webp), estilo corte de anime: entra apenas empieza
- * el INFERNO, dura ~2 s con resplandor de fuego en los bordes y un rayo saliendo de los ojos (tipo "zona"). Fijo en pantalla (cámara de interfaz).
+ * el INFERNO, dura ~2 s con resplandor en los bordes del color de su poder (fuego, hielo…) y un rayo saliendo de los ojos (tipo "zona"). Fijo en pantalla (cámara de interfaz).
  * Si el personaje no tiene mirada o la imagen no está cargada no muestra nada.
  */
 /** franja visible (una sola a la vez) */
@@ -45,8 +46,23 @@ export function queueGazeArt(load: Phaser.Loader.LoaderPlugin, skin: string) {
 /** Muestra la franja de la mirada. `holdMs` = cuánto tiempo queda visible (sale antes del desplazamiento). */
 /** Altura de la franja respecto a la imagen completa (se recorta alrededor de los ojos; el ancho sigue siendo toda la pantalla). */
 const BAND = 0.5;
-/** Muestra la franja de `skin`. `centerY` = y de pantalla donde queda centrada (por defecto, la red; ver MatchScene.gazeY). */
-export function showInfernoGaze(scene: Phaser.Scene, holdMs = 700, centerY?: number, skin = 'nxo') {
+/**
+ * Colores de la franja según el poder del INFERNO: filos (`edge` fuera, `edgeIn` dentro), resplandor de los bordes
+ * (`glowIn` pegado al filo, `glow` el resto), chispas y líneas de velocidad. Fuego = los de siempre.
+ */
+const GAZE_FX: Record<InfernoPower, { edge: number; edgeIn: number; glowIn: number; glow: number; spark: number; line: number }> = {
+  fire: { edge: 0xff5a1a, edgeIn: 0xffd27a, glowIn: 0xffe6a0, glow: 0xff6a1a, spark: 0xfff1b8, line: 0xffa020 },
+  ice: { edge: 0x3a9bff, edgeIn: 0xbff0ff, glowIn: 0xeafcff, glow: 0x3a9bff, spark: 0xffffff, line: 0x8fdcff },
+  wind: { edge: 0x2fbf6a, edgeIn: 0xd0ffe0, glowIn: 0xf0fff0, glow: 0x3fd68a, spark: 0xeaffe0, line: 0x9cf06a },
+  lightning: { edge: 0x2f6bff, edgeIn: 0xfff36b, glowIn: 0xfffbe0, glow: 0x3a7bff, spark: 0xfff36b, line: 0x7fc8ff },
+};
+
+/**
+ * Muestra la franja de `skin`. `centerY` = y de pantalla donde queda centrada (por defecto, la red; ver MatchScene.gazeY).
+ * `power` = poder del INFERNO (colores de los filos y del resplandor).
+ */
+export function showInfernoGaze(scene: Phaser.Scene, holdMs = 700, centerY?: number, skin = 'nxo', power: InfernoPower = 'fire') {
+  const C = GAZE_FX[power];
   const art = GAZE_ARTS[skin];
   if (!art || !scene.textures.exists(art.key)) return;
   // una sola a la vez: pulsar varias veces no la duplica
@@ -62,11 +78,11 @@ export function showInfernoGaze(scene: Phaser.Scene, holdMs = 700, centerY?: num
   const root = scene.add.container(0, cy).setScrollFactor(0).setDepth(7600);
   current = root;
 
-  // franja: marco negro con filos de fuego arriba y abajo
+  // franja: marco negro con filos del color del poder arriba y abajo
   const frame = scene.add.graphics();
   frame.fillStyle(0x000000, 0.92).fillRect(0, -bh / 2 - 14, W, bh + 28);
-  frame.fillStyle(0xff5a1a, 1).fillRect(0, -bh / 2 - 14, W, 4).fillRect(0, bh / 2 + 10, W, 4);
-  frame.fillStyle(0xffd27a, 1).fillRect(0, -bh / 2 - 10, W, 2).fillRect(0, bh / 2 + 8, W, 2);
+  frame.fillStyle(C.edge, 1).fillRect(0, -bh / 2 - 14, W, 4).fillRect(0, bh / 2 + 10, W, 4);
+  frame.fillStyle(C.edgeIn, 1).fillRect(0, -bh / 2 - 10, W, 2).fillRect(0, bh / 2 + 8, W, 2);
   const img = scene.add.image(W / 2, iy, art.key).setDisplaySize(W, full);
   // máscara: la imagen solo se ve dentro de la franja
   const maskG = scene.make.graphics({}, false);
@@ -78,12 +94,12 @@ export function showInfernoGaze(scene: Phaser.Scene, holdMs = 700, centerY?: num
     const y = Phaser.Math.Between(-bh / 2 + 6, bh / 2 - 6);
     const len = Phaser.Math.Between(60, 200);
     const x = Phaser.Math.Between(0, W);
-    lines.lineStyle(Phaser.Math.Between(1, 3), i % 3 ? 0xffffff : 0xffa020, 0.35).lineBetween(x, y, x + len, y);
+    lines.lineStyle(Phaser.Math.Between(1, 3), i % 3 ? 0xffffff : C.line, 0.35).lineBetween(x, y, x + len, y);
   }
   lines.setMask(maskG.createGeometryMask());
   root.add([frame, img, lines]);
 
-  // resplandor en los bordes de arriba y abajo (fuego que late)
+  // resplandor en los bordes de arriba y abajo (fuego, hielo… que late)
   const glow = scene.add.graphics().setBlendMode(Phaser.BlendModes.ADD);
   root.add(glow);
   // rayo de los ojos (estilo "zona"): estelas eléctricas que salen de cada ojo hacia atrás
@@ -100,12 +116,12 @@ export function showInfernoGaze(scene: Phaser.Scene, holdMs = 700, centerY?: num
       // resplandor hacia FUERA de la franja (más intenso pegado al borde)
       for (let i = 0; i < 8; i++) {
         const k = i / 8;
-        g.fillStyle(i < 2 ? 0xffe6a0 : 0xff6a1a, a * (1 - k) * 0.95).fillRect(0, y0 + dir * (i * 5) - (dir < 0 ? 5 : 0), W, 5);
+        g.fillStyle(i < 2 ? C.glowIn : C.glow, a * (1 - k) * 0.95).fillRect(0, y0 + dir * (i * 5) - (dir < 0 ? 5 : 0), W, 5);
       }
       // chispas a lo largo del borde
       for (let i = 0; i < 6; i++) {
         const x = (t * 13 + i * (W / 6)) % W;
-        g.fillStyle(0xfff1b8, a).fillCircle(x, y0 + dir * 2, 2.5);
+        g.fillStyle(C.spark, a).fillCircle(x, y0 + dir * 2, 2.5);
       }
     }
     const b = bolt.clear();

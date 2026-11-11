@@ -3,22 +3,28 @@ import { FONT, restartOnResize, textStyle } from '../ui/theme';
 import { stadiumBg } from '../ui/ui';
 import { Character, playerLook } from '../objects/Character';
 import { MAX_LEVEL } from '../config';
-import { getProfile, levelProgress, setInferno, setSkin } from '../logic/Profile';
+import { getProfile, levelProgress, setCharge, setDefensive, setInferno, setSkin, setSmash } from '../logic/Profile';
 import { CATALOG, skinById } from '../characters/catalog';
 import { addPortrait } from '../characters/portrait';
 import type { SkinId } from '../characters/skins';
 import { ABILITIES, type AbilityDef, type AbilityId } from '../logic/Abilities';
 import { bakeImage } from '../ui/bakeImage';
-import { drawAbilityIcon, drawDisc } from '../ui/icons';
+import { drawAbilityIcon, drawBlinkIcon, drawDisc } from '../ui/icons';
+import { DEFENSIVE_POWERS, defensiveOwned, defensivePowerOf } from '../domain/defensivePowers';
 import { roundedPoly } from '../ui/shapes';
 import { playButton } from '../ui/modeButtons';
 import { hyperTexture } from '../ui/AbilityButton';
-import { BUTTON_ART } from '../ui/buttonArt';
 import { commit, getPlayer } from '../domain/playerStore';
 import { upgradeZoneStat } from '../domain/operations';
 import { ZONE_STAT_KEYS, ZONE_STAT_MAX, type ZoneStatKey } from '../domain/zoneProgress';
-import { INFERNO_POWERS, infernoPowerDef, type InfernoPower } from '../domain/infernoPowers';
+import { INFERNO_POWERS, infernoOwned, infernoPowerDef, type InfernoPower } from '../domain/infernoPowers';
 import { BALL_ART, ensureBallAnims, queueInfernoArt } from '../fx/InfernoFx';
+import { type PowerSlot, openPowerDialog } from '../ui/PowerDialog';
+import { SMASH_POWERS, type SmashPower, smashOwned, smashPowerOf } from '../domain/smashPowers';
+import { elementTexture } from '../ui/AbilityButton';
+import { CHARGE_FX, type ChargeFxId, chargeFxDef, chargeFxOf, chargeFxOwned } from '../domain/chargeFx';
+import { chargePreview, queueChargeFxArt } from '../fx/chargeFx';
+import { INFERNO } from '../logic/InfernoDrive';
 
 /** Arte de los botones de habilidad. `box` = círculo visible en px de la imagen (sin margen transparente). */
 const ABILITY_ART: Partial<Record<AbilityId, { key: string; file: string; w: number; h: number; box: { x0: number; y0: number; x1: number; y1: number } }>> = {
@@ -50,14 +56,28 @@ interface PassiveDef {
 }
 
 const PASSIVES: Record<'spin' | 'charge', PassiveDef> = {
-  // saque con efecto (botón morado del saque): la pelota curva hacia el lado que apuntas
+  // saque con efecto: el icono es la pelota con el rastro (remolino) que deja al curvar; ya no usa el botón del saque
   spin: {
     name: 'Efecto pelota',
     desc: 'Saque con efecto: la pelota curva hacia el lado que apuntas.',
     color: 0x8a6bff,
     colorDark: 0x4a35b8,
-    art: BUTTON_ART.spin.key,
-    draw: (g, R) => drawAbilityIcon(g, 'serveSpin', R),
+    draw: (g, R) => {
+      const bx = R * 0.22;
+      const by = -R * 0.02;
+      // rastro: tres arcos que giran alrededor de la pelota y se desvanecen hacia atrás
+      for (let i = 0; i < 3; i++) {
+        const r = R * (0.5 + i * 0.15);
+        const a0 = Math.PI * (0.62 + i * 0.1);
+        const a1 = Math.PI * (1.5 + i * 0.05);
+        g.lineStyle(R * (0.15 - i * 0.03), 0xffffff, 0.95 - i * 0.28).beginPath().arc(bx, by, r, a0, a1).strokePath();
+      }
+      // pelota
+      g.fillStyle(0x0a1638).fillCircle(bx, by, R * 0.4);
+      g.fillStyle(0xd7f53a).fillCircle(bx, by, R * 0.33);
+      g.lineStyle(R * 0.06, 0xffffff, 0.95).beginPath().arc(bx - R * 0.42, by, R * 0.34, -0.85, 0.85).strokePath();
+      g.fillStyle(0xffffff, 0.7).fillCircle(bx + R * 0.1, by - R * 0.14, R * 0.07);
+    },
   },
   // golpe cargado: se mantiene para cargar (arco azul que pasa a dorado); con el joystick sale cortita, globo o cruzado
   charge: {
@@ -97,7 +117,7 @@ export class CustomizeScene extends Phaser.Scene {
     if (!this.textures.exists('menu-bg')) this.load.image('menu-bg', 'assets/menu-bg.webp');
     for (const art of Object.values(ABILITY_ART)) if (art && !this.textures.exists(art.key)) this.load.image(art.key, art.file);
     queueInfernoArt(this.load); // bolas de los poderes del INFERNO (vista previa del selector)
-    if (!this.textures.exists(BUTTON_ART.spin.key)) this.load.image(BUTTON_ART.spin.key, BUTTON_ART.spin.file); // icono de EFECTO PELOTA
+    queueChargeFxArt(this.load, ['fire', 'energy', 'tulip']); // aros de carga (vista previa del diálogo CARGANDO GOLPE)
   }
 
   create() {
@@ -124,15 +144,24 @@ export class CustomizeScene extends Phaser.Scene {
     if (title.width > maxTitleW) title.setScale(maxTitleW / title.width);
 
     // reparto vertical (de arriba abajo, medidas fijas); la vitrina usa lo que sobra
-    const TOP = 110;
+    // la vitrina arranca pegada al título (el retrato empieza ~30 px más abajo por su margen); el alto que gana el
+    // personaje al subir se reparte entre las tarjetas de habilidades (ver `abExtra`)
+    const TOP = 80;
     // cuadrícula de 3 filas × 2 columnas, todas con la misma separación (GRID_GAP): fila 1 EFECTO PELOTA | CARGANDO GOLPE,
     // fila 2 las dos habilidades equipadas (DASH | SMASH), fila 3 INFERNO | ZONA
-    const L = { gapHero: 22, level: 96, gapA: 26, titleToCard: 28, ability: 104, abilityGap: GRID_GAP, gapFeatures: GRID_GAP, features: 190, gapC: 22, play: 96, bottom: 28 };
+    const L = { gapHero: 14, level: 78, gapA: 22, titleToCard: 28, ability: 104, abilityGap: GRID_GAP, gapFeatures: GRID_GAP, features: 270, gapC: 18, play: 92, bottom: 24 };
     const below =
       L.gapHero + L.level + L.gapA + L.titleToCard + L.ability * 2 + L.abilityGap + L.gapFeatures + L.features + L.gapC + L.play + L.bottom;
     const free = H - TOP - below;
-    const heroH = Phaser.Math.Clamp(free, 300, 560);
-    const extra = Math.max(0, free - heroH); // pantallas muy altas: aire repartido arriba y antes de JUGAR
+    let heroH = Phaser.Math.Clamp(free, 240, 392);
+    let spare = Math.max(0, free - heroH);
+    // primero ganan alto las tarjetas de habilidades (hasta +40 px cada una), luego el personaje, y lo que sobre es aire
+    const abExtra = Math.min(Math.floor(spare / 2), 40);
+    L.ability += abExtra;
+    spare -= abExtra * 2;
+    const grow = Math.min(560 - heroH, spare);
+    heroH += grow;
+    const extra = spare - grow; // pantallas muy altas: aire repartido arriba y antes de JUGAR
 
     // ---------------------------------------------------------------- vitrina
     const feetY = TOP + extra * 0.5 + heroH;
@@ -148,7 +177,8 @@ export class CustomizeScene extends Phaser.Scene {
     const row1 = y + L.titleToCard;
     const row2 = row1 + L.ability + L.abilityGap;
     this.passiveCard(W, row1, L.ability, 0, PASSIVES.spin);
-    this.passiveCard(W, row1, L.ability, 1, PASSIVES.charge);
+    // CARGANDO GOLPE: tocarla abre los efectos de carga (clásico + los de la Tienda); la tarjeta dice cuál usas
+    this.passiveCard(W, row1, L.ability, 1, PASSIVES.charge, () => this.openChargeDialog(), chargeFxDef(chargeFxOf(getPlayer().equipped.charge, getPlayer().equipped.skin)).name);
     p.abilities.forEach((id, i) => this.abilityCard(W, row2, L.ability, i as 0 | 1, ABILITIES[id], i + 1));
     y += L.titleToCard + L.ability * 2 + L.abilityGap + L.gapFeatures;
     this.featureCards(W, y, L.features);
@@ -205,8 +235,9 @@ export class CustomizeScene extends Phaser.Scene {
     const cx = W / 2;
     // haz de luz detrás
     const beam = this.add.graphics().setBlendMode(Phaser.BlendModes.ADD);
-    beam.fillStyle(NEON, 0.1).fillTriangle(cx - 60, top, cx + 60, top, cx + 230, feetY);
-    beam.fillTriangle(cx - 60, top, cx - 230, feetY, cx + 230, feetY);
+    const beamTop = top + 26; // debajo del título
+    beam.fillStyle(NEON, 0.1).fillTriangle(cx - 60, beamTop, cx + 60, beamTop, cx + 230, feetY);
+    beam.fillTriangle(cx - 60, beamTop, cx - 230, feetY, cx + 230, feetY);
     // pedestal: anillos neón
     const ped = this.add.graphics();
     ped.fillStyle(0x05112c, 0.75).fillEllipse(cx, feetY, 330, 70);
@@ -273,23 +304,23 @@ export class CustomizeScene extends Phaser.Scene {
   private levelCard(W: number, y: number, level: number, prog: number) {
     const x = 30;
     const w = W - 60;
-    const h = 96;
+    const h = 78;
     this.card(x, y, w, h);
     // medalla de nivel
     const mx = x + 58;
     const my = y + h / 2;
     const m = this.add.graphics();
-    m.fillStyle(0x0a1638, 1).fillCircle(mx, my, 38);
-    m.fillStyle(NEON, 1).fillCircle(mx, my, 34);
-    m.fillStyle(0x6fb2ff, 1).fillCircle(mx, my - 6, 26);
-    m.fillStyle(0x1f5fd6, 1).fillCircle(mx, my + 2, 26);
-    this.add.text(mx, my, String(level), { fontFamily: FONT, fontSize: '34px', color: '#ffffff', stroke: '#0a1638', strokeThickness: 5 }).setOrigin(0.5);
+    m.fillStyle(0x0a1638, 1).fillCircle(mx, my, 31);
+    m.fillStyle(NEON, 1).fillCircle(mx, my, 28);
+    m.fillStyle(0x6fb2ff, 1).fillCircle(mx, my - 5, 21);
+    m.fillStyle(0x1f5fd6, 1).fillCircle(mx, my + 2, 21);
+    this.add.text(mx, my, String(level), { fontFamily: FONT, fontSize: '28px', color: '#ffffff', stroke: '#0a1638', strokeThickness: 4 }).setOrigin(0.5);
 
-    const tx = mx + 56;
+    const tx = mx + 48;
     const bw = x + w - 24 - tx;
-    this.add.text(tx, y + 22, level >= MAX_LEVEL ? 'NIVEL MÁXIMO' : `NIVEL ${level}`, textStyle(24)).setOrigin(0, 0);
-    this.add.text(x + w - 24, y + 26, `MÁX. ${MAX_LEVEL}`, textStyle(16, '#7f93bf')).setOrigin(1, 0);
-    const by = y + 60;
+    this.add.text(tx, y + 14, level >= MAX_LEVEL ? 'NIVEL MÁXIMO' : `NIVEL ${level}`, textStyle(22)).setOrigin(0, 0);
+    this.add.text(x + w - 24, y + 18, `MÁX. ${MAX_LEVEL}`, textStyle(16, '#7f93bf')).setOrigin(1, 0);
+    const by = y + 49;
     const bh = 14;
     const g = this.add.graphics();
     g.fillStyle(0x05112c, 1).fillRoundedRect(tx, by, bw, bh, bh / 2);
@@ -328,29 +359,31 @@ export class CustomizeScene extends Phaser.Scene {
       subtitle.setScale(Math.min(1, tw / subtitle.width));
       {
         const zone = getPlayer().zone;
-        this.add.text(item.x + w / 2, top + 65, `RAYOS ${zone.rays}  ·  1 RAYO = +1%`, { fontFamily: FONT, fontSize: '11px', color: '#91eaff' }).setOrigin(0.5);
+        this.add.text(item.x + w / 2, top + 76, `RAYOS ${zone.rays}  ·  1 RAYO = +1%`, { fontFamily: FONT, fontSize: '13px', color: '#91eaff' }).setOrigin(0.5);
         const labels: Record<ZoneStatKey, string> = { strength: 'FUERZA', speed: 'VELOCIDAD', precision: 'PRECISIÓN', agility: 'AGILIDAD', resistance: 'RESISTENCIA' };
         ZONE_STAT_KEYS.forEach((key, index) => {
           const level = zone.stats[key];
-          const cy = top + 86 + index * 19;
-          this.add.text(item.x + 12, cy, labels[key], { fontFamily: FONT, fontSize: '11px', color: '#e5f8ff' }).setOrigin(0, 0.5);
-          const bx = item.x + 98;
-          const bw = Math.max(38, w - 168);
+          const cy = top + 112 + index * 34;
+          // fila: nombre | barra | n/20 | botón +, con aire entre columnas
+          const lab = this.add.text(item.x + 14, cy, labels[key], { fontFamily: FONT, fontSize: '12px', color: '#e5f8ff' }).setOrigin(0, 0.5);
+          if (lab.width > 84) lab.setScale(84 / lab.width);
+          const bx = item.x + 106;
+          const bw = Math.max(38, w - 106 - 80);
           const bar = this.add.graphics();
-          bar.fillStyle(0x04132e, 1).fillRoundedRect(bx, cy - 4, bw, 8, 4);
-          bar.lineStyle(1, 0x3472a2, 0.8).strokeRoundedRect(bx, cy - 4, bw, 8, 4);
+          bar.fillStyle(0x04132e, 1).fillRoundedRect(bx, cy - 6, bw, 12, 6);
+          bar.lineStyle(1, 0x3472a2, 0.8).strokeRoundedRect(bx, cy - 6, bw, 12, 6);
           if (level > 0) {
-            const fw = bw * level / ZONE_STAT_MAX;
-            bar.fillStyle(item.color, 1).fillRoundedRect(bx, cy - 4, fw, 8, 4);
-            bar.fillStyle(0xffffff, 0.45).fillRoundedRect(bx + 2, cy - 3, Math.max(0, fw - 4), 2, 1);
+            const fw = Math.max(12, (bw * level) / ZONE_STAT_MAX);
+            bar.fillStyle(item.color, 1).fillRoundedRect(bx, cy - 6, fw, 12, 6);
+            bar.fillStyle(0xffffff, 0.45).fillRoundedRect(bx + 3, cy - 4, Math.max(0, fw - 6), 3, 1);
           }
-          this.add.text(bx + bw + 5, cy, `${level}/20`, { fontFamily: FONT, fontSize: '10px', color: '#b9d9f2' }).setOrigin(0, 0.5);
-          const plusX = item.x + w - 18;
+          this.add.text(item.x + w - 44, cy, `${level}/20`, { fontFamily: FONT, fontSize: '11px', color: '#b9d9f2' }).setOrigin(1, 0.5);
+          const plusX = item.x + w - 24;
           const enabled = level < ZONE_STAT_MAX && zone.rays > 0;
           const plus = this.add.graphics({ x: plusX, y: cy }).setAlpha(enabled ? 1 : 0.42);
-          plus.fillStyle(enabled ? item.color : 0x54637d, 1).fillCircle(0, 0, 9);
-          plus.lineStyle(2, 0xffffff, 0.95).lineBetween(-4, 0, 4, 0).lineBetween(0, -4, 0, 4);
-          const hit = this.add.zone(plusX, cy, 28, 20).setInteractive({ useHandCursor: true });
+          plus.fillStyle(enabled ? item.color : 0x54637d, 1).fillCircle(0, 0, 13);
+          plus.lineStyle(3, 0xffffff, 0.95).lineBetween(-6, 0, 6, 0).lineBetween(0, -6, 0, 6);
+          const hit = this.add.zone(plusX, cy, 40, 32).setInteractive({ useHandCursor: true });
           hit.on('pointerup', () => {
             const result = commit((state) => upgradeZoneStat(state, key));
             if (!result.ok) return this.toast(result.error === 'not_enough_rays' ? 'Gana Rayos en las recompensas semanales de Ranked' : 'Este atributo ya llegó al 20%');
@@ -375,16 +408,20 @@ export class CustomizeScene extends Phaser.Scene {
     box.add(this.purpleRacketIcon(x + 34, top + 35, 52));
     const tx = x + 66;
     const tw = w - 76;
-    const title = this.add.text(tx, top + 18, 'INFERNO', { fontFamily: FONT, fontSize: '20px', color: def.css, stroke: '#061431', strokeThickness: 3 }).setOrigin(0, 0);
+    const title = this.add.text(tx, top + 18, 'ULTI', { fontFamily: FONT, fontSize: '20px', color: def.css, stroke: '#061431', strokeThickness: 3 }).setOrigin(0, 0);
     title.setScale(Math.min(1, tw / title.width));
     const name = this.add.text(tx, top + 43, def.ball, { fontFamily: FONT, fontSize: '14px', color: '#ffffff' }).setOrigin(0, 0).setLetterSpacing(1);
     name.setScale(Math.min(1, tw / name.width));
     const desc = this.add.text(x + w / 2, top + 70, def.desc, { fontFamily: FONT, fontSize: '13px', color: '#c3d4f2', align: 'center', wordWrap: { width: w - 24 } }).setOrigin(0.5, 0);
-    box.add([title, name, desc]);
+    const rule = this.add
+      .text(x + w / 2, top + h - 14, `Se activa tras ${INFERNO.pointsToCharge} golpes ganadores`, { fontFamily: FONT, fontSize: '12px', color: '#ffe9a8' })
+      .setOrigin(0.5, 1);
+    if (rule.width > w - 16) rule.setScale((w - 16) / rule.width);
+    box.add([title, name, desc, rule]);
 
     // selector: los cuatro poderes en fila; el elegido con aro de su color, animado y con su nombre resaltado
     const slotW = (w - 16) / INFERNO_POWERS.length;
-    const cy = top + 126;
+    const cy = top + Math.round(h * 0.6);
     INFERNO_POWERS.forEach((p, i) => {
       const cx = x + 8 + slotW * (i + 0.5);
       const on = p.id === power;
@@ -392,12 +429,21 @@ export class CustomizeScene extends Phaser.Scene {
       if (on) ring.lineStyle(8, p.color, 0.25).strokeCircle(cx, cy, 27);
       ring.fillStyle(0x05112c, 0.9).fillCircle(cx, cy, 25);
       ring.lineStyle(on ? 3 : 2, on ? p.color : 0x2a4a8a, 1).strokeCircle(cx, cy, 25);
-      const ball = this.ballIcon(p.id, cx, cy, 46, on).setAlpha(on ? 1 : 0.55);
+      const has = infernoOwned(getPlayer().owned, p.id, getPlayer().equipped.skin);
+      const ball = this.ballIcon(p.id, cx, cy, 46, on).setAlpha(on ? 1 : has ? 0.55 : 0.22);
       const label = this.add.text(cx, cy + 33, p.name, { fontFamily: FONT, fontSize: '11px', color: on ? p.css : '#8ea3ce' }).setOrigin(0.5, 0);
       if (label.width > slotW - 4) label.setScale((slotW - 4) / label.width);
+      if (!has) {
+        // sin comprar: candado sobre la bola y aviso al tocar
+        const lk = this.add.graphics({ x: cx, y: cy });
+        lk.fillStyle(0xaebfe6, 1).fillRoundedRect(-8, -2, 16, 12, 3);
+        lk.lineStyle(3, 0xaebfe6, 1).beginPath().arc(0, -2, 5, Math.PI, 0).strokePath();
+        box.add(lk);
+      }
       const hit = this.add.zone(cx, cy + 8, slotW, 72).setInteractive({ useHandCursor: true });
       hit.on('pointerup', () => {
         if (on) return;
+        if (!has) return this.toast(`${p.ball} se compra en la TIENDA`);
         setInferno(p.id);
         // se redibuja en el siguiente fotograma (no se destruye la zona tocada dentro de su propio evento)
         this.time.delayedCall(0, () => this.infernoCard(x, top, w, h));
@@ -462,18 +508,22 @@ export class CustomizeScene extends Phaser.Scene {
     sb.fillStyle(a.color, 1).fillRoundedRect(x + 14, y - 12, 34, 26, 8);
     this.add.text(x + 31, y + 1, String(slot), { fontFamily: FONT, fontSize: '18px', color: '#ffffff' }).setOrigin(0.5);
     // botón de la habilidad: imagen (assets/btn-<id>.png) si existe; si no, el icono dibujado
-    const art = ABILITY_ART[a.id];
-    const baked = art ? bakeImage(this, art.key, 150) : null;
-    if (art && baked) {
-      const img = this.add.image(x + 48, y + h / 2, baked);
-      const { x0, y0, x1, y1 } = art.box;
-      img.setOrigin((x0 + x1) / 2 / art.w, (y0 + y1) / 2 / art.h); // centro del círculo, no de la imagen
-      img.setScale(64 / (((y1 - y0) / art.h) * img.height)); // el círculo visible mide ~64 px
-    } else {
-      const icon = this.add.graphics({ x: x + 48, y: y + h / 2 });
-      drawDisc(icon, 28, a.color, a.colorDark);
-      drawAbilityIcon(icon, a.icon, 28);
-    }
+    this.abilityIcon(a, x + 48, y + h / 2, 64, a.id === 'smash' ? smashPowerOf(getPlayer().equipped.smash) : 'fire'); // el SMASH con el color de su poder
+    // tocar la tarjeta abre el diálogo con los poderes de la habilidad (televisión + 10 huecos)
+    const open = this.add.zone(x + w / 2, y + h / 2, w, h).setInteractive({ useHandCursor: true });
+    open.on('pointerup', () => {
+      // el DEFENSIVO (dash) tiene varios poderes: DASH y DESTELLO (domain/defensivePowers.ts)
+      if (a.id === 'dash') return this.openDefensiveDialog(a);
+      // el ESPECIAL (smash) también: FUEGO y HIELO (domain/smashPowers.ts)
+      if (a.id === 'smash') return this.openSmashDialog(a);
+      openPowerDialog(this, {
+        title: `PODERES · ${a.name.toUpperCase()}`,
+        color: a.color,
+        // hoy este poder tiene uno solo (el actual); los otros 9 huecos salen bloqueados
+        slots: [{ name: a.name, desc: a.desc, owned: true, equipped: true, preview: (ix, iy, size) => this.abilityIcon(a, ix, iy, size) }],
+      });
+    });
+    this.add.text(x + w - 14, y + h - 12, 'PODERES ›', { fontFamily: FONT, fontSize: '12px', color: '#8fb4ff' }).setOrigin(1, 1);
     const pill = this.add.text(x + w - 18, y + 16, cd, { fontFamily: FONT, fontSize: '14px', color: '#ffe9a8' }).setOrigin(1, 0);
     const pg = this.add.graphics();
     const px0 = pill.x - pill.width - 28;
@@ -486,23 +536,136 @@ export class CustomizeScene extends Phaser.Scene {
     pill.setDepth(1);
   }
 
+  /** ESPECIAL › PODERES: televisión con el poder del SMASH elegido y los disponibles (FUEGO, HIELO). Equipar refresca la pantalla. */
+  private openSmashDialog(a: AbilityDef) {
+    const p = getPlayer();
+    const cur = smashPowerOf(p.equipped.smash);
+    const slots: PowerSlot[] = SMASH_POWERS.map((d) => ({
+      name: d.name,
+      desc: d.desc,
+      owned: smashOwned(p.owned, d.id),
+      equipped: d.id === cur,
+      preview: (ix, iy, size) => this.abilityIcon(a, ix, iy, size, d.id),
+      onEquip: () => setSmash(d.id),
+    }));
+    openPowerDialog(this, {
+      title: `PODERES · ${a.name.toUpperCase()}`,
+      color: a.color,
+      slots,
+      onShop: () => {
+        this.cameras.main.fadeOut(180, 0, 0, 0);
+        this.cameras.main.once('camerafadeoutcomplete', () => this.scene.start('Shop'));
+      },
+      onClose: ({ changed }) => {
+        if (changed) this.time.delayedCall(150, () => this.scene.restart());
+      },
+    });
+  }
+
+  /** DEFENSIVO › PODERES: televisión con el poder elegido y los disponibles (DASH, DESTELLO). */
+  private openDefensiveDialog(a: AbilityDef) {
+    const p = getPlayer();
+    const cur = defensivePowerOf(p.equipped.defensive);
+    const slots: PowerSlot[] = DEFENSIVE_POWERS.map((d) => ({
+      name: d.name,
+      desc: d.desc,
+      owned: defensiveOwned(p.owned, d.id),
+      equipped: d.id === cur,
+      preview:
+        d.id === 'dash'
+          ? (ix, iy, size) => this.abilityIcon(a, ix, iy, size)
+          : (ix, iy, size) => {
+              const g = this.add.graphics({ x: ix, y: iy });
+              drawDisc(g, size / 2, d.color, 0x1b3a6b);
+              drawBlinkIcon(g, size / 2);
+              return g;
+            },
+      onEquip: () => setDefensive(d.id),
+    }));
+    openPowerDialog(this, {
+      title: `PODERES · ${a.name.toUpperCase()}`,
+      color: a.color,
+      slots,
+      onShop: () => {
+        this.cameras.main.fadeOut(180, 0, 0, 0);
+        this.cameras.main.once('camerafadeoutcomplete', () => this.scene.start('Shop'));
+      },
+    });
+  }
+
+  /** Botón de la habilidad centrado en (x, y), de `size` px de diámetro: la imagen del botón (assets/btn-<id>.png) o un disco dibujado. */
+  private abilityIcon(a: AbilityDef, x: number, y: number, size: number, el: SmashPower = 'fire'): Phaser.GameObjects.GameObject {
+    const art = ABILITY_ART[a.id];
+    const baked = art ? bakeImage(this, art.key, 150) : null;
+    if (art && baked) {
+      // SMASH con otro poder (hielo): la misma imagen con el tono girado
+      const img = this.add.image(x, y, el !== 'fire' && a.id === 'smash' ? elementTexture(this, baked, el) ?? baked : baked);
+      const { x0, y0, x1, y1 } = art.box;
+      img.setOrigin((x0 + x1) / 2 / art.w, (y0 + y1) / 2 / art.h); // centro del círculo, no de la imagen
+      img.setScale(size / (((y1 - y0) / art.h) * img.height));
+      return img;
+    }
+    const icon = this.add.graphics({ x, y });
+    drawDisc(icon, size / 2, a.color, a.colorDark);
+    drawAbilityIcon(icon, a.icon, size / 2);
+    return icon;
+  }
+
   /**
    * Tarjeta de una habilidad pasiva del personaje (sin recarga ni ranura): EFECTO PELOTA y CARGANDO GOLPE.
    * Su icono es el del botón del partido (saque con efecto) o un disco con el arco de carga.
    */
-  private passiveCard(W: number, y: number, h: number, col: 0 | 1, def: PassiveDef) {
+  private passiveCard(W: number, y: number, h: number, col: 0 | 1, def: PassiveDef, onTap?: () => void, hint?: string) {
     const { x, w } = gridCol(W, col);
     this.gridCard(x, y, w, h, def.color, def.name, def.desc);
     const cx = x + 48;
     const cy = y + h / 2;
     const art = def.art ? this.textures.exists(def.art) : false;
-    if (def.art && art) {
-      this.add.image(cx, cy, def.art).setDisplaySize(64, 64);
-      return;
+    if (def.art && art) this.add.image(cx, cy, def.art).setDisplaySize(64, 64);
+    else {
+      const icon = this.add.graphics({ x: cx, y: cy });
+      drawDisc(icon, 28, def.color, def.colorDark);
+      def.draw?.(icon, 28);
     }
-    const icon = this.add.graphics({ x: cx, y: cy });
-    drawDisc(icon, 28, def.color, def.colorDark);
-    def.draw?.(icon, 28);
+    if (onTap) {
+      // tocarla abre su diálogo; `hint` = lo que usas ahora (abajo a la derecha, como "PODERES ›" de las habilidades)
+      const open = this.add.zone(x + w / 2, y + h / 2, w, h).setInteractive({ useHandCursor: true });
+      open.on('pointerup', onTap);
+      this.add.text(x + w - 14, y + h - 12, `${hint ? hint + ' · ' : ''}EFECTOS ›`, { fontFamily: FONT, fontSize: '12px', color: '#8fb4ff' }).setOrigin(1, 1);
+    }
+  }
+
+  /** CARGANDO GOLPE: televisión con el efecto de carga elegido y los 4 disponibles (clásico, fuego, energía, tulipán). */
+  private openChargeDialog() {
+    const p = getPlayer();
+    const skin = p.equipped.skin;
+    const cur = chargeFxOf(p.equipped.charge, skin);
+    const slots: PowerSlot[] = CHARGE_FX.map((d) => ({
+      name: d.name,
+      desc: d.desc,
+      owned: chargeFxOwned(p.owned, d.id, skin),
+      equipped: d.id === cur,
+      preview: (x, y, size) => this.chargePreview(d.id, x, y, size),
+      thumb: (x, y, size) => this.chargePreview(d.id, x, y + 18, size * 1.1),
+      onEquip: () => setCharge(d.id),
+    }));
+    openPowerDialog(this, {
+      title: 'EFECTOS · CARGANDO GOLPE',
+      color: PASSIVES.charge.color,
+      slots,
+      layout: 'side',
+      onShop: () => {
+        this.cameras.main.fadeOut(180, 0, 0, 0);
+        this.cameras.main.once('camerafadeoutcomplete', () => this.scene.start('Shop'));
+      },
+      onClose: ({ changed }) => {
+        if (changed) this.time.delayedCall(150, () => this.scene.restart());
+      },
+    });
+  }
+
+  private chargePreview(id: ChargeFxId, x: number, y: number, size: number): Phaser.GameObjects.GameObject {
+    return chargePreview(this, id, x, y, size);
   }
 
   private toast(msg: string) {

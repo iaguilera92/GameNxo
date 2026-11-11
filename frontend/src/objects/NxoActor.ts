@@ -92,7 +92,9 @@ const A = (id: SpriteCharId) => CFGS[id].animations as Record<NxoAnim, AnimInfo>
  * texturas se usan los golpes de la hoja original.
  */
 type HitAnim = 'forehand' | 'backhand' | 'forehand-power' | 'backhand-power' | 'serve' | 'smash';
-const HITS = nxoHits as { cell: { w: number; h: number }; origin: { x: number; y: number }; standHeight: number; hold: number; serveWait: number; smashStart: number; animations: Record<HitAnim, AnimInfo> };
+/** Centro del cordaje en el frame de impacto del saque: altura sobre los pies (`z`) y lado (`dx`, + = derecha de la pantalla), en unidades del personaje. */
+type RacketSpot = { dx: number; z: number };
+const HITS = nxoHits as { cell: { w: number; h: number }; origin: { x: number; y: number }; standHeight: number; hold: number; serveWait: number; smashStart: number; serveRacket: { normal: RacketSpot; spin: RacketSpot }; animations: Record<HitAnim, AnimInfo> };
 const HIT_ANIMS = Object.keys(HITS.animations) as HitAnim[];
 const hitKey = (a: HitAnim, pk = 'nxo') => `${pk}-hit-${a}`;
 const hitsReady = (scene: Phaser.Scene, p: Pack) => HIT_ANIMS.every((a) => scene.textures.exists(hitKey(a, p.key)));
@@ -720,6 +722,17 @@ export class NxoActor {
   serveContactDelay() {
     const a = this.serveClip().info, wait = this.geo.serveWait;
     return Math.max(0.04, ((a.impact ?? wait) - wait) / a.fps);
+  }
+
+  /**
+   * Dónde está el centro del cordaje en el frame de impacto del saque en curso (medido sobre las tiras, ver
+   * tools/build-nxo-v2.mjs): `z` = altura sobre los pies y `dx` = lado (+ = derecha de la pantalla), en unidades del
+   * personaje. El saque con efecto suma el salto por código del propio sprite (jumpAt), que ya está en el frame 5.
+   */
+  serveRacket(): RacketSpot {
+    const spin = this.serveClip().key === this.xk('serve-spin');
+    const r = this.P.hits.serveRacket[spin ? 'spin' : 'normal'];
+    return { dx: r.dx, z: r.z + (spin ? JUMP_H * (JUMP_ARC[2] ?? 0) : 0) };
   }
 
   /**

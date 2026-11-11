@@ -16,8 +16,8 @@ import type { CineProfile } from '../fx/SmashCinematic';
  * Estados: CHARGING → READY → (armada) VALIDATING → CINEMATIC_CHARGE → GHOST_DASH → SPECIAL_IMPACT → RECOVERY.
  */
 export const INFERNO = {
-  /** PRUEBAS: 2 (el diseño final es 6) */
-  pointsToCharge: 2,
+  /** puntos ganados para cargar el ULTI (nombre en PERSONALIZACIÓN: "se activa tras 3 golpes ganadores") */
+  pointsToCharge: 3,
   /** alcance efectivo sobre el del golpe normal (HIT_RANGE) */
   reachMult: 1.25,
   /** la posición de contacto deja la pelota a esta fracción del alcance normal (golpe cómodo) */

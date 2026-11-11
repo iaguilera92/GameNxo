@@ -1,6 +1,8 @@
 import Phaser from 'phaser';
 import type { BallState } from '../objects/Ball';
 import { project } from '../view/projection';
+import type { SmashPower } from '../domain/smashPowers';
+import { SMASH_LOOK } from './smashFx';
 
 /**
  * Humo denso pegado a la pelota mientras vuela un SMASH.
@@ -62,6 +64,8 @@ function ensureTextures(scene: Phaser.Scene) {
 }
 
 export class SmokeTrail {
+  /** poder del SMASH que echa el humo (setElement): fuego = humo oscuro; hielo = bruma clara de escarcha */
+  private el: SmashPower = 'fire';
   private live: Puff[] = [];
   private free: Phaser.GameObjects.Image[] = [];
   private timer = 0;
@@ -71,10 +75,17 @@ export class SmokeTrail {
     for (let i = 0; i < POOL; i++) this.free.push(scene.add.image(0, 0, TEX).setVisible(false).setActive(false));
   }
 
+  /** Poder del SMASH en vuelo (colores del humo y de sus chispas); el humo que ya está en el aire conserva los suyos. */
+  setElement(el: SmashPower) {
+    this.el = el;
+  }
+
   /** Llamar cada fotograma. `on`: la pelota vuela como SMASH; `strong`: potenciado. */
   update(dt: number, ball: BallState, on: boolean, strong: boolean, visible = true) {
     if (on && visible) {
-      const cfg = strong ? SMOKE.strong : SMOKE.normal;
+      const look = SMASH_LOOK[this.el].smoke;
+      const base = strong ? SMOKE.strong : SMOKE.normal;
+      const cfg = { ...base, colors: (strong ? look.strong : look.normal).colors, alpha: (strong ? look.strong : look.normal).alpha };
       this.timer = Math.max(this.timer - dt, -0.06); // tirón de fotogramas: no más de unas pocas emisiones
       while (this.timer <= 0) {
         this.timer += cfg.every;
@@ -130,7 +141,7 @@ export class SmokeTrail {
     const R = Phaser.Math.FloatBetween;
     const life = spark ? R(0.25, 0.45) : R(cfg.life[0], cfg.life[1]);
     const size = (spark ? R(10, 16) : R(cfg.size[0], cfg.size[1])) * k; // diámetro en px
-    const color = spark ? Phaser.Utils.Array.GetRandom([0xffd23f, 0xffb020, 0xfff1b8]) : Phaser.Utils.Array.GetRandom(cfg.colors);
+    const color = spark ? Phaser.Utils.Array.GetRandom(SMASH_LOOK[this.el].smoke.sparks) : Phaser.Utils.Array.GetRandom(cfg.colors);
     o.setTexture(spark ? SPARK_TEX : TEX)
       .setTint(color)
       .setPosition(x + R(-5, 5) * k, y + R(-4, 4) * k)

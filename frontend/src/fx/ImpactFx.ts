@@ -1,6 +1,8 @@
 import Phaser from 'phaser';
 import { POWER_IMPACT, type PowerKind } from '../logic/PowerImpact';
 import { BALL_ART, type InfernoElement } from './InfernoFx';
+import { SMASH_LOOK } from './smashFx';
+import { smashPowerOf } from '../domain/smashPowers';
 
 /**
  * Colores de las explosiones del INFERNO según el poder elegido (fuego, hielo, viento, rayo: domain/infernoPowers.ts).
@@ -28,13 +30,15 @@ export function powerImpactFx(scene: Phaser.Scene, kind: PowerKind, x: number, y
     scene.tweens.add({ targets: o, ...props, delay, duration: ms, onComplete: () => o.destroy() });
 
   if (kind === 'smash') {
+    // colores según el poder del SMASH (el: fuego = blanco y dorado de siempre; hielo = blanco azulado + cristales)
+    const B = SMASH_LOOK[smashPowerOf(el)].blast;
     // destello blanco inicial (muy breve)
-    const flash = scene.add.circle(x, y, 46 * s, 0xffffff, 0.95).setDepth(D + 2).setBlendMode(ADD);
+    const flash = scene.add.circle(x, y, 46 * s, B.flash, 0.95).setDepth(D + 2).setBlendMode(ADD);
     fade(flash, { scale: 2.2, alpha: 0, ease: 'Quad.easeOut' }, 110);
     // núcleo de energía blanca/dorada que se expande
-    const core = scene.add.circle(x, y, 30 * s, 0xfff4c2, 0.9).setDepth(D + 1).setBlendMode(ADD);
+    const core = scene.add.circle(x, y, 30 * s, B.core, 0.9).setDepth(D + 1).setBlendMode(ADD);
     fade(core, { scale: 3.4, alpha: 0, ease: 'Cubic.easeOut' }, 300);
-    const ring = scene.add.circle(x, y, 26 * s, 0xffffff, 0).setStrokeStyle(6, 0xffd23f, 1).setDepth(D + 1).setBlendMode(ADD);
+    const ring = scene.add.circle(x, y, 26 * s, 0xffffff, 0).setStrokeStyle(6, B.ring, 1).setDepth(D + 1).setBlendMode(ADD);
     fade(ring, { scale: 5, alpha: 0, ease: 'Cubic.easeOut' }, 360);
     // líneas de impacto radiales (manga)
     const lines = scene.add.graphics({ x, y }).setDepth(D).setBlendMode(ADD);
@@ -43,11 +47,20 @@ export function powerImpactFx(scene: Phaser.Scene, kind: PowerKind, x: number, y
       const a = (i / n) * Math.PI * 2 + Phaser.Math.FloatBetween(-0.12, 0.12);
       const r0 = 34 * s;
       const r1 = Phaser.Math.FloatBetween(110, 170) * s;
-      lines.lineStyle(i % 2 ? 6 : 3, i % 3 ? 0xffffff : 0xffd23f, 0.95).lineBetween(Math.cos(a) * r0, Math.sin(a) * r0 * 0.8, Math.cos(a) * r1, Math.sin(a) * r1 * 0.8);
+      lines.lineStyle(i % 2 ? 6 : 3, i % 3 ? B.lines[0] : B.lines[1], 0.95).lineBetween(Math.cos(a) * r0, Math.sin(a) * r0 * 0.8, Math.cos(a) * r1, Math.sin(a) * r1 * 0.8);
     }
     lines.setScale(0.6);
     fade(lines, { scale: 1.25, alpha: 0, ease: 'Quad.easeOut' }, 280);
-    sparks(scene, x, y, s, [0xffffff, 0xfff1b8, 0xffd23f], 14, D);
+    sparks(scene, x, y, s, B.sparks, 14, D);
+    // hielo: esquirlas de cristal que salen disparadas y se apagan
+    if (B.shards) {
+      for (let i = 0; i < 12; i++) {
+        const a = Math.random() * Math.PI * 2;
+        const d = Phaser.Math.FloatBetween(70, 160) * s;
+        const sh = scene.add.star(x, y, 4, 3 * s, Phaser.Math.FloatBetween(9, 16) * s, Phaser.Utils.Array.GetRandom(B.shards), 0.95).setDepth(D + 1).setBlendMode(ADD);
+        scene.tweens.add({ targets: sh, x: x + Math.cos(a) * d, y: y + Math.sin(a) * d * 0.8 + 18 * s, angle: Phaser.Math.Between(-220, 220), scale: 0.25, alpha: 0, duration: Phaser.Math.Between(300, 480), ease: 'Cubic.easeOut', onComplete: () => sh.destroy() });
+      }
+    }
   } else {
     infernoBlast(scene, x, y, s, D, el);
   }

@@ -13,6 +13,7 @@
   "hold": 1,
   "serveWait": 2,
   "smashStart": 2,
+  "serveRacket": { "normal": { "dx": 12, "z": 128 }, "spin": { "dx": 20, "z": 146 } },
   "holdForehand": 1,
   "holdPower": 3,
   "holdPowerForehand": 3,

@@ -165,6 +165,16 @@ no se ven en el golpe. El rival (`nxo-front`) tiene otros frames de espera.
 | 7 | `smash` | 14 | remate | arranca en 3 · impacto 5 | pelota alta |
 | 8 | `smash-power` | 14 | remate del SMASH potenciado, con salto | arranca en 3 · impacto 5 | ataque especial SMASH |
 
+**Dónde queda la raqueta en el impacto del saque (`serveRacket`).** En el frame de impacto de `serve` y de
+`serve-spin` (frame 5, índice 4) el juego pone la pelota en el centro del cordaje: la altura a la que salta el
+sacador (`MatchScene.serveJump`) y el lado en el que sube la pelota salen de ahí. Está medido sobre cada tira y se
+guarda en `src/characters/<pack>-hits.json` como `serveRacket: { normal: { dx, z }, spin: { dx, z } }`, en
+unidades del personaje (alto 150): `z` = altura del centro del cordaje sobre los pies y `dx` = desplazamiento lateral
+(+ = derecha de la pantalla). Lo escribe `tools/build-nxo-v2.mjs` (constante `K.serveRacket`). **Si se cambia la
+hoja 2 (filas 5 o 6) o la hoja del saque de un personaje hay que volver a medirlo**: abrir el frame 5 de la tira,
+anotar el centro del óvalo de la raqueta en píxeles (sobre los pies y respecto al centro de la celda) y multiplicar por
+`150 / standHeight`. Valores actuales: NXO espaldas 129 / 145 (z normal / efecto), NXO rival 143 / 144, MAI 128 / 146.
+
 ### Hoja 3: estiradas y reacciones
 
 | Fila | Clip | fps | Qué se dibuja | Uso en el juego |
@@ -245,6 +255,31 @@ Las secciones 4 y 5 son el contrato. Estas son las excepciones que la herramient
 
 **MAI rival**: usa todavía la hoja antigua (`mai-front-sprites/`, `tools/build-nxo-sprites.mjs`). Sus hojas nuevas
 están en `Mai/rival/` sin procesar.
+
+### Efectos de carga ("cargando golpe")
+
+No son hojas de personaje: son el aro que aparece en el suelo bajo el jugador (y bajo el rival, en red) mientras se mantiene
+la carga de un golpe; la barra de potencia sobre la cabeza no cambia. Hay tres con sprites (se compran en la Tienda; Nxo trae
+el de fuego y Mai el de tulipán) y el clásico, que se dibuja por código (`MatchScene` + `fx/shotFx.ts`) y es de todos.
+
+| Id | Fuente (`frontend/art/cargando/`) | Hoja que carga el juego | Celda | Fondo de la fuente |
+|---|---|---|---|---|
+| `fire` | `cargando-fuego.png` | `public/assets/charge-fire.png` | 256×262 | transparente |
+| `energy` | `cargando-energia.png` | `public/assets/charge-energy.png` | 256×230 | transparente |
+| `tulip` | `cargando-tulipan.png` | `public/assets/charge-tulip.png` | 256×287 | rejilla gris + bruma blanca (se limpia) |
+
+Contrato de la fuente: 10 frames en 5 columnas × 2 filas, en orden de lectura. El efecto **nace** (frame 1), **crece** hasta su
+máximo (frames 6-7) y **se disipa** (frame 10). El aro tiene que estar en el mismo sitio en todos los frames. Dejar aire entre
+frames; el tulipán, además, no puede traer la bruma blanca pegada al fondo (la herramienta la recorta por alfa y saturación).
+
+- Se generan con `node tools/build-charge-fx.mjs [fuego|energia|tulipan]` (sin argumentos, las tres). A diferencia de las bolas
+  del INFERNO, no se centra cada frame: todos comparten recorte y ancla (el centro del aro = los pies). La herramienta imprime
+  el ancho de la celda, la altura del ancla (`anchorFy`) y la proporción del aro (`ringFill`); esos números van en `CHARGE_ART`
+  (`src/fx/chargeFx.ts`). Si se cambia una fuente, regenerar y actualizar `CHARGE_ART`.
+- Uso en el partido: la carga 0-100 % recorre los frames 1-6; al 100 % late entre los frames 6, 7, 6 y 5; al soltar se
+  disipa con los frames 8-10 (`ChargeSpriteFx`). Fuego y energía se pintan con luz aditiva; el tulipán, normal.
+- Para añadir un efecto nuevo: su id en `domain/chargeFx.ts` (`CHARGE_FX`), su fuente en `art/cargando/`, una entrada en
+  `SHEETS` de la herramienta y en `CHARGE_ART`, y su ítem `charge:<id>` en `domain/shopCatalog.ts`.
 
 ## 7. Cambiar una hoja o añadir hojas nuevas
 

@@ -12,6 +12,9 @@ import { sanitizeRanked } from './ranked';
 import { sanitizeLogin } from './dailyLogin';
 import { sanitizeZoneProgress } from './zoneProgress';
 import { isInfernoPower } from './infernoPowers';
+import { chargeFxOwned, isChargeFx } from './chargeFx';
+import { isSmashPower, smashOwned } from './smashPowers';
+import { defensiveOwned, isDefensivePower } from './defensivePowers';
 
 /** Todos los ítems que existen (los demás ids guardados se descartan). */
 // Mai deja de ser inicial para quedar como gran premio del nivel 30; se conserva en perfiles antiguos.
@@ -61,7 +64,17 @@ export function migratePlayer(raw: unknown): PlayerState {
     if (Array.isArray(ab) && ab.length === 2 && ab[0] !== ab[1] && ab.every((a) => typeof a === 'string' && s.owned.includes(itemId.ability(a as never))))
       s.equipped.abilities = [ab[0], ab[1]];
     // poder del INFERNO elegido (opcional: sin él, cada personaje usa el suyo)
-    if (isInfernoPower(eq.inferno)) s.equipped.inferno = eq.inferno;
+    // perfiles anteriores (cuando eran gratis): el poder que ya usaban se conserva como comprado
+    // efecto de carga elegido: solo si lo tiene (clásico, el de su personaje o comprado)
+    if (isChargeFx(eq.charge) && chargeFxOwned(s.owned, eq.charge, s.equipped.skin)) s.equipped.charge = eq.charge;
+    // poder del ESPECIAL (SMASH) elegido: solo si lo tiene
+    if (isSmashPower(eq.smash) && smashOwned(s.owned, eq.smash)) s.equipped.smash = eq.smash;
+    // poder del defensivo elegido: solo si lo tiene (el DASH es de todos)
+    if (isDefensivePower(eq.defensive) && defensiveOwned(s.owned, eq.defensive)) s.equipped.defensive = eq.defensive;
+    if (isInfernoPower(eq.inferno)) {
+      s.equipped.inferno = eq.inferno;
+      if (eq.inferno !== 'fire' && !s.owned.includes(itemId.inferno(eq.inferno))) s.owned.push(itemId.inferno(eq.inferno));
+    }
   }
   return s;
 }

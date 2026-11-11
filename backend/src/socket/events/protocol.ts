@@ -51,6 +51,8 @@ export interface PlayerProfile {
   level: number;
   skin: string;
   zoneStats?: { strength: number; speed: number; precision: number; agility: number; resistance: number };
+  /** efecto de carga elegido: classic | fire | energy | tulip (sin él, el rival usa el de su personaje) */
+  charge?: string;
 }
 
 export interface FindRequest {

@@ -24,9 +24,9 @@ export const GOLDEN_POINT = false;
 
 // Habilidades
 /** Dash: el jugador desaparece y reaparece donde llegará la pelota. */
-export const DASH_COOLDOWN = 10; // s
+export const DASH_COOLDOWN = 8; // s
 /** Smash de fuego: si el rival llega a la bola, sale despedido y queda aturdido. */
-export const SMASH_COOLDOWN = 30; // s
+export const SMASH_COOLDOWN = 20; // s
 export const SMASH_SPEED_MULT = 1.75;
 export const STUN_DURATION = 1.0; // s
 export const KNOCKBACK_DIST = 110; // en profundidad de cancha

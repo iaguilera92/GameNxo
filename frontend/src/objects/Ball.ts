@@ -2,6 +2,8 @@ import Phaser from 'phaser';
 import { ALLEY, BOUNCE_DAMP, COURT, GRAVITY, HIT_MAX_Z, NET_HEIGHT, NET_X } from '../config';
 import { C } from '../ui/theme';
 import { project } from '../view/projection';
+import type { SmashPower } from '../domain/smashPowers';
+import { SMASH_LOOK } from '../fx/smashFx';
 
 export interface BallState {
   x: number;
@@ -180,18 +182,50 @@ export class Ball {
     this.power = p;
     if (p) this.fire = 2;
     else if (this.fire === 2) this.fire = 0;
-    this.core.fillColor = this.fire ? 0xff8a1e : 0xd7f53a;
+    this.core.fillColor = this.fire ? SMASH_LOOK[this.el].ball.core : 0xd7f53a;
   }
 
   /** Enciende (o apaga) el fuego de "smash armado" sin que sea todavía un golpe potente. */
   setIgnited(on: boolean) {
     if (this.fire === 2) return;
     this.fire = on ? 1 : 0;
-    this.core.fillColor = on ? 0xff8a1e : 0xd7f53a;
+    this.core.fillColor = on ? SMASH_LOOK[this.el].ball.core : 0xd7f53a;
   }
 
+  /**
+   * Poder del SMASH que lleva la pelota (fuego o hielo, domain/smashPowers.ts): color del núcleo, de la estela y de las
+   * partículas. Llamar antes de `setIgnited` / `setPower`; si ya está prendida se repinta al momento.
+   */
+  setElement(el: SmashPower) {
+    this.el = el;
+    if (this.fire) this.core.fillColor = SMASH_LOOK[el].ball.core;
+  }
+  private el: SmashPower = 'fire';
+
+  /**
+   * Sincroniza lo que se VE con el sprite: la física del golpe es inmediata, pero la raqueta dibujada llega a su
+   * fotograma de impacto `ms` después. Durante ese tiempo la pelota se dibuja en el punto de contacto y se suelta
+   * hasta alcanzar a la real (la trayectoria, la puntuación y las colisiones no cambian). Las bolas de fuego se
+   * quedan como están (sus llamas se dibujan en la posición real).
+   */
+  holdVisual(ms: number) {
+    if (this.power || ms < 20) return;
+    this.lag = { x: this.s.x, y: this.s.y, z: this.s.z, t0: this.scn.time.now, ms: Math.min(ms, 200) };
+  }
+  private lag?: { x: number; y: number; z: number; t0: number; ms: number };
+
   render(dt = 1 / 60) {
-    const { x, y, z } = this.s;
+    let { x, y, z } = this.s;
+    if (this.lag) {
+      const q = (this.scn.time.now - this.lag.t0) / this.lag.ms;
+      if (q >= 1 || this.power) this.lag = undefined;
+      else {
+        const L = this.lag;
+        x = L.x + (x - L.x) * q;
+        y = L.y + (y - L.y) * q;
+        z = L.z + (z - L.z) * q;
+      }
+    }
     const ground = project(x, y, 0);
     const air = project(x, y, z);
     const k = Math.max(0.5, 1 - z / 320);
@@ -218,7 +252,7 @@ export class Ball {
     // estela tipo "viento": cinta cónica del color del golpe
     this.boost = Math.max(0, this.boost - dt * 1.3);
     const styled = this.look && (this.kind === 'normal' || this.kind === 'side') ? this.look.trail : null;
-    const col = this.boost > 0.2 ? this.boostColor : this.power ? TRAIL_COLOR.power : styled ?? TRAIL_COLOR[this.kind];
+    const col = this.boost > 0.2 ? this.boostColor : this.power ? SMASH_LOOK[this.el].ball.trail : styled ?? TRAIL_COLOR[this.kind];
     if (this.look?.sparkle && !this.power && this.sprite.visible) this.emitSparks(dt, air.sx, sy, scale, ground.sy);
     this.history.push({ x: air.sx, y: sy, col });
     if (this.history.length > 20) this.history.shift();
@@ -255,20 +289,23 @@ export class Ball {
     const big = this.fire === 2;
     this.fireTimer = big ? 0.04 : 0.07;
     const n = big ? 2 : 1;
-    const colors = [0xfff36b, 0xffb020, 0xff6a1e, 0xff3b1e];
+    // fuego: llamas que suben; hielo: cristales y copos que se quedan atrás y caen despacio (SMASH_LOOK)
+    const L = SMASH_LOOK[this.el].ball;
     for (let i = 0; i < n; i++) {
       const r = (big ? Phaser.Math.FloatBetween(8, 15) : Phaser.Math.FloatBetween(5, 9)) * scale;
-      const f = this.scn.add
-        .circle(x + Phaser.Math.FloatBetween(-6, 6) * scale, y + Phaser.Math.FloatBetween(-4, 4) * scale, r, Phaser.Utils.Array.GetRandom(colors), 0.9)
-        .setDepth(depth + (Math.random() < 0.5 ? 1 : 3))
-        .setBlendMode(Phaser.BlendModes.ADD);
+      const px = x + Phaser.Math.FloatBetween(-6, 6) * scale;
+      const py = y + Phaser.Math.FloatBetween(-4, 4) * scale;
+      const col = Phaser.Utils.Array.GetRandom(L.flames);
+      const f = L.shards ? this.scn.add.star(px, py, 4, r * 0.28, r * 0.85, col, 0.95) : this.scn.add.circle(px, py, r, col, 0.9);
+      f.setDepth(depth + (Math.random() < 0.5 ? 1 : 3)).setBlendMode(Phaser.BlendModes.ADD);
       this.scn.tweens.add({
         targets: f,
-        y: f.y - Phaser.Math.FloatBetween(14, big ? 40 : 24) * scale,
+        y: f.y - Phaser.Math.FloatBetween(14, big ? 40 : 24) * scale * L.rise,
         x: f.x + Phaser.Math.FloatBetween(-8, 8) * scale,
         scale: 0.2,
         alpha: 0,
-        duration: Phaser.Math.Between(big ? 260 : 200, big ? 420 : 320),
+        ...(L.shards ? { angle: Phaser.Math.Between(-140, 140) } : {}),
+        duration: Phaser.Math.Between(big ? 260 : 200, big ? 420 : 320) * (L.shards ? 1.25 : 1),
         onComplete: () => f.destroy(),
       });
     }

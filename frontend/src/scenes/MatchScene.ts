@@ -1481,42 +1481,18 @@ export class MatchScene extends Phaser.Scene {
   }
 
   /**
-   * Confirmación del ESPECIAL armado: el personaje se pone un poco blanco ~1 s (sube y baja el brillo) y suelta UNA
-   * onda de luz. Con WebGL aclara los sprites (preFX ColorMatrix); sin él, solo la onda.
+   * Confirmación del ESPECIAL armado: suelta UNA onda de luz alrededor del cuerpo.
    */
   private powerPulse(a: Actor) {
-    const MS = 1000;
-    const sprites = spritesIn(a.ch);
-    const fxs: { sp: Phaser.GameObjects.Sprite; cm: Phaser.FX.ColorMatrix }[] = [];
-    for (const sp of sprites) {
-      const cm = sp.preFX?.addColorMatrix();
-      if (cm) fxs.push({ sp, cm });
-    }
-    if (fxs.length) {
-      const t = { v: 0 };
-      this.tweens.add({
-        targets: t,
-        v: { from: 0, to: 1 },
-        duration: MS * 0.25,
-        yoyo: true,
-        hold: MS * 0.35,
-        ease: 'Sine.easeInOut',
-        onUpdate: () => {
-          for (const f of fxs) f.cm.brightness(1 + 0.6 * t.v);
-        },
-        onComplete: () => {
-          // (en los tipos de Phaser, FX.ColorMatrix no figura como Controller, pero lo es)
-          for (const f of fxs) f.sp.preFX?.remove(f.cm as unknown as Phaser.FX.Controller);
-        },
-      });
-    }
+    // SIN preFX: Phaser no lo soporta en objetos dentro de un Container (el personaje lo es). En el APK el personaje
+    // desaparecía y quedaban cuadros rotos al armar el ESPECIAL. Solo la onda de luz.
     // una sola pulsación de luz alrededor del cuerpo
     const feet = project(a.x, a.y);
     const head = this.headPos(a);
     const cy = (feet.sy + head.y) / 2;
     const k = feet.s * VIEW.CHAR_K;
     const ring = this.add.ellipse(feet.sx, cy, 120 * k, 170 * k, 0xffffff, 0.45).setDepth(a.ch.depth + 0.5).setBlendMode(Phaser.BlendModes.ADD);
-    this.tweens.add({ targets: ring, scale: { from: 0.7, to: 1.5 }, alpha: { from: 0.55, to: 0 }, duration: 520, ease: 'Cubic.easeOut', onComplete: () => ring.destroy() });
+    this.tweens.add({ targets: ring, scale: { from: 0.7, to: 1.6 }, alpha: { from: 0.7, to: 0 }, duration: 600, ease: 'Cubic.easeOut', onComplete: () => ring.destroy() });
   }
 
   /** SMASH: la pelota se prende fuego; el siguiente golpe es una bola de fuego. */

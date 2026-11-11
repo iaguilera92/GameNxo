@@ -8,6 +8,7 @@ import { ALL, CFG, NONE, TIERS, playMatch, type Abilities, type MatchResult } fr
 import type { BotTier } from '../../src/ai/BotProfile';
 import { DASH_COOLDOWN, SMASH_COOLDOWN } from '../../src/config';
 import { INFERNO } from '../../src/logic/InfernoDrive';
+import { stunSeconds } from '../../src/logic/PowerImpact';
 
 export interface RunOpts {
   matches: number;
@@ -170,7 +171,7 @@ export async function run(opts: RunOpts) {
   if (opts.powerByTier) CFG.powerSpeedByTier = Object.fromEntries(opts.powerByTier.split(',').map((v, i) => [TIERS[i], Number(v)]));
   if (opts.stunS) CFG.stunS = opts.stunS;
   if (opts.weakK) CFG.weakK = opts.weakK;
-  console.log(`Ajustes: Especial ${CFG.smashCd || SMASH_COOLDOWN} s · Defensivo ${CFG.dashCd || DASH_COOLDOWN} s · Ulti ${INFERNO.pointsToCharge} puntos · tabla ${opts.table ?? 'actual'} · tiros de poder ×${CFG.powerSpeed} velocidad, aturdido ${CFG.stunS || 0.65} s, devolución floja ${CFG.weakK}`);
+  console.log(`Ajustes: Especial ${CFG.smashCd || SMASH_COOLDOWN} s · Defensivo ${CFG.dashCd || DASH_COOLDOWN} s · Ulti ${INFERNO.pointsToCharge} puntos · tabla ${opts.table ?? 'actual'} · tiros de poder ×${CFG.powerSpeed} velocidad, aturdido ${CFG.stunS ? `${CFG.stunS} s` : `${stunSeconds("smash")} s ESPECIAL · ${stunSeconds("inferno")} s ULTI`}, devolución floja ${CFG.weakK}`);
   const all = opts.exp === 'all';
   if (all || opts.exp === 'usage') usage(opts);
   if (all || opts.exp === 'impact') impact(opts);

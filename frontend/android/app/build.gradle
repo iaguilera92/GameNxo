@@ -1,5 +1,16 @@
 apply plugin: 'com.android.application'
 
+// ID de la app de AdMob: se lee de frontend/.env (VITE_ADMOB_ANDROID_APP_ID), el mismo archivo que usa Vite.
+// Sin valor se usa el ID de PRUEBA de Google (el SDK de anuncios cierra la app si falta este dato en el manifest).
+def admobAppId = 'ca-app-pub-3940256099942544~3347511713'
+def envFile = rootProject.file('../.env')
+if (envFile.exists()) {
+    envFile.eachLine { line ->
+        def m = line =~ /^\s*VITE_ADMOB_ANDROID_APP_ID\s*=\s*(\S+)\s*$/
+        if (m.find()) admobAppId = m.group(1)
+    }
+}
+
 android {
     namespace "com.gamenxo.tenisclash"
     compileSdk rootProject.ext.compileSdkVersion
@@ -10,6 +21,7 @@ android {
         versionCode 1
         versionName "1.0"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+        manifestPlaceholders = [admobAppId: admobAppId]
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
              // Default: https://android.googlesource.com/platform/frameworks/base/+/282e181b58cf72b6ca770dc7ca5f91f135444502/tools/aapt/AaptAssets.cpp#61

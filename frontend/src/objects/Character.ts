@@ -502,6 +502,11 @@ export class Character extends Phaser.GameObjects.Container {
     return this.nxo?.endPoses() ?? null;
   }
 
+  /** Clips de frente (reposo, victoria, derrota) para la pantalla de resultados. */
+  endClips() {
+    return this.nxo?.endClips() ?? null;
+  }
+
   /** Partido perdido. */
   defeat() {
     this.nxo?.defeat();

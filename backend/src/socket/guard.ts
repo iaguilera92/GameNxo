@@ -74,7 +74,7 @@ export function sanitizeHit(d: unknown): HitMsg | null {
   return out;
 }
 
-const ACTIONS = new Set<ActionKind>(['toss', 'catch', 'sprint-start', 'sprint-end', 'stunned', 'emote', 'smash-armed', 'smash-disarmed', 'smash-cine', 'inferno-cine']);
+const ACTIONS = new Set<ActionKind>(['toss', 'catch', 'sprint-start', 'sprint-end', 'stunned', 'emote', 'smash-armed', 'smash-disarmed', 'smash-cine', 'inferno-cine', 'defensive']);
 
 export function sanitizeAction(d: unknown): ActionMsg | null {
   if (!isObj(d) || typeof d.kind !== 'string' || !ACTIONS.has(d.kind as ActionKind)) return null;

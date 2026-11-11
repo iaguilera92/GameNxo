@@ -72,9 +72,87 @@ export const ICEBALL_ART = { key: 'inferno-ball-ice', file: 'assets/inferno-ball
 const WINDBALL_ART = { key: 'inferno-ball-wind', file: 'assets/inferno-ball-wind.png', cell: 192, frames: 10, fps: 14, anim: 'inferno-ball-wind-spin', fill: 0.67 };
 const LIGHTNINGBALL_ART = { key: 'inferno-ball-lightning', file: 'assets/inferno-ball-lightning.png', cell: 192, frames: 10, fps: 14, anim: 'inferno-ball-lightning-spin', fill: 0.64 };
 
+/**
+ * Hoja de una bola. Las cuadradas (fuego, hielo, viento, rayo) usan solo key…fill. Las bolas CON RASTRO (tulipán) añaden:
+ *   cellH   alto de la celda (la celda no es cuadrada); `fill` es entonces la parte del ALTO que ocupa el cuerpo
+ *   seq     frames que recorre la animación (si no, 0..frames-1)
+ *   rot     giro extra del dibujo (rad): su cola no está arriba como en las demás
+ *   origin  ancla del dibujo [x, y] (fracción de la celda) = donde va la pelota (la cabeza de la estela)
+ *   trail   hoja del rastro: misma rejilla y ancla; se pinta DETRÁS de la bola en el mismo frame
+ *   ghosts  false = sin la estela de siluetas por código (el rastro ya la dibuja)
+ */
+export interface BallArt {
+  key: string;
+  file: string;
+  cell: number;
+  frames: number;
+  fps: number;
+  anim: string;
+  fill: number;
+  cellH?: number;
+  seq?: number[];
+  rot?: number;
+  origin?: [number, number];
+  trail?: { key: string; file: string };
+  ghosts?: boolean;
+}
+
+/**
+ * Bola de TULIPÁN (tools/build-trail-ball.mjs, fuentes en art/inferno/): estela horizontal de pétalos con la cabeza a la
+ * derecha (por eso `rot` = +90°: su cola queda contra el avance como la de las demás) y su RASTRO detrás. La animación
+ * recorre en vaivén los frames de su máximo (4-7): los primeros y los últimos son el nacer y el disiparse, y en vuelo la
+ * bola no debe desaparecer.
+ */
+const TULIPBALL_ART: BallArt = {
+  key: 'inferno-ball-tulip',
+  file: 'assets/inferno-ball-tulip.png',
+  cell: 384,
+  cellH: 174,
+  frames: 10,
+  fps: 12,
+  anim: 'inferno-ball-tulip-spin',
+  fill: 0.45,
+  seq: [3, 4, 5, 6, 5, 4],
+  rot: Math.PI / 2,
+  origin: [0.852, 0.557],
+  trail: { key: 'inferno-ball-tulip-trail', file: 'assets/inferno-ball-tulip-trail.png' },
+  ghosts: false,
+};
+
 /** Elemento de la bola del INFERNO = el poder que eligió el jugador (domain/infernoPowers.ts). */
 export type InfernoElement = InfernoPower;
-export const BALL_ART: Record<InfernoElement, typeof FIREBALL_ART> = { fire: FIREBALL_ART, ice: ICEBALL_ART, wind: WINDBALL_ART, lightning: LIGHTNINGBALL_ART };
+export const BALL_ART: Record<InfernoElement, BallArt> = { fire: FIREBALL_ART, ice: ICEBALL_ART, wind: WINDBALL_ART, lightning: LIGHTNINGBALL_ART, tulip: TULIPBALL_ART };
+
+/** Tamaño en pantalla [ancho, alto] de una bola de alto `h` (las cuadradas, h × h). */
+export function ballDims(art: BallArt, h: number): [number, number] {
+  return [art.cellH ? (h * art.cell) / art.cellH : h, h];
+}
+
+/**
+ * Vista previa de la bola de un poder (Tienda, PERSONAJE): su rastro detrás (si tiene) y la bola, centradas en (x, y) y
+ * dentro de maxW × maxH, sin giro. Con `animate` corre su animación (el rastro sigue el mismo frame). Sin hoja cargada, un
+ * círculo de `color`.
+ */
+export function addBallPreview(scene: Phaser.Scene, x: number, y: number, el: InfernoElement, maxW: number, maxH: number, animate: boolean, color: number) {
+  const art = BALL_ART[el];
+  const c = scene.add.container(x, y);
+  if (!scene.textures.exists(art.key)) {
+    c.add(scene.add.circle(0, 0, Math.min(maxW, maxH) * 0.3, color, 1));
+    return c;
+  }
+  const [aw, ah] = ballDims(art, 1);
+  const k = Math.min(maxW / aw, maxH / ah);
+  const first = art.seq?.[0] ?? 0;
+  const trail = art.trail && scene.textures.exists(art.trail.key) ? scene.add.sprite(0, 0, art.trail.key, first).setDisplaySize(aw * k, ah * k) : undefined;
+  const ball = scene.add.sprite(0, 0, art.key, first).setDisplaySize(aw * k, ah * k);
+  if (trail) c.add(trail);
+  c.add(ball);
+  if (animate && scene.anims.exists(art.anim)) {
+    if (trail) ball.on(Phaser.Animations.Events.ANIMATION_UPDATE, (_a: unknown, f: Phaser.Animations.AnimationFrame) => trail.active && trail.setFrame(f.textureFrame));
+    ball.play(art.anim);
+  }
+  return c;
+}
 /**
  * Elemento de la bola de un jugador: el poder que eligió (`chosen`, p. ej. el que llega por red) o, si no hay, el de
  * su personaje (Mai = hielo; el resto = fuego).
@@ -106,7 +184,7 @@ export const INFERNO_LOOK: Record<InfernoElement, InfernoLook> = {
   },
   ice: {
     ghostTint: 0x7fd4ff,
-    ghostRamp: [0x1e5fc8, 0xe6fbff],
+    ghostRamp: [0x0a38a8, 0xa6ecff],
     cine: {
       colors: { core: 0xe6fbff, gold: 0x9fe2ff, hot: 0x2f8cff, cyan: 0x4aa8ff },
       aura: [
@@ -121,7 +199,7 @@ export const INFERNO_LOOK: Record<InfernoElement, InfernoLook> = {
   },
   wind: {
     ghostTint: 0x6fe0a0,
-    ghostRamp: [0x146b3a, 0xe0ffe8],
+    ghostRamp: [0x0a7a44, 0xb4ffd2],
     cine: {
       colors: { core: 0xeaffe0, gold: 0x9cf0b0, hot: 0x2fbf6a, cyan: 0x5fd68a },
       aura: [
@@ -135,7 +213,7 @@ export const INFERNO_LOOK: Record<InfernoElement, InfernoLook> = {
   },
   lightning: {
     ghostTint: 0xffe36b,
-    ghostRamp: [0x7a5a00, 0xfff8c0],
+    ghostRamp: [0x9a7400, 0xfff59a],
     cine: {
       colors: { core: 0xfffbe0, gold: 0xfff36b, hot: 0x2f6bff, cyan: 0x5aa8ff },
       aura: [
@@ -146,6 +224,20 @@ export const INFERNO_LOOK: Record<InfernoElement, InfernoLook> = {
       flashTint: 0xfffbe0,
     },
     hit: { ring: 0xfff36b, star: 0xfffbe0, flash: [255, 245, 170] },
+  },
+  tulip: {
+    ghostTint: 0xff9fcf,
+    ghostRamp: [0x8a1f55, 0xffd0e6],
+    cine: {
+      colors: { core: 0xfff0f7, gold: 0xffb3d6, hot: 0xe0457f, cyan: 0xff8fc4 },
+      aura: [
+        [1.3, 0xe0457f, 0.22],
+        [1.08, 0xff8fc4, 0.24],
+        [0.86, 0xffd0e6, 0.22],
+      ],
+      flashTint: 0xfff0f7,
+    },
+    hit: { ring: 0xff8fc4, star: 0xfff0f7, flash: [255, 190, 220] },
   },
 };
 
@@ -163,14 +255,19 @@ export function infernoCine(el: InfernoElement): CineProfile {
 /** Crea (una vez) la animación de cada bola cargada: la usan el partido y la vista previa de PERSONALIZACIÓN. */
 export function ensureBallAnims(scene: Phaser.Scene) {
   for (const a of Object.values(BALL_ART)) {
-    if (scene.textures.exists(a.key) && !scene.anims.exists(a.anim))
-      scene.anims.create({ key: a.anim, frames: scene.anims.generateFrameNumbers(a.key, { start: 0, end: a.frames - 1 }), frameRate: a.fps, repeat: -1 });
+    if (scene.textures.exists(a.key) && !scene.anims.exists(a.anim)) {
+      const frames = scene.anims.generateFrameNumbers(a.key, a.seq ? { frames: a.seq } : { start: 0, end: a.frames - 1 });
+      scene.anims.create({ key: a.anim, frames, frameRate: a.fps, repeat: -1 });
+    }
   }
 }
 
+/** Encola las hojas de las bolas (y de sus rastros) que aún no están cargadas. */
 export function queueInfernoArt(load: Phaser.Loader.LoaderPlugin) {
   for (const art of Object.values(BALL_ART)) {
-    if (!load.scene.textures.exists(art.key)) load.spritesheet(art.key, art.file, { frameWidth: art.cell, frameHeight: art.cell });
+    const size = { frameWidth: art.cell, frameHeight: art.cellH ?? art.cell };
+    if (!load.scene.textures.exists(art.key)) load.spritesheet(art.key, art.file, size);
+    if (art.trail && !load.scene.textures.exists(art.trail.key)) load.spritesheet(art.trail.key, art.trail.file, size);
   }
 }
 
@@ -358,6 +455,8 @@ const BALL_FX: Record<InfernoElement, { halo: number; core: number; trail: [numb
   wind: { halo: 0x2fd68a, core: 0xeaffe0, trail: [0xd0ffe0, 0x3fd68a], bits: [0x9cf06a, 0x5fd16f], rise: 0.35, glow: [0xf0fff0, 0x3fd68a], sparks: [0xffffff, 0xb8ff9a, 0x5fd16f] },
   // rayo: chispas eléctricas amarillas y azules que saltan sin subir
   lightning: { halo: 0x2f6bff, core: 0xfffbe0, trail: [0xbfe0ff, 0x3a7bff], bits: [0xfff36b, 0x7fc8ff], rise: 0, glow: [0xfffbe0, 0x3a7bff], sparks: [0xffffff, 0xfff36b, 0x5aa8ff] },
+  // tulipán: pétalos rosados que caen despacio detrás de la estela
+  tulip: { halo: 0xff5fa8, core: 0xfff0f7, trail: [0xffd0e6, 0xff8fc4], bits: [0xff9fcf, 0xffd0e6], rise: -0.1, glow: [0xfff0f7, 0xff8fc4], sparks: [0xffffff, 0xffb3d6, 0xff6fae] },
 };
 
 /**
@@ -379,6 +478,8 @@ export class InfernoFire {
   private trail: Phaser.GameObjects.Image[] = [];
   private artHalo?: Phaser.GameObjects.Image;
   private artCore?: Phaser.GameObjects.Image;
+  /** rastro de las bolas que lo traen (BallArt.trail): detrás de la bola, mismo frame, posición y giro */
+  private rastro?: Phaser.GameObjects.Sprite;
   private embers: Ember[] = [];
   private emberAcc = 0;
   /** elemento de la bola en vuelo (setElement): cambia la hoja de sprites y los colores de sus efectos */
@@ -421,11 +522,16 @@ export class InfernoFire {
     this.hide(); // la bola anterior ya terminó: la nueva empieza su animación desde cero
     this.el = want;
     if (!this.art) return;
-    const key = BALL_ART[want].key;
-    this.art.setTexture(key, 0);
-    this.trail.forEach((g) => g.setTexture(key, 0));
+    const ART = BALL_ART[want];
+    const [ox, oy] = ART.origin ?? [0.5, 0.5];
+    this.art.setTexture(ART.key, 0).setOrigin(ox, oy);
+    this.trail.forEach((g) => g.setTexture(ART.key, 0).setOrigin(ox, oy));
     this.artHalo?.setTint(BALL_FX[want].halo);
     this.artCore?.setTint(BALL_FX[want].core);
+    if (ART.trail && this.scene.textures.exists(ART.trail.key)) {
+      this.rastro ??= this.scene.add.sprite(0, 0, ART.trail.key, 0).setVisible(false);
+      this.rastro.setTexture(ART.trail.key, 0).setOrigin(ox, oy);
+    }
   }
 
   /** Cada fotograma: `on` = la pelota vuela como INFERNO DRIVE. */
@@ -493,10 +599,14 @@ export class InfernoFire {
     const ART = BALL_ART[this.el];
     const P = BALL_FX[this.el];
     const size = ((R * 2) / ART.fill) * pulse;
+    const [dw, dh] = ballDims(ART, size);
+    const rot = ART.rot ?? 0;
+    // halo y núcleo: del tamaño de una bola cuadrada (en las alargadas `size` es el alto de toda la estela)
+    const glow = ART.cellH ? ((R * 2) / 0.6) * pulse : size;
     const first = !art.visible;
     if (first) art.play(ART.anim, true);
     // halo grande que late
-    this.artHalo!.setPosition(air.sx, air.sy).setDisplaySize(size * 1.9, size * 1.9).setAlpha(0.5 + 0.2 * Math.sin(this.t * 21)).setDepth(d - 0.02).setVisible(true);
+    this.artHalo!.setPosition(air.sx, air.sy).setDisplaySize(glow * 1.9, glow * 1.9).setAlpha(0.5 + 0.2 * Math.sin(this.t * 21)).setDepth(d - 0.02).setVisible(true);
     // estela: siluetas de posiciones anteriores, cada vez mas chicas y tenues
     const now = performance.now() / 1000;
     this.hist.push({ t: now, x: air.sx, y: air.sy, a: this.ang, size });
@@ -504,6 +614,10 @@ export class InfernoFire {
     const frame = art.frame.name;
     for (let i = 0; i < TRAIL; i++) {
       const g = this.trail[i];
+      if (ART.ghosts === false) {
+        g.setVisible(false);
+        continue;
+      }
       const want = now - (i + 1) * TRAIL_STEP;
       let h: Hist | undefined;
       for (let j = this.hist.length - 1; j >= 0; j--) {
@@ -517,12 +631,17 @@ export class InfernoFire {
         continue;
       }
       const f = 1 - (i + 1) / (TRAIL + 1);
-      g.setFrame(frame).setPosition(h.x, h.y).setRotation(h.a).setDisplaySize(h.size * (0.55 + 0.4 * f), h.size * (0.55 + 0.4 * f)).setAlpha(0.5 * f).setTint(i < 2 ? P.trail[0] : P.trail[1]).setDepth(d - 0.01).setVisible(true);
+      const [gw, gh] = ballDims(ART, h.size * (0.55 + 0.4 * f));
+      g.setFrame(frame).setPosition(h.x, h.y).setRotation(h.a + rot).setDisplaySize(gw, gh).setAlpha(0.5 * f).setTint(i < 2 ? P.trail[0] : P.trail[1]).setDepth(d - 0.01).setVisible(true);
+    }
+    // el rastro (si la bola lo trae): detrás de la bola, en su mismo frame, sitio y giro
+    if (ART.trail && this.rastro) {
+      this.rastro.setFrame(frame).setPosition(air.sx, air.sy).setRotation(this.ang + rot).setDisplaySize(dw, dh).setDepth(d - 0.005).setVisible(true);
     }
     // la bola
-    art.setPosition(air.sx, air.sy).setRotation(this.ang).setDisplaySize(size, size).setDepth(d).setVisible(true);
+    art.setPosition(air.sx, air.sy).setRotation(this.ang + rot).setDisplaySize(dw, dh).setDepth(d).setVisible(true);
     // nucleo caliente encima (parpadea)
-    this.artCore!.setPosition(air.sx, air.sy).setDisplaySize(size * 0.42, size * 0.42).setAlpha(0.55 + 0.3 * Math.sin(this.t * 38)).setDepth(d + 0.01).setVisible(true);
+    this.artCore!.setPosition(air.sx, air.sy).setDisplaySize(glow * 0.42, glow * 0.42).setAlpha(0.55 + 0.3 * Math.sin(this.t * 38)).setDepth(d + 0.01).setVisible(true);
     // brasas que salen por detras
     this.emberAcc += dt * EMBER_RATE;
     while (this.emberAcc >= 1) {
@@ -557,6 +676,7 @@ export class InfernoFire {
     if (this.art?.visible) {
       this.art.stop().setVisible(false);
       this.trail.forEach((o) => o.setVisible(false));
+      this.rastro?.setVisible(false);
       this.artHalo?.setVisible(false);
       this.artCore?.setVisible(false);
       this.embers.forEach((e) => {
@@ -602,6 +722,14 @@ export function infernoImpactFx(scene: Phaser.Scene, x: number, y: number, k: nu
   }
   if (el === 'ice') {
     iceBurst(scene, x, y, k, P.sparks);
+    return;
+  }
+  if (el === 'lightning') {
+    zapBurst(scene, x, y, k);
+    return;
+  }
+  if (el === 'wind') {
+    leafBurst(scene, x, y, k);
     return;
   }
   for (let i = 0; i < 18; i++) {
@@ -665,6 +793,48 @@ function iceBurst(scene: Phaser.Scene, x: number, y: number, k: number, cols: nu
   }
   flake.setScale(0.3);
   scene.tweens.add({ targets: flake, scale: 1.5, angle: 30, alpha: 0, duration: 460, ease: 'Cubic.easeOut', onComplete: () => flake.destroy() });
+}
+
+/** Golpe de RAYO en la raqueta: rayos en zigzag que salen del contacto y parpadean 3 veces (sin chispas redondas). */
+function zapBurst(scene: Phaser.Scene, x: number, y: number, k: number) {
+  const kk = Math.max(0.6, k);
+  const g = scene.add.graphics().setDepth(3651).setBlendMode(Phaser.BlendModes.ADD);
+  const draw = () => {
+    g.clear();
+    for (let i = 0; i < 8; i++) {
+      const a = (i / 8) * Math.PI * 2 + Math.random() * 0.6;
+      const L = Phaser.Math.FloatBetween(55, 120) * kk;
+      for (const [w, col, al] of [
+        [7, 0x2f6bff, 0.35],
+        [3.5, 0x7fd4ff, 0.85],
+        [1.8, 0xffffff, 1],
+      ] as const) {
+        g.lineStyle(w * kk, col, al).beginPath().moveTo(x, y);
+        for (let j = 1; j <= 4; j++) {
+          const o = j < 4 ? (Math.random() - 0.5) * 18 * kk : 0;
+          g.lineTo(x + Math.cos(a) * (L * j) / 4 - Math.sin(a) * o, y + (Math.sin(a) * (L * j) / 4 + Math.cos(a) * o) * 0.75);
+        }
+        g.strokePath();
+      }
+    }
+  };
+  draw();
+  scene.time.delayedCall(60, draw);
+  scene.time.delayedCall(120, draw);
+  scene.time.delayedCall(190, () => g.destroy());
+}
+
+/** Golpe de VIENTO en la raqueta: hojas que salen girando y un aro de aire. */
+function leafBurst(scene: Phaser.Scene, x: number, y: number, k: number) {
+  const kk = Math.max(0.6, k);
+  for (let i = 0; i < 14; i++) {
+    const a = (i / 14) * Math.PI * 2 + Phaser.Math.FloatBetween(-0.2, 0.2);
+    const d = Phaser.Math.FloatBetween(60, 140) * kk;
+    const leaf = scene.add.ellipse(x, y, 12 * kk, 5 * kk, Phaser.Utils.Array.GetRandom([0x5fd16f, 0x3fa85a, 0xb8ff9a]), 1).setDepth(3651).setRotation(a);
+    scene.tweens.add({ targets: leaf, x: x + Math.cos(a) * d, y: y + Math.sin(a) * d * 0.7, rotation: a + Phaser.Math.FloatBetween(3, 7), alpha: 0, duration: Phaser.Math.Between(340, 520), ease: 'Cubic.easeOut', onComplete: () => leaf.destroy() });
+  }
+  const ring = scene.add.ellipse(x, y, 40 * kk, 30 * kk).setStrokeStyle(4 * kk, 0xe0ffe8, 0.9).setDepth(3651).setBlendMode(Phaser.BlendModes.ADD);
+  scene.tweens.add({ targets: ring, scale: 3.6, angle: 120, alpha: 0, duration: 360, ease: 'Cubic.easeOut', onComplete: () => ring.destroy() });
 }
 
 /** Vibración breve de la cámara del mundo que se reduce sola (el HUD va en otra cámara). */

@@ -81,10 +81,15 @@ export class ChargeMeter extends Phaser.GameObjects.Container {
     this.value = nv;
   }
 
-  /** Golpe que saldrá (lo decide el joystick): cambia solo el icono central. No toca la carga. */
-  setShot(s: ChargeShot) {
+  /**
+   * Golpe que saldrá (lo decide el joystick): cambia solo el icono central. No toca la carga. `side` (-1 / 1) inclina 45° la
+   * flecha de la cortita o el globo hacia ese lado (diagonal); 0 = recta.
+   */
+  setShot(s: ChargeShot, side: -1 | 0 | 1 = 0) {
     this.shot = s;
+    this.side = side;
   }
+  private side: -1 | 0 | 1 = 0;
 
   /** Pulso luminoso (se llama solo al llegar al máximo). */
   pulse() {
@@ -174,14 +179,21 @@ export class ChargeMeter extends Phaser.GameObjects.Container {
     const ic = this.icon;
     ic.clear();
     const CY = -14; // centro del icono dentro del semicírculo
-    const shape = (pts: number[], k: number, dx = 0, dy = 0) => {
+    /** `rot` (rad, sentido horario en pantalla): gira la forma sobre el centro del icono (flecha en diagonal) */
+    const shape = (pts: number[], k: number, rot = 0) => {
       const out: Phaser.Math.Vector2[] = [];
-      for (let i = 0; i < pts.length; i += 2) out.push(new Phaser.Math.Vector2(pts[i] * k + dx, CY + pts[i + 1] * k + dy));
+      const cs = Math.cos(rot);
+      const sn = Math.sin(rot);
+      for (let i = 0; i < pts.length; i += 2) {
+        const x = pts[i] * k;
+        const y = pts[i + 1] * k;
+        out.push(new Phaser.Math.Vector2(x * cs - y * sn, CY + x * sn + y * cs));
+      }
       return out;
     };
-    const icon = (pts: number[], color: number, k = 1) => {
-      ic.fillStyle(C.outline).fillPoints(shape(pts, k * 1.24), true);
-      ic.fillStyle(color).fillPoints(shape(pts, k), true);
+    const icon = (pts: number[], color: number, k = 1, rot = 0) => {
+      ic.fillStyle(C.outline).fillPoints(shape(pts, k * 1.24, rot), true);
+      ic.fillStyle(color).fillPoints(shape(pts, k, rot), true);
     };
     const shot = this.shot;
     if (shot === 'normal') {
@@ -191,7 +203,9 @@ export class ChargeMeter extends Phaser.GameObjects.Container {
       // globo = flecha arriba · cortita = flecha abajo
       const s = shot === 'lob' ? 1 : -1;
       const arrow = [0, -15 * s, 12, -3 * s, 5, -3 * s, 5, 13 * s, -5, 13 * s, -5, -3 * s, -12, -3 * s];
-      icon(arrow, shot === 'lob' ? 0xffd23f : 0xdfe6f5);
+      // en diagonal: la flecha se inclina 45° hacia el lado elegido (arriba-derecha, abajo-izquierda…)
+      const rot = (this.side * s * Math.PI) / 4;
+      icon(arrow, shot === 'lob' ? 0xffd23f : 0xdfe6f5, 1, rot);
     } else {
       const s = shot === 'left' ? -1 : 1;
       const arrow = [16 * s, 0, 4 * s, -12, 4 * s, -5, -14 * s, -5, -14 * s, 5, 4 * s, 5, 4 * s, 12];

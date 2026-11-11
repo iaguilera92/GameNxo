@@ -82,6 +82,10 @@ function grantBpReward(player: PlayerState, reward: BpReward): { state: PlayerSt
     n.gems += reward.amount;
     return { state: n, given: reward };
   }
+  if (reward.kind === 'rays') {
+    n.zone.rays += reward.amount;
+    return { state: n, given: reward };
+  }
   const ids = reward.kind === 'character'
     ? [itemId.skin(reward.skin), ...(reward.style ? [itemId.style(reward.style)] : [])]
     : [reward.item];
@@ -137,6 +141,22 @@ export function bpClaimable(s: PlayerState): number {
   if (!b.welcomeFreeClaimed) n++;
   if (b.premium && !b.welcomePremClaimed) n++;
   return n;
+}
+
+/**
+ * Cosméticos de premios YA reclamados (bienvenida y niveles) que el jugador aún no tiene: pasa cuando la tabla de
+ * premios cambia a mitad de temporada (p. ej. un nivel que daba dinero ahora da un emote). Se entregan sin cobrar nada
+ * más. Solo ítems (dar un ítem que ya tienes no hace nada, así que se puede llamar en cada carga); dinero y Rayos no.
+ * Muta `s` (la llama migrate sobre su propio estado nuevo).
+ */
+export function bpGrantClaimedItemsInPlace(s: PlayerState) {
+  if (s.bp.season !== BP_SEASON.id) return;
+  const rewards: BpReward[] = [];
+  if (s.bp.welcomeFreeClaimed) rewards.push(BP_SEASON.welcome.free);
+  if (s.bp.welcomePremClaimed) rewards.push(BP_SEASON.welcome.prem);
+  for (const t of s.bp.free) if (BP_SEASON.tiers[t - 1]) rewards.push(BP_SEASON.tiers[t - 1].free);
+  for (const t of s.bp.prem) if (BP_SEASON.tiers[t - 1]) rewards.push(BP_SEASON.tiers[t - 1].prem);
+  for (const r of rewards) if (r.kind === 'item' && !s.owned.includes(r.item)) s.owned.push(r.item);
 }
 
 /** Valida datos guardados (migración). */

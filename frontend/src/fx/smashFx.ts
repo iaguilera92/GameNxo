@@ -59,6 +59,41 @@ export const SMASH_LOOK: Record<SmashPower, SmashLook> = {
     },
     ring: 0x6fc4ff,
   },
+  wind: {
+    // torbellino: ráfagas verdes claras que flotan un poco (no suben como el fuego ni caen como la escarcha)
+    ball: { core: 0xd8ffe6, trail: 0x5fd68a, flames: [0xffffff, 0xc8ffd8, 0x7ff0a8, 0x2fbf6a], rise: 0.35, shards: false },
+    smoke: {
+      normal: { colors: [0xe0ffe9, 0xb4f5c8, 0x86e3a6], alpha: 0.5 },
+      strong: { colors: [0xf0fff4, 0xc8ffd8, 0x8ff0b0, 0x3fd68a], alpha: 0.6 },
+      sparks: [0xffffff, 0xb8ff9a, 0x5fd16f],
+      additive: false,
+    },
+    aura: { col: 0x1f9f5a, hot: 0x8ff0b0, core: 0xf0fff0 },
+    burst: 0x5fd68a,
+    blast: { flash: 0xf0fff0, core: 0xd0ffe0, ring: 0x8ff0b0, lines: [0xffffff, 0x5fd68a], sparks: [0xffffff, 0xb8ff9a, 0x3fd68a] },
+    ring: 0x5fd68a,
+  },
+  lightning: {
+    // electricidad: chispas en estrella (shards) amarillas y azules que saltan sin subir; bruma azul pálida
+    ball: { core: 0xfffbe0, trail: 0xffe14a, flames: [0xffffff, 0xfff36b, 0x7fc8ff, 0x2f6bff], rise: 0, shards: true },
+    smoke: {
+      normal: { colors: [0xdfe9ff, 0xaec8ff, 0x7fa6ff], alpha: 0.5 },
+      strong: { colors: [0xf4f8ff, 0xc8dcff, 0x8fb4ff, 0x3a7bff], alpha: 0.6 },
+      sparks: [0xffffff, 0xfff36b, 0x5aa8ff],
+      additive: false,
+    },
+    aura: { col: 0x2f6bff, hot: 0xfff36b, core: 0xfffbe0 },
+    burst: 0xfff36b,
+    blast: {
+      flash: 0xfffbe0,
+      core: 0xfff8c2,
+      ring: 0xfff36b,
+      lines: [0xffffff, 0x7fc8ff],
+      sparks: [0xffffff, 0xfff36b, 0x5aa8ff],
+      shards: [0xffffff, 0xfff36b, 0x9fd0ff, 0x3a7bff],
+    },
+    ring: 0xffe14a,
+  },
 };
 
 const CINES: Partial<Record<SmashPower, CineProfile>> = {};

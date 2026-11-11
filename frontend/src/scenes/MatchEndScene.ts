@@ -1,21 +1,23 @@
 import Phaser from 'phaser';
 import { FONT } from '../ui/theme';
-import { COINS_LOSS, COINS_SURRENDER, COINS_WIN, GAMES_TO_WIN, XP_LOSS, XP_WIN, xpToNext, MAX_LEVEL } from '../config';
+import { COINS_LOSS, COINS_SURRENDER, COINS_WIN, XP_LOSS, XP_WIN, xpToNext, MAX_LEVEL } from '../config';
 import { addCoins, addXp, getProfile } from '../logic/Profile';
+import { applyCharColor } from '../fx/CharColorFx';
 import { arcadeButton } from '../ui/modeButtons';
 import { fitText } from '../ui/fitText';
-import { RankBadge } from '../ui/RankBadge';
 import type { RankId } from '../domain/ranks';
 import { resetMatchEnd } from '../fx/matchEnd';
 import { markWheelPresented, recordMatchWin, wheelToPresent, wheelStatuses } from '../logic/Wheels';
-import { openWheel } from './WheelScene';
+import { openWheel, whenWheelReady } from './WheelScene';
 import { drawWheelFace, drawXpIcon } from '../ui/wheelArt';
 import { WHEEL } from '../domain/wheelConfig';
 import { getPlayer } from '../domain/playerStore';
-import { RANKED } from '../domain/rankedConfig';
 import { myPosition, rankedState, settleCurrentRanked } from '../logic/Ranked';
 import { recordWin } from '../logic/Stats';
 import { showInterstitial } from '../ads/ads';
+import type { EndClip } from '../objects/NxoActor';
+
+type DuelClips = { idle: EndClip; victory: EndClip; defeat: EndClip };
 
 /** Id único de partida (ruletas: cada partida se cuenta una sola vez). */
 function newMatchId(): string {
@@ -36,6 +38,8 @@ function newMatchId(): string {
 export interface MatchEndData {
   /** pose final de cada lado (textura + frame), para el duelo Ranked */
   poses?: { me?: { key: string; frame: number }; rival?: { key: string; frame: number } };
+  /** clips DE FRENTE de cada lado (reposo en bucle; luego victoria o derrota) con su ancla y alto de pie (NxoActor.endClips) */
+  clips?: { me?: DuelClips; rival?: DuelClips };
   win: boolean;
   surrendered?: boolean;
   playerName: string;
@@ -64,7 +68,12 @@ const GOLD = 0xffc42e;
 /** alto de los 3 cuadros de recompensa (monedas · EXP · ruleta) */
 const CARD_H = 196;
 /** alto extra del panel con el duelo de apuestas Ranked */
-const RANKED_H = 212;
+const RANKED_H = 286;
+/** alto de los cuadros de los personajes del duelo */
+const DUEL_BOX_H = 224;
+/** cuadro del duelo cuando se decide: ganador en verde (ganó monedas), perdedor en rojo suave */
+const DUEL_WIN = { fill: 0x0f3a24, line: 0x3fd46a, text: '#9fe8a0' };
+const DUEL_LOSE = { fill: 0x3a1620, line: 0xd9707a, text: '#ffb3ba' };
 
 /** Moneda dibujada (sin imagen): disco dorado con canto, brillo y una corona. */
 function drawCoin(g: Phaser.GameObjects.Graphics, r: number) {
@@ -80,6 +89,114 @@ function drawCoin(g: Phaser.GameObjects.Graphics, r: number) {
   g.fillStyle(0xffffff, 0.55).fillEllipse(-r * 0.35, -r * 0.42, r * 0.7, r * 0.32);
 }
 
+/**
+ * Poses de la tarjeta de resultado de MAI de frente, cortadas de su hoja nueva (tools/build-end-poses.mjs): la hoja de
+ * frente que usa el partido es la antigua, sin derrota y con la raqueta en la otra mano.
+ */
+const MAI_END = { dir: 'assets/characters/mai-front-end', cell: { w: 192, h: 128 }, clips: { idle: { fps: 9, loop: true }, victory: { fps: 10, loop: false }, defeat: { fps: 10, loop: false } } } as const;
+const maiEndKey = (c: keyof typeof MAI_END.clips) => `mai-front-end-${c}`;
+
+/** Clips de la tarjeta: los del personaje, salvo MAI de frente, que usa sus poses nuevas (si cargaron). */
+function endPosesFor(scene: Phaser.Scene, clips?: DuelClips): DuelClips | undefined {
+  if (!clips || !clips.idle.key.startsWith('mai-front')) return clips;
+  const k = (c: keyof typeof MAI_END.clips): EndClip | null => {
+    const key = maiEndKey(c);
+    return scene.textures.exists(key) && scene.anims.exists(key) ? { key, last: 7, origin: { x: 0.5, y: 1 }, standHeight: MAI_END.cell.h } : null;
+  };
+  const idle = k('idle');
+  if (!idle) return clips;
+  return { idle, victory: k('victory') ?? idle, defeat: k('defeat') ?? idle };
+}
+
+/**
+ * Derrota que se QUEDA abajo: algunas hojas (NXO de frente) bajan y luego vuelven a la pose de pie, así que su último
+ * frame no parece una derrota. Se mide el alto de la silueta de cada frame y, si el más bajo no es el último, se crea
+ * (una vez) la animación `<key>-hold` del frame 0 al más bajo, para terminar ahí. Devuelve la clave a reproducir.
+ */
+function defeatHoldKey(scene: Phaser.Scene, key: string): string {
+  const hold = `${key}-hold`;
+  if (scene.anims.exists(hold)) return hold;
+  const anim = scene.anims.get(key);
+  if (!anim) return key;
+  const frames = anim.frames;
+  let low = frames.length - 1;
+  try {
+    const cv = document.createElement('canvas');
+    const ctx = cv.getContext('2d', { willReadFrequently: true });
+    if (!ctx) return key;
+    let best = Infinity;
+    frames.forEach((af, i) => {
+      const fr = af.frame;
+      const src = fr.source.image as CanvasImageSource;
+      cv.width = fr.cutWidth;
+      cv.height = fr.cutHeight;
+      ctx.clearRect(0, 0, cv.width, cv.height);
+      ctx.drawImage(src, fr.cutX, fr.cutY, fr.cutWidth, fr.cutHeight, 0, 0, fr.cutWidth, fr.cutHeight);
+      const px = ctx.getImageData(0, 0, cv.width, cv.height).data;
+      let top = cv.height, bot = -1;
+      for (let y = 0; y < cv.height; y++)
+        for (let x = 0; x < cv.width; x++)
+          if (px[(y * cv.width + x) * 4 + 3] > 60) {
+            if (y < top) top = y;
+            bot = y;
+          }
+      const h = bot - top;
+      if (bot >= 0 && h < best - 1) {
+        best = h;
+        low = i;
+      }
+    });
+  } catch {
+    return key;
+  }
+  if (low >= frames.length - 1) return key;
+  scene.anims.create({
+    key: hold,
+    frames: frames.slice(0, low + 1).map((f) => ({ key: f.textureKey, frame: f.textureFrame })),
+    frameRate: anim.frameRate,
+    repeat: 0,
+  });
+  return hold;
+}
+
+/** Silueta del primer frame de una textura: centro x, pies (fila más baja con píxeles) y alto, en px del frame. */
+type Sil = { cx: number; bottom: number; h: number; w: number; fw: number; fh: number };
+const SIL = new Map<string, Sil | null>();
+function silhouette(scene: Phaser.Scene, key: string) {
+  if (SIL.has(key)) return SIL.get(key)!;
+  let res: Sil | null = null;
+  try {
+    const fr = scene.textures.getFrame(key, 0);
+    const src = fr?.source.image as CanvasImageSource | undefined;
+    if (fr && src) {
+      const cv = document.createElement('canvas');
+      cv.width = fr.cutWidth;
+      cv.height = fr.cutHeight;
+      const ctx = cv.getContext('2d', { willReadFrequently: true });
+      if (ctx) {
+        ctx.drawImage(src, fr.cutX, fr.cutY, fr.cutWidth, fr.cutHeight, 0, 0, fr.cutWidth, fr.cutHeight);
+        const px = ctx.getImageData(0, 0, cv.width, cv.height).data;
+        let x0 = cv.width, x1 = -1, y0 = cv.height, y1 = -1;
+        for (let y = 0; y < cv.height; y++) {
+          for (let x = 0; x < cv.width; x++) {
+            if (px[(y * cv.width + x) * 4 + 3] > 60) {
+              if (x < x0) x0 = x;
+              if (x > x1) x1 = x;
+              if (y < y0) y0 = y;
+              if (y > y1) y1 = y;
+            }
+          }
+        }
+        if (x1 >= 0) res = { cx: (x0 + x1 + 1) / 2, bottom: y1 + 1, h: y1 + 1 - y0, w: x1 + 1 - x0, fw: fr.cutWidth, fh: fr.cutHeight };
+      }
+    }
+  } catch {
+    res = null;
+  }
+  SIL.set(key, res);
+  return res;
+}
+
 export class MatchEndScene extends Phaser.Scene {
   static readonly KEY = 'MatchEnd';
   private d!: MatchEndData;
@@ -88,11 +205,28 @@ export class MatchEndScene extends Phaser.Scene {
     super(MatchEndScene.KEY);
   }
 
+  preload() {
+    for (const c of Object.keys(MAI_END.clips) as (keyof typeof MAI_END.clips)[]) {
+      const key = maiEndKey(c);
+      if (!this.textures.exists(key)) this.load.spritesheet(key, `${MAI_END.dir}/${c}.png`, { frameWidth: MAI_END.cell.w, frameHeight: MAI_END.cell.h });
+    }
+  }
+
+  /** Animaciones de las poses de MAI (globales; una vez). */
+  private ensureMaiEndAnims() {
+    for (const [c, info] of Object.entries(MAI_END.clips) as [keyof typeof MAI_END.clips, { fps: number; loop: boolean }][]) {
+      const key = maiEndKey(c);
+      if (!this.textures.exists(key) || this.anims.exists(key)) continue;
+      this.anims.create({ key, frames: this.anims.generateFrameNumbers(key, { start: 0, end: 7 }), frameRate: info.fps, repeat: info.loop ? -1 : 0 });
+    }
+  }
+
   init(data: MatchEndData) {
     this.d = data;
   }
 
   create() {
+    this.ensureMaiEndAnims();
     const W = this.scale.width;
     const H = this.scale.height;
     const d = this.d;
@@ -246,14 +380,11 @@ export class MatchEndScene extends Phaser.Scene {
     fitText(left, side);
     fitText(right, side);
     c.add([sc, left, right]);
-    const fmt = this.add.text(0, scoreY + 38, `MEJOR DE ${GAMES_TO_WIN * 2 - 1} JUEGOS`, { fontFamily: FONT, fontSize: '13px', color: '#7f93bf' }).setOrigin(0.5).setLetterSpacing(1);
-    c.add(fmt);
     if (d.surrendered) {
-      fmt.setX(-58);
       const tag = this.add.graphics();
-      tag.fillStyle(0xc42536, 1).fillRoundedRect(36, scoreY + 26, 100, 24, 12);
+      tag.fillStyle(0xc42536, 1).fillRoundedRect(-50, scoreY + 26, 100, 24, 12);
       c.add(tag);
-      c.add(this.add.text(86, scoreY + 38, 'RENDICIÓN', { fontFamily: FONT, fontSize: '13px', color: '#ffffff' }).setOrigin(0.5).setLetterSpacing(1));
+      c.add(this.add.text(0, scoreY + 38, 'RENDICIÓN', { fontFamily: FONT, fontSize: '13px', color: '#ffffff' }).setOrigin(0.5).setLetterSpacing(1));
     }
 
     // separador
@@ -474,60 +605,109 @@ export class MatchEndScene extends Phaser.Scene {
     const pot = r.pot ?? entry * 2;
     const rivalStake = pot - entry;
     const won = r.delta > 0;
-    // cabecera: insignia + RANKED · posición y semana
-    const hy = y0 + 14;
-    c.add(new RankBadge(this, -w / 2 + 40, hy + 2, { rank: r.promotedTo ?? r.rank, level: r.level, size: 40, position: r.position }));
-    c.add(this.add.text(-w / 2 + 68, hy - 8, `RANKED${(r.bet ?? 1) > 1 ? ' · APUESTA x2' : ''}`, { fontFamily: FONT, fontSize: '17px', color: '#ffd23f' }).setOrigin(0, 0.5).setLetterSpacing(1));
-    const info = d.surrendered ? 'Rendición: no cuenta para la semana' : `Posición #${r.position ?? '—'} · Semana ${Math.min(rankedState().weekMatches, RANKED.minMatchesForReward)}/${RANKED.minMatchesForReward}`;
-    c.add(this.add.text(-w / 2 + 68, hy + 12, info, { fontFamily: FONT, fontSize: '13px', color: '#9fb4e0' }).setOrigin(0, 0.5));
-    // cuadros
-    const by = y0 + 117;
-    const bw = (w - 40 - 56) / 2;
-    const bh = 140;
+    // cabecera: resultado de la apuesta (rendirse = perderla)
+    const hy = y0 + 18;
+    const head = this.add
+      .text(0, hy, won ? 'Has ganado la apuesta:' : 'Has perdido la apuesta:', { fontFamily: FONT, fontSize: '22px', color: won ? '#ffd23f' : '#ff9aa3', stroke: '#0a1638', strokeThickness: 5 })
+      .setOrigin(0.5)
+      .setLetterSpacing(1);
+    fitText(head, w - 48);
+    c.add(head);
+    // cuadros (más grandes; sin nombre: el personaje ya dice quién es)
+    const bh = DUEL_BOX_H;
+    const by = y0 + 40 + bh / 2;
+    const bw = (w - 40 - 44) / 2;
     const lx = -w / 2 + 20 + bw / 2;
     const rx = w / 2 - 20 - bw / 2;
-    const box = (x: number, name: string, color: number, amount: number, pose?: { key: string; frame: number }) => {
-      const hasPose = !!pose && this.textures.exists(pose.key);
-      const useDefault = !hasPose && this.textures.exists('portrait-nxo');
-      const ox = hasPose || useDefault ? 34 : 0; // con personaje, el texto se corre a la derecha
+    // cada cuadro, 2 columnas: IZQUIERDA el personaje (centrado, de pie sobre el borde de abajo) y DERECHA la moneda
+    // arriba con la cifra debajo
+    const colL = -bw / 4;
+    const colR = bw / 4;
+    /** alto del cuerpo (silueta medida) de los dos personajes: el MISMO para los dos */
+    const bodyPx = bh * 0.74;
+    /** ancho máximo del dibujo: su columna (media tarjeta) con un margen pequeño; la raqueta no se sale del borde */
+    const maxW = bw / 2 - 6;
+    const feetY = bh / 2 - 10;
+    const sprites: { me?: Phaser.GameObjects.Sprite; rival?: Phaser.GameObjects.Sprite } = {};
+    // ancla y escala por la SILUETA real del primer frame (pies y alto dibujados), no por el ancla de la hoja: así ningún
+    // personaje queda hundido ni más grande que el otro aunque sus hojas tengan celdas y márgenes distintos
+    /** fondo + borde del cuadro y el separador suave entre sus dos columnas */
+    const paintBox = (g: Phaser.GameObjects.Graphics, fill: number, line: number, lw: number) => {
+      g.clear();
+      g.fillStyle(fill, 1).fillRoundedRect(-bw / 2, -bh / 2, bw, bh, 16);
+      g.fillStyle(0xffffff, 0.04).fillRoundedRect(-bw / 2 + 3, -bh / 2 + 3, bw - 6, bh * 0.4, { tl: 13, tr: 13, bl: 4, br: 4 });
+      g.lineStyle(lw, line, 1).strokeRoundedRect(-bw / 2, -bh / 2, bw, bh, 16);
+      g.lineStyle(2, 0x24365f, 0.8).lineBetween(0, -bh / 2 + 22, 0, bh / 2 - 22);
+    };
+    const place = (sp: Phaser.GameObjects.Sprite, key: string) => {
+      const b = silhouette(this, key);
+      if (!b) return;
+      // el MISMO alto para los dos personajes, salvo que su silueta (con la raqueta) no quepa a lo ancho en su columna
+      sp.setOrigin(b.cx / b.fw, b.bottom / b.fh).setScale(Math.min(bodyPx / b.h, maxW / (b.w * 1.12)));
+    };
+    const box = (x: number, color: number, amount: number, clips?: DuelClips, pose?: { key: string; frame: number }) => {
+      const useClip = !!clips && this.textures.exists(clips.idle.key) && this.anims.exists(clips.idle.key);
+      const hasPose = !useClip && !!pose && this.textures.exists(pose.key);
+      const useDefault = !useClip && !hasPose && this.textures.exists('portrait-nxo');
       const bc = this.add.container(x, by);
       const g = this.add.graphics();
-      g.fillStyle(0x0a1638, 1).fillRoundedRect(-bw / 2, -bh / 2, bw, bh, 16);
-      g.lineStyle(3, color, 1).strokeRoundedRect(-bw / 2, -bh / 2, bw, bh, 16);
+      paintBox(g, 0x0a1638, color, 3);
       bc.add(g);
-      const nm = this.add.text(ox, -bh / 2 + 15, name.toUpperCase(), { fontFamily: FONT, fontSize: '15px', color: '#cfe0ff' }).setOrigin(0.5);
-      fitText(nm, bw - 20 - ox * 2);
-      bc.add(nm);
-      const coin = this.add.graphics({ x: -28, y: 12 });
-      if (pose && hasPose) {
+      let sp: Phaser.GameObjects.Sprite | undefined;
+      if (useClip && clips) {
+        // de frente, parado y animado (reposo en bucle); al decidirse la apuesta, victoria o derrota
+        sp = this.add.sprite(colL, feetY, clips.idle.key, 0);
+        place(sp, clips.idle.key);
+        sp.play(clips.idle.key);
+        bc.add(sp);
+      } else if (pose && hasPose) {
         const fr = this.textures.getFrame(pose.key, pose.frame);
-        const ch = this.add.image(-bw / 2 + 50, bh / 2 - 8, pose.key, pose.frame).setOrigin(0.5, 0.94);
-        ch.setScale(Math.min(1.1, (bh - 22) / (fr.height * 0.94)));
+        const ch = this.add.image(colL, feetY, pose.key, pose.frame).setOrigin(0.5, 0.94);
+        ch.setScale(Math.min(1.1, (bh - 30) / (fr.height * 0.94)));
         bc.add(ch);
       } else if (useDefault) {
         // Retrato frontal de NXO como respaldo para animaciones ausentes o skins sin hoja de poses finales.
-        bc.add(this.add.image(-bw / 2 + 50, bh / 2 - 8, 'portrait-nxo').setOrigin(0.5, 1).setDisplaySize(58, 74));
+        bc.add(this.add.image(colL, feetY, 'portrait-nxo').setOrigin(0.5, 1).setDisplaySize(84, 108));
       }
-      drawCoin(coin, 13);
-      const val = this.add.text(-10, 12, amount.toLocaleString('es-CL'), { fontFamily: FONT, fontSize: '30px', color: '#ffffff', stroke: '#0a1638', strokeThickness: 5 }).setOrigin(0, 0.5);
+      const coin = this.add.graphics({ x: colR, y: -24 });
+      drawCoin(coin, 24);
+      const val = this.add.text(colR, 30, amount.toLocaleString('es-CL'), { fontFamily: FONT, fontSize: '32px', color: '#ffffff', stroke: '#0a1638', strokeThickness: 5 }).setOrigin(0.5);
       bc.add([coin, val]);
-      const center = () => {
-        const tw = 26 + 8 + val.width;
-        coin.setX(ox - tw / 2 + 13);
-        val.setX(ox - tw / 2 + 34);
-      };
+      const center = () => fitText(val, bw / 2 - 16);
       center();
       c.add(bc);
-      return { bc, g, val, center, coin };
+      return { bc, g, val, center, coin, sp };
     };
-    const me = box(lx, d.playerName, 0x3a7bff, entry, d.poses?.me);
-    const rv = box(rx, d.rivalName, 0xff4f5e, rivalStake, d.poses?.rival);
+    // MAI de frente: sus 3 poses salen de su hoja nueva (tools/build-end-poses.mjs; la del partido no trae derrota)
+    const clipsMe = endPosesFor(this, d.clips?.me);
+    const clipsRv = endPosesFor(this, d.clips?.rival);
+    const me = box(lx, 0x3a7bff, entry, clipsMe, d.poses?.me);
+    const rv = box(rx, 0xff4f5e, rivalStake, clipsRv, d.poses?.rival);
+    sprites.me = me.sp;
+    // tu ESTILO DE COLOR también en la tarjeta del resultado (el rival, con sus colores de siempre)
+    if (me.sp) applyCharColor(me.sp, getProfile().color, getProfile().skin);
+    sprites.rival = rv.sp;
+    // al decidirse la apuesta: el ganador celebra y el otro hace su derrota (se quedan en la última pose)
+    const finalPose = (sp: Phaser.GameObjects.Sprite | undefined, clips: DuelClips | undefined, victory: boolean) => {
+      if (!sp || !clips) return;
+      const clip = victory ? clips.victory : clips.defeat;
+      if (!this.anims.exists(clip.key)) return;
+      place(sp, clip.key);
+      if (clip.key === clips.idle.key) return void sp.play({ key: clip.key, repeat: -1 });
+      // la derrota termina en su pose más baja (la de NXO vuelve a ponerse de pie al final de la hoja)
+      sp.play({ key: victory ? clip.key : defeatHoldKey(this, clip.key), repeat: 0 });
+    };
     // centro: VS, luego flecha hacia el ganador
     const vs = this.add.text(0, by, 'VS', { fontFamily: FONT, fontSize: '22px', color: '#7f93bf' }).setOrigin(0.5);
     c.add(vs);
     // animación: tras las tarjetas de recompensa
     const start = 750 + 380 * 3;
     this.time.delayedCall(start, () => {
+      // victoria / derrota según el PARTIDO (con rendición, gana el rival)
+      // con los MISMOS clips de la tarjeta (MAI de frente usa sus poses nuevas: con los del partido salía con la raqueta
+      // en la otra mano, otro color y más grande que el cuadro)
+      finalPose(sprites.me, clipsMe, d.win);
+      finalPose(sprites.rival, clipsRv, !d.win);
       const from = won ? rv : me;
       const to = won ? me : rv;
       const moved = won ? rivalStake : entry;
@@ -538,7 +718,7 @@ export class MatchEndScene extends Phaser.Scene {
       for (let i = 0; i < n; i++) {
         const cg = this.add.graphics();
         drawCoin(cg, 11);
-        cg.setPosition(from.bc.x, by);
+        cg.setPosition(from.bc.x + colR, by);
         c.add(cg);
         const t = { k: 0 };
         this.tweens.add({
@@ -547,7 +727,7 @@ export class MatchEndScene extends Phaser.Scene {
           duration: 520,
           delay: i * 70,
           ease: 'Sine.easeInOut',
-          onUpdate: () => cg.setPosition(from.bc.x + (to.bc.x - from.bc.x) * t.k, by - Math.sin(t.k * Math.PI) * 46),
+          onUpdate: () => cg.setPosition(from.bc.x + colR + (to.bc.x - from.bc.x) * t.k, by - Math.sin(t.k * Math.PI) * 46),
           onComplete: () => {
             cg.destroy();
             this.tweens.add({ targets: to.coin, scale: { from: 1.35, to: 1 }, duration: 160 });
@@ -570,13 +750,14 @@ export class MatchEndScene extends Phaser.Scene {
           from.center();
         },
         onComplete: () => {
-          // ganador en dorado, perdedor apagado
-          to.g.lineStyle(4, GOLD, 1).strokeRoundedRect(-bw / 2, -bh / 2, bw, bh, 16);
-          to.val.setColor('#ffd23f');
-          from.bc.setAlpha(0.55);
+          // ganador en VERDE (ganó las monedas) y perdedor en ROJO suave
+          paintBox(to.g, DUEL_WIN.fill, DUEL_WIN.line, 4);
+          to.val.setColor(DUEL_WIN.text);
+          paintBox(from.g, DUEL_LOSE.fill, DUEL_LOSE.line, 3);
+          from.val.setColor(DUEL_LOSE.text);
           this.tweens.add({ targets: to.bc, scale: { from: 1.08, to: 1 }, duration: 300, ease: 'Back.easeOut' });
           const gain = this.add
-            .text(me.bc.x, by - bh / 2 - 6, won ? `+${moved.toLocaleString('es-CL')}` : `−${entry.toLocaleString('es-CL')}`, { fontFamily: FONT, fontSize: '24px', color: won ? '#9fe8a0' : '#ff9aa3', stroke: '#0a1638', strokeThickness: 5 })
+            .text(me.bc.x + colR, by - 66, won ? `+${moved.toLocaleString('es-CL')}` : `−${entry.toLocaleString('es-CL')}`, { fontFamily: FONT, fontSize: '24px', color: won ? '#9fe8a0' : '#ff9aa3', stroke: '#0a1638', strokeThickness: 5 })
             .setOrigin(0.5);
           c.add(gain);
           this.tweens.add({ targets: gain, y: gain.y - 26, alpha: { from: 1, to: 0 }, duration: 1400, delay: 400 });
@@ -606,19 +787,33 @@ export class MatchEndScene extends Phaser.Scene {
     const x1 = W / 2 + (bw + gap) / 2;
     const matchKey = d.matchKey ?? 'Match';
 
+    // un solo cambio de pantalla por overlay (un doble toque no abre dos ruletas ni arranca dos veces)
+    let leaving = false;
     const cont = arcadeButton(this, x0, y, bw, bh, 'CONTINUAR', () => {
+      if (leaving) return;
+      leaving = true;
       resetMatchEnd(this.scene.get(matchKey));
       this.scene.stop(matchKey);
       // Si la partida desbloqueó una ruleta, mostrarla antes de entrar al menú.
       const wheelIndex = wheelToPresent();
       if (wheelIndex >= 0) {
         markWheelPresented(wheelIndex);
-        const wheelScene = openWheel(this, wheelIndex);
-        wheelScene.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
-          if (!this.scene.isActive()) return;
-          this.scene.stop(matchKey);
-          this.scene.stop();
+        openWheel(this, wheelIndex);
+        // la ruleta puede quedar en cola de Phaser hasta el siguiente fotograma (openWheel devuelve null): se espera a que
+        // exista antes de escuchar su cierre. Antes se usaba directamente y daba "Cannot read properties of null
+        // (reading 'events')": la app quedaba pegada en el resultado.
+        let went = false;
+        const toMenu = () => {
+          if (went || !this.scene.isActive()) return;
+          went = true;
+          // sin `this.scene.stop()` antes: `start` ya cierra esta escena, y fx/transitions.ts espera el fundido
+          // y no arranca nada si la escena ya se cerró (el menú no llegaba nunca y la app quedaba pegada)
           this.scene.start('Menu');
+        };
+        whenWheelReady(this, (w) => w.events.once(Phaser.Scenes.Events.SHUTDOWN, toMenu));
+        // seguridad: si la ruleta no llegara a abrirse, no quedarse en esta pantalla
+        this.time.delayedCall(2500, () => {
+          if (!this.scene.get('Wheel')?.sys.isActive()) toMenu();
         });
         return;
       }
@@ -627,6 +822,8 @@ export class MatchEndScene extends Phaser.Scene {
     // REVANCHA: misma lógica que ya existía (reiniciar el partido con el mismo rival).
     // En Ranked se vuelve a buscar partida con la misma apuesta (la entrada se paga de nuevo al empezar).
     const again = arcadeButton(this, x1, y, bw, bh, d.ranked ? 'OTRA RANKED' : d.lan ? 'OTRA PARTIDA' : 'REVANCHA', () => {
+      if (leaving) return;
+      leaving = true;
       resetMatchEnd(this.scene.get(matchKey));
       if (d.ranked) {
         this.scene.stop(matchKey);

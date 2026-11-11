@@ -25,7 +25,6 @@ export class AbilityButton extends Phaser.GameObjects.Container {
   private baseSub = '';
   private fireRing?: Phaser.GameObjects.Arc;
   private meter?: Phaser.GameObjects.Container;
-  private meterText?: Phaser.GameObjects.Text;
   private meterPips?: Phaser.GameObjects.Graphics;
 
   constructor(
@@ -166,33 +165,79 @@ export class AbilityButton extends Phaser.GameObjects.Container {
     this.redraw();
   }
 
-  /** Medidor discreto de carga encima del botón: "ULTI n/max" + pips. */
+  /**
+   * Carga de la ULTI: anillo exterior del botón partido en `max` tramos (uno por punto ganado). Cada punto llena el
+   * tramo siguiente (con un pequeño destello); con todos llenos, pulseMeter() avisa que la ULTI está cargada.
+   */
   setMeter(n: number, max: number) {
-    const R = this.radius;
     if (!this.meter) {
-      this.meter = this.scene.add.container(0, -R - 34);
-      const bg = this.scene.add.graphics();
-      bg.fillStyle(0x0b1733, 0.85).fillRoundedRect(-62, -15, 124, 30, 15);
-      bg.lineStyle(2, 0xb46bff, 0.9).strokeRoundedRect(-62, -15, 124, 30, 15);
-      this.meterText = this.scene.add.text(0, -4, '', { fontFamily: '"Lilita One", "Arial Black", sans-serif', fontSize: '14px', color: '#e6ccff' }).setOrigin(0.5);
+      this.meter = this.scene.add.container(0, 0);
       this.meterPips = this.scene.add.graphics();
-      this.meter.add([bg, this.meterText, this.meterPips]);
-      this.add(this.meter);
+      this.meter.add(this.meterPips);
+      this.addAt(this.meter, 1); // detrás de la cara del botón y de su anillo de enfriamiento
+      // la etiqueta y el poder bajan un poco para que el anillo no los tape
+      const { r, w } = this.meterGeo;
+      this.labelText.setY(r + w / 2 + 12);
+      this.subText.setY(r + w / 2 + 32);
     }
-    const full = n >= max;
-    this.meterText!.setText(`ULTI ${n}/${max}`).setColor(full ? '#f0d6ff' : '#e6ccff');
+    const prev = this.meterN;
+    this.meterN = Math.max(0, Math.min(n, max));
+    this.meterMax = max;
+    this.drawMeter();
+    // el tramo recién ganado se enciende con un destello
+    if (this.meterN > prev && this.meterN < max) this.flashSegment(this.meterN - 1);
+  }
+  private meterN = 0;
+  private meterMax = 3;
+
+  /** radio y grosor del anillo de carga (por fuera del enfriamiento y del aro de "armado") */
+  private get meterGeo() {
+    return { r: this.radius + 25, w: 7, gap: 0.2 };
+  }
+  private segArc(i: number) {
+    const { gap } = this.meterGeo;
+    const span = (Math.PI * 2) / this.meterMax;
+    const a0 = -Math.PI / 2 + i * span + gap / 2;
+    return { a0, a1: a0 + span - gap };
+  }
+
+  private drawMeter() {
     const g = this.meterPips!.clear();
-    const w = 14;
-    const x0 = -((max - 1) * (w + 3)) / 2;
-    for (let i = 0; i < max; i++) {
-      g.fillStyle(i < n ? (full ? 0xd59bff : 0x9a45ff) : 0x2a3a66, 1).fillRoundedRect(x0 + i * (w + 3) - w / 2, 7, w, 4, 2);
+    const { r, w } = this.meterGeo;
+    const full = this.meterN >= this.meterMax;
+    for (let i = 0; i < this.meterMax; i++) {
+      const { a0, a1 } = this.segArc(i);
+      const on = i < this.meterN;
+      // contorno oscuro + tramo (vacío = azul apagado; lleno = morado; todo lleno = morado claro)
+      g.lineStyle(w + 4, C.outline, 0.9).beginPath().arc(0, 0, r, a0, a1, false).strokePath();
+      g.lineStyle(w, on ? (full ? 0xd59bff : 0x9a45ff) : 0x2a3a66, 1).beginPath().arc(0, 0, r, a0, a1, false).strokePath();
+      if (on) g.lineStyle(2, 0xf0d6ff, 0.8).beginPath().arc(0, 0, r - w / 2 + 1.5, a0 + 0.04, a1 - 0.04, false).strokePath();
     }
   }
 
-  /** Pequeña animación de "cargada" en el medidor. */
+  /** Destello sobre un tramo recién llenado. */
+  private flashSegment(i: number) {
+    const { r, w } = this.meterGeo;
+    const { a0, a1 } = this.segArc(i);
+    const f = this.scene.add.graphics();
+    f.lineStyle(w + 6, 0xf0d6ff, 1).beginPath().arc(0, 0, r, a0, a1, false).strokePath();
+    this.addAt(f, 2);
+    this.scene.tweens.add({ targets: f, alpha: 0, scale: 1.12, duration: 420, ease: 'Cubic.easeOut', onComplete: () => f.destroy() });
+  }
+
+  /** ULTI cargada (los 3 tramos llenos): el anillo y el botón laten y sale una onda morada. */
   pulseMeter() {
     if (!this.meter) return;
-    this.scene.tweens.add({ targets: this.meter, scale: { from: 1.35, to: 1 }, duration: 480, ease: 'Back.easeOut' });
+    this.scene.tweens.killTweensOf(this.meter);
+    this.meter.setScale(1);
+    this.scene.tweens.add({ targets: this.meter, scale: { from: 1.22, to: 1 }, duration: 520, ease: 'Back.easeOut' });
+    this.scene.tweens.add({ targets: this.face, scale: { from: 1.25, to: 1 }, duration: 520, ease: 'Back.easeOut' });
+    const { r } = this.meterGeo;
+    for (let k = 0; k < 2; k++) {
+      const wave = this.scene.add.circle(0, 0, r, 0x000000, 0).setStrokeStyle(6, 0xd59bff, 1);
+      this.addAt(wave, 1);
+      this.scene.tweens.add({ targets: wave, scale: 1.6, alpha: 0, delay: k * 160, duration: 600, ease: 'Cubic.easeOut', onComplete: () => wave.destroy() });
+    }
   }
 
   private shake() {
@@ -213,6 +258,14 @@ export class AbilityButton extends Phaser.GameObjects.Container {
     }
     if (!this.infernoMode) this.remaining = this.cooldown;
     this.scene.tweens.add({ targets: this.face, scale: 0.82, duration: 70, yoyo: true, ease: 'Quad.easeOut' });
+    this.redraw();
+    return true;
+  }
+
+  /** Adelanta la recarga `s` segundos (premio de la racha de PERFECTO). true = estaba recargando. */
+  reduceCooldown(s: number): boolean {
+    if (this.infernoMode || this.remaining <= 0) return false;
+    this.remaining = Math.max(0, this.remaining - s);
     this.redraw();
     return true;
   }
@@ -300,8 +353,16 @@ export function hyperTexture(scene: Phaser.Scene, key: string): string | null {
   return out;
 }
 
+/** Filtro de canvas por poder del SMASH (sobre el arte rojo/naranja del botón). */
+const ELEMENT_FILTER: Record<Exclude<SmashPower, 'fire'>, string> = {
+  ice: 'hue-rotate(205deg) saturate(1.15) brightness(1.1)', // azul hielo
+  wind: 'hue-rotate(110deg) saturate(1.05) brightness(1.1)', // verde
+  // amarillo eléctrico: girar el tono del rojo deja manchas naranja y verdes; se pasa a luz, se tiñe en sepia y se satura
+  lightning: 'grayscale(1) sepia(1) saturate(5) hue-rotate(14deg) brightness(1.45)',
+};
+
 /**
- * Copia de una textura con el tono girado al color de un poder del SMASH (hielo = azul). El fuego devuelve la misma textura.
+ * Copia de una textura con el tono girado al color de un poder del SMASH (hielo = azul, viento = verde, rayo = amarillo). El fuego devuelve la misma textura.
  * null si no se puede (sin canvas / sin filtros): quien llama deja el arte como está.
  */
 export function elementTexture(scene: Phaser.Scene, key: string, el: SmashPower): string | null {
@@ -313,8 +374,8 @@ export function elementTexture(scene: Phaser.Scene, key: string, el: SmashPower)
   const tex = scene.textures.createCanvas(out, srcImg.width, srcImg.height);
   const ctx = tex?.getContext();
   if (!tex || !ctx || !('filter' in ctx)) return null;
-  // rojo/naranja → azul hielo
-  ctx.filter = 'hue-rotate(205deg) saturate(1.15) brightness(1.1)';
+  // el arte es rojo/naranja: se gira el tono al color de cada poder
+  ctx.filter = ELEMENT_FILTER[el];
   ctx.drawImage(srcImg, 0, 0);
   ctx.filter = 'none';
   tex.refresh();

@@ -8,9 +8,12 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "cap:sync": "npm run build && npx cap sync android",
+    "build:release": "tsc --noEmit && vite build --mode release",
+    "cap:release": "npm run build:release && npx cap sync android",
     "apk": "npm run cap:sync && node tools/apk.mjs"
   },
   "dependencies": {
+    "@capacitor-community/admob": "6.2.0",
     "@capacitor/android": "6.2.1",
     "@capacitor/core": "6.2.1",
     "@fontsource/lilita-one": "5.1.0",

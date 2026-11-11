@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { ALLEY, BOUNCE_DAMP, COURT, GRAVITY, HIT_MAX_Z, NET_HEIGHT, NET_X } from '../config';
+import { ALLEY, BOUNCE_DAMP, COURT, GRAVITY, HIT_MAX_Z, NET_HEIGHT, NET_OVERHANG, NET_X } from '../config';
 import { C } from '../ui/theme';
 import { project } from '../view/projection';
 import type { SmashPower } from '../domain/smashPowers';
@@ -33,7 +33,7 @@ export function stepBall(s: BallState, dt: number): BallEvent {
 
   // ¿Cruza la red por debajo de su altura?
   const crossed = (prevX - NET_X) * (s.x - NET_X) < 0;
-  if (crossed && s.y > COURT.top - ALLEY - 6 && s.y < COURT.bottom + ALLEY + 6 && s.z < NET_HEIGHT) {
+  if (crossed && s.y > COURT.top - ALLEY - NET_OVERHANG && s.y < COURT.bottom + ALLEY + NET_OVERHANG && s.z < NET_HEIGHT) {
     s.x = NET_X - Math.sign(s.vx) * 6;
     s.vx = -s.vx * 0.15;
     s.vy *= 0.3;
@@ -114,12 +114,98 @@ export function predictIntercept(b: BallState, side: 'near' | 'far', alreadyBoun
 /** Tipo de golpe: define el color de la estela. */
 export type ShotKind = 'normal' | 'drop' | 'lob' | 'side' | 'power';
 const TRAIL_COLOR: Record<ShotKind, number> = {
-  normal: 0xffffff,
-  drop: 0x9aa0ad, // corta: gris
-  lob: 0xffd23f, // globo: amarillo
+  normal: 0xffffff, // sin uso: el golpe normal no deja estela salvo con un estilo equipado (Ball.update)
+  drop: 0xffffff, // corta: blanca (la única con estela blanca)
+  lob: 0xffd23f, // globo: amarillo (jugador y rival)
   side: 0x6ec1ff, // cruzada izquierda/derecha: azul suave
   power: 0xff7a1e, // smash: naranja
 };
+
+/** Color base del fieltro (amarillo verdoso de pelota de tenis). */
+const BALL_FELT = 0xd7f53a;
+export const BALL_FELT_KEY = 'ball-felt';
+export const BALL_SHADE_KEY = 'ball-shade';
+
+/**
+ * Arte de la pelota, dibujado una vez por código (canvas 64 x 64):
+ *   ball-felt   fieltro: degradado amarillo verdoso + pelusa + las dos costuras blancas curvas (gira en el render)
+ *   ball-shade  volumen fijo encima: brillo arriba a la izquierda y sombra abajo a la derecha
+ */
+export function makeBallArt(scene: Phaser.Scene) {
+  const N = 64;
+  const R = N / 2;
+  if (!scene.textures.exists(BALL_FELT_KEY)) {
+    const t = scene.textures.createCanvas(BALL_FELT_KEY, N, N);
+    if (t) {
+      const ctx = t.getContext();
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(R, R, R, 0, Math.PI * 2);
+      ctx.clip();
+      const g = ctx.createRadialGradient(R * 0.8, R * 0.75, 2, R, R, R);
+      g.addColorStop(0, '#eefe7a');
+      g.addColorStop(0.55, '#d7f53a');
+      g.addColorStop(1, '#a9c91e');
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, N, N);
+      // pelusa del fieltro: puntitos claros y oscuros
+      for (let i = 0; i < 260; i++) {
+        ctx.fillStyle = Math.random() < 0.5 ? 'rgba(255,255,200,0.22)' : 'rgba(90,110,0,0.16)';
+        ctx.fillRect(Math.random() * N, Math.random() * N, 1.4, 1.4);
+      }
+      // costuras: dos curvas en "S" opuestas, como una pelota real
+      ctx.strokeStyle = 'rgba(255,255,255,0.95)';
+      ctx.lineWidth = 4.2;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(R * 0.18, -2);
+      ctx.bezierCurveTo(R * 0.95, R * 0.55, R * 0.95, R * 1.45, R * 0.18, N + 2);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(N - R * 0.18, -2);
+      ctx.bezierCurveTo(N - R * 0.95, R * 0.55, N - R * 0.95, R * 1.45, N - R * 0.18, N + 2);
+      ctx.stroke();
+      ctx.strokeStyle = 'rgba(120,140,20,0.35)';
+      ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      ctx.moveTo(R * 0.18 + 3, -2);
+      ctx.bezierCurveTo(R * 0.95 + 3, R * 0.55, R * 0.95 + 3, R * 1.45, R * 0.18 + 3, N + 2);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(N - R * 0.18 - 3, -2);
+      ctx.bezierCurveTo(N - R * 0.95 - 3, R * 0.55, N - R * 0.95 - 3, R * 1.45, N - R * 0.18 - 3, N + 2);
+      ctx.stroke();
+      ctx.restore();
+      t.refresh();
+    }
+  }
+  if (!scene.textures.exists(BALL_SHADE_KEY)) {
+    const t = scene.textures.createCanvas(BALL_SHADE_KEY, N, N);
+    if (t) {
+      const ctx = t.getContext();
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(R, R, R, 0, Math.PI * 2);
+      ctx.clip();
+      // sombra: borde inferior derecho más oscuro (volumen)
+      const sh = ctx.createRadialGradient(R * 0.7, R * 0.6, R * 0.3, R, R, R * 1.05);
+      sh.addColorStop(0, 'rgba(0,0,0,0)');
+      sh.addColorStop(0.7, 'rgba(20,40,0,0.10)');
+      sh.addColorStop(1, 'rgba(20,40,0,0.45)');
+      ctx.fillStyle = sh;
+      ctx.fillRect(0, 0, N, N);
+      // brillo especular arriba a la izquierda
+      const hi = ctx.createRadialGradient(R * 0.62, R * 0.55, 0, R * 0.62, R * 0.55, R * 0.5);
+      hi.addColorStop(0, 'rgba(255,255,255,0.85)');
+      hi.addColorStop(0.45, 'rgba(255,255,255,0.25)');
+      hi.addColorStop(1, 'rgba(255,255,255,0)');
+      ctx.fillStyle = hi;
+      ctx.fillRect(0, 0, N, N);
+      ctx.restore();
+      t.refresh();
+    }
+  }
+}
 
 /** Pelota visual: sprite + sombra + estela + fuego. */
 export class Ball {
@@ -149,10 +235,76 @@ export class Ball {
     this.guide = scn.add.graphics();
     this.trail = scn.add.graphics();
     this.sprite = scn.add.container(0, 0);
+    makeBallArt(scn);
     const outline = scn.add.circle(0, 0, 12, C.outline);
-    this.core = scn.add.circle(0, 0, 9, 0xd7f53a);
-    const shine = scn.add.circle(-3, -3, 3.2, 0xffffff, 0.75);
-    this.sprite.add([outline, this.core, shine]);
+    // núcleo de color: solo se ve con la pelota prendida (SMASH: fuego / hielo); normal = el fieltro
+    this.core = scn.add.circle(0, 0, 9.6, BALL_FELT).setVisible(false);
+    // pelota de tenis: fieltro con costuras que GIRA (render) + sombreado de volumen fijo encima
+    this.felt = scn.add.image(0, 0, BALL_FELT_KEY).setDisplaySize(19.6, 19.6);
+    const shade = scn.add.image(0, 0, BALL_SHADE_KEY).setDisplaySize(19.6, 19.6);
+    // GOLPE CARGADO AL MÁXIMO: halo y brillo encima + rayos alrededor (ocultos salvo en ese golpe)
+    // halo exterior amplio y suave + halo interior intenso (más brillo); el brillo de encima casi blanco
+    this.maxGlow = scn.add.circle(0, 0, 26, 0xfff0a0, 0.28).setBlendMode(Phaser.BlendModes.ADD).setVisible(false);
+    this.maxHalo = scn.add.circle(0, 0, 17, 0xfff6b8, 0.7).setBlendMode(Phaser.BlendModes.ADD).setVisible(false);
+    this.maxShine = scn.add.circle(0, 0, 9.8, 0xffffff, 0.7).setBlendMode(Phaser.BlendModes.ADD).setVisible(false);
+    this.maxBolts = scn.add.graphics().setBlendMode(Phaser.BlendModes.ADD).setVisible(false);
+    this.sprite.add([this.maxGlow, this.maxHalo, outline, this.felt, this.core, shade, this.maxShine, this.maxBolts]);
+  }
+  /** golpe cargado al máximo en vuelo: pelota brillante con rayos y SIN estela (hasta el siguiente golpe) */
+  private max = false;
+  private maxGlow: Phaser.GameObjects.Arc;
+  private maxHalo: Phaser.GameObjects.Arc;
+  private maxShine: Phaser.GameObjects.Arc;
+  private maxBolts: Phaser.GameObjects.Graphics;
+  private maxBoltT = 0;
+
+  /**
+   * Golpe cargado al máximo: la pelota (mismo tamaño) brilla, late y suelta rayos eléctricos, sin estela. Se apaga sola
+   * con el siguiente golpe (setKind). Llamar DESPUÉS de setKind.
+   */
+  setMaxCharge(on: boolean) {
+    this.max = on;
+    this.maxGlow.setVisible(on);
+    this.maxHalo.setVisible(on);
+    this.maxShine.setVisible(on);
+    this.maxBolts.setVisible(on).clear();
+    if (on) {
+      this.history = [];
+      this.trail.clear();
+    }
+  }
+
+  /** Rayos: 3-4 zigzags cortos que salen del borde de la pelota; se redibujan a saltos (parpadeo eléctrico). */
+  private drawBolts() {
+    const g = this.maxBolts.clear();
+    const n = Phaser.Math.Between(3, 4);
+    for (let i = 0; i < n; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const r0 = 11;
+      const r1 = Phaser.Math.FloatBetween(19, 26);
+      const pts: { x: number; y: number }[] = [];
+      const steps = 3;
+      for (let k = 0; k <= steps; k++) {
+        const r = r0 + ((r1 - r0) * k) / steps;
+        const j = k === 0 || k === steps ? 0 : Phaser.Math.FloatBetween(-0.35, 0.35);
+        pts.push({ x: Math.cos(a + j) * r, y: Math.sin(a + j) * r });
+      }
+      g.lineStyle(3.2, 0xfff6b0, 0.55).strokePoints(pts, false);
+      g.lineStyle(1.4, 0xffffff, 1).strokePoints(pts, false);
+    }
+  }
+  /** fieltro de la pelota (gira con la velocidad) */
+  private felt: Phaser.GameObjects.Image;
+  /** aplastamiento al botar (1 = recién botó, baja a 0) y vz del cuadro anterior para detectar el bote */
+  private squash = 0;
+  private prevVz = 0;
+
+  /** Pinta la pelota: normal = fieltro con costuras; prendida = núcleo del color de su poder. */
+  private paintCore() {
+    const lit = this.fire > 0;
+    this.core.setVisible(lit);
+    this.felt.setVisible(!lit);
+    if (lit) this.core.fillColor = SMASH_LOOK[this.el].ball.core;
   }
 
   /** Intención del último golpe ('lob' = globo, etc.). Solo lectura. */
@@ -168,6 +320,7 @@ export class Ball {
     this.kind = k;
     this.charged = charged;
     this.look = look ?? null;
+    if (this.max) this.setMaxCharge(false); // cada golpe nuevo apaga el brillo del cargado al máximo
   }
   private look: { trail: number; sparkle: boolean } | null = null;
   private sparkTimer = 0;
@@ -182,23 +335,23 @@ export class Ball {
     this.power = p;
     if (p) this.fire = 2;
     else if (this.fire === 2) this.fire = 0;
-    this.core.fillColor = this.fire ? SMASH_LOOK[this.el].ball.core : 0xd7f53a;
+    this.paintCore();
   }
 
   /** Enciende (o apaga) el fuego de "smash armado" sin que sea todavía un golpe potente. */
   setIgnited(on: boolean) {
     if (this.fire === 2) return;
     this.fire = on ? 1 : 0;
-    this.core.fillColor = on ? SMASH_LOOK[this.el].ball.core : 0xd7f53a;
+    this.paintCore();
   }
 
   /**
-   * Poder del SMASH que lleva la pelota (fuego o hielo, domain/smashPowers.ts): color del núcleo, de la estela y de las
+   * Poder del SMASH que lleva la pelota (fuego, hielo, viento o rayo, domain/smashPowers.ts): color del núcleo, de la estela y de las
    * partículas. Llamar antes de `setIgnited` / `setPower`; si ya está prendida se repinta al momento.
    */
   setElement(el: SmashPower) {
     this.el = el;
-    if (this.fire) this.core.fillColor = SMASH_LOOK[el].ball.core;
+    if (this.fire) this.paintCore();
   }
   private el: SmashPower = 'fire';
 
@@ -233,7 +386,15 @@ export class Ball {
     const sy = air.sy;
     const scale = air.s * 0.8 * (1 + Math.min(z, 220) / 700);
     this.sprite.setPosition(air.sx, sy);
-    this.sprite.setScale(scale);
+    // bote: se aplasta un instante contra el suelo y recupera la forma
+    if (this.prevVz < -60 && this.s.vz > 0 && this.s.z < 6) this.squash = Math.min(1, -this.prevVz / 500);
+    this.prevVz = this.s.vz;
+    this.squash = Math.max(0, this.squash - dt * 9);
+    const sq = this.squash * 0.28;
+    this.sprite.setScale(scale * (1 + sq), scale * (1 - sq));
+    // efecto: el fieltro gira según la velocidad (y el sentido) de la pelota
+    const v = Math.hypot(this.s.vx, this.s.vy, this.s.vz);
+    this.felt.rotation += (Math.sign(this.s.vx || 1) * Math.min(v, 1600) * dt) / 70;
     this.sprite.setDepth(ground.sy + 2);
     this.shadow.setDepth(1);
     this.trail.setDepth(ground.sy + 1);
@@ -243,6 +404,21 @@ export class Ball {
     this.guide.clear();
     if (z > 12) this.guide.lineStyle(2 * ground.s, 0xffffff, Math.min(0.28, z / 500)).lineBetween(ground.sx, ground.sy, air.sx, sy);
 
+    // golpe cargado al máximo: sin estela; la pelota late con su brillo y los rayos parpadean
+    if (this.max && !this.power && !this.quietFx) {
+      this.history = [];
+      this.trail.clear();
+      const pulse = 0.5 + 0.5 * Math.sin(this.scn.time.now / 55);
+      this.maxGlow.setScale(1 + pulse * 0.3).setAlpha(0.18 + pulse * 0.22);
+      this.maxHalo.setScale(1 + pulse * 0.22).setAlpha(0.55 + pulse * 0.4);
+      this.maxShine.setAlpha(0.55 + pulse * 0.35);
+      this.maxBoltT -= dt;
+      if (this.maxBoltT <= 0) {
+        this.maxBoltT = Phaser.Math.FloatBetween(0.05, 0.09);
+        this.drawBolts();
+      }
+      return;
+    }
     // efecto propio encima (bola de fuego de INFERNO DRIVE): sin estela ni chispas de fuego
     if (this.quietFx) {
       this.history = [];
@@ -252,7 +428,15 @@ export class Ball {
     // estela tipo "viento": cinta cónica del color del golpe
     this.boost = Math.max(0, this.boost - dt * 1.3);
     const styled = this.look && (this.kind === 'normal' || this.kind === 'side') ? this.look.trail : null;
-    const col = this.boost > 0.2 ? this.boostColor : this.power ? SMASH_LOOK[this.el].ball.trail : styled ?? TRAIL_COLOR[this.kind];
+    // golpe NORMAL sin estilo equipado: sin estela (el efecto de pelota se asignará en PERSONALIZACIÓN)
+    if (!this.power && this.kind === 'normal' && !this.look) {
+      this.history = [];
+      this.trail.clear();
+      return;
+    }
+    // globo y cortita conservan SIEMPRE su color (el refuerzo del golpe solo ensancha la estela, no la tiñe)
+    const fixed = !this.power && (this.kind === 'lob' || this.kind === 'drop');
+    const col = fixed ? TRAIL_COLOR[this.kind] : this.boost > 0.2 ? this.boostColor : this.power ? SMASH_LOOK[this.el].ball.trail : styled ?? TRAIL_COLOR[this.kind];
     if (this.look?.sparkle && !this.power && this.sprite.visible) this.emitSparks(dt, air.sx, sy, scale, ground.sy);
     this.history.push({ x: air.sx, y: sy, col });
     if (this.history.length > 20) this.history.shift();

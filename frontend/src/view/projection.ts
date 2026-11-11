@@ -17,6 +17,11 @@ export const VIEW = {
   FAR_Y: 330, // y en pantalla de la línea de fondo del rival
   NEAR_W: 700, // ancho en pantalla de la cancha en la línea de fondo cercana (antes 640: cancha más ancha)
   RATIO: 0.48, // ancho lejano / ancho cercano (antes 0.42: el fondo de la cancha menos estrecho)
+  /**
+   * ensanche SOLO lateral de la cancha en pantalla (1 = como antes). No cambia la escala de perspectiva (`s`): personajes,
+   * pelota y alturas quedan del mismo tamaño; la cancha, las líneas, la red y los desplazamientos laterales se ven más anchos.
+   */
+  LAT_K: 1.08,
   Z_K: 0.75, // compresión visual de la altura
   CHAR_K: 0.58, // escala base de los personajes (solo visual; antes 0.62)
   /** zoom base de la cámara del partido (<1 = más alejada; solo visual, el HUD no se ve afectado) */
@@ -47,5 +52,5 @@ export interface Projected {
 export function project(x: number, y: number, z = 0): Projected {
   const D = Math.max(80, x - CAM_X);
   const s = F / D;
-  return { sx: VIEW.W / 2 + (y - LAT_C) * s, sy: H0 + K / D - VIEW.Z_K * z * s, s };
+  return { sx: VIEW.W / 2 + (y - LAT_C) * s * VIEW.LAT_K, sy: H0 + K / D - VIEW.Z_K * z * s, s };
 }

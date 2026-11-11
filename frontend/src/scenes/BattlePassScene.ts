@@ -7,6 +7,11 @@ import { fitText } from '../ui/fitText';
 import { commit, getPlayer, onPlayerChange } from '../domain/playerStore';
 import { BP_SEASON, BP_TIERS, type BpReward, type BpTrack, bpBonusSpinIndex, bpBuyPremium, bpCanClaim, bpClaim, bpClaimBonus, bpClaimWelcome, bpLevel, syncSeason } from '../domain/battlePass';
 import type { PlayerState } from '../domain/player';
+import { type ChargeFxId, chargeFxDef } from '../domain/chargeFx';
+import type { EmoteKind } from '../domain/emotes';
+import { EMOTE_TEXTURE, queueEmoteArt } from '../ui/Emotes';
+import { styleLook } from '../ui/styleLook';
+import { CHAR_COLOR_LIST } from '../domain/charColors';
 
 /**
  * PASE DE BATALLA: niveles que se llenan con la EXP ganada; cada nivel tiene premio GRATIS
@@ -18,7 +23,14 @@ const NEON = 0x3a7bff;
 const GOLD = 0xffc42e;
 const ROW_H = 112;
 
-const STYLE_SWATCH: Record<string, number> = { 'style:red': 0xff4f5e, 'style:green': 0x62d935, 'style:gold': 0xffc42e, 'style:classic': 0x3a8bff };
+const STYLE_SWATCH: Record<string, number> = {
+  'style:red': 0xff4f5e,
+  'style:green': 0x62d935,
+  'style:gold': 0xffc42e,
+  'style:classic': 0x3a8bff,
+  // estilos de color del personaje (Claude, domain/charColors.ts): muestra del color de su ropa
+  ...Object.fromEntries(CHAR_COLOR_LIST.map((c) => [`color:${c.id}`, c.color])),
+};
 
 export class BattlePassScene extends Phaser.Scene {
   private list!: Phaser.GameObjects.Container;
@@ -43,7 +55,9 @@ export class BattlePassScene extends Phaser.Scene {
     if (!this.textures.exists('menu-bg')) this.load.image('menu-bg', 'assets/menu-bg.webp');
     if (!this.textures.exists('battle-pass-title')) this.load.image('battle-pass-title', 'assets/titulo-pase-batalla.png');
     if (!this.textures.exists('battle-pass-insignia')) this.load.image('battle-pass-insignia', 'assets/insignia-pase-batalla.png');
-    if (!this.textures.exists('bp-mai-portrait')) this.load.image('bp-mai-portrait', 'assets/characters/mai_portrait.png');
+    // retrato de Mai: ya lo carga BootScene (characters/portrait.ts); solo se descarga si falta (1,3 MB)
+    if (!this.textures.exists('portrait-mai')) this.load.image('portrait-mai', 'assets/characters/mai_portrait.png');
+    queueEmoteArt(this.load); // premios: emotes (miniaturas de ~32 KB)
   }
 
   create() {
@@ -71,12 +85,17 @@ export class BattlePassScene extends Phaser.Scene {
     maskG.fillStyle(0xffffff).fillRect(0, this.listTop, W, this.listH);
     this.list.setMask(maskG.createGeometryMask());
     this.buildTop();
-    this.buildList(true);
     this.setupScroll();
     this.addBottomButton();
+    // las ~25 tarjetas de la lista son lo más pesado: se dibujan en el siguiente cuadro, con la cabecera ya en pantalla
+    let listReady = false;
+    this.time.delayedCall(0, () => {
+      listReady = true;
+      this.buildList(true);
+    });
     const off = onPlayerChange(() => {
       this.buildTop();
-      this.buildList(false);
+      if (listReady) this.buildList(false);
     });
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => off());
   }
@@ -194,7 +213,7 @@ export class BattlePassScene extends Phaser.Scene {
     for (const t of this.tallTweens) t.remove();
     this.tallTweens = [];
     this.list.removeAll(true);
-    const last = Math.min(BP_TIERS + 2, first + Math.ceil(this.listH / ROW_H) + 6);
+    const last = Math.min(BP_TIERS + 2, first + Math.ceil(this.listH / ROW_H) + 4);
     const baseY = this.rowTop(first);
     const rangeH = this.rowTop(last) - baseY; // alto de las filas dibujadas
     const panels = this.add.graphics();
@@ -259,7 +278,7 @@ export class BattlePassScene extends Phaser.Scene {
     const ready = err === null;
     const prem = track === 'prem';
     // el último nivel (el personaje nuevo) ocupa el doble de alto
-    const tall = !welcome && tier === BP_TIERS && reward.kind === 'character' && this.textures.exists('bp-mai-portrait');
+    const tall = !welcome && tier === BP_TIERS && reward.kind === 'character' && this.textures.exists('portrait-mai');
     const h = (tall ? ROW_H * 2 : ROW_H) - 10;
     const c = this.add.container(x, y);
     c.setScale(prem ? 1.02 : 0.94);
@@ -282,8 +301,12 @@ export class BattlePassScene extends Phaser.Scene {
       const ic = this.add.graphics({ x: -w / 2 + 44, y: 0 });
       this.drawReward(ic, reward);
       c.add(ic);
-      if (reward.kind === 'character' && this.textures.exists('bp-mai-portrait')) {
-        c.add(this.add.image(-w / 2 + 44, 0, 'bp-mai-portrait').setDisplaySize(47, 62));
+      if (reward.kind === 'item' && reward.item.startsWith('emote:')) {
+        const key = EMOTE_TEXTURE[reward.item.split(':')[1] as EmoteKind];
+        if (key && this.textures.exists(key)) c.add(this.add.image(-w / 2 + 44, 0, key).setDisplaySize(48, 48));
+      }
+      if (reward.kind === 'character' && this.textures.exists('portrait-mai')) {
+        c.add(this.add.image(-w / 2 + 44, 0, 'portrait-mai').setDisplaySize(47, 62));
         if (reward.style) {
           const styleBadge = this.add.graphics({ x: -w / 2 + 63, y: -h / 2 + 14 });
           styleBadge.fillStyle(GOLD, 1).fillCircle(0, 0, 11).lineStyle(2, 0xffffff, 1).strokeCircle(0, 0, 11);
@@ -356,7 +379,7 @@ export class BattlePassScene extends Phaser.Scene {
     c.add(this.add.ellipse(px, feetY + 2, vw * 0.95, 14, 0x000000, 0.4));
 
     // personaje
-    const img = this.add.image(px, feetY, 'bp-mai-portrait');
+    const img = this.add.image(px, feetY, 'portrait-mai');
     img.setOrigin(((box.x0 + box.x1) / 2) / img.width, box.y1 / img.height);
     img.setScale(vh / (box.y1 - box.y0));
     c.add(img);
@@ -502,13 +525,38 @@ export class BattlePassScene extends Phaser.Scene {
 
   private drawReward(g: Phaser.GameObjects.Graphics, r: BpReward) {
     if (r.kind === 'cash') drawCashIcon(g, 1.3);
-    else if (r.kind === 'character') {
+    else if (r.kind === 'rays') {
+      // Rayo de la ZONA: rayo amarillo sobre un disco
+      g.fillStyle(0x07152f, 1).fillCircle(0, 0, 28);
+      g.lineStyle(3, 0xffd23f, 1).strokeCircle(0, 0, 26);
+      const bolt = [{ x: 4, y: -20 }, { x: -11, y: 3 }, { x: -1, y: 3 }, { x: -5, y: 20 }, { x: 11, y: -4 }, { x: 1, y: -4 }];
+      g.fillStyle(0x0a1638, 1).fillPoints(bolt.map((p) => ({ x: p.x + 2, y: p.y + 2 })), true);
+      g.fillStyle(0xffe14a, 1).fillPoints(bolt, true);
+    } else if (r.kind === 'character') {
       const accent = r.style ? GOLD : NEON;
       g.fillStyle(0x07152f, 1).fillCircle(0, 0, 29);
       g.lineStyle(3, accent, 1).strokeCircle(0, 0, 27);
       g.fillStyle(accent, 0.25).fillCircle(0, 0, 23);
-    }
-    else {
+    } else if (r.item.startsWith('emote:')) {
+      // emote: disco claro detrás de la carita (la imagen la pone rewardCard)
+      g.fillStyle(0x07152f, 1).fillCircle(0, 0, 29);
+      g.fillStyle(0xffffff, 0.9).fillCircle(0, 0, 26);
+    } else if (r.item.startsWith('charge:')) {
+      // cargando golpe: aro del suelo con el color del efecto
+      const col = chargeFxDef(r.item.split(':')[1] as ChargeFxId).color;
+      g.fillStyle(0x0a1638, 1).fillRoundedRect(-24, -24, 48, 48, 12);
+      g.lineStyle(7, col, 0.35).strokeEllipse(0, 6, 40, 16);
+      g.lineStyle(3, col, 1).strokeEllipse(0, 6, 36, 13);
+      g.fillStyle(0xffffff, 0.9).fillCircle(0, -8, 5);
+    } else if (r.item.startsWith('style:')) {
+      // efecto pelota: la pelota con su estela del color del estilo
+      const trail = styleLook(r.item.split(':')[1]).trail;
+      g.fillStyle(0x0a1638, 1).fillRoundedRect(-24, -24, 48, 48, 12);
+      for (let i = 0; i < 4; i++) g.fillStyle(trail, 0.25 + i * 0.18).fillCircle(-15 + i * 6, 9 - i * 4, 3 + i);
+      g.fillStyle(0x0a1638, 1).fillCircle(9, -7, 10);
+      g.fillStyle(0xd7f53a, 1).fillCircle(9, -7, 8);
+      g.fillStyle(0xffffff, 0.7).fillCircle(6, -10, 2.5);
+    } else {
       const col = STYLE_SWATCH[r.item] ?? 0x8a93a6;
       g.fillStyle(0x0a1638, 1).fillRoundedRect(-24, -24, 48, 48, 12);
       g.fillStyle(col, 1).fillRoundedRect(-20, -20, 40, 40, 10);
@@ -700,6 +748,8 @@ export function drawCashIcon(g: Phaser.GameObjects.Graphics, k = 1, x = 0, y = 0
 /** Textos del premio. */
 function rewardLabel(r: BpReward): { top: string; sub: string } {
   if (r.kind === 'cash') return { top: String(r.amount), sub: 'DINERO' };
+  if (r.kind === 'rays') return { top: `${r.amount} ${r.amount === 1 ? 'RAYO' : 'RAYOS'}`, sub: 'PARA LA ZONA' };
   if (r.kind === 'character') return { top: r.name.toUpperCase(), sub: r.style ? 'PERSONAJE · ESTILO ORO' : 'PERSONAJE NUEVO' };
-  return { top: r.name.replace('Estilo ', '').toUpperCase(), sub: 'ESTILO' };
+  const sub = r.item.startsWith('emote:') ? 'EMOTE' : r.item.startsWith('charge:') ? 'CARGANDO GOLPE' : r.item.startsWith('style:') ? 'EFECTO PELOTA' : r.item.startsWith('color:') ? 'COLOR DE ROPA' : 'ESTILO';
+  return { top: r.name.replace('Estilo ', '').toUpperCase(), sub };
 }

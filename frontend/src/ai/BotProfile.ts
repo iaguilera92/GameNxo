@@ -21,12 +21,13 @@ export interface BotProfile {
   level: number;
 }
 
+// tramos sobre el nivel máximo 20 (antes 30: 4 / 9 / 17 / 25, reescalados en proporción)
 const TIERS: { tier: BotTier; name: string; difficulty: number; fromLevel: number }[] = [
   { tier: 'principiante', name: 'Principiante', difficulty: 0.24, fromLevel: 1 },
-  { tier: 'facil', name: 'Fácil', difficulty: 0.34, fromLevel: 4 },
-  { tier: 'normal', name: 'Normal', difficulty: 0.45, fromLevel: 9 },
-  { tier: 'dificil', name: 'Difícil', difficulty: 0.6, fromLevel: 17 },
-  { tier: 'experto', name: 'Experto', difficulty: 0.75, fromLevel: 25 },
+  { tier: 'facil', name: 'Fácil', difficulty: 0.34, fromLevel: 3 },
+  { tier: 'normal', name: 'Normal', difficulty: 0.45, fromLevel: 6 },
+  { tier: 'dificil', name: 'Difícil', difficulty: 0.6, fromLevel: 11 },
+  { tier: 'experto', name: 'Experto', difficulty: 0.75, fromLevel: 17 },
 ];
 
 /** Perfil por tramo de nivel del rival. */

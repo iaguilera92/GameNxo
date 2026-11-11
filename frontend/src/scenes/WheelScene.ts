@@ -6,7 +6,7 @@ import type { WheelReward } from '../domain/wheelState';
 import { slotById } from '../domain/dailyWheel';
 import { claimWheel, claimWheelAdBonus, spinWheel, wheelSpin } from '../logic/Wheels';
 import { wheelClaim, wheelStart, wheelTick, wheelWin } from '../fx/wheelSound';
-import { showRewarded } from '../ads/ads';
+import { canShowRewardedAds, showRewarded } from '../ads/ads';
 import { arcadeButton } from '../ui/modeButtons';
 
 /**
@@ -562,10 +562,11 @@ export class WheelScene extends Phaser.Scene {
     }
 
     // x2 con anuncio: SOLO monedas o EXP (un cosmético no se duplica), mientras el giro no haya usado su bonus.
-    // Se muestra siempre, igual que el x2 del PREMIO DIARIO: si no hay anuncio disponible, avisa y el premio queda igual.
+    // Igual que el x2 del PREMIO DIARIO: solo aparece si hay anuncios (app con AdMob, o dev.adsSim en localhost);
+    // si el anuncio falla, avisa y el premio queda igual.
     // Completar el anuncio entrega otra vez el mismo premio (domain/dailyWheel.claimAdBonus).
     const savedSpin = wheelSpin(this.index, this.bonus);
-    if (reward.kind !== 'item' && savedSpin?.claimed && !savedSpin.adBonusClaimed) {
+    if (reward.kind !== 'item' && savedSpin?.claimed && !savedSpin.adBonusClaimed && canShowRewardedAds()) {
       const bx = cx;
       const by = label.y + (note ? 118 : 92);
       let busy = false;
@@ -682,13 +683,26 @@ export function rewardText(r: WheelReward): { line1: string; line2?: string } {
 }
 
 /** Abre la ruleta `index` encima de la escena actual. */
-export function openWheel(scene: Phaser.Scene, index: number): WheelScene {
+/**
+ * Abre la ruleta encima de `scene`. Devuelve la escena, o null si Phaser la dejó EN COLA: añadirla por primera vez a mitad
+ * de un fotograma (p. ej. desde el tween de un botón) no la crea hasta el siguiente. Quien necesite la escena (sus eventos)
+ * debe esperarla: whenWheelReady.
+ */
+export function openWheel(scene: Phaser.Scene, index: number): WheelScene | null {
   const key = WheelScene.KEY;
   const data: WheelSceneData = { index };
   if (scene.scene.get(key)) scene.scene.launch(key, data);
   else scene.scene.add(key, WheelScene, true, data);
   scene.scene.bringToTop(key);
-  return scene.scene.get(key) as WheelScene;
+  return (scene.scene.get(key) as WheelScene | null) ?? null;
+}
+
+/** Llama a `cb` con la escena de la ruleta en cuanto exista (reintenta cada fotograma, como mucho ~2 s). */
+export function whenWheelReady(scene: Phaser.Scene, cb: (w: WheelScene) => void, tries = 120) {
+  const w = scene.scene.get(WheelScene.KEY) as WheelScene | null;
+  if (w) return cb(w);
+  if (tries <= 0 || !scene.sys.isActive()) return;
+  scene.time.delayedCall(16, () => whenWheelReady(scene, cb, tries - 1));
 }
 
 /**

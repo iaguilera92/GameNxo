@@ -128,11 +128,14 @@ export function registerSocketHandlers(io: Server) {
         const clampZone = (value: unknown) => Number.isFinite(Number(value)) ? Math.max(0, Math.min(20, Math.floor(Number(value)))) : 0;
         // efecto de carga elegido (solo cosmético): si no es uno conocido se omite y el rival usa el de su personaje
         const charge = typeof profile.charge === 'string' && ['classic', 'fire', 'energy', 'tulip'].includes(profile.charge) ? profile.charge : undefined;
+        // estilo de color del personaje (solo cosmético): id corto en minúsculas; el cliente ignora los que no conoce
+        const color = typeof profile.color === 'string' && /^[a-z0-9-]{1,16}$/.test(profile.color) && profile.color !== 'classic' ? profile.color : undefined;
         const clean = {
           name: profile.name.slice(0, 16),
           level: Math.max(1, Math.floor(Number(profile.level) || 1)),
           skin: String(profile.skin ?? 'nxo').slice(0, 16),
           ...(charge ? { charge } : {}),
+          ...(color ? { color } : {}),
           zoneStats: {
             strength: clampZone(rawZone.strength),
             speed: clampZone(rawZone.speed),

@@ -1,5 +1,6 @@
 ﻿import Phaser from 'phaser';
 import { FONT, textStyle } from './theme';
+import { type ArcadePalette, arcadeButton } from './modeButtons';
 
 /** Cuántos huecos muestra el diálogo: 2 filas × 5. */
 export const POWER_SLOTS = 10;
@@ -34,8 +35,16 @@ export interface PowerDialogOpts {
   layout?: 'center' | 'side';
   /** abre la Tienda (botón de los huecos bloqueados que sí existen) */
   onShop?: () => void;
+  /** texto del botón y de la nota de los bloqueados (por defecto, la Tienda; p. ej. 'IR AL PASE' / 'Se gana en el PASE DE BATALLA.') */
+  shopLabel?: string;
+  lockedNote?: string;
   /** al cerrar: `changed` = se equipó algo distinto (la escena puede refrescarse) */
   onClose?: (r: { changed: boolean }) => void;
+  /**
+   * true = la televisión muestra SOLO el dibujo, grande y centrado, sin nombre ni descripción (p. ej. el color del
+   * personaje: se ve cómo queda). `preview` recibe entonces como `size` el alto disponible en la pantalla.
+   */
+  previewOnly?: boolean;
 }
 
 const NAVY = 0x0b1733;
@@ -54,10 +63,10 @@ function drawLock(g: Phaser.GameObjects.Graphics, s: number, color: number) {
  * Diálogo de PODERES (SMASH, DASH) o de EFECTOS (cargando golpe): una televisión arriba que muestra el hueco seleccionado y
  * debajo 2 filas de 5. Los huecos con contenido se pueden ver y equipar si son tuyos; los que no, salen con candado y
  * estática (llevan a la Tienda); el resto, vacíos y bloqueados.
- * Tocar un hueco lo muestra en la televisión. Se cierra con la X o tocando fuera.
+ * Tocar un hueco lo muestra en la televisión. Se cierra con la X, tocando fuera o al EQUIPAR (al instante: se equipa y se cierra).
  */
 export function openPowerDialog(scene: Phaser.Scene, opts: PowerDialogOpts) {
-  const { title: titleText, color, slots, layout = 'center', onShop, onClose } = opts;
+  const { title: titleText, color, slots, layout = 'center', onShop, onClose, shopLabel = 'IR A LA TIENDA', lockedNote = 'Se compra en la TIENDA.', previewOnly = false } = opts;
   const W = scene.scale.width;
   const H = scene.scale.height;
   const root = scene.add.container(0, 0).setDepth(8000);
@@ -74,7 +83,9 @@ export function openPowerDialog(scene: Phaser.Scene, opts: PowerDialogOpts) {
   const tvH = 330;
   const slot = Math.floor((pw - 40 - (COLS - 1) * 10) / COLS);
   const gridH = slot * 2 + 12;
-  const ph = 70 + tvH + 24 + gridH + 26;
+  /** franja bajo la televisión para el botón de acción (EQUIPAR / EQUIPADO / IR A LA TIENDA) */
+  const ACT_H = 124;
+  const ph = 70 + tvH + ACT_H + gridH + 26;
   const py = Math.round((H - ph) / 2);
 
   const panel = scene.add.container(0, 0);
@@ -100,6 +111,8 @@ export function openPowerDialog(scene: Phaser.Scene, opts: PowerDialogOpts) {
     for (const t of timers) t.remove(false);
     pulse?.remove();
     pulse = null;
+    actionPulse?.remove();
+    actionPulse = null;
     dim.disableInteractive();
     scene.tweens.add({ targets: root, alpha: 0, duration: 120, onComplete: () => root.destroy() });
     onClose?.({ changed });
@@ -119,9 +132,7 @@ export function openPowerDialog(scene: Phaser.Scene, opts: PowerDialogOpts) {
   const tvY = py + 70;
   const tvW = pw - 40;
   const tv = scene.add.graphics();
-  // antenas
-  tv.lineStyle(5, 0x5a6f9e, 1).lineBetween(tvX + tvW / 2 - 6, tvY + 2, tvX + tvW / 2 - 40, tvY - 10).lineBetween(tvX + tvW / 2 + 6, tvY + 2, tvX + tvW / 2 + 36, tvY - 9);
-  tv.fillStyle(0x5a6f9e, 1).fillCircle(tvX + tvW / 2 - 40, tvY - 10, 4).fillCircle(tvX + tvW / 2 + 36, tvY - 9, 4);
+  // (sin antenas: bajo el título se leían como una flecha "v" cortada)
   // carcasa
   tv.fillStyle(0x1b2a52, 1).fillRoundedRect(tvX, tvY, tvW, tvH, 26);
   tv.lineStyle(3, 0x3a4f86, 1).strokeRoundedRect(tvX, tvY, tvW, tvH, 26);
@@ -170,25 +181,57 @@ export function openPowerDialog(scene: Phaser.Scene, opts: PowerDialogOpts) {
     noiseTimer = scene.time.addEvent({ delay: 90, loop: true, callback: draw });
     timers.push(noiseTimer);
   };
-  /** etiqueta redonda arriba a la izquierda de la pantalla; con `onTap` es un botón */
-  const tag = (label: string, fill: number, onTap?: () => void) => {
-    const wTag = Math.max(96, label.length * 11 + 28);
-    const g = scene.add.graphics();
-    g.fillStyle(fill, 1).fillRoundedRect(sx + 14, sy + 12, wTag, 30, 15);
-    if (onTap) g.lineStyle(2, 0xffffff, 0.8).strokeRoundedRect(sx + 14, sy + 12, wTag, 30, 15);
-    screen.add(g);
-    screen.add(scene.add.text(sx + 14 + wTag / 2, sy + 27, label, { fontFamily: FONT, fontSize: '14px', color: '#ffffff' }).setOrigin(0.5));
-    if (onTap) {
-      const hit = scene.add.zone(sx + 14 + wTag / 2, sy + 27, wTag + 10, 42).setInteractive({ useHandCursor: true });
-      hit.on('pointerup', onTap);
-      screen.add(hit);
+  // botón de acción: GRANDE y centrado justo debajo de la televisión (antes, una etiqueta pequeña dentro de la pantalla)
+  const action = scene.add.container(px + pw / 2, tvY + tvH + ACT_H / 2);
+  panel.add(action);
+  let actionPulse: Phaser.Tweens.Tween | null = null;
+  /** con `onTap` es un botón (sin latido); sin él, un estado (EQUIPADO, BLOQUEADO) */
+  /**
+   * Botón de acción con el estilo arcade del juego (la forma inclinada de JUGAR, ui/modeButtons): EQUIPAR en amarillo con
+   * chevron (quieto, sin latido); IR A LA TIENDA en azul; los estados (EQUIPADO en verde con ✓, BLOQUEADO en gris) sin interacción.
+   */
+  const tag = (label: string, palette: ArcadePalette, onTap?: () => void, check = false) => {
+    actionPulse?.remove();
+    actionPulse = null;
+    for (const o of action.list) scene.tweens.killTweensOf(o); // el latido del botón anterior
+    action.removeAll(true).setScale(1);
+    const bw = Math.min(380, pw - 110);
+    const bh = 80;
+    const btn = arcadeButton(scene, 0, 0, bw, bh, label, () => onTap?.(), {
+      palette,
+      chevron: !!onTap && palette === 'yellow',
+      pulse: false, // sin latido (EQUIPAR, IR A LA TIENDA): el botón queda quieto
+      disabled: !onTap,
+    });
+    action.add(btn);
+    if (check) {
+      // ✓ delante del texto: el texto se corre a la derecha y el ✓ (26 px de ancho) va a su izquierda con 12 px de aire;
+      // el conjunto ✓ + texto queda centrado en el botón
+      const CK_W = 26;
+      const GAP = 12;
+      const lab = btn.getData('label') as Phaser.GameObjects.Text | undefined;
+      let lx = -60;
+      if (lab) {
+        lab.x += (CK_W + GAP) / 2;
+        lx = lab.x - lab.displayWidth * lab.originX - GAP - CK_W / 2;
+      }
+      const ck = scene.add.graphics({ x: lx, y: lab?.y ?? 0 });
+      ck.lineStyle(9, 0x0a1638, 1).beginPath().moveTo(-12, 0).lineTo(-3, 9).lineTo(13, -10).strokePath();
+      ck.lineStyle(5, 0xffffff, 1).beginPath().moveTo(-12, 0).lineTo(-3, 9).lineTo(13, -10).strokePath();
+      action.add(ck);
     }
+  };
+  const clearAction = () => {
+    actionPulse?.remove();
+    actionPulse = null;
+    for (const o of action.list) scene.tweens.killTweensOf(o);
+    action.removeAll(true);
   };
 
   let selected = Math.max(0, slots.findIndex((s) => s.equipped));
   const rings: Phaser.GameObjects.Graphics[] = [];
   const cellX = (i: number) => px + 20 + (i % COLS) * (slot + 10) + slot / 2;
-  const cellY = (i: number) => py + 70 + tvH + 24 + Math.floor(i / COLS) * (slot + 12) + slot / 2;
+  const cellY = (i: number) => py + 70 + tvH + ACT_H + Math.floor(i / COLS) * (slot + 12) + slot / 2;
   const paint = () =>
     rings.forEach((g, i) => {
       const on = i === selected;
@@ -206,11 +249,15 @@ export function openPowerDialog(scene: Phaser.Scene, opts: PowerDialogOpts) {
     pulse?.remove(); // antes de destruir sus objetos
     pulse = null;
     screen.removeAll(true);
+    clearAction();
     const s = slots[i];
     const side = layout === 'side';
     // dibujo: centrado arriba, o a la izquierda con el texto a la derecha
     const ix = side ? sx + sw * 0.27 : sx + sw / 2;
-    const iy = side ? sy + sh * 0.72 : sy + 100;
+    // solo el dibujo: centrado en la pantalla y con casi todo su alto
+    const iy = previewOnly ? sy + sh / 2 : side ? sy + sh * 0.72 : sy + 100;
+    const big = previewOnly ? sh - 36 : side ? 176 : 120;
+    const glowR = previewOnly ? sh * 0.46 : 120;
     const tx = side ? sx + sw * 0.54 : sx + sw / 2;
     const ty = side ? sy + sh * 0.3 : sy + 182;
     const tw = side ? sw * 0.42 : sw - 40;
@@ -218,40 +265,55 @@ export function openPowerDialog(scene: Phaser.Scene, opts: PowerDialogOpts) {
     const align = side ? 'left' : 'center';
     if (s && s.owned) {
       const glow = scene.add.graphics({ x: ix, y: iy });
-      if (!side) glow.fillStyle(color, 0.1).fillCircle(0, 0, 120).fillStyle(color, 0.14).fillCircle(0, 0, 84);
+      if (!side) glow.fillStyle(color, 0.1).fillCircle(0, 0, glowR).fillStyle(color, 0.14).fillCircle(0, 0, glowR * 0.7);
       screen.add(glow);
-      const ic = s.preview(ix, iy, side ? 176 : 120);
+      const ic = s.preview(ix, iy, big);
       screen.add(ic);
-      if (!side) pulse = scene.tweens.add({ targets: [ic, glow], scale: { from: 0.94, to: 1.04 }, duration: 800, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
-      const nm = scene.add.text(tx, ty, s.name.toUpperCase(), { ...textStyle(26), color: '#ffffff', align }).setOrigin(origin, 0.5);
-      if (nm.width > tw) nm.setScale(tw / nm.width);
-      screen.add(nm);
-      screen.add(scene.add.text(tx, ty + (side ? 24 : 32), s.desc, { fontFamily: FONT, fontSize: '14px', color: '#b9d9f2', align, wordWrap: { width: tw } }).setOrigin(origin, 0));
-      if (s.equipped) tag('EQUIPADO', 0x1fbf6a);
+      // latido RELATIVO a la escala de cada objeto (un retrato ya viene reducido: con 0,94-1,04 absolutos se veía gigante)
+      if (!side) {
+        const base = (o: unknown) => (o as { scaleX?: number }).scaleX ?? 1;
+        pulse = scene.tweens.add({
+          targets: [ic, glow],
+          scale: { getStart: (t: unknown) => base(t) * 0.94, getEnd: (t: unknown) => base(t) * 1.04 },
+          duration: 800,
+          yoyo: true,
+          repeat: -1,
+          ease: 'Sine.easeInOut',
+        });
+      }
+      if (!previewOnly) {
+        const nm = scene.add.text(tx, ty, s.name.toUpperCase(), { ...textStyle(26), color: '#ffffff', align }).setOrigin(origin, 0.5);
+        if (nm.width > tw) nm.setScale(tw / nm.width);
+        screen.add(nm);
+        screen.add(scene.add.text(tx, ty + (side ? 24 : 32), s.desc, { fontFamily: FONT, fontSize: '14px', color: '#b9d9f2', align, wordWrap: { width: tw } }).setOrigin(origin, 0));
+      }
+      if (s.equipped) tag('EQUIPADO', 'green', undefined, true);
       else if (s.onEquip) {
-        tag('EQUIPAR', 0x2f7bff, () => {
+        tag('EQUIPAR', 'yellow', () => {
+          // se equipa y el diálogo se cierra al instante: la escena (onClose con `changed`) ya muestra lo equipado
           s.onEquip?.();
           changed = true;
           slots.forEach((q, k) => (q.equipped = k === i));
-          paint();
-          show(i);
+          close();
         });
       }
     } else if (s) {
       // existe pero no lo tiene: estática, el efecto atenuado, candado y aviso de la Tienda
       noise();
-      const ic = s.preview(ix, iy, side ? 176 : 120);
+      const ic = s.preview(ix, iy, big);
       (ic as unknown as Phaser.GameObjects.Components.Alpha).setAlpha?.(0.28);
       screen.add(ic);
       const lk = scene.add.graphics({ x: ix, y: iy - (side ? 30 : 0) });
       drawLock(lk, side ? 70 : 90, 0xaebfe6);
       screen.add(lk);
-      const nm = scene.add.text(tx, ty, s.name.toUpperCase(), { ...textStyle(26), color: '#aebfe6', align }).setOrigin(origin, 0.5);
-      if (nm.width > tw) nm.setScale(tw / nm.width);
-      screen.add(nm);
-      screen.add(scene.add.text(tx, ty + (side ? 24 : 32), `${s.desc}\nSe compra en la TIENDA.`, { fontFamily: FONT, fontSize: '14px', color: '#8ea3ce', align, wordWrap: { width: tw } }).setOrigin(origin, 0));
-      if (onShop) tag('IR A LA TIENDA', 0xc88a1a, () => onShop());
-      else tag('BLOQUEADO', 0x3a4666);
+      if (!previewOnly) {
+        const nm = scene.add.text(tx, ty, s.name.toUpperCase(), { ...textStyle(26), color: '#aebfe6', align }).setOrigin(origin, 0.5);
+        if (nm.width > tw) nm.setScale(tw / nm.width);
+        screen.add(nm);
+        screen.add(scene.add.text(tx, ty + (side ? 24 : 32), `${s.desc}\n${lockedNote}`, { fontFamily: FONT, fontSize: '14px', color: '#8ea3ce', align, wordWrap: { width: tw } }).setOrigin(origin, 0));
+      }
+      if (onShop) tag(shopLabel, 'blue', () => onShop());
+      else tag('BLOQUEADO', 'grey');
     } else {
       // hueco vacío: estática con un candado
       noise();

@@ -6,7 +6,7 @@
  * - Sin elegir, cada personaje usa el suyo: Mai = hielo; el resto = fuego.
  * - Solo cambia cómo se ve la bola y sus efectos (fx/InfernoFx.ts, fx/ImpactFx.ts); el golpe es el mismo.
  */
-export type InfernoPower = 'fire' | 'ice' | 'wind' | 'lightning';
+export type InfernoPower = 'fire' | 'ice' | 'wind' | 'lightning' | 'tulip';
 
 export interface InfernoPowerDef {
   id: InfernoPower;
@@ -25,6 +25,7 @@ export const INFERNO_POWERS: InfernoPowerDef[] = [
   { id: 'ice', name: 'HIELO', ball: 'BOLA DE HIELO', desc: 'Un remolino de hielo cristalino.', color: 0x45b8ff, css: '#9fe2ff' },
   { id: 'wind', name: 'VIENTO', ball: 'BOLA DE VIENTO', desc: 'Un torbellino de viento y hojas.', color: 0x3fd68a, css: '#9cf5c2' },
   { id: 'lightning', name: 'RAYO', ball: 'BOLA DE RAYO', desc: 'Una esfera de energía eléctrica.', color: 0xffd23f, css: '#ffe36b' },
+  { id: 'tulip', name: 'TULIPÁN', ball: 'BOLA DE TULIPÁN', desc: 'Una ráfaga de pétalos que deja su rastro.', color: 0xff8fc4, css: '#ffc2dd' },
 ];
 
 const IDS = new Set<string>(INFERNO_POWERS.map((p) => p.id));

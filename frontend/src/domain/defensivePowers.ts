@@ -7,7 +7,7 @@
  * - Se elige en PERSONALIZACIÓN (tarjeta DEFENSIVO › PODERES) y se guarda en `PlayerState.equipped.defensive`.
  *   Todos usan el mismo botón y la misma recarga (DASH_COOLDOWN); solo cambia lo que hace al activarse.
  */
-export type DefensivePower = 'dash' | 'blink';
+export type DefensivePower = 'dash' | 'blink' | 'shadow' | 'jump';
 
 export interface DefensivePowerDef {
   id: DefensivePower;
@@ -21,6 +21,9 @@ export interface DefensivePowerDef {
 export const DEFENSIVE_POWERS: DefensivePowerDef[] = [
   { id: 'dash', name: 'DASH', desc: 'Sprint explosivo hasta donde llegará la pelota.', color: 0x8f7cff, css: '#cfc6ff' },
   { id: 'blink', name: 'DESTELLO', desc: 'Te teletransportas hasta la pelota en un destello y devuelves con un revés.', color: 0x45d9ff, css: '#9fecff' },
+  // (Claude, 11-11-2026) los dos nuevos: también te dejan en el punto de la pelota y aseguran la devolución
+  { id: 'shadow', name: 'SOMBRA', desc: 'Un clon de sombra corre hasta la pelota y cambias tu lugar con él para devolverla.', color: 0x9a6bff, css: '#d4bfff' },
+  { id: 'jump', name: 'SUPERSALTO', desc: 'Un salto enorme hasta la pelota: caes con una onda de choque y la devuelves.', color: 0xff9a3d, css: '#ffd0a0' },
 ];
 
 const IDS = new Set<string>(DEFENSIVE_POWERS.map((p) => p.id));

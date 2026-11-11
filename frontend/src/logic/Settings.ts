@@ -25,12 +25,14 @@ export interface GameSettings {
   vibration: boolean;
   shake: ShakeLevel;
   rival: RivalSetting;
+  /** anillo guía del Perfect Timing sobre la pelota */
+  timingGuide: boolean;
 }
 
 const KEY = 'nxo.settings';
 /** clave antigua que lee INFERNO DRIVE (logic/InfernoDrive.shakeLevel): se mantiene sincronizada */
 const LEGACY_SHAKE = 'nxo.shake';
-const DEFAULTS: GameSettings = { sound: true, vibration: true, shake: 1, rival: 'auto' };
+const DEFAULTS: GameSettings = { sound: true, vibration: true, shake: 1, rival: 'auto', timingGuide: true };
 
 let current: GameSettings = load();
 const listeners = new Set<(s: GameSettings) => void>();
@@ -41,7 +43,7 @@ function load(): GameSettings {
     if (!raw || typeof raw !== 'object') return { ...DEFAULTS };
     const shake = raw.shake === 0 || raw.shake === 0.5 || raw.shake === 1 ? raw.shake : DEFAULTS.shake;
     const rival = RIVAL_OPTIONS.some((o) => o.v === raw.rival) ? (raw.rival as RivalSetting) : DEFAULTS.rival;
-    return { sound: raw.sound !== false, vibration: raw.vibration !== false, shake, rival };
+    return { sound: raw.sound !== false, vibration: raw.vibration !== false, shake, rival, timingGuide: raw.timingGuide !== false };
   } catch {
     return { ...DEFAULTS };
   }

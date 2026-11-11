@@ -55,6 +55,7 @@ const GAZE_FX: Record<InfernoPower, { edge: number; edgeIn: number; glowIn: numb
   ice: { edge: 0x3a9bff, edgeIn: 0xbff0ff, glowIn: 0xeafcff, glow: 0x3a9bff, spark: 0xffffff, line: 0x8fdcff },
   wind: { edge: 0x2fbf6a, edgeIn: 0xd0ffe0, glowIn: 0xf0fff0, glow: 0x3fd68a, spark: 0xeaffe0, line: 0x9cf06a },
   lightning: { edge: 0x2f6bff, edgeIn: 0xfff36b, glowIn: 0xfffbe0, glow: 0x3a7bff, spark: 0xfff36b, line: 0x7fc8ff },
+  tulip: { edge: 0xe0457f, edgeIn: 0xffd0e6, glowIn: 0xfff0f7, glow: 0xff6fae, spark: 0xffffff, line: 0xffb3d6 },
 };
 
 /**

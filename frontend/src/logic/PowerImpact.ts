@@ -10,8 +10,10 @@
 export type PowerKind = 'smash' | 'inferno';
 
 export const POWER_IMPACT = {
-  /** aturdimiento total (reacción + recuperación), ajustable según el balance */
+  /** aturdimiento total (reacción + recuperación) del SMASH, ajustable según el balance */
   stunMs: 650,
+  /** aturdimiento por tipo: la ULTI (INFERNO) deja 1,5 s al que la alcanza (jugador o rival) */
+  stunMsBy: { smash: 650, inferno: 1500 } as Record<PowerKind, number>,
   /** retroceso: distancia en profundidad de cancha y duración (rápido al principio, frena al final) */
   knockback: { dist: 110, ms: 280 },
   /** reacción del cuerpo (inclinación inicial, grados) */
@@ -29,6 +31,11 @@ export function knockbackX(x: number, xMax: number, dist = POWER_IMPACT.knockbac
 }
 
 /** Segundos de aturdimiento (el cerebro del bot los descuenta y no se mueve ni golpea mientras duran). */
-export function stunSeconds() {
-  return POWER_IMPACT.stunMs / 1000;
+export function stunSeconds(kind: PowerKind = 'smash') {
+  return stunMsFor(kind) / 1000;
+}
+
+/** Milisegundos de aturdimiento según el ataque recibido (SMASH 0,65 s · INFERNO 1,5 s). */
+export function stunMsFor(kind: PowerKind) {
+  return POWER_IMPACT.stunMsBy[kind] ?? POWER_IMPACT.stunMs;
 }

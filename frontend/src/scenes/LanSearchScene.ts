@@ -8,6 +8,7 @@ import { showVersus as showVersusScreen } from '../ui/VersusScreen';
 import { lookForSkin, playerLook } from '../objects/Character';
 import type { SkinId } from '../characters/skins';
 import { getProfile } from '../logic/Profile';
+import { charColorOf } from '../domain/charColors';
 import { connect } from '../net/NetClient';
 import { MatchNet } from '../net/MatchNet';
 import { EV, type ErrorMsg, type MatchedMsg, type SearchingMsg } from '../net/protocol';
@@ -111,7 +112,7 @@ export class LanSearchScene extends Phaser.Scene {
           tr.off('disconnect', onDisc as (d: never) => void);
         });
         const p = getProfile();
-        tr.emit(EV.FIND, { profile: { name: p.name, level: p.level, skin: p.skin, zoneStats: p.zoneStats, charge: p.charge } });
+        tr.emit(EV.FIND, { profile: { name: p.name, level: p.level, skin: p.skin, zoneStats: p.zoneStats, charge: p.charge, color: p.color } });
         this.cleanup.push(() => {
           // salir de la escena sin emparejar = cancelar la búsqueda (no queda sala fantasma)
           if (!this.matched) tr.emit(EV.CANCEL);
@@ -152,9 +153,9 @@ export class LanSearchScene extends Phaser.Scene {
     const opp = net.opponent;
     showVersusScreen(
       this,
-      { name: p.name, level: p.level, look: playerLook(p.skin), portraitSkin: p.skin as SkinId, wins: totalWins() },
+      { name: p.name, level: p.level, look: playerLook(p.skin), portraitSkin: p.skin as SkinId, wins: totalWins(), color: p.color },
       // el rival con SU personaje (opponent.skin); si no se conoce, el respaldo de siempre
-      { name: opp.name, level: opp.level, look: lookForSkin(opp.skin, 'front', p.skin), portraitSkin: opp.skin as SkinId },
+      { name: opp.name, level: opp.level, look: lookForSkin(opp.skin, 'front', p.skin), portraitSkin: opp.skin as SkinId, color: charColorOf(opp.color) },
     );
     // 1 s después del sonido del VS entra la música de la cancha (sigue sonando en el partido)
     const musicIn = this.time.delayedCall(1000, () => playMatchMusic(this, this.ambiente));

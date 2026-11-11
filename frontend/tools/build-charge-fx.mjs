@@ -17,9 +17,12 @@ import { mkdirSync } from 'node:fs';
 import { decode, save } from './png-lite.mjs';
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const SHEETS = {
+  // fuente nueva (11-11-2026, cargando-fuego.webp → .png con tools/convert-image.mjs); la anterior en art/cargando/Old/
   fuego: { id: 'fire', mode: 'bands' },
   energia: { id: 'energy', mode: 'grid', inset: 0, autoRow: true, floor: 6, strong: 90 },
-  tulipan: { id: 'tulip', mode: 'grid', inset: 10, floor: 40, strong: 70, ramp: [110, 225], satWeight: [14, 44] },
+  // fuente nueva (11-11-2026, cargando-tulipan.webp → .png con tools/convert-image.mjs): fondo transparente, sin rejilla ni
+  // bruma; se corta como el fuego. (La anterior, con rejilla gris y bruma blanca, está en art/cargando/Old/.)
+  tulipan: { id: 'tulip', mode: 'bands' },
 };
 const COLS = 5;
 const ROWS = 2;

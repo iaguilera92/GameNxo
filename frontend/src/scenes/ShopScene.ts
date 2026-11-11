@@ -2,32 +2,34 @@ import Phaser from 'phaser';
 import { FONT, restartOnResize, textStyle } from '../ui/theme';
 import { stadiumBg } from '../ui/ui';
 import { arcadeButton } from '../ui/modeButtons';
-import { drawCoinIcon } from '../ui/wheelArt';
 import { commit, getPlayer, onPlayerChange } from '../domain/playerStore';
 import { equipCharge, equipDefensive, equipInferno, equipSmash, equipStyle, purchase } from '../domain/operations';
 import { type SmashPower, smashOwned, smashPowerDef, smashPowerOf } from '../domain/smashPowers';
 import { BUTTON_ART, queueButtonArt } from '../ui/buttonArt';
 import { elementTexture } from '../ui/AbilityButton';
 import { type DefensivePower, defensiveOwned, defensivePowerDef, defensivePowerOf } from '../domain/defensivePowers';
-import { drawBlinkIcon, drawDisc } from '../ui/icons';
+import { drawDefensiveIcon, drawDisc } from '../ui/icons';
 import { BP_SEASON, syncSeason } from '../domain/battlePass';
 import type { PlayerState } from '../domain/player';
 import { drawCashIcon } from './BattlePassScene';
 import { type ItemId, type StyleId, owns } from '../domain/player';
 import { CASH_PACKS, SHOP_ITEMS, clpLabel, type CashPack, type ShopItem } from '../domain/shopCatalog';
-import { BALL_ART, ensureBallAnims, queueInfernoArt } from '../fx/InfernoFx';
+import { addBallPreview, ensureBallAnims, queueInfernoArt } from '../fx/InfernoFx';
 import { infernoPowerDef, type InfernoPower } from '../domain/infernoPowers';
 import { type ChargeFxId, chargeFxDef, chargeFxOf, chargeFxOwned } from '../domain/chargeFx';
 import { chargePreview, queueChargeFxArt } from '../fx/chargeFx';
 import { fitText } from '../ui/fitText';
 import { styleLook } from '../ui/styleLook';
+import { DASH_COOLDOWN, SMASH_COOLDOWN } from '../config';
+import { INFERNO } from '../logic/InfernoDrive';
 
 /**
- * TIENDA: se gastan las monedas ganadas en partidas y en la Ruleta diaria.
+ * TIENDA: todo se compra con DINERO (billetes); la cabecera solo muestra ese saldo.
  * Usa el catálogo y las operaciones que ya existían (domain/shopCatalog + domain/operations.purchase):
  * precio, nivel mínimo, disponibilidad y "ya lo tienes" los valida la operación, no la pantalla.
- *   ESTILOS      se compran y se equipan aquí (también en PERSONAJE): EFECTO PELOTA y CARGANDO GOLPE (aún sin estilos)
- *   PODERES      ULTI (hielo, viento, rayo); ESPECIALES y DEFENSIVOS aún sin poderes (tarjetas "próximamente")
+ * Secciones (cada una con su título y línea; las de estilos y poderes con un (i) que abre su explicación, INFO):
+ *   EFECTO PELOTA · CARGANDO GOLPE   se compran y se equipan aquí (también en PERSONAJE)
+ *   PODERES ULTI (tarjetas moradas con brillo) · PODERES ESPECIALES · PODERES DEFENSIVOS · DINERO · PASE PREMIUM
  *   Las monedas NO se compran: solo se ganan jugando. El DINERO (billetes) compra todo lo de la tienda.
  *   COSMÉTICOS      catálogo visual; el Premium no procesa pagos sin una integración
  */
@@ -36,6 +38,35 @@ const NEON = 0x3a7bff;
 const GOLD = 0xffc42e;
 /** alto de la cabecera fija (volver, saldos): el contenido se desplaza por debajo */
 const HEADER_H = 112;
+/** Fondo de las tarjetas de PODERES ULTI: morado degradado con brillo, sin borde. */
+const ULTI_TOP = '#8a4cf0';
+const ULTI_MID = '#5a22b8';
+const ULTI_BOT = '#2a0c63';
+
+/** Explicación de cada sección (se abre con el icono (i) junto a su título). */
+const INFO = {
+  style: {
+    title: 'EFECTO PELOTA',
+    text: 'Cambia el color de la estela que deja la pelota en tus golpes normales y el destello de tu raqueta al golpear.\n\nEs solo visual: no cambia la velocidad ni la fuerza. Puedes equiparlo aquí o en PERSONAJE.',
+  },
+  charge: {
+    title: 'CARGANDO GOLPE',
+    text: 'Es el aro que aparece bajo tus pies mientras cargas un golpe y que crece con tu potencia.\n\nEs solo visual. Nxo trae el de fuego y Mai el de tulipán.',
+  },
+  ulti: {
+    title: 'PODERES ULTI',
+    text: `La ULTI se carga al ganar ${INFERNO.pointsToCharge} puntos. Al lanzarla, tu golpe sale como una bola de poder.\n\nCada poder cambia el elemento de esa bola y sus efectos. El de fuego es gratis.`,
+  },
+  special: {
+    title: 'PODERES ESPECIALES',
+    text: `El ESPECIAL es tu remate (SMASH) y se recarga cada ${SMASH_COOLDOWN} segundos. Si el rival toca la pelota, sale despedido.\n\nCada poder cambia cómo se ve. El de fuego es gratis.`,
+  },
+  defensive: {
+    title: 'PODERES DEFENSIVOS',
+    text: `El DEFENSIVO te ayuda a llegar a pelotas lejanas y se recarga cada ${DASH_COOLDOWN} segundos.\n\nCada poder cambia lo que hace: el DASH (gratis) es un sprint hasta la pelota y el DESTELLO te teletransporta y devuelves con un revés.`,
+  },
+} as const;
+type Info = (typeof INFO)[keyof typeof INFO];
 
 
 const ERRORS: Record<string, string> = {
@@ -49,7 +80,6 @@ const ERRORS: Record<string, string> = {
 
 export class ShopScene extends Phaser.Scene {
   private body!: Phaser.GameObjects.Container;
-  private coinText!: Phaser.GameObjects.Text;
   private cashText!: Phaser.GameObjects.Text;
   private modal: Phaser.GameObjects.GameObject[] = [];
   /** desplazamiento vertical del contenido (la tienda es más alta que la pantalla) */
@@ -83,15 +113,15 @@ export class ShopScene extends Phaser.Scene {
       this.cameras.main.fadeOut(180, 0, 0, 0);
       this.cameras.main.once('camerafadeoutcomplete', () => this.scene.start('Menu'));
     });
+    // título centrado (ancho mínimo de pantalla 720: no choca con volver ni con el saldo)
     const titleW = Math.min(250, Math.max(150, W - 250));
-    const titleX = W / 2 - Math.min(35, W * 0.08);
-    this.add.image(titleX, headY - 3, 'shop-title').setDisplaySize(titleW, titleW / 3);
-    this.coinPill(W - 26, headY);
+    this.add.image(W / 2, headY - 3, 'shop-title').setDisplaySize(titleW, titleW / 3);
+    this.cashPill(W - 26, headY);
 
     this.body = this.add.container(0, 0);
     this.build();
     this.setupScroll();
-    const off = onPlayerChange(() => this.refreshCoins());
+    const off = onPlayerChange(() => this.refreshCash());
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => off());
   }
 
@@ -100,56 +130,47 @@ export class ShopScene extends Phaser.Scene {
     const W = this.scale.width;
     this.body.removeAll(true);
     let y = 150;
+    // cada título lleva su línea; los de estilos y poderes, además, un (i) que abre su explicación (INFO)
+    const titleGap = 44; // del título a sus tarjetas
 
-    // destacado: de dónde salen las monedas
-    const tip = this.add.text(W / 2, y, 'Paga con dinero del juego · el pago en CLP llega pronto', { fontFamily: FONT, fontSize: '19px', color: '#9fb4e0' }).setOrigin(0.5);
-    fitText(tip, W - 60);
-    this.body.add(tip);
-    y += 44;
-
-    // ---------------------------------------------------------------- estilos
-    // Efecto pelota (estela de los golpes) y Cargando golpe: los dos estilos de PERSONALIZACIÓN
-    this.sectionTitle(W, y, 'ESTILOS');
-    y += 34;
-    y = this.subTitle(W, y, 'EFECTO PELOTA', 'Pintan la estela de tus golpes en el partido');
+    // ---------------------------------------------------------------- efecto pelota (estela de los golpes)
+    this.sectionTitle(W, y, 'EFECTO PELOTA', INFO.style);
+    y += titleGap;
     const styles = SHOP_ITEMS.filter((i) => i.kind === 'style');
     const gap = 14;
     const cw = (W - 60 - gap * (styles.length - 1)) / styles.length;
     const ch = 300;
     styles.forEach((it, i) => this.styleCard(30 + i * (cw + gap), y, cw, ch, it));
-    y += ch + 36;
-    y = this.subTitle(W, y, 'CARGANDO GOLPE', 'El aro bajo tus pies al cargar · Nxo trae fuego, Mai tulipán');
+    y += ch + 52;
+    // ---------------------------------------------------------------- cargando golpe (aro al cargar)
+    this.sectionTitle(W, y, 'CARGANDO GOLPE', INFO.charge);
+    y += titleGap;
     const charges = SHOP_ITEMS.filter((i) => i.kind === 'charge');
     const cwid = (W - 60 - gap * (charges.length - 1)) / charges.length;
     charges.forEach((it, i) => this.chargeCard(30 + i * (cwid + gap), y, cwid, ch, it));
     y += ch + 52;
 
     // ---------------------------------------------------------------- poderes de la ULTI (antes INFERNO)
-    this.sectionTitle(W, y, 'PODERES ULTI');
-    y += 26;
-    const hint2 = this.add.text(W / 2, y, 'La bola de tu Ulti · fuego es gratis', { fontFamily: FONT, fontSize: '16px', color: '#7f93bf' }).setOrigin(0.5);
-    fitText(hint2, W - 60);
-    this.body.add(hint2);
-    y += 30;
+    this.sectionTitle(W, y, 'PODERES ULTI', INFO.ulti);
+    y += titleGap;
     const powers = SHOP_ITEMS.filter((i) => i.kind === 'inferno');
     const pw = (W - 60 - gap * (powers.length - 1)) / powers.length;
     powers.forEach((it, i) => this.powerCard(30 + i * (pw + gap), y, pw, ch, it));
     y += ch + 52;
 
-    // ---------------------------------------------------------------- poderes del ESPECIAL y del DEFENSIVO (aún sin poderes)
-    this.sectionTitle(W, y, 'PODERES ESPECIALES');
-    y += 26;
-    y = this.hintLine(W, y, 'Cambian cómo se ve tu SMASH · el fuego es gratis');
-    const smashW = (W - 60 - gap * 2) / 3;
+    // ---------------------------------------------------------------- poderes del ESPECIAL y del DEFENSIVO
+    this.sectionTitle(W, y, 'PODERES ESPECIALES', INFO.special);
+    y += titleGap;
+    // FUEGO (incluido) + los de la Tienda (hielo, viento, rayo), en una fila como los de la Ulti
+    const smashItems = SHOP_ITEMS.filter((i) => i.kind === 'smash');
+    const smashN = smashItems.length + 1;
+    const smashW = (W - 60 - gap * (smashN - 1)) / smashN;
     const smashH = 270;
-    const smashIce = SHOP_ITEMS.find((i) => i.id === 'smash:ice');
     this.smashCard(30, y, smashW, smashH, 'fire');
-    if (smashIce) this.smashCard(30 + smashW + gap, y, smashW, smashH, 'ice', smashIce);
-    this.soonCard(30 + (smashW + gap) * 2, y, smashW, smashH); // el rayo llegará después
+    smashItems.forEach((it, i) => this.smashCard(30 + (i + 1) * (smashW + gap), y, smashW, smashH, it.id.split(':')[1] as SmashPower, it));
     y += smashH + 52;
-    this.sectionTitle(W, y, 'PODERES DEFENSIVOS');
-    y += 26;
-    y = this.hintLine(W, y, 'Cambian lo que hace tu Defensivo · el DASH es gratis');
+    this.sectionTitle(W, y, 'PODERES DEFENSIVOS', INFO.defensive);
+    y += titleGap;
     const defs = SHOP_ITEMS.filter((i) => i.kind === 'defensive');
     const dw = (W - 60 - gap * 2) / 3;
     const dh = 270;
@@ -163,18 +184,14 @@ export class ShopScene extends Phaser.Scene {
 
     // ---------------------------------------------------------------- dinero (se compra con CLP)
     this.sectionTitle(W, y, 'DINERO');
-    y += 26;
-    const hint3 = this.add.text(W / 2, y, 'Para comprar todo lo de la tienda', { fontFamily: FONT, fontSize: '16px', color: '#7f93bf' }).setOrigin(0.5);
-    fitText(hint3, W - 60);
-    this.body.add(hint3);
-    y += 26;
+    y += titleGap;
     const packW = (W - 60 - gap * (CASH_PACKS.length - 1)) / CASH_PACKS.length;
     CASH_PACKS.forEach((p, i) => this.cashPackCard(30 + i * (packW + gap), y, packW, 168, p));
     y += 168 + 52;
 
     // ---------------------------------------------------------------- pase premium (solo dinero real)
     this.sectionTitle(W, y, 'PASE PREMIUM');
-    y += 34;
+    y += titleGap;
     const premium = syncSeason(getPlayer() as PlayerState).bp.premium;
     this.realOffer(30, y, W - 60, oh, premium);
     this.maxScroll = Math.max(0, y + oh + 36 - this.scale.height);
@@ -297,16 +314,12 @@ export class ShopScene extends Phaser.Scene {
     const equipped = has && s.equipped.inferno === power;
     const c = this.add.container(0, 0);
     this.body.add(c);
-    c.add(this.card(x, y, w, h, { line: equipped ? 0xffffff : has ? def.color : 0x2c3d66, glow: equipped || has ? 0.3 : 0.1 }));
+    this.ultiCardBg(c, x, y, w, h);
     const sx = x + w / 2;
-    const art = BALL_ART[power];
-    if (this.textures.exists(art.key)) {
-      const ball = this.add.sprite(sx, y + 78, art.key, 0).setDisplaySize(112, 112);
-      if (this.anims.exists(art.anim)) ball.play(art.anim);
-      c.add(ball);
-    } else c.add(this.add.circle(sx, y + 78, 34, def.color, 1));
-    c.add(this.add.text(sx, y + 150, def.name, { fontFamily: FONT, fontSize: '24px', color: def.css }).setOrigin(0.5));
-    const desc = this.add.text(sx, y + 178, has ? 'COMPRADO' : def.desc, { fontFamily: FONT, fontSize: '13px', color: has ? '#9fe8a0' : '#9fb4e0', align: 'center', wordWrap: { width: w - 16 } }).setOrigin(0.5, 0);
+    // su bola animada (y su rastro detrás, si lo trae: tulipán)
+    c.add(addBallPreview(this, sx, y + 78, power, w - 12, 112, true, def.color));
+    c.add(this.add.text(sx, y + 150, def.name, { fontFamily: FONT, fontSize: '24px', color: def.css, stroke: '#1a0640', strokeThickness: 5 }).setOrigin(0.5));
+    const desc = this.add.text(sx, y + 178, has ? 'COMPRADO' : def.desc, { fontFamily: FONT, fontSize: '13px', color: has ? '#9fe8a0' : '#e2d3ff', align: 'center', wordWrap: { width: w - 16 } }).setOrigin(0.5, 0);
     c.add(desc);
     const by = y + h - 64;
     const bw = w - 24;
@@ -370,7 +383,7 @@ export class ShopScene extends Phaser.Scene {
     const sx = x + w / 2;
     const ic = this.add.graphics({ x: sx, y: y + 66 });
     drawDisc(ic, 36, def.color, 0x1b3a6b);
-    drawBlinkIcon(ic, 36);
+    drawDefensiveIcon(ic, id, 36);
     c.add(ic);
     c.add(this.add.text(sx, y + 128, def.name, { fontFamily: FONT, fontSize: '24px', color: def.css }).setOrigin(0.5));
     c.add(this.add.text(sx, y + 154, has ? 'COMPRADO' : def.desc, { fontFamily: FONT, fontSize: '13px', color: has ? '#9fe8a0' : '#9fb4e0', align: 'center', wordWrap: { width: w - 16 } }).setOrigin(0.5, 0));
@@ -550,43 +563,172 @@ export class ShopScene extends Phaser.Scene {
   }
 
   // ================================================================ piezas
-  /** Saldos en la cabecera: monedas (derecha) y dinero / billetes (a su izquierda). */
-  private coinPill(right: number, y: number) {
+  /** Saldo en la cabecera: solo el dinero (billetes), que es con lo que se compra en la Tienda. */
+  private cashPill(right: number, y: number) {
     const c = this.add.container(0, y);
     const bg = this.add.graphics();
-    const coin = this.add.graphics();
-    drawCoinIcon(coin, 15);
     const cash = this.add.graphics();
     drawCashIcon(cash, 0.85);
-    this.coinText = this.add.text(0, 0, '', { fontFamily: FONT, fontSize: '24px', color: '#ffffff' }).setOrigin(1, 0.5);
     this.cashText = this.add.text(0, 0, '', { fontFamily: FONT, fontSize: '24px', color: '#ffffff' }).setOrigin(1, 0.5);
-    c.add([bg, coin, cash, this.coinText, this.cashText]);
-    const pill = (r: number, w: number, line: number) => {
-      bg.fillStyle(0x000000, 0.35).fillRoundedRect(r - w + 3, -22 + 4, w, 44, 22);
-      bg.fillStyle(0x0a1638, 0.95).fillRoundedRect(r - w, -22, w, 44, 22).lineStyle(2.5, line, 1).strokeRoundedRect(r - w, -22, w, 44, 22);
-    };
+    c.add([bg, cash, this.cashText]);
     const layout = () => {
       bg.clear();
-      const w1 = this.coinText.width + 62;
-      pill(right, w1, 0x8a6a1c);
-      coin.setPosition(right - w1 + 22, 0);
-      this.coinText.setX(right - 14);
-      const r2 = right - w1 - 10;
-      const w2 = this.cashText.width + 66;
-      pill(r2, w2, 0x2b7a40);
-      cash.setPosition(r2 - w2 + 26, 0);
-      this.cashText.setX(r2 - 14);
+      const w = this.cashText.width + 66;
+      bg.fillStyle(0x000000, 0.35).fillRoundedRect(right - w + 3, -22 + 4, w, 44, 22);
+      bg.fillStyle(0x0a1638, 0.95).fillRoundedRect(right - w, -22, w, 44, 22).lineStyle(2.5, 0x2b7a40, 1).strokeRoundedRect(right - w, -22, w, 44, 22);
+      cash.setPosition(right - w + 26, 0);
+      this.cashText.setX(right - 14);
     };
-    this.data.set('coinLayout', layout);
-    this.refreshCoins();
+    this.data.set('cashLayout', layout);
+    this.refreshCash();
   }
 
-  private refreshCoins() {
-    if (!this.coinText?.active) return;
-    const s = getPlayer();
-    this.coinText.setText(s.coins.toLocaleString('es-CL'));
-    this.cashText.setText(s.gems.toLocaleString('es-CL'));
-    (this.data.get('coinLayout') as () => void)?.();
+  private refreshCash() {
+    if (!this.cashText?.active) return;
+    this.cashText.setText(getPlayer().gems.toLocaleString('es-CL'));
+    (this.data.get('cashLayout') as () => void)?.();
+  }
+
+  /** Icono (i) tocable: abre la explicación de la sección. */
+  private infoButton(x: number, y: number, info: Info) {
+    const c = this.add.container(x, y);
+    const g = this.add.graphics();
+    g.fillStyle(0x000000, 0.35).fillCircle(2, 3, 16);
+    g.fillStyle(NEON, 1).fillCircle(0, 0, 16);
+    g.lineStyle(2.5, 0xffffff, 0.9).strokeCircle(0, 0, 16);
+    const t = this.add.text(0, 1, 'i', { fontFamily: FONT, fontSize: '22px', color: '#ffffff' }).setOrigin(0.5);
+    c.add([g, t]);
+    // zona táctil más grande que el dibujo (dedo)
+    c.setSize(48, 48).setInteractive({ useHandCursor: true });
+    c.on('pointerup', this.tap(() => {
+      this.tweens.add({ targets: c, scale: { from: 0.85, to: 1 }, duration: 180, ease: 'Back.easeOut' });
+      this.infoDialog(info);
+    }));
+    return c;
+  }
+
+  /** Diálogo con la explicación de una sección; se cierra con ENTENDIDO o tocando fuera. */
+  private infoDialog(info: Info) {
+    if (this.modal.length) return;
+    const W = this.scale.width;
+    const H = this.scale.height;
+    const close = () => {
+      this.modal.forEach((o) => o.destroy());
+      this.modal = [];
+    };
+    const shade = this.add.rectangle(0, 0, W, H, 0x02060f, 0.72).setOrigin(0).setDepth(8000).setInteractive();
+    shade.on('pointerdown', close);
+    const pw = Math.min(600, W - 60);
+    const body = this.add.text(0, 0, info.text, { fontFamily: FONT, fontSize: '21px', color: '#dbe5ff', align: 'center', lineSpacing: 6, wordWrap: { width: pw - 70 } }).setOrigin(0.5, 0);
+    const ph = 104 + body.height + 128;
+    const panel = this.add.container(W / 2, H / 2).setDepth(8001);
+    panel.add(this.add.rectangle(0, 0, pw, ph, 0x000000, 0.001).setInteractive());
+    panel.add(this.card(-pw / 2, -ph / 2, pw, ph, { line: NEON, glow: 0.3, r: 24 }));
+    const title = this.add.text(0, -ph / 2 + 52, info.title, { fontFamily: FONT, fontSize: '32px', color: '#ffffff', stroke: '#0a1638', strokeThickness: 6 }).setOrigin(0.5).setLetterSpacing(2);
+    fitText(title, pw - 40);
+    panel.add(title);
+    body.setPosition(0, -ph / 2 + 100);
+    panel.add(body);
+    panel.add(arcadeButton(this, 0, ph / 2 - 62, Math.min(300, pw - 80), 76, 'ENTENDIDO', close, { palette: 'yellow' }));
+    panel.setScale(0.85).setAlpha(0);
+    this.tweens.add({ targets: panel, scale: 1, alpha: 1, duration: 220, ease: 'Back.easeOut' });
+    this.modal = [shade, panel];
+  }
+
+  /**
+   * Fondo de tarjeta de PODER ULTI: degradado morado con brillo (sin borde). El degradado y el reflejo superior
+   * se pintan una vez en un canvas (por tamaño); encima pasa cada tanto un destello diagonal recortado a la tarjeta.
+   */
+  private ultiCardBg(c: Phaser.GameObjects.Container, x: number, y: number, w: number, h: number) {
+    const r = 20;
+    const cw = Math.round(w);
+    const key = `shop-ulti-bg-${cw}x${h}`;
+    const shadow = this.add.graphics();
+    shadow.fillStyle(0x000000, 0.35).fillRoundedRect(x + 3, y + 5, w, h, r);
+    c.add(shadow);
+    if (!this.textures.exists(key)) {
+      const tex = this.textures.createCanvas(key, cw, h);
+      if (tex) {
+        const ctx = tex.getContext();
+        const path = () => {
+          ctx.beginPath();
+          ctx.moveTo(r, 0);
+          ctx.arcTo(cw, 0, cw, h, r);
+          ctx.arcTo(cw, h, 0, h, r);
+          ctx.arcTo(0, h, 0, 0, r);
+          ctx.arcTo(0, 0, cw, 0, r);
+          ctx.closePath();
+        };
+        path();
+        const lin = ctx.createLinearGradient(0, 0, cw * 0.35, h);
+        lin.addColorStop(0, ULTI_TOP);
+        lin.addColorStop(0.5, ULTI_MID);
+        lin.addColorStop(1, ULTI_BOT);
+        ctx.fillStyle = lin;
+        ctx.fill();
+        ctx.save();
+        path();
+        ctx.clip();
+        // halo claro tras la bola
+        const rad = ctx.createRadialGradient(cw / 2, 78, 4, cw / 2, 78, Math.max(cw, 150) * 0.75);
+        rad.addColorStop(0, 'rgba(214,170,255,0.55)');
+        rad.addColorStop(1, 'rgba(214,170,255,0)');
+        ctx.fillStyle = rad;
+        ctx.fillRect(0, 0, cw, h);
+        // reflejo superior (brillo "de vidrio")
+        const gloss = ctx.createLinearGradient(0, 0, 0, h * 0.45);
+        gloss.addColorStop(0, 'rgba(255,255,255,0.22)');
+        gloss.addColorStop(1, 'rgba(255,255,255,0)');
+        ctx.fillStyle = gloss;
+        ctx.fillRect(0, 0, cw, h * 0.45);
+        ctx.restore();
+        tex.refresh();
+      }
+    }
+    if (this.textures.exists(key)) c.add(this.add.image(x, y, key).setOrigin(0).setDisplaySize(w, h));
+    else c.add(this.add.graphics().fillStyle(0x5a22b8, 1).fillRoundedRect(x, y, w, h, r));
+
+    // destello diagonal que cruza la tarjeta (recortado al contorno redondeado)
+    const shape = roundedPoly(x, y, w, h, r);
+    const shine = this.add.graphics().setBlendMode(Phaser.BlendModes.ADD);
+    c.add(shine);
+    const st = { t: 0 };
+    const band = 34;
+    const slant = h * 0.45;
+    const tw = this.tweens.add({
+      targets: st,
+      t: { from: 0, to: 1 },
+      duration: 1100,
+      delay: Phaser.Math.Between(300, 1800),
+      repeat: -1,
+      repeatDelay: 2600,
+      ease: 'Sine.easeInOut',
+      onUpdate: () => {
+        if (!shine.active) {
+          tw.remove();
+          return;
+        }
+        shine.clear();
+        const bx = x - band - slant + st.t * (w + band + slant * 2);
+        const quad = [
+          { x: bx, y: y + h },
+          { x: bx + band, y: y + h },
+          { x: bx + band + slant, y },
+          { x: bx + slant, y },
+        ];
+        const pts = clipConvex(quad, shape);
+        if (pts.length >= 3) shine.fillStyle(0xffffff, 0.2).fillPoints(pts, true);
+      },
+    });
+    // chispas que titilan sobre la tarjeta
+    for (let i = 0; i < 3; i++) {
+      const sp = this.add
+        .star(x + Phaser.Math.Between(16, Math.max(17, w - 16)), y + Phaser.Math.Between(16, 130), 4, 1.5, 6, 0xf3e6ff, 1)
+        .setBlendMode(Phaser.BlendModes.ADD)
+        .setAlpha(0);
+      c.add(sp);
+      this.tweens.add({ targets: sp, alpha: { from: 0, to: 0.9 }, angle: 90, duration: 700, delay: Phaser.Math.Between(0, 2400), yoyo: true, repeat: -1, repeatDelay: Phaser.Math.Between(900, 2200) });
+    }
   }
 
   private priceButton(x: number, y: number, w: number, price: number, dim: boolean, onClick: () => void) {
@@ -623,22 +765,6 @@ export class ShopScene extends Phaser.Scene {
     fitText(t, w - 16);
     c.add(t);
     return c;
-  }
-
-  /** Línea de ayuda centrada bajo un título de sección. Devuelve la y siguiente. */
-  private hintLine(W: number, y: number, label: string) {
-    const t = this.add.text(W / 2, y, label, { fontFamily: FONT, fontSize: '16px', color: '#7f93bf' }).setOrigin(0.5);
-    fitText(t, W - 60);
-    this.body.add(t);
-    return y + 30;
-  }
-
-  /** Subtítulo dentro de una sección (p. ej. ESTILOS › EFECTO PELOTA) con su ayuda. Devuelve la y siguiente. */
-  private subTitle(W: number, y: number, label: string, hint: string) {
-    const t = this.add.text(W / 2, y, label, { fontFamily: FONT, fontSize: '22px', color: '#dbe5ff' }).setOrigin(0.5).setLetterSpacing(2);
-    fitText(t, W - 60);
-    this.body.add(t);
-    return this.hintLine(W, y + 26, hint) + 4;
   }
 
   /** Fila de `n` tarjetas bloqueadas (contenido que aún no existe). Devuelve la y siguiente, ya con el aire hasta la sección que sigue. */
@@ -678,12 +804,20 @@ export class ShopScene extends Phaser.Scene {
     return g;
   }
 
-  private sectionTitle(W: number, y: number, label: string) {
+  /** Título de sección con su línea a cada lado; con `info`, un (i) a la derecha del texto abre su explicación. */
+  private sectionTitle(W: number, y: number, label: string, info?: Info) {
     const t = this.add.text(W / 2, y, label, { fontFamily: FONT, fontSize: '28px', color: '#ffffff' }).setOrigin(0.5).setLetterSpacing(3);
+    const iconGap = 12;
+    const iconD = 32;
+    const extra = info ? iconGap + iconD : 0;
+    // texto + icono centrados juntos
+    const left = W / 2 - (t.width + extra) / 2;
+    t.setX(left + t.width / 2);
+    const right = left + t.width + extra;
     const g = this.add.graphics();
-    const half = t.width / 2 + 18;
-    g.lineStyle(2, NEON, 0.7).lineBetween(40, y, W / 2 - half, y).lineBetween(W / 2 + half, y, W - 40, y);
+    g.lineStyle(2, NEON, 0.7).lineBetween(40, y, left - 18, y).lineBetween(right + 18, y, W - 40, y);
     this.body.add([g, t]);
+    if (info) this.body.add(this.infoButton(left + t.width + iconGap + iconD / 2, y, info));
   }
 
   private backButton(x: number, y: number, onClick: () => void) {
@@ -709,4 +843,49 @@ export class ShopScene extends Phaser.Scene {
     this.tweens.add({ targets: t, alpha: 1, y: t.y - 20, duration: 200 });
     this.tweens.add({ targets: t, alpha: 0, delay: 1500, duration: 300, onComplete: () => t.destroy() });
   }
+}
+
+type Pt = { x: number; y: number };
+
+/** Contorno de un rectángulo redondeado como polígono convexo (sentido horario en pantalla). */
+function roundedPoly(x: number, y: number, w: number, h: number, r: number, seg = 5): Pt[] {
+  const pts: Pt[] = [];
+  const corner = (cx: number, cy: number, a0: number) => {
+    for (let i = 0; i <= seg; i++) {
+      const a = a0 + (i / seg) * (Math.PI / 2);
+      pts.push({ x: cx + Math.cos(a) * r, y: cy + Math.sin(a) * r });
+    }
+  };
+  corner(x + w - r, y + r, -Math.PI / 2); // arriba-derecha
+  corner(x + w - r, y + h - r, 0); // abajo-derecha
+  corner(x + r, y + h - r, Math.PI / 2); // abajo-izquierda
+  corner(x + r, y + r, Math.PI); // arriba-izquierda
+  return pts;
+}
+
+/** Recorta el polígono `subject` contra el polígono convexo `clip` (Sutherland–Hodgman). */
+function clipConvex(subject: Pt[], clip: Pt[]): Pt[] {
+  let out = subject;
+  for (let i = 0; i < clip.length && out.length; i++) {
+    const a = clip[i];
+    const b = clip[(i + 1) % clip.length];
+    // dentro = a la derecha de a→b en coordenadas de pantalla (y hacia abajo, contorno horario)
+    const side = (p: Pt) => (b.x - a.x) * (p.y - a.y) - (b.y - a.y) * (p.x - a.x);
+    const cut = (p: Pt, q: Pt): Pt => {
+      const sp = side(p);
+      const t = sp / (sp - side(q));
+      return { x: p.x + (q.x - p.x) * t, y: p.y + (q.y - p.y) * t };
+    };
+    const input = out;
+    out = [];
+    for (let j = 0; j < input.length; j++) {
+      const p = input[j];
+      const q = input[(j + 1) % input.length];
+      const pin = side(p) >= 0;
+      const qin = side(q) >= 0;
+      if (pin) out.push(p);
+      if (pin !== qin) out.push(cut(p, q));
+    }
+  }
+  return out;
 }

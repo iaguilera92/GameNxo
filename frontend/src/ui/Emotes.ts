@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { C } from './theme';
+import { EMOTES, type EmoteKind } from '../domain/emotes';
 
 /**
  * EMOTES del partido (estilo Brawl Stars): un botón de charla abre 3 caritas; al elegir una sale un globo con
@@ -11,14 +12,20 @@ export const EMOTE_COOLDOWN_MS = 10000;
 const BUBBLE_MS = 2200;
 const PANEL_AUTOCLOSE_MS = 4000;
 
-export type EmoteKind = 'happy' | 'cool' | 'wow';
-export const EMOTES: EmoteKind[] = ['happy', 'cool', 'wow'];
+export type { EmoteKind } from '../domain/emotes';
+export { EMOTES } from '../domain/emotes';
 
-const EMOTE_TEXTURE: Record<EmoteKind, string> = {
+/** Textura de cada emote: miniaturas de 160 px (tools/build-emote-thumbs.mjs; fuentes en personajes/Nxo/emojis/). */
+export const EMOTE_TEXTURE: Record<EmoteKind, string> = {
   happy: 'emote-risa',
   cool: 'emote-pensando',
   wow: 'emote-enojado',
 };
+
+/** Encola las miniaturas de los emotes que falten (partido, Pase de Batalla). */
+export function queueEmoteArt(load: Phaser.Loader.LoaderPlugin) {
+  for (const key of Object.values(EMOTE_TEXTURE)) if (!load.scene.textures.exists(key)) load.image(key, `assets/emotes/${key}.png`);
+}
 
 export class Emotes {
   /** botón de charla (posicionar con setPosition) */
@@ -38,8 +45,15 @@ export class Emotes {
   private closeTimer?: Phaser.Time.TimerEvent;
   private static readonly R = 30;
 
-  /** `head`: posición actual (mundo) sobre la que sale el globo. */
-  constructor(private scene: Phaser.Scene, private head: () => { x: number; y: number }, depth = 5600) {
+  /** sin ningún emote desbloqueado no hay botón (los del rival se ven igual) */
+  private readonly none: boolean;
+
+  /**
+   * `head`: posición actual (mundo) sobre la que sale el globo. `kinds`: los emotes que tiene el jugador (se ganan en el
+   * Pase de Batalla); el panel solo muestra esos.
+   */
+  constructor(private scene: Phaser.Scene, private head: () => { x: number; y: number }, kinds: readonly EmoteKind[] = EMOTES, depth = 5600) {
+    this.none = kinds.length === 0;
     const R = Emotes.R;
     this.button = scene.add.container(0, 0).setScrollFactor(0).setDepth(depth);
     const g = scene.add.graphics();
@@ -63,7 +77,7 @@ export class Emotes {
 
     // panel con las 3 caritas, desplegado hacia la izquierda del botón
     this.panel = scene.add.container(0, 0).setScrollFactor(0).setDepth(depth + 1).setVisible(false);
-    EMOTES.forEach((kind, i) => {
+    kinds.forEach((kind, i) => {
       const o = scene.add.container(-(i + 1) * 76, 0);
       const bg = scene.add.graphics();
       bg.fillStyle(C.outline, 0.85).fillCircle(0, 3, 33);
@@ -77,6 +91,8 @@ export class Emotes {
       this.panel.add(o);
     });
 
+    if (this.none) this.button.setVisible(false);
+
     scene.events.on(Phaser.Scenes.Events.UPDATE, this.update, this);
     scene.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.destroy());
   }
@@ -87,7 +103,7 @@ export class Emotes {
   }
 
   setVisible(on: boolean) {
-    this.button.setVisible(on);
+    this.button.setVisible(on && !this.none);
     if (!on) this.close();
   }
 

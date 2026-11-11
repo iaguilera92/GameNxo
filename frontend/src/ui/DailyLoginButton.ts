@@ -6,7 +6,7 @@ import { drawCoinIcon, drawGiftIcon } from './wheelArt';
 import { drawCashIcon } from '../scenes/BattlePassScene';
 import { LOGIN, type LoginReward } from '../domain/dailyLogin';
 import { claimLogin, claimLoginRewardAdBonus, loginStatus } from '../logic/Ranked';
-import { showInterstitial, showRewarded } from '../ads/ads';
+import { canShowRewardedAds, showInterstitial, showRewarded } from '../ads/ads';
 
 const NAVY = 0x0b1733;
 const NEON = 0x3a7bff;
@@ -221,10 +221,8 @@ export function openDailyLogin(scene: Phaser.Scene, onChange: () => void, onToas
           close();
         }, async (animateDouble) => {
           const watched = await showRewarded('daily_reward_bonus');
-          if (!watched) {
-            onToast('Anuncio no disponible; conservas tu premio diario');
-            return false;
-          }
+          // Sin anuncio: el aviso sale dentro de la pantalla del premio (showDailyRewardReveal).
+          if (!watched) return false;
           const bonus = claimLoginRewardAdBonus();
           if (!bonus.given) return false;
           animateDouble();
@@ -392,6 +390,7 @@ function showDailyRewardReveal(
 
   let busy = false;
   let canContinue = false;
+  let noAdText: Phaser.GameObjects.Text | undefined;
   const prompt = scene.add.text(W / 2, H * 0.9, 'TOCA PARA CONTINUAR', { fontFamily: FONT, fontSize: '28px', color: '#ffffff', stroke: '#0a1638', strokeThickness: 7 }).setOrigin(0.5).setLetterSpacing(2).setAlpha(0);
   if (prompt.width > W - 40) prompt.setScale((W - 40) / prompt.width);
   root.add(prompt);
@@ -402,8 +401,10 @@ function showDailyRewardReveal(
   });
   continueZone.on('pointerup', () => { if (canContinue && !busy) onContinue(); });
 
+  // `busy` = anuncio EN CURSO (no se puede salir mientras tanto); `doubled` = el x2 ya se usó (no se repite)
+  let doubled = false;
   const bonusBtn = arcadeButton(scene, W / 2, H * 0.8, Math.min(300, W - 80), 82, 'x2', async () => {
-    if (busy) return;
+    if (busy || doubled) return;
     busy = true;
     bonusBtn.disableInteractive();
     try {
@@ -417,11 +418,22 @@ function showDailyRewardReveal(
         buttonLabel?.setText('x2 ✓');
       });
       if (earned) {
-        busy = true;
+        // premio doblado: el botón queda como "x2 ✓" y ya se puede salir (antes `busy` quedaba en true y "TOCA PARA
+        // CONTINUAR" no respondía nunca)
+        doubled = true;
+        busy = false;
         return;
       }
     } catch {
       // Si el anuncio falla, el premio base queda intacto y se permite reintentar.
+    }
+    // Aviso dentro de esta pantalla (el toast del menú queda tapado por el fondo del premio).
+    if (root.active) {
+      noAdText?.destroy();
+      noAdText = scene.add.text(W / 2, H * 0.68, 'ANUNCIO NO DISPONIBLE · INTÉNTALO MÁS TARDE', { fontFamily: FONT, fontSize: '18px', color: '#ffb3a8', stroke: '#061431', strokeThickness: 5 }).setOrigin(0.5).setAlpha(0);
+      if (noAdText.width > W - 40) noAdText.setScale((W - 40) / noAdText.width);
+      root.add(noAdText);
+      scene.tweens.add({ targets: noAdText, alpha: 1, duration: 220, hold: 2200, yoyo: true, onComplete: () => noAdText?.destroy() });
     }
     busy = false;
     bonusBtn.setInteractive({ useHandCursor: true });
@@ -435,6 +447,8 @@ function showDailyRewardReveal(
   bonusBtn.on('pointerdown', (_p: Phaser.Input.Pointer, _x: number, _y: number, event: Phaser.Types.Input.EventData) => event.stopPropagation());
   bonusBtn.on('pointerup', (_p: Phaser.Input.Pointer, _x: number, _y: number, event: Phaser.Types.Input.EventData) => event.stopPropagation());
   root.add(bonusBtn);
+  // Sin anuncios (web / sin AdMob) no se ofrece el x2; la vista TEST lo muestra siempre.
+  if (!testMode && !canShowRewardedAds()) bonusBtn.setVisible(false).disableInteractive();
   root.setAlpha(0);
   scene.tweens.add({ targets: root, alpha: 1, duration: 260 });
   return root;

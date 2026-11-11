@@ -256,6 +256,12 @@ Las secciones 4 y 5 son el contrato. Estas son las excepciones que la herramient
 **MAI rival**: usa todavía la hoja antigua (`mai-front-sprites/`, `tools/build-nxo-sprites.mjs`). Sus hojas nuevas
 están en `Mai/rival/` sin procesar.
 
+- Excepción (11-11-2026): la **tarjeta del resultado** (`MatchEndScene`) usa ya la hoja nueva 1 de Mai rival para sus
+  3 poses: filas 1 `idle`, 4 `victory` y 8 `defeat`. `node tools/build-end-poses.mjs` las corta (croma verde + gorra con
+  `keep-enclosed-green`) en `public/assets/characters/mai-front-end/{idle,victory,defeat}.png` (8 frames de 192 × 128).
+  La escena mide la silueta de cada tira para el alto y los pies (sin JSON). Cuando se procese el pack `mai-front`
+  completo, se puede quitar esta excepción (`MAI_END` / `endPosesFor` en `MatchEndScene.ts`).
+
 ### Efectos de carga ("cargando golpe")
 
 No son hojas de personaje: son el aro que aparece en el suelo bajo el jugador (y bajo el rival, en red) mientras se mantiene
@@ -264,13 +270,20 @@ el de fuego y Mai el de tulipán) y el clásico, que se dibuja por código (`Mat
 
 | Id | Fuente (`frontend/art/cargando/`) | Hoja que carga el juego | Celda | Fondo de la fuente |
 |---|---|---|---|---|
-| `fire` | `cargando-fuego.png` | `public/assets/charge-fire.png` | 256×262 | transparente |
+| `fire` | `cargando-fuego.webp` → `cargando-fuego.png` | `public/assets/charge-fire.webp` | 256×236 | transparente |
 | `energy` | `cargando-energia.png` | `public/assets/charge-energy.png` | 256×230 | transparente |
-| `tulip` | `cargando-tulipan.png` | `public/assets/charge-tulip.png` | 256×287 | rejilla gris + bruma blanca (se limpia) |
+| `tulip` | `cargando-tulipan.webp` → `cargando-tulipan.png` | `public/assets/charge-tulip.webp` | 256×256 | transparente |
 
 Contrato de la fuente: 10 frames en 5 columnas × 2 filas, en orden de lectura. El efecto **nace** (frame 1), **crece** hasta su
 máximo (frames 6-7) y **se disipa** (frame 10). El aro tiene que estar en el mismo sitio en todos los frames. Dejar aire entre
-frames; el tulipán, además, no puede traer la bruma blanca pegada al fondo (la herramienta la recorta por alfa y saturación).
+frames y fondo transparente.
+
+- **Fuego y tulipán (11-11-2026):** fuentes nuevas en `.webp` (las anteriores están en `art/cargando/Old/`). La herramienta
+  lee PNG y el juego carga webp. Para `<nombre>` = fuego / tulipan e `<id>` = fire / tulip:
+  `node tools/convert-image.mjs art/cargando/cargando-<nombre>.webp art/cargando/cargando-<nombre>.png` →
+  `node tools/build-charge-fx.mjs <nombre>` →
+  `node tools/convert-image.mjs public/assets/charge-<id>.png public/assets/charge-<id>.webp` (y se borra el `.png` de
+  `public/assets`). `convert-image.mjs` usa Chrome headless (Node no lee ni escribe webp). Energía sigue en `.png`.
 
 - Se generan con `node tools/build-charge-fx.mjs [fuego|energia|tulipan]` (sin argumentos, las tres). A diferencia de las bolas
   del INFERNO, no se centra cada frame: todos comparten recorte y ancla (el centro del aro = los pies). La herramienta imprime
@@ -280,6 +293,29 @@ frames; el tulipán, además, no puede traer la bruma blanca pegada al fondo (la
   disipa con los frames 8-10 (`ChargeSpriteFx`). Fuego y energía se pintan con luz aditiva; el tulipán, normal.
 - Para añadir un efecto nuevo: su id en `domain/chargeFx.ts` (`CHARGE_FX`), su fuente en `art/cargando/`, una entrada en
   `SHEETS` de la herramienta y en `CHARGE_ART`, y su ítem `charge:<id>` en `domain/shopCatalog.ts`.
+
+### Bolas de la ULTI con rastro (tulipán)
+
+Tampoco son hojas de personaje: son la bola que vuela con la ULTI (poder `tulip`, ítem `inferno:tulip`). A diferencia de las
+demás bolas (fuego, hielo, viento, rayo: una hoja cuadrada de 192 px por frame, centrada en su cuerpo), la del tulipán trae
+**dos hojas**: la bola (cabeza de la estela de pétalos) y su **rastro**, que el juego pinta detrás de la bola en el mismo
+frame, sitio y giro.
+
+| Fuente (`frontend/art/inferno/`) | Hoja que carga el juego | Celda |
+|---|---|---|
+| `inferno-ball-tulipan.png` | `public/assets/inferno-ball-tulip.png` | 384×174 |
+| `inferno-ball-tulipan-rastro.png` | `public/assets/inferno-ball-tulip-trail.png` | 384×174 |
+
+Contrato de las fuentes: las dos del mismo tamaño, 10 frames en 5 columnas × 2 filas (rejilla uniforme, en orden de
+lectura), fondo transparente, la estela en horizontal con la **cabeza a la derecha** y la cola a la izquierda. El rastro va
+dibujado en el mismo sitio que la bola en cada celda. El efecto nace (frame 1), crece (frames 5-7) y se disipa (frame 10).
+
+- Se generan con `node tools/build-trail-ball.mjs [tulipan]`. No se centra cada frame: los frames de las dos hojas comparten
+  recorte y ancla (la cabeza = donde va la pelota). La herramienta limpia la bruma blanca y los grises oscuros sin color, e
+  imprime la celda y el ancla (`originX`, `originY`), que van en `TULIPBALL_ART` (`src/fx/InfernoFx.ts`).
+- En el juego (`BALL_ART.tulip`): la animación recorre en vaivén los frames 4-7 (`seq`), el dibujo se gira 90° (`rot`) para
+  que la cola quede contra el avance, y no lleva la estela de siluetas por código (`ghosts: false`).
+- Para otra bola con rastro: sus dos fuentes en `art/inferno/`, una entrada en `SHEETS` de la herramienta y en `BALL_ART`.
 
 ## 7. Cambiar una hoja o añadir hojas nuevas
 

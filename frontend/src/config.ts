@@ -32,7 +32,7 @@ export const STUN_DURATION = 1.0; // s
 export const KNOCKBACK_DIST = 110; // en profundidad de cancha
 
 // Progresión
-export const MAX_LEVEL = 30;
+export const MAX_LEVEL = 20;
 export const XP_WIN = 60;
 export const XP_LOSS = 25;
 /** Monedas por partido: victoria / derrota (pocas). Rendirse no da monedas (evita farmear rindiéndose). */
@@ -54,6 +54,8 @@ export const COURT = {
 export const ALLEY = 60;
 export const NET_X = (COURT.left + COURT.right) / 2;
 export const NET_HEIGHT = 34; // altura de la red en "z"
+/** cuánto sobresale la red (y sus postes) por fuera de las líneas de dobles, a cada lado (dibujo y choque) */
+export const NET_OVERHANG = 30;
 
 // Física
 export const GRAVITY = 950; // en eje z
@@ -70,6 +72,9 @@ export const LUNGE_RANGE = HIT_RANGE * 1.9;
 export const LUNGE_MAX_Z = HIT_MAX_Z * 1.15;
 /** Tiempo (s) que el jugador tarda en recuperarse tras estirarse. */
 export const LUNGE_RECOVER = 0.45;
+/** Estirada: momento (s) del contacto dentro del clip dive (frame 4-5 a 18 fps) y alcance lateral de la raqueta tendida. */
+export const LUNGE_CONTACT_S = 0.2;
+export const LUNGE_ARM = 90;
 /** Límites de movimiento lateral (más allá de las líneas laterales). */
 export const SIDE_MARGIN = 50;
 

@@ -12,7 +12,7 @@ export async function resolve(spec, ctx, next) {
 }`;
 register('data:text/javascript,' + encodeURIComponent(hook), import.meta.url);
 
-const { newPlayer, clonePlayer } = await import('../src/domain/player.ts');
+const { newPlayer, clonePlayer, PLAYER_SCHEMA_VERSION } = await import('../src/domain/player.ts');
 const R = await import('../src/domain/ranked.ts');
 const C = await import('../src/domain/rankedConfig.ts');
 const B = await import('../src/domain/rankedBots.ts');
@@ -203,10 +203,11 @@ test('un premio por día, racha de 7 y reinicio si se salta un día', () => {
 });
 
 console.log('Datos y Tienda');
-test('migración v4 → v5 y datos corruptos', () => {
+test('migración v4 → versión actual y datos corruptos', () => {
   const v4 = { version: 4, name: 'Ana', level: 22, xp: 0, coins: 900, gems: 3, owned: [], equipped: {}, wheel: {}, bp: {} };
   const p = migratePlayer(v4);
-  assert.equal(p.version, 5);
+  // migra a la versión ACTUAL del guardado (antes fija en 5: se rompía cada vez que subía el esquema)
+  assert.equal(p.version, PLAYER_SCHEMA_VERSION);
   assert.equal(p.coins, 900);
   assert.equal(p.ranked.unlocked, false);
   const q = migratePlayer({ ...v4, version: 5, ranked: { unlocked: true, league: 'xx', weekMatches: -4, pending: { matchId: 'k' } }, login: { streak: 99 } });

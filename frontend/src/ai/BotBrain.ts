@@ -62,6 +62,8 @@ export interface BotTickInput {
   /** lateral donde quiere sacar */
   serveY: number;
   ball: BallState;
+  /** (Claude) saque o su resto en juego: sin habilidades (no decide DASH) */
+  noAbilities?: boolean;
 }
 
 export interface BotTickResult {
@@ -285,7 +287,7 @@ export class BotBrain {
     if (reading && !this.dashDecided && !frozen) {
       this.dashDecided = true;
       const need = Math.hypot(this.ai.target.x - body.x, this.ai.target.y - body.y) / this.ai.speed;
-      if (this.dashCd <= 0 && need > DASH_AI.needS && Math.random() < this.abil.dash) {
+      if (!inp.noAbilities && this.dashCd <= 0 && need > DASH_AI.needS && Math.random() < this.abil.dash) {
         this.dashT = DASH_AI.time;
         this.dashCd = DASH_COOLDOWN * this.abil.cd;
         sprint = 'start';
@@ -363,7 +365,8 @@ export class BotBrain {
    *  3. EJECUCIÓN: destino, velocidad y margen sobre la red; con error según la calidad y, a veces, fuera.
    * Solo decide números: la física la aplica la escena con aimShot, igual que siempre.
    */
-  planShot(ball: BallState, ctx: ShotContext, ulti = false): ShotPlan {
+  /** `noPower` (Claude): saque o su resto en juego: no lanza el ESPECIAL con este golpe. */
+  planShot(ball: BallState, ctx: ShotContext, ulti = false, noPower = false): ShotPlan {
     const ai = this.ai;
     const d = ai.d;
     const away = ctx.playerY > LAT_C ? -1 : 1; // lado contrario al jugador
@@ -393,7 +396,7 @@ export class BotBrain {
 
     // SMASH (habilidad): con buen contacto y la habilidad cargada; más a menudo en puntos con tensión
     // (modo COMPETITIVO) o con el jugador en la red (poco tiempo para esquivarla)
-    if (this.smashCd <= 0 && this.abil.smash > 0 && q >= SMASH_AI.minQuality) {
+    if (!noPower && this.smashCd <= 0 && this.abil.smash > 0 && q >= SMASH_AI.minQuality) {
       const want = this.abil.smash * (this._mode === 'competitivo' ? 1.35 : this._mode === 'concentrado' ? 1.15 : 1) * (depth > 0.5 ? 1.3 : 1);
       if (Math.random() < want) {
         this.smashCd = SMASH_COOLDOWN * this.abil.cd;

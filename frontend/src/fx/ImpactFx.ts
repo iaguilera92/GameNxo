@@ -1,8 +1,9 @@
 import Phaser from 'phaser';
 import { POWER_IMPACT, type PowerKind } from '../logic/PowerImpact';
-import { BALL_ART, type InfernoElement } from './InfernoFx';
+import { BALL_ART, ballDims, type InfernoElement } from './InfernoFx';
 import { SMASH_LOOK } from './smashFx';
 import { smashPowerOf } from '../domain/smashPowers';
+import { lightningBlast, lightningGroundFx, windBlast, windGroundFx } from './elementImpactFx';
 
 /**
  * Colores de las explosiones del INFERNO según el poder elegido (fuego, hielo, viento, rayo: domain/infernoPowers.ts).
@@ -13,6 +14,7 @@ const BLAST: Record<InfernoElement, { flash: number; tongues: number[]; puffs: n
   ice: { flash: 0xeafcff, tongues: [0x2f8cff, 0x4aa8ff, 0x8fdcff, 0xd8f6ff], puffs: [0x2f8cff, 0x6fc4ff, 0xbff0ff], wave: 0x8fdcff, frags: [0xffffff, 0xbff0ff, 0x4aa8ff], ground: 0x6fc4ff, groundFlash: 0xeafcff },
   wind: { flash: 0xf0fff0, tongues: [0x2fbf6a, 0x5fd68a, 0x9cf0b0, 0xe0ffe8], puffs: [0x3fd68a, 0x8ff0b0, 0xd0ffe0], wave: 0x8ff0b0, frags: [0xffffff, 0xb8ff9a, 0x5fd16f], ground: 0x6fe0a0, groundFlash: 0xf0fff0 },
   lightning: { flash: 0xfffbe0, tongues: [0x2f6bff, 0x5aa8ff, 0xfff36b, 0xffffff], puffs: [0x2f6bff, 0x6fb4ff, 0xbfe0ff], wave: 0xfff36b, frags: [0xffffff, 0xfff36b, 0x5aa8ff], ground: 0x5aa8ff, groundFlash: 0xfffbe0 },
+  tulip: { flash: 0xfff0f7, tongues: [0xe0457f, 0xff6fae, 0xffb3d6, 0xffe6f2], puffs: [0xff6fae, 0xffa3cf, 0xffd8ea], wave: 0xffb3d6, frags: [0xffffff, 0xffb3d6, 0xff6fae], ground: 0xff8fc4, groundFlash: 0xfff0f7 },
 };
 
 /**
@@ -61,6 +63,10 @@ export function powerImpactFx(scene: Phaser.Scene, kind: PowerKind, x: number, y
         scene.tweens.add({ targets: sh, x: x + Math.cos(a) * d, y: y + Math.sin(a) * d * 0.8 + 18 * s, angle: Phaser.Math.Between(-220, 220), scale: 0.25, alpha: 0, duration: Phaser.Math.Between(300, 480), ease: 'Cubic.easeOut', onComplete: () => sh.destroy() });
       }
     }
+  } else if (el === 'lightning') {
+    lightningBlast(scene, x, y, s, D);
+  } else if (el === 'wind') {
+    windBlast(scene, x, y, s, D);
   } else {
     infernoBlast(scene, x, y, s, D, el);
   }
@@ -94,7 +100,8 @@ function infernoBlast(scene: Phaser.Scene, x: number, y: number, s0: number, D: 
   // 60–180: la bola (de fuego o de hielo) revienta (frame animado agrandándose) + llamas irregulares hacia fuera
   const art = has(BALL_ART[el].key) ? BALL_ART[el] : BALL_ART.fire;
   if (has(art.key)) {
-    const ball = scene.add.sprite(x, y, art.key, 0).setDisplaySize(90 * s, 90 * s).setDepth(D + 1).setBlendMode(ADD);
+    const [bw, bh] = ballDims(art, 90 * s);
+    const ball = scene.add.sprite(x, y, art.key, art.seq?.[0] ?? 0).setDisplaySize(bw, bh).setDepth(D + 1).setBlendMode(ADD);
     if (scene.anims.exists(art.anim)) ball.play(art.anim);
     scene.tweens.add({ targets: ball, scale: ball.scale * 3.2, alpha: 0, delay: 20, duration: 240, ease: 'Cubic.easeOut', onComplete: kill(ball) });
   }
@@ -136,7 +143,8 @@ function infernoBlast(scene: Phaser.Scene, x: number, y: number, s0: number, D: 
 }
 
 /**
- * INFERNO DRIVE: explosión de fuego en el PRIMER bote (punto exacto del suelo). Solo visual, ~400 ms:
+ * INFERNO DRIVE: explosión de fuego en el PRIMER bote (punto exacto del suelo). Solo visual, ~400 ms
+ * (+ sacudida fuerte, columna de fuego, onda a ras de suelo, marca quemada ~1,6 s, trozos de cancha y brasas):
  *   contacto     destello naranja/amarillo intenso
  *   enseguida    llamas irregulares que se abren a ras de suelo (aplastadas por la perspectiva)
  *   a los lados  chispas ardientes
@@ -144,6 +152,9 @@ function infernoBlast(scene: Phaser.Scene, x: number, y: number, s0: number, D: 
  * Sin círculos planos ni anillos: todo con texturas de fuego suaves (las de InfernoFx) y lenguas de fuego.
  */
 export function infernoGroundFx(scene: Phaser.Scene, x: number, y: number, k: number, el: InfernoElement = 'fire') {
+  // RAYO y VIENTO tienen su propio impacto (descarga eléctrica / torbellino), no las llamas teñidas
+  if (el === 'lightning') return lightningGroundFx(scene, x, y, k);
+  if (el === 'wind') return windGroundFx(scene, x, y, k);
   const C = BLAST[el]; // con hielo: escarcha azul en vez de fuego, mismas formas
   const s = Math.max(0.7, k) * 1.2;
   const ADD = Phaser.BlendModes.ADD;
@@ -183,6 +194,57 @@ export function infernoGroundFx(scene: Phaser.Scene, x: number, y: number, k: nu
     p.setAlpha(0.95);
     scene.tweens.add({ targets: p, x: x + dir * Phaser.Math.FloatBetween(40, 120) * s, y: y - Phaser.Math.FloatBetween(0, 14) * s, scaleX: p.scaleX * 1.8, alpha: 0, duration: Phaser.Math.Between(300, 420), ease: 'Cubic.easeOut', onComplete: kill(p) });
   }
+  // --- impacto más pesado (11-11-2026): la ULTI "golpea" la cancha
+  // sacudida fuerte y corta (más que el impacto contra el cuerpo: es el remate que cae)
+  scene.cameras.main.shake(320, 0.018);
+  // columna de fuego que sube del punto de impacto y se deshace
+  const pillar = soft(C.tongues[1], 70 * s, 220 * s, D + 1.5);
+  pillar.setOrigin(0.5, 0.9).setScale(pillar.scaleX * 0.5, pillar.scaleY * 0.15).setAlpha(1);
+  scene.tweens.add({ targets: pillar, scaleY: pillar.scaleY * 6.5, scaleX: pillar.scaleX * 1.4, duration: 130, ease: 'Cubic.easeOut' });
+  scene.tweens.add({ targets: pillar, alpha: 0, scaleX: pillar.scaleX * 0.4, delay: 130, duration: 260, ease: 'Quad.easeIn', onComplete: kill(pillar) });
+  const core = soft(C.groundFlash, 60 * s, 160 * s, D + 2);
+  core.setOrigin(0.5, 0.9).setScale(core.scaleX * 0.5, core.scaleY * 0.15);
+  scene.tweens.add({ targets: core, scaleY: core.scaleY * 5, alpha: 0, duration: 200, ease: 'Cubic.easeOut', onComplete: kill(core) });
+  // onda expansiva a ras de suelo (dos pulsos aplastados por la perspectiva, sin borde duro)
+  for (let i = 0; i < 2; i++) {
+    const wave = soft(i ? C.wave : C.groundFlash, 120 * s, 36 * s, D - 0.5);
+    wave.setAlpha(0.85 - i * 0.25);
+    scene.tweens.add({ targets: wave, scaleX: wave.scaleX * (4.2 + i), scaleY: wave.scaleY * (3.2 + i), alpha: 0, delay: 30 + i * 90, duration: 380, ease: 'Cubic.easeOut', onComplete: kill(wave) });
+  }
+  // marca quemada (o escarcha con hielo) que queda un momento en la cancha
+  const scorch = scene.add.ellipse(x, y, 150 * s, 44 * s, el === 'fire' ? 0x1a0a04 : C.ground, el === 'fire' ? 0.55 : 0.35).setDepth(D - 2);
+  scorch.setScale(0.4);
+  scene.tweens.add({ targets: scorch, scale: 1, duration: 140, ease: 'Cubic.easeOut' });
+  scene.tweens.add({ targets: scorch, alpha: 0, delay: 900, duration: 700, ease: 'Quad.easeIn', onComplete: kill(scorch) });
+  const embers = soft(C.ground, 110 * s, 30 * s, D - 1.5);
+  embers.setAlpha(0.7);
+  scene.tweens.add({ targets: embers, alpha: { from: 0.7, to: 0.25 }, duration: 260, yoyo: true, repeat: 2, onComplete: kill(embers) });
+  // trozos de cancha que saltan y caen (arco con gravedad simple)
+  for (let i = 0; i < 10; i++) {
+    const dir = Phaser.Math.FloatBetween(-1, 1);
+    const chunk = scene.add.rectangle(x, y - 4 * s, Phaser.Math.FloatBetween(4, 8) * s, Phaser.Math.FloatBetween(3, 6) * s, Phaser.Utils.Array.GetRandom([0x2b4a7a, 0x3b5f96, C.frags[1]]), 1).setDepth(D + 1);
+    const dx = dir * Phaser.Math.FloatBetween(40, 130) * s;
+    const up = Phaser.Math.FloatBetween(40, 95) * s;
+    const ms = Phaser.Math.Between(420, 620);
+    const t = { p: 0 };
+    scene.tweens.add({
+      targets: t,
+      p: 1,
+      duration: ms,
+      ease: 'Linear',
+      onUpdate: () => {
+        chunk.setPosition(x + dx * t.p, y - 4 * s - up * 4 * t.p * (1 - t.p));
+        chunk.setAngle(t.p * 540 * Math.sign(dir || 1));
+      },
+      onComplete: () => scene.tweens.add({ targets: chunk, alpha: 0, duration: 160, onComplete: kill(chunk) }),
+    });
+  }
+  // brasas que suben despacio después del golpe
+  for (let i = 0; i < 8; i++) {
+    const e = scene.add.star(x + Phaser.Math.FloatBetween(-50, 50) * s, y - 4 * s, 4, 1.2 * s, 3.5 * s, Phaser.Utils.Array.GetRandom(C.frags)).setDepth(D + 2).setBlendMode(ADD).setAlpha(0);
+    scene.tweens.add({ targets: e, alpha: { from: 1, to: 0 }, y: e.y - Phaser.Math.FloatBetween(60, 130) * s, x: e.x + Phaser.Math.FloatBetween(-20, 20) * s, delay: Phaser.Math.Between(120, 380), duration: Phaser.Math.Between(600, 900), ease: 'Sine.easeOut', onComplete: kill(e) });
+  }
+
   // chispas ardientes hacia los lados
   for (let i = 0; i < 12; i++) {
     const dir = i % 2 ? 1 : -1;

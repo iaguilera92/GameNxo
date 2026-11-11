@@ -12,6 +12,7 @@ import { bpAddXpInPlace } from './battlePassConfig';
 import { ZONE_STAT_MAX, type ZoneStatKey } from './zoneProgress';
 import { type InfernoPower, infernoOwned, isInfernoPower } from './infernoPowers';
 import { type ChargeFxId, chargeFxOwned, isChargeFx } from './chargeFx';
+import { type CharColorId, charColorOwned, isCharColor } from './charColors';
 import { type SmashPower, isSmashPower, smashOwned } from './smashPowers';
 import { type DefensivePower, defensiveOwned, isDefensivePower } from './defensivePowers';
 
@@ -151,6 +152,15 @@ export function equipCharge(s: PlayerState, fx: ChargeFxId): OpResult {
   if (!chargeFxOwned(s.owned, fx, s.equipped.skin)) return fail('not_owned');
   const n = clonePlayer(s);
   n.equipped.charge = fx;
+  return { ok: true, state: n };
+}
+
+/** Elige el ESTILO DE COLOR del personaje (solo uno que tengas: el clásico o uno ganado en el Pase). */
+export function equipColor(s: PlayerState, id: CharColorId): OpResult {
+  if (!isCharColor(id)) return fail('not_found');
+  if (!charColorOwned(s.owned, id)) return fail('not_owned');
+  const n = clonePlayer(s);
+  n.equipped.color = id;
   return { ok: true, state: n };
 }
 

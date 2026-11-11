@@ -16,6 +16,8 @@ import { RankBadge, preloadRankBadges } from '../ui/RankBadge';
 import { LEAGUE_STYLE, fmtCoins } from '../ui/leagueStyle';
 import { infoIcon } from '../ui/PlayEntry';
 import { drawCoinIcon } from '../ui/wheelArt';
+import { BALL_FELT_KEY, BALL_SHADE_KEY, makeBallArt } from '../objects/Ball';
+import { MAX_LEVEL } from '../config';
 
 const BOT_NAMES = ['RoboAce', 'BotNadal', 'TopSpin-3000', 'NetBot', 'Volea.exe'];
 
@@ -82,16 +84,21 @@ export class MatchmakingScene extends Phaser.Scene {
     searching.add(pulse);
     this.tweens.add({ targets: pulse, scale: 1.4, alpha: 0, duration: 1400, repeat: -1, ease: 'Quad.easeOut' });
 
-    // pelota de tenis como detalle central
-    const ball = this.add.graphics();
-    ball.fillStyle(0x0a1838).fillCircle(0, 0, 30);
-    ball.fillStyle(0xd7f53a).fillCircle(0, 0, 26);
-    ball.lineStyle(3, 0xffffff, 0.85).beginPath().arc(-26, 0, 20, -0.9, 0.9).strokePath();
-    ball.beginPath().arc(26, 0, 20, Math.PI - 0.9, Math.PI + 0.9).strokePath();
-    // la pelota va dentro de un "soporte": el giro continuo es de la pelota y el movimiento del soporte
-    const ballHolder = this.add.container(0, 0, [ball]);
+    // pelota de tenis como detalle central: el mismo arte que la del partido (objects/Ball.makeBallArt): fieltro con
+    // costuras que gira, volumen fijo encima, contorno y un halo suave
+    makeBallArt(this);
+    const BR = 34;
+    const halo = this.add.circle(0, 0, BR + 10, 0xd7f53a, 0.18).setBlendMode(Phaser.BlendModes.ADD);
+    this.tweens.add({ targets: halo, scale: { from: 0.95, to: 1.15 }, alpha: { from: 0.28, to: 0.08 }, duration: 900, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
+    const outline = this.add.circle(0, 0, BR + 4, 0x0a1838);
+    const ball = this.add.image(0, 0, BALL_FELT_KEY).setDisplaySize(BR * 2, BR * 2);
+    const shade = this.add.image(0, 0, BALL_SHADE_KEY).setDisplaySize(BR * 2, BR * 2);
+    // la pelota va dentro de un "soporte": el giro continuo es del fieltro y el movimiento del soporte
+    const ballHolder = this.add.container(0, 0, [halo, outline, ball, shade]);
     searching.add(ballHolder);
-    this.tweens.add({ targets: ball, angle: 360, duration: 3000, repeat: -1 });
+    this.tweens.add({ targets: ball, angle: 360, duration: 2400, repeat: -1 });
+    // botecito suave: sube y baja
+    this.tweens.add({ targets: [outline, ball, shade], y: -10, duration: 520, yoyo: true, repeat: -1, ease: 'Sine.easeOut' });
     this.ballToy(ballHolder, W, H);
 
     let t = 0;
@@ -173,10 +180,10 @@ export class MatchmakingScene extends Phaser.Scene {
     const p = getProfile();
     // nivel REAL del rival: cerca del tuyo; define su dificultad (src/ai/BotProfile.ts). En Ranked sube con la liga.
     const tier = this.rankedBet || this.unranked ? LEAGUE_ORDER.indexOf(rankedView().league) : 0;
-    const rivalLevel = Math.min(30, rivalLevelFor(p.level) + tier * 2);
+    const rivalLevel = Math.min(MAX_LEVEL, rivalLevelFor(p.level) + tier * 2);
     showVersusScreen(
       this,
-      { name: p.name, level: p.level, look: playerLook(p.skin), portraitSkin: p.skin as SkinId, wins: totalWins() },
+      { name: p.name, level: p.level, look: playerLook(p.skin), portraitSkin: p.skin as SkinId, wins: totalWins(), color: p.color }, // tu color; el rival, el suyo de siempre
       {
         name: botName,
         level: rivalLevel,
@@ -219,8 +226,8 @@ export class MatchmakingScene extends Phaser.Scene {
     const py = H * 0.44 + 262;
     if (this.unranked) return [...objs, ...this.unrankedPanel(W, py, onInfoOpen, onInfoClose)];
     // apuesta: cinta "ESTAMOS APOSTANDO", píldora + (i) y dos casillas INVERTIDO / SI GANAS
-    const pw = Math.min(580, W - 50);
-    const ph = 120;
+    const pw = Math.min(620, W - 40);
+    const ph = 168;
     const col = bet > 1 ? 0xff4f5e : 0xffc42e;
     const g = this.add.graphics();
     g.fillStyle(0x000000, 0.35).fillRoundedRect(W / 2 - pw / 2 + 3, py + 6, pw, ph, 22);
@@ -237,25 +244,38 @@ export class MatchmakingScene extends Phaser.Scene {
     objs.push(this.add.text(W / 2, py, bet > 1 ? 'ESTAMOS APOSTANDO x2' : 'ESTAMOS APOSTANDO', { fontFamily: FONT, fontSize: '18px', color: bet > 1 ? '#ffffff' : '#3a2200' }).setOrigin(0.5).setLetterSpacing(2));
     // (el monto ya se ve en INVERTIDO: sin píldora repetida; la info va junto a la cinta)
     objs.push(infoIcon(this, W / 2 + rw / 2 + 24, py, 15, undefined, { onOpen: onInfoOpen, onClose: onInfoClose }));
-    // casillas
-    const bw = (pw - 48) / 2;
-    const by = py + 62;
-    const box = (cx: number, lab: string, val: string, fill: number, line: number, color: string) => {
+    // casillas (más grandes y notorias; el PREMIO late para llamar la atención)
+    const bw = (pw - 44) / 2;
+    const bh = 112;
+    const by = py + 34 + bh / 2;
+    const box = (cx: number, lab: string, val: string, fill: number, line: number, color: string, glow: boolean) => {
+      if (glow) {
+        // halo que late detrás del premio
+        const halo = this.add.graphics();
+        halo.lineStyle(12, line, 0.35).strokeRoundedRect(cx - bw / 2, by - bh / 2, bw, bh, 18);
+        objs.push(halo);
+        this.tweens.add({ targets: halo, alpha: { from: 1, to: 0.25 }, duration: 800, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
+      }
       const bg = this.add.graphics();
-      bg.fillStyle(fill, 1).fillRoundedRect(cx - bw / 2, by - 34, bw, 68, 16);
-      bg.lineStyle(3, line, 1).strokeRoundedRect(cx - bw / 2, by - 34, bw, 68, 16);
-      bg.fillStyle(0xffffff, 0.1).fillRoundedRect(cx - bw / 2 + 6, by - 31, bw - 12, 18, 9);
+      bg.fillStyle(0x000000, 0.3).fillRoundedRect(cx - bw / 2 + 3, by - bh / 2 + 5, bw, bh, 18);
+      bg.fillStyle(fill, 1).fillRoundedRect(cx - bw / 2, by - bh / 2, bw, bh, 18);
+      bg.fillStyle(0xffffff, 0.1).fillRoundedRect(cx - bw / 2 + 6, by - bh / 2 + 4, bw - 12, bh * 0.36, { tl: 14, tr: 14, bl: 6, br: 6 });
+      bg.lineStyle(4, line, 1).strokeRoundedRect(cx - bw / 2, by - bh / 2, bw, bh, 18);
       objs.push(bg);
-      objs.push(this.add.text(cx, by - 18, lab, { fontFamily: FONT, fontSize: '16px', color: '#ffffff' }).setOrigin(0.5).setLetterSpacing(1));
-      const t = this.add.text(0, by + 10, val, { fontFamily: FONT, fontSize: '30px', color, stroke: '#0a1638', strokeThickness: 5 }).setOrigin(0, 0.5);
-      const total = t.width + 8 + 26;
-      t.setX(cx - total / 2);
-      const ic = this.add.graphics({ x: cx - total / 2 + t.width + 8 + 13, y: by + 10 });
-      drawCoinIcon(ic, 13);
+      objs.push(this.add.text(cx, by - bh / 2 + 22, lab, { fontFamily: FONT, fontSize: '21px', color: '#ffffff', stroke: '#0a1638', strokeThickness: 4 }).setOrigin(0.5).setLetterSpacing(1));
+      const t = this.add.text(0, by + 16, val, { fontFamily: FONT, fontSize: '42px', color, stroke: '#0a1638', strokeThickness: 6 }).setOrigin(0, 0.5);
+      const iconR = 18;
+      const total = t.width + 10 + iconR * 2;
+      // que la cifra no se salga de la casilla
+      if (total > bw - 16) t.setScale((bw - 16 - 10 - iconR * 2) / t.width);
+      const tw = t.displayWidth + 10 + iconR * 2;
+      t.setX(cx - tw / 2);
+      const ic = this.add.graphics({ x: cx - tw / 2 + t.displayWidth + 10 + iconR, y: by + 16 });
+      drawCoinIcon(ic, iconR);
       objs.push(t, ic);
     };
-    box(W / 2 - bw / 2 - 8, 'Invertido:', `−${fmtCoins(st.entry)}`, 0x5a1424, 0xff5a6a, '#ffb0b8');
-    box(W / 2 + bw / 2 + 8, 'Si ganas:', `+${fmtCoins(st.prize)}`, 0x17803a, 0x7dff9a, '#ffffff');
+    box(W / 2 - bw / 2 - 8, 'Invertido:', `−${fmtCoins(st.entry)}`, 0x5a1424, 0xff5a6a, '#ffb0b8', false);
+    box(W / 2 + bw / 2 + 8, 'Premio:', `+${fmtCoins(st.prize)}`, 0x17803a, 0x7dff9a, '#ffffff', true);
     return objs;
   }
 

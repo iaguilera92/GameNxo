@@ -7,6 +7,7 @@ import { type InfernoPower, infernoPowerOf } from '../domain/infernoPowers';
 import { type ChargeFxId, chargeFxOf } from '../domain/chargeFx';
 import { type SmashPower, smashPowerOf } from '../domain/smashPowers';
 import { type DefensivePower, defensivePowerOf } from '../domain/defensivePowers';
+import { type CharColorId, charColorOf } from '../domain/charColors';
 
 /**
  * Fachada de compatibilidad: las escenas (incluida MatchScene) siguen usando esta API.
@@ -29,6 +30,8 @@ export interface Profile {
   smash: SmashPower;
   /** poder del DEFENSIVO en uso: el elegido o el DASH (domain/defensivePowers.ts) */
   defensive: DefensivePower;
+  /** ESTILO DE COLOR del personaje en uso: el elegido o el clásico (domain/charColors.ts) */
+  color: CharColorId;
 }
 
 /**
@@ -53,6 +56,7 @@ export function getProfile(): Profile {
     charge: chargeFxOf(s.equipped.charge, skin),
     smash: smashPowerOf(s.equipped.smash),
     defensive: defensivePowerOf(s.equipped.defensive),
+    color: charColorOf(s.equipped.color),
   };
 }
 
@@ -94,6 +98,11 @@ export function setCharge(id: ChargeFxId) {
 /** Cambia el poder del DEFENSIVO y lo guarda (solo si lo tiene). */
 export function setDefensive(id: DefensivePower) {
   commit((s) => ops.equipDefensive(s, id));
+}
+
+/** Cambia el ESTILO DE COLOR del personaje y lo guarda (solo si lo tiene). */
+export function setCharColor(id: CharColorId) {
+  commit((s) => ops.equipColor(s, id));
 }
 
 /** Cambia el poder del INFERNO y lo guarda. */

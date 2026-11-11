@@ -35,7 +35,7 @@ export interface BotClock {
 
 export const BOTS = {
   /** nivel de los bots: entre el de desbloqueo y este */
-  maxLevel: 30,
+  maxLevel: 20, // = MAX_LEVEL (config.ts)
   /** fracción del tramo de la liga con la que empiezan el mes (mín, máx) */
   startFrac: [0.02, 0.55] as const,
   /** cuánto del tramo pueden ganar en el mes (mín, máx) */

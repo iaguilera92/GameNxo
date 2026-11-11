@@ -30,16 +30,36 @@ export function getAdsConfig() {
     interstitialId: adUnit('interstitial'),
     rewardedId: adUnit('rewarded'),
     testMode: import.meta.env.VITE_ADS_TEST_MODE !== 'false',
+    /** IDs de tus teléfonos de prueba (separados por coma): ven anuncios de prueba aunque el build sea de producción */
+    testDevices: (import.meta.env.VITE_ADMOB_TEST_DEVICES ?? '').split(',').map((s: string) => s.trim()).filter(Boolean),
+    /** 'EEA' = simular que el teléfono de prueba está en Europa para ver el aviso de consentimiento */
+    consentDebugEea: import.meta.env.VITE_ADMOB_CONSENT_DEBUG === 'EEA',
   };
+}
+
+/** Botón "privacidad de anuncios" de AJUSTES: lo registra el adaptador cuando el aviso de consentimiento aplica (UE). */
+let privacyHandler: (() => Promise<void>) | undefined;
+export function registerAdsPrivacy(fn: (() => Promise<void>) | undefined) {
+  privacyHandler = fn;
+}
+/** true = hay que ofrecer al jugador volver a elegir su consentimiento de anuncios (obligatorio en la UE). */
+export function adsPrivacyAvailable() {
+  return !!privacyHandler;
+}
+/** Vuelve a mostrar el formulario de consentimiento de anuncios. */
+export function openAdsPrivacy(): Promise<void> {
+  return privacyHandler ? privacyHandler().catch(() => undefined) : Promise.resolve();
 }
 
 let provider: AdsProvider | undefined;
 let lastInterstitialAt = 0;
-const AD_TIMEOUT_MS = 12_000;
+// Red de seguridad por si el SDK nunca responde. Debe superar la duración de un video (hasta ~30 s) más la carga:
+// el adaptador (admobProvider) ya limita la carga a 10 s y espera el cierre real del anuncio.
+const AD_TIMEOUT_MS = 120_000;
 const INTERSTITIAL_COOLDOWN_MS = 90_000;
 
 /** Adaptador que se conectará al SDK nativo cuando se creen las cuentas de anuncios. */
-export function registerAdsProvider(next: AdsProvider) {
+export function registerAdsProvider(next: AdsProvider | undefined) {
   provider = next;
 }
 
@@ -51,13 +71,20 @@ function adUnit(kind: 'interstitial' | 'rewarded') {
 }
 
 /**
- * ANUNCIO DE PRUEBA (solo para probar los botones con anuncio sin SDK): en la consola del navegador
- * `localStorage.setItem('dev.adsSim', '1')` y recargar. Muestra una pantalla negra ~3 s y cuenta como completado.
- * Sin esa clave no existe (los jugadores normales nunca lo ven).
+ * ANUNCIO DE PRUEBA (solo para probar los botones con anuncio sin SDK): activo por defecto con `npm run dev` en el
+ * navegador; `localStorage.setItem('dev.adsSim', '0' | '1')` lo apaga / fuerza. Muestra una pantalla negra ~3 s y cuenta
+ * como completado. SOLO existe en desarrollo: en cualquier build (web publicada, APK, release) está apagado siempre,
+ * así nadie puede cobrar premios x2 sin ver un anuncio de verdad.
  */
 function simOn() {
+  if (!import.meta.env.DEV) return false;
   try {
-    return localStorage.getItem('dev.adsSim') === '1';
+    const v = localStorage.getItem('dev.adsSim');
+    if (v === '1') return true;
+    if (v === '0') return false;
+    // en desarrollo (npm run dev, sin app nativa) el anuncio de prueba va por defecto: así los botones x2 se ven y se
+    // pueden probar en localhost. La web publicada y la app no lo usan nunca (DEV = false en el build).
+    return import.meta.env.DEV && !Capacitor.isNativePlatform();
   } catch {
     return false;
   }
@@ -86,7 +113,7 @@ function simAd(ms: number) {
 function activeProvider() {
   if (simOn()) return simProvider;
   return settings.enabled && typeof navigator !== 'undefined' && navigator.onLine
-    ? provider ?? window.GameNxoAds
+    ? provider ?? (import.meta.env.DEV ? window.GameNxoAds : undefined)
     : undefined;
 }
 

@@ -15,6 +15,8 @@ import type { InfernoPower } from './infernoPowers';
 import type { ChargeFxId } from './chargeFx';
 import type { SmashPower } from './smashPowers';
 import type { DefensivePower } from './defensivePowers';
+import type { EmoteKind } from './emotes';
+import type { CharColorId } from './charColors';
 
 /** v3: + ruletas diarias (`wheel`) · v4: + pase de batalla (`bp`) · v5: + Ranked (`ranked`) y premio diario (`login`) */
 export const PLAYER_SCHEMA_VERSION = 7;
@@ -30,10 +32,10 @@ export interface LoginState {
 }
 export const newLoginState = (): LoginState => ({ last: '', streak: 0, adBonusDay: '' });
 
-export type StyleId = 'classic' | 'red' | 'green' | 'gold';
-export type ItemKind = 'ability' | 'skin' | 'style' | 'inferno' | 'charge' | 'defensive' | 'smash';
-/** Id único de ítem: `<tipo>:<id>` (ej. 'ability:wall', 'skin:mai'). */
-export type ItemId = `ability:${AbilityId}` | `skin:${SkinId}` | `style:${StyleId}` | `inferno:${InfernoPower}` | `charge:${ChargeFxId}` | `defensive:${DefensivePower}` | `smash:${SmashPower}`;
+export type StyleId = 'classic' | 'red' | 'green' | 'gold' | 'pink';
+export type ItemKind = 'ability' | 'skin' | 'style' | 'inferno' | 'charge' | 'defensive' | 'smash' | 'emote' | 'color';
+/** Id único de ítem: `<tipo>:<id>` (ej. 'ability:wall', 'skin:mai'). Los `emote:` solo se ganan en el Pase de Batalla. */
+export type ItemId = `ability:${AbilityId}` | `skin:${SkinId}` | `style:${StyleId}` | `inferno:${InfernoPower}` | `charge:${ChargeFxId}` | `defensive:${DefensivePower}` | `smash:${SmashPower}` | `emote:${EmoteKind}` | `color:${CharColorId}`;
 
 export interface Loadout {
   skin: SkinId;
@@ -47,6 +49,8 @@ export interface Loadout {
   smash?: SmashPower;
   /** poder del DEFENSIVO elegido (domain/defensivePowers.ts); sin elegir = DASH */
   defensive?: DefensivePower;
+  /** ESTILO DE COLOR del personaje (domain/charColors.ts); sin elegir = clásico */
+  color?: CharColorId;
 }
 
 export interface PlayerState {
@@ -78,22 +82,28 @@ export const itemId = {
   charge: (id: ChargeFxId): ItemId => `charge:${id}`,
   smash: (id: SmashPower): ItemId => `smash:${id}`,
   defensive: (id: DefensivePower): ItemId => `defensive:${id}`,
+  emote: (id: EmoteKind): ItemId => `emote:${id}`,
+  color: (id: CharColorId): ItemId => `color:${id}`,
 };
 
 export const STARTER_ITEMS: ItemId[] = ['ability:dash', 'ability:smash', 'skin:nxo', 'style:classic'];
 /** alcanza para 3 entradas de Bronce (500): se compite desde la primera partida */
 export const STARTING_COINS = 1500;
 
-export function newPlayer(): PlayerState {
+/** Personaje con el que empieza un jugador nuevo: Nxo en la app (APK); Mai en la web (lo elige main.ts). */
+export type StarterSkin = 'nxo' | 'mai';
+
+export function newPlayer(starter: StarterSkin = 'nxo'): PlayerState {
   return {
     version: PLAYER_SCHEMA_VERSION,
-    name: 'Nxo',
+    name: starter === 'mai' ? 'Mai' : 'Nxo',
     level: 1,
     xp: 0,
     coins: STARTING_COINS,
     gems: 0,
-    owned: [...STARTER_ITEMS],
-    equipped: { skin: 'nxo', style: 'classic', abilities: ['dash', 'smash'] },
+    // Nxo es de todos; empezar con Mai la deja además en propiedad (ítem skin:mai)
+    owned: starter === 'mai' ? [...STARTER_ITEMS, 'skin:mai'] : [...STARTER_ITEMS],
+    equipped: { skin: starter, style: 'classic', abilities: ['dash', 'smash'] },
     wheel: newWheelState(),
     bp: newBattlePass(),
     ranked: newRankedState(),

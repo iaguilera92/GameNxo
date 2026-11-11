@@ -1,3 +1,4 @@
+import './platformStarter'; // primero: personaje inicial según plataforma (web = Mai, app = Nxo)
 import Phaser from 'phaser';
 import '@fontsource/lilita-one';
 import { BootScene } from './scenes/BootScene';
@@ -13,6 +14,7 @@ import { LanSearchScene } from './scenes/LanSearchScene';
 import { VIEW } from './view/projection';
 import { installSettings } from './logic/Settings';
 import { installBlackTransitions } from './fx/transitions';
+import { installAdMob } from './ads/admobProvider';
 
 const game = new Phaser.Game({
   type: Phaser.AUTO,
@@ -35,6 +37,8 @@ const game = new Phaser.Game({
 installSettings(game);
 // cambio de pantalla siempre con fundido a negro
 installBlackTransitions();
+// Anuncios (AdMob) solo en la app nativa y con VITE_ADS_ENABLED=true; no bloquea el arranque
+void installAdMob();
 
 // Intento de bloquear orientación vertical en navegador (en Android lo fuerza el Manifest)
 const orientation = screen.orientation as ScreenOrientation & { lock?: (o: string) => Promise<void> };

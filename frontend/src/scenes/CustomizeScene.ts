@@ -3,24 +3,31 @@ import { FONT, restartOnResize, textStyle } from '../ui/theme';
 import { stadiumBg } from '../ui/ui';
 import { Character, playerLook } from '../objects/Character';
 import { MAX_LEVEL } from '../config';
-import { getProfile, levelProgress, setCharge, setDefensive, setInferno, setSkin, setSmash } from '../logic/Profile';
+import { getProfile, levelProgress, setCharColor, setCharge, setDefensive, setInferno, setSkin, setSmash } from '../logic/Profile';
+import { CHAR_COLOR_LIST, type CharColorId, charColorInfo, charColorOf, charColorOwned } from '../domain/charColors';
+import { applyCharColor } from '../fx/CharColorFx';
+import { type UnlockKey, isUnlocked, unlockLabel } from '../domain/unlocks';
 import { CATALOG, skinById } from '../characters/catalog';
 import { addPortrait } from '../characters/portrait';
 import type { SkinId } from '../characters/skins';
 import { ABILITIES, type AbilityDef, type AbilityId } from '../logic/Abilities';
 import { bakeImage } from '../ui/bakeImage';
-import { drawAbilityIcon, drawBlinkIcon, drawDisc } from '../ui/icons';
-import { DEFENSIVE_POWERS, defensiveOwned, defensivePowerOf } from '../domain/defensivePowers';
+import { drawAbilityIcon, drawDefensiveIcon, drawDisc } from '../ui/icons';
+import { DEFENSIVE_POWERS, defensiveOwned, defensivePowerDef, defensivePowerOf } from '../domain/defensivePowers';
 import { roundedPoly } from '../ui/shapes';
 import { playButton } from '../ui/modeButtons';
 import { hyperTexture } from '../ui/AbilityButton';
 import { commit, getPlayer } from '../domain/playerStore';
-import { upgradeZoneStat } from '../domain/operations';
+import { equipStyle, upgradeZoneStat } from '../domain/operations';
+import type { StyleId } from '../domain/player';
+import { STYLE_LOOK, styleLook } from '../ui/styleLook';
+import { rankedState } from '../logic/Ranked';
+import { LEAGUE_ORDER } from '../domain/rankedConfig';
 import { ZONE_STAT_KEYS, ZONE_STAT_MAX, type ZoneStatKey } from '../domain/zoneProgress';
 import { INFERNO_POWERS, infernoOwned, infernoPowerDef, type InfernoPower } from '../domain/infernoPowers';
-import { BALL_ART, ensureBallAnims, queueInfernoArt } from '../fx/InfernoFx';
+import { addBallPreview, ensureBallAnims, queueInfernoArt } from '../fx/InfernoFx';
 import { type PowerSlot, openPowerDialog } from '../ui/PowerDialog';
-import { SMASH_POWERS, type SmashPower, smashOwned, smashPowerOf } from '../domain/smashPowers';
+import { SMASH_POWERS, type SmashPower, smashOwned, smashPowerDef, smashPowerOf } from '../domain/smashPowers';
 import { elementTexture } from '../ui/AbilityButton';
 import { CHARGE_FX, type ChargeFxId, chargeFxDef, chargeFxOf, chargeFxOwned } from '../domain/chargeFx';
 import { chargePreview, queueChargeFxArt } from '../fx/chargeFx';
@@ -38,6 +45,15 @@ const NEON = 0x3a7bff;
 /** Separación entre tarjetas (filas y columnas) de la cuadrícula de habilidades: la misma en todas. */
 const GRID_GAP = 12;
 /** Columna de la cuadrícula: izquierda (0) o derecha (1). Mismos márgenes que el resto de la pantalla (30 px). */
+/** nombre de cada EFECTO PELOTA (estela; ui/styleLook.ts) */
+const STYLE_NAME: Record<string, string> = { classic: 'CLÁSICO', red: 'ROJO', pink: 'ROSADO', green: 'VERDE', gold: 'ORO' };
+
+/** Huella de mascota (icono de MASCOTAS), centrada en (0,0) con radio aprox. `r`. */
+function drawPaw(g: Phaser.GameObjects.Graphics, r: number, col: number) {
+  g.fillStyle(col, 1).fillEllipse(0, r * 0.28, r * 0.95, r * 0.75);
+  for (const [dx, dy] of [[-0.5, -0.25], [-0.18, -0.55], [0.18, -0.55], [0.5, -0.25]]) g.fillEllipse(dx * r, dy * r, r * 0.34, r * 0.42);
+}
+
 const gridCol = (W: number, col: 0 | 1) => {
   const w = (W - 60 - GRID_GAP) / 2;
   return { x: 30 + col * (w + GRID_GAP), w };
@@ -86,17 +102,16 @@ const PASSIVES: Record<'spin' | 'charge', PassiveDef> = {
     color: 0x2f9bff,
     colorDark: 0x1a5fb4,
     draw: (g, R) => {
-      // arco semicircular segmentado (como el medidor del partido): azul y los últimos tramos en dorado
-      const n = 7;
-      for (let i = 0; i < n; i++) {
-        const a0 = Math.PI + (i / n) * Math.PI + 0.06;
-        const a1 = Math.PI + ((i + 1) / n) * Math.PI - 0.06;
-        g.lineStyle(R * 0.2, i >= n - 2 ? 0xffc72e : 0xffffff, 1).beginPath().arc(0, R * 0.32, R * 0.68, a0, a1).strokePath();
-      }
-      // pelota en el centro del arco, con su destello
-      g.fillStyle(0x0a1638).fillCircle(0, R * 0.32, R * 0.3);
-      g.fillStyle(0xd7f53a).fillCircle(0, R * 0.32, R * 0.23);
-      g.lineStyle(2, 0xffffff, 0.9).beginPath().arc(-R * 0.06, R * 0.32, R * 0.16, -0.9, 0.9).strokePath();
+      // el aro CLÁSICO de la carga (el mismo de fx/chargeFx.chargePreview, en pequeño) con la pelota encima
+      const w = R * 1.5;
+      const cy = R * 0.3;
+      g.fillStyle(0x6ec1ff, 0.32).fillEllipse(0, cy, w, w * 0.36);
+      g.lineStyle(R * 0.13, 0xd6f0ff, 0.95).strokeEllipse(0, cy, w, w * 0.36);
+      g.lineStyle(R * 0.06, 0x6ec1ff, 0.8).strokeEllipse(0, cy, w * 1.14, w * 0.43);
+      // pelota sobre el aro
+      g.fillStyle(0x0a1638).fillCircle(0, -R * 0.12, R * 0.32);
+      g.fillStyle(0xd7f53a).fillCircle(0, -R * 0.12, R * 0.25);
+      g.lineStyle(2, 0xffffff, 0.9).beginPath().arc(-R * 0.07, -R * 0.12, R * 0.17, -0.9, 0.9).strokePath();
     },
   },
 };
@@ -138,9 +153,11 @@ export class CustomizeScene extends Phaser.Scene {
     // ---------------------------------------------------------------- cabecera
     const headY = 64;
     this.backButton(54, headY, back);
-    const title = this.add.text(W / 2, headY, 'PERSONALIZACIÓN', { fontFamily: FONT, fontSize: '42px', color: '#ffffff' }).setOrigin(0.5).setLetterSpacing(2);
-    // que no choque con el botón volver (borde derecho del botón ≈ 86 px)
-    const maxTitleW = W - 2 * 100;
+    const title = this.add.text(W / 2, headY, 'PERSONALIZAR', { fontFamily: FONT, fontSize: '42px', color: '#ffffff' }).setOrigin(0.5).setLetterSpacing(2);
+    // RAYOS acumulados (se gastan en los atributos de la ZONA), arriba a la derecha como los contadores del menú
+    const raysW = this.raysPill(W - 22, headY);
+    // que no choque con el botón volver (borde derecho ≈ 86 px) ni con el contador de rayos
+    const maxTitleW = W - 2 * Math.max(100, raysW + 34);
     if (title.width > maxTitleW) title.setScale(maxTitleW / title.width);
 
     // reparto vertical (de arriba abajo, medidas fijas); la vitrina usa lo que sobra
@@ -149,15 +166,28 @@ export class CustomizeScene extends Phaser.Scene {
     const TOP = 80;
     // cuadrícula de 3 filas × 2 columnas, todas con la misma separación (GRID_GAP): fila 1 EFECTO PELOTA | CARGANDO GOLPE,
     // fila 2 las dos habilidades equipadas (DASH | SMASH), fila 3 INFERNO | ZONA
-    const L = { gapHero: 14, level: 78, gapA: 22, titleToCard: 28, ability: 104, abilityGap: GRID_GAP, gapFeatures: GRID_GAP, features: 270, gapC: 18, play: 92, bottom: 24 };
+    // (11-11-2026) arriba una fila de 4 cosméticos (ESTILOS · EFECTO PELOTA · CARGANDO GOLPE · MASCOTAS) y debajo el título
+    // HABILIDADES con DEFENSIVO | ESPECIAL y ULTI | ZONA
+    const L = { gapHero: 14, level: 78, gapA: 22, cosmetic: 118, cosToTitle: 30, titleToCard: 28, ability: 104, abilityGap: GRID_GAP, gapFeatures: GRID_GAP, features: 270, gapC: 18, play: 92, bottom: 24 };
+    // NIVEL MÁXIMO: sin tarjeta de nivel en la lista (sale como pastilla pequeña sobre el nombre, en la vitrina) y todo su
+    // alto se reparte entre las dos filas de tarjetas de habilidades (el resto del reparto no cambia)
+    const maxed = p.level >= MAX_LEVEL;
+    if (maxed) {
+      const freed = L.level + (L.gapA - 8);
+      L.level = 0;
+      L.gapA = 8;
+      L.ability += Math.floor(freed / 2);
+    }
     const below =
-      L.gapHero + L.level + L.gapA + L.titleToCard + L.ability * 2 + L.abilityGap + L.gapFeatures + L.features + L.gapC + L.play + L.bottom;
+      L.gapHero + L.level + L.gapA + L.cosmetic + L.cosToTitle + L.titleToCard + L.ability + L.gapFeatures + L.features + L.gapC + L.play + L.bottom;
     const free = H - TOP - below;
     let heroH = Phaser.Math.Clamp(free, 240, 392);
     let spare = Math.max(0, free - heroH);
-    // primero ganan alto las tarjetas de habilidades (hasta +40 px cada una), luego el personaje, y lo que sobre es aire
+    // primero ganan alto las tarjetas (cosméticos y habilidades, hasta +40 px cada fila), luego el personaje, y lo que sobre
+    // es aire
     const abExtra = Math.min(Math.floor(spare / 2), 40);
     L.ability += abExtra;
+    L.cosmetic += abExtra;
     spare -= abExtra * 2;
     const grow = Math.min(560 - heroH, spare);
     heroH += grow;
@@ -165,23 +195,39 @@ export class CustomizeScene extends Phaser.Scene {
 
     // ---------------------------------------------------------------- vitrina
     const feetY = TOP + extra * 0.5 + heroH;
-    this.showcase(W, TOP, feetY, heroH, p.skin as SkinId);
+    // el personaje y su pedestal van SHOWCASE_LIFT px más arriba: la elipse del pedestal (70 px de alto, centrada en los
+    // pies) ya no pisa la tarjeta de NIVEL; el personaje se achica un poco para no acercarse al título
+    const SHOWCASE_LIFT = 38;
+    this.showcase(W, TOP, feetY - SHOWCASE_LIFT, heroH - SHOWCASE_LIFT * 0.5, p.skin as SkinId, maxed);
 
-    // ---------------------------------------------------------------- nivel + XP
+    // ---------------------------------------------------------------- nivel + XP (en nivel máximo va en la vitrina)
     let y = feetY + L.gapHero;
-    this.levelCard(W, y, p.level, levelProgress(p));
+    if (!maxed) this.levelCard(W, y, p.level, levelProgress(p));
     y += L.level + L.gapA;
 
+    // ---------------------------------------------------------------- cosméticos (4 columnas)
+    const rowC = y;
+    this.cosmeticRow(W, rowC, L.cosmetic, p.skin as SkinId);
+
     // ---------------------------------------------------------------- habilidades
+    y += L.cosmetic + L.cosToTitle;
     this.sectionTitle(W, y, 'HABILIDADES');
-    const row1 = y + L.titleToCard;
-    const row2 = row1 + L.ability + L.abilityGap;
-    this.passiveCard(W, row1, L.ability, 0, PASSIVES.spin);
-    // CARGANDO GOLPE: tocarla abre los efectos de carga (clásico + los de la Tienda); la tarjeta dice cuál usas
-    this.passiveCard(W, row1, L.ability, 1, PASSIVES.charge, () => this.openChargeDialog(), chargeFxDef(chargeFxOf(getPlayer().equipped.charge, getPlayer().equipped.skin)).name);
+    const row2 = y + L.titleToCard;
     p.abilities.forEach((id, i) => this.abilityCard(W, row2, L.ability, i as 0 | 1, ABILITIES[id], i + 1));
-    y += L.titleToCard + L.ability * 2 + L.abilityGap + L.gapFeatures;
+    y += L.titleToCard + L.ability + L.gapFeatures;
     this.featureCards(W, y, L.features);
+    // bloqueos por nivel (domain/unlocks.ts): CARGANDO 12 · DEFENSIVO 2 · ESPECIAL 3 · ULTI 5 · ZONA 10
+    // (el saque con efecto sigue bloqueado hasta el 15 en el partido; ya no tiene tarjeta)
+    {
+      const c0 = gridCol(W, 0);
+      const c1 = gridCol(W, 1);
+      p.abilities.forEach((id, i) => {
+        const c = i === 0 ? c0 : c1;
+        this.lockCard(c.x, row2, c.w, L.ability, id === 'dash' ? 'defensive' : 'special');
+      });
+      this.lockCard(c0.x, y, c0.w, L.features, 'ulti');
+      this.lockCard(c1.x, y, c1.w, L.features, 'zone');
+    }
     y += L.features + L.gapC + extra * 0.5;
 
     // ---------------------------------------------------------------- JUGAR
@@ -194,6 +240,27 @@ export class CustomizeScene extends Phaser.Scene {
   }
 
   // ================================================================ piezas
+
+  /**
+   * Tarjeta de una habilidad aún BLOQUEADA por nivel (domain/unlocks.ts): velo oscuro, candado y "NIVEL n". Tocarla solo
+   * avisa (no abre su diálogo). No hace nada si ya está desbloqueada.
+   */
+  private lockCard(x: number, y: number, w: number, h: number, key: UnlockKey) {
+    if (isUnlocked(key, getPlayer().level)) return;
+    const g = this.add.graphics().setDepth(5);
+    g.fillStyle(0x02060f, 0.72).fillRoundedRect(x, y, w, h, 18);
+    g.lineStyle(2, 0x3a4666, 1).strokeRoundedRect(x, y, w, h, 18);
+    const cx = x + w / 2;
+    const cy = y + h / 2;
+    const lk = this.add.graphics({ x: cx, y: cy - 12 }).setDepth(6);
+    lk.lineStyle(4, 0xc8d2ea, 1).beginPath().arc(0, -6, 9, Math.PI, 0).strokePath();
+    lk.lineBetween(-9, -6, -9, 1).lineBetween(9, -6, 9, 1);
+    lk.fillStyle(0xc8d2ea, 1).fillRoundedRect(-13, 0, 26, 19, 5);
+    lk.fillStyle(0x02060f, 1).fillCircle(0, 8, 3);
+    this.add.text(cx, cy + 26, unlockLabel(key), { fontFamily: FONT, fontSize: '18px', color: '#ffd23f', stroke: '#0a1638', strokeThickness: 4 }).setOrigin(0.5).setLetterSpacing(1).setDepth(6);
+    const hit = this.add.zone(cx, cy, w, h).setInteractive({ useHandCursor: true }).setDepth(7);
+    hit.on('pointerup', () => this.toast(`Se desbloquea en el ${unlockLabel(key)}`));
+  }
 
   /** Panel con el lenguaje del menú: sombra, halo, cuerpo marino, brillo superior y borde neón. */
   private card(x: number, y: number, w: number, h: number, opts: { line?: number; glow?: number; r?: number } = {}) {
@@ -231,7 +298,7 @@ export class CustomizeScene extends Phaser.Scene {
   }
 
   /** Personaje grande sobre un pedestal de luz, con su nombre. */
-  private showcase(W: number, top: number, feetY: number, heroH: number, skin: SkinId) {
+  private showcase(W: number, top: number, feetY: number, heroH: number, skin: SkinId, maxed = false) {
     const cx = W / 2;
     // haz de luz detrás
     const beam = this.add.graphics().setBlendMode(Phaser.BlendModes.ADD);
@@ -252,6 +319,8 @@ export class CustomizeScene extends Phaser.Scene {
       addPortrait(this, skin, cx + bodyShift, feetY + 6, heroH * 0.94) ??
       new Character(this, cx, feetY, playerLook(skin), 'front').setScale((heroH * 0.9) / 150);
     this.tweens.add({ targets: hero, y: hero.y - 6, duration: 1400, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
+    // ESTILO DE COLOR elegido (fx/CharColorFx.ts): la vitrina ya lo muestra
+    applyCharColor(hero, getProfile().color, skin);
 
     // placa con el nombre del personaje (abajo a la izquierda de la vitrina)
     const name = skinById(skin).name.toUpperCase();
@@ -267,6 +336,181 @@ export class CustomizeScene extends Phaser.Scene {
 
     // TEMPORAL (pruebas): selector Hombre/Mujer, a la derecha de la vitrina
     this.sexToggle(W - 40, py + ph / 2, skin);
+
+    // NIVEL MÁXIMO: pastilla pequeña justo encima del nombre (la tarjeta de nivel ya no sale en la lista)
+    if (maxed) this.maxLevelPill(px + 6, py - 8);
+    // (el color del personaje se elige en la tarjeta ESTILOS, debajo)
+  }
+
+  /** Columna `i` (0..3) de la fila de 4 cosméticos. */
+  private cosCol(W: number, i: number) {
+    const gap = 10;
+    const w = (W - 60 - gap * 3) / 4;
+    return { x: 30 + i * (w + gap), w };
+  }
+
+  /**
+   * Fila de 4 cosméticos: ESTILOS (color del personaje) · EFECTO PELOTA (estela) · CARGANDO GOLPE · MASCOTAS (bloqueada
+   * hasta la LIGA ORO). Cada tarjeta: icono arriba, nombre y lo que usas abajo; tocarla abre su selector.
+   */
+  private cosmeticRow(W: number, y: number, h: number, skin: SkinId) {
+    const pl = getPlayer();
+    const colorInfo = charColorInfo(getProfile().color);
+    const style = (pl.equipped.style ?? 'classic') as StyleId;
+    const look = styleLook(style);
+    // ESTILOS: paleta con el color en uso
+    this.miniCard(this.cosCol(W, 0), y, h, 0xff8fc4, 'ESTILOS', colorInfo.name, (g, r) => {
+      const cols = [colorInfo.color, 0x2f7bff, 0x2fd46a];
+      cols.forEach((c, i) => {
+        const a = -Math.PI / 2 + (i * Math.PI * 2) / 3;
+        g.fillStyle(0x0a1638, 1).fillCircle(Math.cos(a) * r * 0.38, Math.sin(a) * r * 0.38, r * 0.42);
+        g.fillStyle(c, 1).fillCircle(Math.cos(a) * r * 0.38, Math.sin(a) * r * 0.38, r * 0.34);
+      });
+      g.fillStyle(0x0a1638, 1).fillCircle(0, 0, r * 0.26);
+      g.fillStyle(colorInfo.color, 1).fillCircle(0, 0, r * 0.2);
+    }, () => this.openColorDialog(skin));
+    // EFECTO PELOTA: pelota con la estela del estilo en uso
+    this.miniCard(this.cosCol(W, 1), y, h, look.color, 'EFECTO PELOTA', STYLE_NAME[style] ?? style.toUpperCase(), (g, r) => {
+      for (let i = 0; i < 3; i++) g.lineStyle(r * (0.24 - i * 0.06), look.trail, 0.9 - i * 0.25).lineBetween(-r * 0.95, r * (0.45 - i * 0.05), -r * 0.1, r * 0.05);
+      g.fillStyle(0x0a1638).fillCircle(r * 0.15, -r * 0.05, r * 0.44);
+      g.fillStyle(0xd7f53a).fillCircle(r * 0.15, -r * 0.05, r * 0.36);
+      g.lineStyle(r * 0.07, 0xffffff, 0.95).beginPath().arc(r * 0.15 - r * 0.4, -r * 0.05, r * 0.34, -0.85, 0.85).strokePath();
+    }, () => this.openStyleDialog());
+    // CARGANDO GOLPE (bloqueada hasta su nivel, como la habilidad)
+    const chargeName = chargeFxDef(chargeFxOf(pl.equipped.charge, pl.equipped.skin)).name;
+    const cc = this.cosCol(W, 2);
+    this.miniCard(cc, y, h, PASSIVES.charge.color, 'CARGANDO GOLPE', chargeName, (g, r) => PASSIVES.charge.draw?.(g, r), () => this.openChargeDialog());
+    this.lockCard(cc.x, y, cc.w, h, 'charge');
+    // MASCOTAS: aún no existen; se abrirán al llegar a la LIGA ORO
+    const mc = this.cosCol(W, 3);
+    this.miniCard(mc, y, h, 0xffc42e, 'MASCOTAS', 'LIGA ORO', (g, r) => drawPaw(g, r, 0xc8d2ea), () => this.toast('Mascotas: se desbloquean al llegar a la LIGA ORO'));
+    const goldReached = LEAGUE_ORDER.indexOf(rankedState().league) >= LEAGUE_ORDER.indexOf('gold');
+    if (!goldReached) this.lockOverlay(mc.x, y, mc.w, h, 'LIGA ORO', 'Mascotas: se desbloquean al llegar a la LIGA ORO');
+  }
+
+  /** Tarjeta pequeña (1/4 de ancho): icono dibujado arriba, nombre y valor abajo, centrados. */
+  private miniCard(col: { x: number; w: number }, y: number, h: number, color: number, name: string, value: string, draw: (g: Phaser.GameObjects.Graphics, r: number) => void, onTap: () => void) {
+    const { x, w } = col;
+    this.card(x, y, w, h, { line: color, glow: 0.2, r: 16 });
+    const r = Math.min(26, h * 0.24);
+    const icon = this.add.graphics({ x: x + w / 2, y: y + h * 0.36 });
+    drawDisc(icon, r, color, 0x1b2d5c);
+    draw(icon, r * 0.9);
+    const t = this.add.text(x + w / 2, y + h * 0.68, name, { fontFamily: FONT, fontSize: '14px', color: '#ffffff' }).setOrigin(0.5).setLetterSpacing(0.5);
+    if (t.width > w - 12) t.setScale((w - 12) / t.width);
+    const v = this.add.text(x + w / 2, y + h * 0.68 + 19, `${value} ›`, { fontFamily: FONT, fontSize: '11px', color: '#8fb4ff' }).setOrigin(0.5);
+    if (v.width > w - 12) v.setScale((w - 12) / v.width);
+    const hit = this.add.zone(x + w / 2, y + h / 2, w, h).setInteractive({ useHandCursor: true });
+    hit.on('pointerup', onTap);
+  }
+
+  /** Velo de bloqueo genérico (candado + texto dorado); tocar avisa con `msg`. */
+  private lockOverlay(x: number, y: number, w: number, h: number, label: string, msg: string) {
+    const g = this.add.graphics().setDepth(5);
+    g.fillStyle(0x02060f, 0.72).fillRoundedRect(x, y, w, h, 16);
+    const cx = x + w / 2;
+    const cy = y + h / 2;
+    const lk = this.add.graphics({ x: cx, y: cy - 12 }).setDepth(6);
+    lk.lineStyle(4, 0xc8d2ea, 1).beginPath().arc(0, -6, 9, Math.PI, 0).strokePath();
+    lk.lineBetween(-9, -6, -9, 1).lineBetween(9, -6, 9, 1);
+    lk.fillStyle(0xc8d2ea, 1).fillRoundedRect(-13, 0, 26, 19, 5);
+    const t = this.add.text(cx, cy + 26, label, { fontFamily: FONT, fontSize: '15px', color: '#ffd23f', stroke: '#0a1638', strokeThickness: 4 }).setOrigin(0.5).setDepth(6);
+    if (t.width > w - 10) t.setScale((w - 10) / t.width);
+    const hit = this.add.zone(cx, cy, w, h).setInteractive({ useHandCursor: true }).setDepth(7);
+    hit.on('pointerup', () => this.toast(msg));
+  }
+
+  /** EFECTO PELOTA: estela de tus golpes (estilos de la Tienda y del Pase). */
+  private openStyleDialog() {
+    const p = getPlayer();
+    const cur = (p.equipped.style ?? 'classic') as StyleId;
+    const ids = Object.keys(STYLE_LOOK) as StyleId[];
+    const preview = (x: number, y: number, size: number, id: StyleId) => {
+      const g = this.add.graphics({ x, y });
+      const r = size * 0.32;
+      const lk = styleLook(id);
+      for (let i = 0; i < 4; i++) g.lineStyle(r * (0.5 - i * 0.1), lk.trail, 0.95 - i * 0.22).lineBetween(-r * 2.2, r * (0.9 - i * 0.1), -r * 0.2, r * 0.1);
+      g.fillStyle(0x0a1638).fillCircle(r * 0.3, 0, r * 1.05);
+      g.fillStyle(0xd7f53a).fillCircle(r * 0.3, 0, r * 0.86);
+      g.lineStyle(r * 0.14, 0xffffff, 0.95).beginPath().arc(r * 0.3 - r * 0.9, 0, r * 0.8, -0.85, 0.85).strokePath();
+      if (lk.sparkle) for (let i = 0; i < 4; i++) g.fillStyle(0xfff6c8, 1).fillCircle(-r * (0.6 + i * 0.4), r * (0.2 * ((i % 2) * 2 - 1)), r * 0.12);
+      return g;
+    };
+    const slots: PowerSlot[] = ids.map((id) => ({
+      name: STYLE_NAME[id] ?? id.toUpperCase(),
+      desc: STYLE_LOOK[id].perk,
+      owned: id === 'classic' || p.owned.includes(`style:${id}` as never),
+      equipped: id === cur,
+      preview: (x, y, size) => preview(x, y, size, id),
+      onEquip: () => commit((st) => equipStyle(st, id)),
+    }));
+    openPowerDialog(this, {
+      title: 'EFECTO PELOTA',
+      color: styleLook(cur).color,
+      slots,
+      onShop: () => {
+        this.cameras.main.fadeOut(180, 0, 0, 0);
+        this.cameras.main.once('camerafadeoutcomplete', () => this.scene.start('Shop'));
+      },
+      onClose: ({ changed }) => {
+        if (changed) this.scene.restart(); // al instante: la pantalla ya muestra lo que se equipó
+      },
+    });
+  }
+
+  /** "MÁX · 20" con medalla dorada: poco ancho, abajo-izquierda en (x, bottom). */
+  private maxLevelPill(x: number, bottom: number) {
+    const h = 30;
+    const y = bottom - h;
+    const t = this.add.text(0, 0, `NIVEL MÁX. ${MAX_LEVEL}`, { fontFamily: FONT, fontSize: '15px', color: '#ffd23f' }).setOrigin(0, 0.5).setLetterSpacing(1);
+    const w = 34 + t.width + 14;
+    const g = this.add.graphics();
+    g.fillStyle(0x000000, 0.35).fillRoundedRect(x + 2, y + 4, w, h, h / 2);
+    g.fillStyle(NAVY, 0.94).fillRoundedRect(x, y, w, h, h / 2);
+    g.lineStyle(2, 0xffc42e, 1).strokeRoundedRect(x, y, w, h, h / 2);
+    // medalla dorada con corona
+    const mx = x + 16;
+    const my = y + h / 2;
+    g.fillStyle(0xffc42e, 1).fillCircle(mx, my, 10);
+    g.fillStyle(0x0a1638, 1).fillPoints([{ x: mx - 6, y: my + 4 }, { x: mx - 7, y: my - 3 }, { x: mx - 3, y: my }, { x: mx, y: my - 5 }, { x: mx + 3, y: my }, { x: mx + 7, y: my - 3 }, { x: mx + 6, y: my + 4 }], true);
+    t.setPosition(x + 32, my).setDepth(1);
+  }
+
+  /** ESTILOS DE COLOR: televisión con el personaje pintado; los que faltan se ganan en el PASE DE BATALLA. */
+  private openColorDialog(skin: SkinId) {
+    const p = getPlayer();
+    const cur = charColorOf(p.equipped.color);
+    const portrait = (x: number, y: number, size: number, id: CharColorId) => {
+      const img = addPortrait(this, skin, x, y + size * 0.5, size * 1.05);
+      if (!img) return this.add.circle(x, y, size / 2, charColorInfo(id).color, 1);
+      applyCharColor(img, id, skin);
+      return img;
+    };
+    const slots: PowerSlot[] = CHAR_COLOR_LIST.map((d) => ({
+      name: d.name,
+      desc: d.desc,
+      owned: charColorOwned(p.owned, d.id),
+      equipped: d.id === cur,
+      // solo el personaje, grande y centrado en la televisión (previewOnly: `size` = alto disponible)
+      preview: (x, y, size) => portrait(x, y, size * 0.95, d.id),
+      thumb: (x, y, size) => portrait(x, y, size, d.id),
+      onEquip: () => setCharColor(d.id),
+    }));
+    openPowerDialog(this, {
+      title: 'COLOR DEL PERSONAJE',
+      color: 0xff8fc4,
+      previewOnly: true,
+      slots,
+      shopLabel: 'IR AL PASE',
+      lockedNote: 'Se gana en el PASE DE BATALLA.',
+      onShop: () => {
+        this.cameras.main.fadeOut(180, 0, 0, 0);
+        this.cameras.main.once('camerafadeoutcomplete', () => this.scene.start('BattlePass'));
+      },
+      onClose: ({ changed }) => {
+        if (changed) this.scene.restart(); // al instante: la pantalla ya muestra lo que se equipó
+      },
+    });
   }
 
   /**
@@ -274,7 +518,9 @@ export class CustomizeScene extends Phaser.Scene {
    * Guarda la skin en el perfil (se usa en menú, VS y partido). Quitar cuando exista selección real.
    */
   private sexToggle(right: number, cy: number, skin: SkinId) {
-    const opts = CATALOG.map((s) => ({ id: s.id, label: s.sex === 'f' ? 'MUJER' : 'HOMBRE' }));
+    // un personaje solo se puede elegir si es tuyo (Mai es premio del Pase de Batalla): si no, candado y aviso
+    const owned = getPlayer().owned;
+    const opts = CATALOG.map((s) => ({ id: s.id, name: s.name, label: s.sex === 'f' ? 'MUJER' : 'HOMBRE', has: owned.includes(`skin:${s.id}` as never) }));
     const segW = 104;
     const h = 50;
     const w = segW * opts.length;
@@ -290,10 +536,17 @@ export class CustomizeScene extends Phaser.Scene {
         g.fillStyle(NEON, 1).fillRoundedRect(sx + 4, cy - h / 2 + 4, segW - 8, h - 8, (h - 8) / 2);
         g.fillStyle(0x6fb2ff, 0.5).fillRoundedRect(sx + 8, cy - h / 2 + 6, segW - 16, (h - 8) * 0.4, { tl: 14, tr: 14, bl: 0, br: 0 });
       }
-      this.add.text(sx + segW / 2, cy, o.label, { fontFamily: FONT, fontSize: '19px', color: active ? '#ffffff' : '#7f93bf' }).setOrigin(0.5);
+      this.add.text(sx + segW / 2 + (o.has ? 0 : 9), cy, o.label, { fontFamily: FONT, fontSize: '19px', color: active ? '#ffffff' : o.has ? '#7f93bf' : '#56688f' }).setOrigin(0.5);
+      if (!o.has) {
+        // candado a la izquierda del texto
+        const lk = this.add.graphics({ x: sx + 17, y: cy });
+        lk.lineStyle(3, 0x8ea3ce, 1).beginPath().arc(0, -3, 5, Math.PI, 0).strokePath();
+        lk.fillStyle(0x8ea3ce, 1).fillRoundedRect(-7, -3, 14, 11, 3);
+      }
       const hit = this.add.rectangle(sx + segW / 2, cy, segW, h, 0x000000, 0.001).setInteractive({ useHandCursor: true });
       hit.on('pointerdown', () => {
         if (active) return;
+        if (!o.has) return this.toast(`${o.name} se desbloquea en el Pase de Batalla`);
         setSkin(o.id);
         this.scene.restart();
       });
@@ -336,6 +589,31 @@ export class CustomizeScene extends Phaser.Scene {
       fill.fillStyle(0xffffff, 0.6).fillRoundedRect(tx + 4, by + 2, Math.max(0, fw - 8), 2, 1);
     };
     this.tweens.add({ targets: state, v: Phaser.Math.Clamp(prog, 0, 1), delay: 250, duration: 700, ease: 'Cubic.easeOut', onUpdate: draw });
+  }
+
+  /**
+   * Contador de RAYOS (zone.rays) con el borde derecho en `right`, como los contadores de monedas / dinero del menú: rayo
+   * amarillo + cifra. Tocarlo explica de dónde salen y en qué se gastan. Devuelve su ancho.
+   */
+  private raysPill(right: number, cy: number) {
+    const rays = getPlayer().zone.rays;
+    const h = 44;
+    const t = this.add.text(0, cy, rays.toLocaleString('es-CL'), { fontFamily: FONT, fontSize: '24px', color: '#ffffff' }).setOrigin(1, 0.5);
+    const w = Math.max(96, t.width + 70);
+    const x0 = right - w;
+    const g = this.add.graphics();
+    g.fillStyle(0x000000, 0.35).fillRoundedRect(x0 + 3, cy - h / 2 + 4, w, h, h / 2);
+    g.fillStyle(NAVY, 0.95).fillRoundedRect(x0, cy - h / 2, w, h, h / 2);
+    g.lineStyle(2.5, 0x45d9ff, 1).strokeRoundedRect(x0, cy - h / 2, w, h, h / 2);
+    // rayo (mismo dibujo que el premio de Rayos del Pase de Batalla)
+    const ic = this.add.graphics({ x: x0 + 26, y: cy });
+    const bolt = [{ x: 3, y: -15 }, { x: -8, y: 2 }, { x: -1, y: 2 }, { x: -4, y: 15 }, { x: 8, y: -3 }, { x: 1, y: -3 }];
+    ic.fillStyle(0x0a1638, 1).fillPoints(bolt.map((p) => ({ x: p.x + 1.5, y: p.y + 1.5 })), true);
+    ic.fillStyle(0xffe14a, 1).fillPoints(bolt, true);
+    t.setX(right - 16).setDepth(1);
+    const hit = this.add.zone(x0 + w / 2, cy, w, h + 10).setInteractive({ useHandCursor: true });
+    hit.on('pointerup', () => this.toast('RAYOS: se ganan en Ranked y en el Pase de Batalla · 1 rayo = +1% a un atributo de la ZONA'));
+    return w;
   }
 
   /** Dos paneles debajo de las habilidades: INFERNO (poder elegido + selector) y ZONA (atributos). */
@@ -471,13 +749,8 @@ export class CustomizeScene extends Phaser.Scene {
 
   /** Bola de un poder: su hoja de sprites (animada si `animate`) o, si no cargó, un círculo de su color. */
   private ballIcon(power: InfernoPower, x: number, y: number, size: number, animate: boolean) {
-    const art = BALL_ART[power];
-    if (this.textures.exists(art.key)) {
-      const s = this.add.sprite(x, y, art.key, 0).setDisplaySize(size, size);
-      if (animate && this.anims.exists(art.anim)) s.play(art.anim);
-      return s;
-    }
-    return this.add.circle(x, y, size * 0.3, infernoPowerDef(power).color, 1);
+    // con su rastro detrás si lo trae (tulipán); las alargadas caben a lo ancho del aro
+    return addBallPreview(this, x, y, power, size, size, animate, infernoPowerDef(power).color);
   }
 
   /**
@@ -487,34 +760,54 @@ export class CustomizeScene extends Phaser.Scene {
   private gridCard(x: number, y: number, w: number, h: number, color: number, name: string, desc: string, rightPad = 0) {
     this.card(x, y, w, h, { line: color, glow: 0.2, r: 18 });
     const tx = x + 92;
-    const title = this.add.text(tx, y + 13, name.toUpperCase(), textStyle(22)).setOrigin(0, 0);
+    const title = this.add.text(tx, 0, name.toUpperCase(), textStyle(22)).setOrigin(0, 0);
     const maxTitleW = w - 92 - 14 - rightPad;
     if (title.width > maxTitleW) title.setScale(maxTitleW / title.width); // nombres largos ("CARGANDO GOLPE") se encogen
-    this.add
-      .text(tx, y + 44, desc, { fontFamily: FONT, fontSize: '13px', color: '#b9cbef', wordWrap: { width: w - 92 - 14 } })
+    const d = this.add
+      .text(tx, 0, desc, { fontFamily: FONT, fontSize: '13px', color: '#b9cbef', wordWrap: { width: w - 92 - 14 } })
       .setOrigin(0, 0)
       .setLineSpacing(-2);
+    // título + descripción como un bloque centrado en vertical, a la altura del icono (que va al centro de la tarjeta);
+    // sin salirse por arriba (píldora de recarga) ni por abajo ("PODERES ›" / "EFECTOS ›")
+    const gap = 6;
+    const blockH = title.displayHeight + gap + d.height;
+    const top = Phaser.Math.Clamp(y + h / 2 - blockH / 2, y + 10, y + h - 22 - blockH);
+    title.setY(top);
+    d.setY(top + title.displayHeight + gap);
     return tx;
   }
 
   /** Tarjeta de habilidad equipada: número de ranura, icono, nombre, recarga y descripción. */
   private abilityCard(W: number, y: number, h: number, col: 0 | 1, a: AbilityDef, slot: number) {
     const { x, w } = gridCol(W, col);
+    // el PODER equipado de la habilidad (DEFENSIVO: dash / destello; ESPECIAL: fuego / hielo / viento / rayo): su
+    // descripción, su icono y su nombre en la tarjeta, para ver lo que se equipó en el diálogo
+    const eq = getPlayer().equipped;
+    const defPower = a.id === 'dash' ? defensivePowerDef(defensivePowerOf(eq.defensive)) : null;
+    const smashEl = a.id === 'smash' ? smashPowerOf(eq.smash) : 'fire';
+    const power = defPower ?? (a.id === 'smash' ? smashPowerDef(smashEl) : null);
     // recarga como píldora (arriba a la derecha); el nombre se encoge para no tocarla
     const cd = `${a.cooldown}s`;
-    this.gridCard(x, y, w, h, a.color, a.name, a.desc, 78);
+    // con el poder de siempre (dash / fuego) se deja la descripción de la habilidad (dice también la duración del aturdido)
+    const isDefault = !power || power.id === 'dash' || power.id === 'fire';
+    this.gridCard(x, y, w, h, a.color, a.name, isDefault ? a.desc : power.desc, 78);
     // número de ranura
     const sb = this.add.graphics();
     sb.fillStyle(a.color, 1).fillRoundedRect(x + 14, y - 12, 34, 26, 8);
     this.add.text(x + 31, y + 1, String(slot), { fontFamily: FONT, fontSize: '18px', color: '#ffffff' }).setOrigin(0.5);
     // botón de la habilidad: imagen (assets/btn-<id>.png) si existe; si no, el icono dibujado
-    this.abilityIcon(a, x + 48, y + h / 2, 64, a.id === 'smash' ? smashPowerOf(getPlayer().equipped.smash) : 'fire'); // el SMASH con el color de su poder
+    // el SMASH con el color de su poder; el DEFENSIVO con el icono de su poder (el DASH, la imagen de siempre)
+    if (defPower && defPower.id !== 'dash') {
+      const g = this.add.graphics({ x: x + 48, y: y + h / 2 });
+      drawDisc(g, 32, defPower.color, 0x1b3a6b);
+      drawDefensiveIcon(g, defPower.id, 32);
+    } else this.abilityIcon(a, x + 48, y + h / 2, 64, smashEl);
     // tocar la tarjeta abre el diálogo con los poderes de la habilidad (televisión + 10 huecos)
     const open = this.add.zone(x + w / 2, y + h / 2, w, h).setInteractive({ useHandCursor: true });
     open.on('pointerup', () => {
       // el DEFENSIVO (dash) tiene varios poderes: DASH y DESTELLO (domain/defensivePowers.ts)
       if (a.id === 'dash') return this.openDefensiveDialog(a);
-      // el ESPECIAL (smash) también: FUEGO y HIELO (domain/smashPowers.ts)
+      // el ESPECIAL (smash) también: FUEGO, HIELO, VIENTO y RAYO (domain/smashPowers.ts)
       if (a.id === 'smash') return this.openSmashDialog(a);
       openPowerDialog(this, {
         title: `PODERES · ${a.name.toUpperCase()}`,
@@ -523,7 +816,8 @@ export class CustomizeScene extends Phaser.Scene {
         slots: [{ name: a.name, desc: a.desc, owned: true, equipped: true, preview: (ix, iy, size) => this.abilityIcon(a, ix, iy, size) }],
       });
     });
-    this.add.text(x + w - 14, y + h - 12, 'PODERES ›', { fontFamily: FONT, fontSize: '12px', color: '#8fb4ff' }).setOrigin(1, 1);
+    // el poder en uso delante (como "FUEGO · EFECTOS ›" en CARGANDO GOLPE)
+    this.add.text(x + w - 14, y + h - 12, power ? `${power.name} · PODERES ›` : 'PODERES ›', { fontFamily: FONT, fontSize: '12px', color: '#8fb4ff' }).setOrigin(1, 1);
     const pill = this.add.text(x + w - 18, y + 16, cd, { fontFamily: FONT, fontSize: '14px', color: '#ffe9a8' }).setOrigin(1, 0);
     const pg = this.add.graphics();
     const px0 = pill.x - pill.width - 28;
@@ -557,7 +851,7 @@ export class CustomizeScene extends Phaser.Scene {
         this.cameras.main.once('camerafadeoutcomplete', () => this.scene.start('Shop'));
       },
       onClose: ({ changed }) => {
-        if (changed) this.time.delayedCall(150, () => this.scene.restart());
+        if (changed) this.scene.restart(); // al instante: la pantalla ya muestra lo que se equipó
       },
     });
   }
@@ -577,7 +871,7 @@ export class CustomizeScene extends Phaser.Scene {
           : (ix, iy, size) => {
               const g = this.add.graphics({ x: ix, y: iy });
               drawDisc(g, size / 2, d.color, 0x1b3a6b);
-              drawBlinkIcon(g, size / 2);
+              drawDefensiveIcon(g, d.id, size / 2);
               return g;
             },
       onEquip: () => setDefensive(d.id),
@@ -589,6 +883,10 @@ export class CustomizeScene extends Phaser.Scene {
       onShop: () => {
         this.cameras.main.fadeOut(180, 0, 0, 0);
         this.cameras.main.once('camerafadeoutcomplete', () => this.scene.start('Shop'));
+      },
+      // (faltaba) al equipar otro poder, la pantalla se rehace al instante y la tarjeta DEFENSIVO lo muestra
+      onClose: ({ changed }) => {
+        if (changed) this.scene.restart();
       },
     });
   }
@@ -609,30 +907,6 @@ export class CustomizeScene extends Phaser.Scene {
     drawDisc(icon, size / 2, a.color, a.colorDark);
     drawAbilityIcon(icon, a.icon, size / 2);
     return icon;
-  }
-
-  /**
-   * Tarjeta de una habilidad pasiva del personaje (sin recarga ni ranura): EFECTO PELOTA y CARGANDO GOLPE.
-   * Su icono es el del botón del partido (saque con efecto) o un disco con el arco de carga.
-   */
-  private passiveCard(W: number, y: number, h: number, col: 0 | 1, def: PassiveDef, onTap?: () => void, hint?: string) {
-    const { x, w } = gridCol(W, col);
-    this.gridCard(x, y, w, h, def.color, def.name, def.desc);
-    const cx = x + 48;
-    const cy = y + h / 2;
-    const art = def.art ? this.textures.exists(def.art) : false;
-    if (def.art && art) this.add.image(cx, cy, def.art).setDisplaySize(64, 64);
-    else {
-      const icon = this.add.graphics({ x: cx, y: cy });
-      drawDisc(icon, 28, def.color, def.colorDark);
-      def.draw?.(icon, 28);
-    }
-    if (onTap) {
-      // tocarla abre su diálogo; `hint` = lo que usas ahora (abajo a la derecha, como "PODERES ›" de las habilidades)
-      const open = this.add.zone(x + w / 2, y + h / 2, w, h).setInteractive({ useHandCursor: true });
-      open.on('pointerup', onTap);
-      this.add.text(x + w - 14, y + h - 12, `${hint ? hint + ' · ' : ''}EFECTOS ›`, { fontFamily: FONT, fontSize: '12px', color: '#8fb4ff' }).setOrigin(1, 1);
-    }
   }
 
   /** CARGANDO GOLPE: televisión con el efecto de carga elegido y los 4 disponibles (clásico, fuego, energía, tulipán). */
@@ -659,7 +933,7 @@ export class CustomizeScene extends Phaser.Scene {
         this.cameras.main.once('camerafadeoutcomplete', () => this.scene.start('Shop'));
       },
       onClose: ({ changed }) => {
-        if (changed) this.time.delayedCall(150, () => this.scene.restart());
+        if (changed) this.scene.restart(); // al instante: la pantalla ya muestra lo que se equipó
       },
     });
   }

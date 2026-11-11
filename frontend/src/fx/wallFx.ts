@@ -7,6 +7,7 @@ const POWER_WALL: Record<InfernoElement, { hot: number; ring: number }> = {
   ice: { hot: 0xbff0ff, ring: 0x4aa8ff },
   wind: { hot: 0xd8ffe0, ring: 0x3fd68a },
   lightning: { hot: 0xfff36b, ring: 0x3a7bff },
+  tulip: { hot: 0xffd0e6, ring: 0xff6fae },
 };
 
 /**

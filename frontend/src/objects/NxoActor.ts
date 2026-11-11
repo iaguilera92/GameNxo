@@ -79,6 +79,8 @@ const WALK_MS = 500;
 type State = 'idle' | 'run' | 'runstop' | 'hold' | 'swing' | 'serve' | 'victory' | 'turn' | 'sprint' | 'land' | 'inferno' | 'dive' | 'stun' | 'emote';
 
 export type SpriteCharId = SheetId;
+/** Clip (textura = animación) para dibujar fuera del partido: último frame, ancla y alto de pie de su hoja. */
+export type EndClip = { key: string; last: number; origin: { x: number; y: number }; standHeight: number };
 const CFGS = SHEETS;
 const IDS = SHEET_IDS;
 export const NXO_ANIMS = Object.keys(SHEETS.nxo.animations) as NxoAnim[];
@@ -831,6 +833,26 @@ export class NxoActor {
     const victory = last(spriteKey(frontId, 'victory')) ?? fallback;
     const defeat = (frontPack ? last(extraKey('defeat', frontPack.key)) : null) ?? fallback;
     return victory && defeat ? { victory, defeat } : null;
+  }
+
+  /**
+   * (Claude) Clips DE FRENTE para la pantalla de resultados (MatchEndScene): reposo en bucle, victoria y derrota, con el
+   * ancla y el alto de pie de SU hoja, para dibujar a los dos personajes al mismo tamaño. Sin clip de derrota (p. ej. Mai
+   * de frente, hoja antigua) se usa el reposo. null = sin hoja.
+   */
+  endClips(): { idle: EndClip; victory: EndClip; defeat: EndClip } | null {
+    const frontId: SpriteCharId = this.id === 'nxo' ? 'nxo-front' : this.id === 'mai' ? 'mai-front' : this.id;
+    const frontPack = PACKS[frontId];
+    const cfg = CFGS[frontId];
+    const mk = (k: string, g: { origin: { x: number; y: number }; standHeight: number }): EndClip | null => {
+      const a = this.scene.anims.get(k);
+      return a && this.scene.textures.exists(k) ? { key: k, last: a.frames.length - 1, origin: g.origin, standHeight: g.standHeight } : null;
+    };
+    const idle = mk(spriteKey(frontId, 'idle'), cfg);
+    if (!idle) return null;
+    const victory = mk(spriteKey(frontId, 'victory'), cfg) ?? idle;
+    const defeat = (frontPack ? mk(extraKey('defeat', frontPack.key), frontPack.extra) : null) ?? idle;
+    return { idle, victory, defeat };
   }
 
   /** Derrota (partido perdido): queda en la Ãºltima pose. */

@@ -67,15 +67,30 @@ export const TIMING = {
   maxSpeedMult: { normal: 1.95, ability: 2.15 },
   /** Efectos (ver src/fx/timingFx.ts). */
   fx: {
-    text: { perfect: 'PERFECT!', good: 'BIEN', early: 'PRONTO', late: 'TARDE' } as Partial<Record<TimingGrade, string>>,
-    color: { perfect: '#ffe066', good: '#cfe0ff', early: '#ffb38a', late: '#ffb38a' } as Partial<Record<TimingGrade, string>>,
-    size: { perfect: 40, good: 20, early: 20, late: 20 } as Partial<Record<TimingGrade, number>>,
+    text: { perfect: '¡PERFECTO!', good: 'BIEN', early: 'PRONTO', late: 'TARDE' } as Partial<Record<TimingGrade, string>>,
+    color: { perfect: '#ffe066', good: '#8fe3ff', early: '#ffb38a', late: '#ff8a8a' } as Partial<Record<TimingGrade, string>>,
+    size: { perfect: 40, good: 26, early: 24, late: 24 } as Partial<Record<TimingGrade, number>>,
     vibrateMs: 30, // algunos motores de vibración de Android ignoran pulsos muy cortos
     shake: { ms: 70, intensity: 0.0025 },
     sound: true,
     volume: 0.35,
   },
+  /**
+   * ANILLO GUÍA: cuando la pelota viene hacia ti y aún no tocaste, un aro se cierra sobre ella y encaja justo en el
+   * instante ideal del toque (contacto − idealLeadMs). Aparece `showS` antes; se puede apagar en AJUSTES.
+   */
+  ring: { showS: 0.7, startR: 54, endR: 13 },
+  /**
+   * RACHA de PERFECTO seguidos (golpes tuyos; los golpes forzados del DEFENSIVO no cuentan ni la cortan). Desde `from`
+   * cada PERFECTO adelanta `cdS` segundos la recarga del ESPECIAL y del DEFENSIVO.
+   */
+  streak: { from: 3, cdS: 1 },
 };
+
+/** Racha de PERFECTO: suma con PERFECTO, se corta con cualquier otra nota. Devuelve la racha nueva. */
+export function nextStreak(streak: number, grade: TimingGrade): number {
+  return grade === 'perfect' ? streak + 1 : 0;
+}
 
 /** Clasifica la diferencia temporal (ms; negativo = temprano). */
 /** tolerancia de coma flotante en los bordes de ventana (los bordes son inclusivos) */
@@ -109,6 +124,11 @@ export class TimingTracker {
 
   clear() {
     this.tapAt = null;
+  }
+
+  /** Último toque sin consumirlo (s del reloj de simulación; null = ninguno). */
+  get lastTap(): number | null {
+    return this.tapAt;
   }
 
   /** Evalúa el contacto en el instante `contactT` (s, reloj de simulación) y consume el toque. */

@@ -1,8 +1,10 @@
 NOTAS PARA CLAUDE (pendientes detectados por Kiro, sin corregir)
 =================================================================
 
-1. SMASH armado + DASH: el golpe forzado sale SIN la cinemática del SMASH
+1. [RESUELTO 11-11-2026 por Claude] SMASH armado + DASH: el golpe forzado sale SIN la cinemática del SMASH
    ------------------------------------------------------------------------
+   -> MatchScene.forcedHit(): todos los golpes forzados del DEFENSIVO (DASH sprint / teletransporte, DESTELLO, SOMBRA,
+      SUPERSALTO) pasan por ahí; con el SMASH armado (y sin bola de poder rival ni saque en juego) lanza startSmashCine.
    Dónde: src/scenes/MatchScene.ts → updateDashHit() → this.playerHit(true)
           (rama del DASH sprint y rama del DASH de teletransporte de siempre).
 
@@ -27,8 +29,13 @@ NOTAS PARA CLAUDE (pendientes detectados por Kiro, sin corregir)
      INFERNO se vea (solo INFERNO puede pedir carga en ese momento: los toques del jugador no cargan).
    - Interruptor de pruebas: localStorage 'dev.dashSprint' = '0' → DASH de teletransporte.
 
-3. SMASH armado + ESTIRADA: el SMASH sigue armado (y la pelota encendida) después de la estirada
+3. [RESUELTO 11-11-2026 por Claude, opción (b)] SMASH armado + ESTIRADA: el SMASH sigue armado (y la pelota encendida)
    ----------------------------------------------------------------------------------------------
+   -> La estirada NO gasta el SMASH (su recarga ya se pagó): sigue armado para el próximo golpe, pero el globo sale
+      apagado (ball.setIgnited(false)) y la pelota se vuelve a encender cuando el rival la devuelve (botHit /
+      netApplyHit). Lo mismo en el resto del saque, donde el SMASH armado no puede salir (serveLock).
+   -> Además: test-ranked vuelve a pasar (compara con PLAYER_SCHEMA_VERSION) y el simulador (tools/sim/balance.ts) usa el
+      aturdido real por tipo (SMASH 0,65 s · ULTI 1,5 s).
    Dónde: src/scenes/MatchScene.ts → checkHits() → playerLunge().
 
    Qué pasa: con el SMASH armado (smashArmed), si la pelota no entra en el alcance normal y salta la
@@ -118,3 +125,108 @@ NOTAS PARA CLAUDE (pendientes detectados por Kiro, sin corregir)
    La devolución está asegurada igual que con el DASH. Mismo botón y recarga (DASH_COOLDOWN); su etiqueta pasa a DESTELLO.
  - Solo en local: en red el rival ve el salto de posición, sin estela (haría falta una acción 'blink' en protocol.ts y en la
    lista ACTIONS de backend/src/socket/guard.ts).
+
+[11-11-2026] CLAUDE: KIT DEL BOT POR PERSONAJE + ULTI 1,5 s (toqué MatchScene, marcado abajo)
+ - ai/botKit.ts: botKitFor(skin). MAI = defensivo DESTELLO, especial HIELO, ulti HIELO, carga TULIPÁN; NXO (y por defecto) =
+   DASH, FUEGO, FUEGO, FUEGO. Solo modo BOT. MatchScene.botKit se fija en create (rivalSkin()).
+ - MatchScene: botHit usa botKit.smash (antes siempre 'fire'); botUlti usa botKit.inferno; preload/create cargan y usan
+   botKit.charge para rivalChargeKind. Nuevos: botBlink() (sprint 'start' con kit blink: teletransporte con estela al
+   ai.target) y botChargeTick() (carga visible del bot quieto esperando tu pelota; solo visual).
+ - PowerImpact: stunMsBy / stunMsFor(kind): SMASH 650 ms, INFERNO 1500 ms (fireImpact, playerImpact, netBotStunned).
+   tools/sim/balance.ts sigue con stunSeconds() (0,65 s) también para la ulti.
+ - ImpactFx.infernoGroundFx: impacto más fuerte al botar la ulti (sacudida, columna, onda, marca quemada, trozos, brasas).
+ - Ads: src/ads/admobProvider.ts (AdMob, @capacitor-community/admob 6.2.0); los x2 se ocultan sin anuncios.
+ - Estela: globo amarillo, cortita blanca, golpe normal SIN estela (salvo estilo comprado: MatchScene.trailLook). Ball.update.
+ - RED: fx/NetView.ts reemplaza el dibujo fijo del final de drawCourt (malla en rombos, cinta con caída, correa, postes,
+   sombra). MatchScene: netView.hit/brush en el bucle de subpasos de la pelota y netView.update() al inicio de update.
+   Física de la red sin cambios (Ball.stepBall, NET_HEIGHT = altura en el centro).
+ - PALOMA del ambiente: fx/AmbientBird.ts (hoja cortada con tools/build-paloma.mjs -> public/assets/ambiente/paloma.png).
+   MatchScene: queueAmbientBird en preload; birdPerch en drawCourt; launchBird() al terminar playMatchIntro (2 sitios).
+   Pruebas: localStorage 'dev.paloma' = left | right | off.
+ - AVIÓN del ambiente: fx/AmbientPlane.ts (tools/build-paloma.mjs avion -> assets/ambiente/avion.png). launchBird() lanza
+   paloma y avión en orden al azar: el primero al acabar la intro y el segundo 30 s después (AMBIENT_GAP_MS).
+   Pruebas: 'dev.avion' = ltr | rtl | off.
+ - PANTALLA DE RESULTADO (MatchEndScene): sin "MEJOR DE 3 JUEGOS"; duelo Ranked con título "Has ganado/perdido la apuesta:",
+   cuadros más grandes (DUEL_BOX_H) y sin nombres. AVISO KIRO: NxoActor tiene un método NUEVO endClips() (+ tipo EndClip;
+   Character.endClips) que da reposo/victoria/derrota DE FRENTE con ancla y standHeight de su hoja; matchEnd.ts lo pasa
+   en data.clips. Los dos personajes se escalan por standHeight (mismo alto). Mai de frente no tiene 'defeat': usa idle.
+ - ESPECIAL armado: ya NO enciende HyperAura; MatchScene.powerPulse(actor) (aclarado ~1 s con preFX ColorMatrix + onda).
+   HyperAura (this.aura / this.botAura, ahora creado también en modo BOT) se enciende/apaga en zoneRender según
+   zone.active(lado), en azul ('ice'). En red, 'smash-armed' hace powerPulse(bot); 'smash-disarmed' no hace nada.
+ - TIROS DE PODER: la ULTI (infernoFlight) aturde SIEMPRE al que la toca (también en ZONA, con la ULTI armada o con el
+   DASH forzado). El ESPECIAL aturde salvo devolución PERFECT: toque a ±0,12 s del bote en tu lado y contacto ≤ 0,45 s
+   después (MatchScene.smashPerfectReturn, SMASH_PERFECT, smashBounceAt en handleBounce; TimingTracker.lastTap).
+   El DASH forzado nunca es PERFECT. La ZONA sigue resistiendo el ESPECIAL.
+ - NIVEL MÁXIMO = 20 (config.MAX_LEVEL, antes 30; decidido con el usuario 11-11-2026). Reescalados: tramos del rival en
+   ai/BotProfile (3 / 6 / 11 / 17), rankedBots.BOTS.maxLevel = 20, MatchmakingScene usa MAX_LEVEL. Los guardados con nivel
+   > 20 se recortan a 20 al cargar (migrate). Personalización: en nivel máximo, tarjeta de nivel compacta (44 px) y el alto
+   ganado va a las tarjetas de habilidades. (test-ranked sigue fallando por la versión 7 del guardado, ajeno a esto.)
+ - Resultado (MatchEndScene): cuadros del duelo en 2 columnas (personaje | moneda + cifra). Los personajes se anclan y
+   escalan por su SILUETA medida (silhouette()), no por origin/standHeight. MAI de frente usa poses nuevas de su hoja 1
+   (tools/build-end-poses.mjs -> assets/characters/mai-front-end; docs/SPRITES.md §6).
+ - DEFENSIVO: alcance hacia atrás DASH_BACK_REACH = 150 (antes 20) en dashPlan y startDashSprint (box.xMin): devuelve
+   una pelota que ya te pasó, hasta su 2º bote. El golpe forzado sigue aturdiendo contra ESPECIAL / ULTI.
+ - ESTILOS DE COLOR del personaje: fx/CharColorFx.ts (PostFX WebGL de croma selectivo: cambia solo el color principal de
+   la ropa; nxo = rojo, mai = rosa). applyCharColor(obj, id, skin). En MatchScene solo con localStorage 'dev.charColor'
+   (azul | verde | morado | dorado | sombra). Vista previa sin juego: node tools/preview-char-colors.mjs -> _tmp/.
+   Ya en PERSONALIZACIÓN y en el PASE: domain/charColors.ts (CharColorId, charColorOwned; ítems `color:<id>`, KNOWN_ITEMS
+   en migrate), PlayerState.equipped.color, operations.equipColor, Profile.setCharColor / getProfile().color.
+   Pase (battlePassConfig): AZUL 8 y VERDE 18 gratis; MORADO 7, DORADO 21, SOMBRA 27 premium (reemplazan dinero).
+   BattlePassScene: solo muestra (STYLE_SWATCH) y etiqueta 'COLOR DE ROPA'. CustomizeScene: botón COLOR sobre la placa
+   del nombre -> openColorDialog (PowerDialog con shopLabel 'IR AL PASE'); la vitrina y el jugador del partido lo usan.
+   No viaja por red todavía (el rival te ve con los colores de siempre).
+ - DESBLOQUEO POR NIVEL: domain/unlocks.ts (DEFENSIVO 2, ESPECIAL 3, ULTI 5, ZONA 10, CARGANDO 12, EFECTO PELOTA 15).
+   MatchScene.unlocked(key): toggleCharge no carga, activateDash/activateSmash/armInferno/onInfernoPoint se niegan,
+   setServeUi oculta el saque con efecto y paintLocks apaga DEFENSIVO/ESPECIAL con "NIVEL n". ZoneTracker.locked
+   (jugador por su nivel; en red el rival por opponent.level). CustomizeScene.lockCard tapa las tarjetas bloqueadas.
+   En MODO DESARROLLO el perfil es nivel 20: todo abierto. Solo afecta al jugador (el BOT juega como siempre).
+ - DINERO DEL PASE recortado (decisión del usuario: con un pase completo, máx. 2 objetos de 50): GRATIS 40, PREMIUM 60
+   (bienvenida 5 incluida) = 100; antes 175 + 535. duplicateCash 10 -> 3. Los cosméticos del pase no cambian.
+ - SAQUE SIN HABILIDADES: MatchScene.serveLock (fase serve/toss, serving, o < 2 golpes en el punto; shotsThisPoint lo
+   lleva el setter de lastHitter). Bloquea DEFENSIVO/ESPECIAL/ULTI del jugador (guardas + syncAbilityLock cada frame) y
+   del BOT (BotTickInput.noAbilities, planShot(..., noPower), botUlti). Lo armado antes del saque espera al 3er golpe.
+   ESPECIAL armado: suena 'cargando' (smashSnd) y se apaga al golpear.
+ - CANCHA más ancha en pantalla: VIEW.LAT_K = 1.08 en view/projection.ts (solo multiplica sx; la escala `s` de
+   personajes/pelota no cambia). RED: config.NET_OVERHANG = 30 (sobresale por fuera de los dobles; lo usan NetView y el
+   choque de Ball.stepBall, antes 6). Postes de la red azules (NetView LOOK.post / postDark).
+ - DIAGONALES: cortita / globo con el joystick inclinado a un lado (|x| ≥ DIAG_X 0,35) botan claramente a ese lado
+   (MatchScene.shotSide / diagLat, en los 4 casos: normal y cargado). ChargeMeter.setShot(s, side) inclina 45° la flecha.
+ - PERSONALIZACIÓN reordenada: fila de 4 cosméticos (cosmeticRow / miniCard): ESTILOS (color del personaje,
+   openColorDialog; el botón COLOR de la vitrina se quitó), EFECTO PELOTA (estela, openStyleDialog nuevo con equipStyle),
+   CARGANDO GOLPE (openChargeDialog, bloqueada hasta nivel 12) y MASCOTAS (aún no existen; velo "LIGA ORO" hasta Oro).
+   Debajo el título HABILIDADES con DEFENSIVO | ESPECIAL y ULTI | ZONA. La tarjeta del saque con efecto se quitó (el
+   saque con efecto sigue bloqueado hasta el nivel 15 en el partido). passiveCard y colorButton borrados.
+ - ARREGLO cuelgue en CONTINUAR (resultado): openWheel puede devolver null (Phaser deja la escena EN COLA si se añade a
+   mitad de fotograma, p. ej. desde el tween del botón). MatchEndScene usa whenWheelReady (WheelScene.ts) para escuchar el
+   cierre de la ruleta y un respaldo de 2,5 s que va al menú si la ruleta no llegó a abrirse.
+ - DEFENSIVOS NUEVOS: 'shadow' (SOMBRA) y 'jump' (SUPERSALTO) en domain/defensivePowers.ts + shopCatalog (50 / $1.790 CLP).
+   MatchScene: activateDash -> startShadow (clon Character teñido que corre, updateShadowRun / endShadowRun; al llegar
+   cambio de lugar) y startJump (parábola con Actor.lift, que renderActors usa solo para el dibujo; jumpLandFx). Los dos
+   usan dashPlan + dashHit (golpe asegurado, como el DASH de teletransporte). Iconos: ui/icons drawShadowIcon /
+   drawJumpIcon / drawDefensiveIcon (Tienda y PERSONALIZACIÓN). En red el rival solo ve el cambio de posición. CourtView: sin sombra/borde oscuro alrededor de la cancha.
+ - ESTIRADA precisa (MatchScene): shouldLunge -> lungeContact() predice el punto más cercano de la trayectoria y arranca
+   la estirada LUNGE_CONTACT_S (0,2 s, frame 4-5 del clip dive) ANTES. El jugador se desplaza en profundidad hasta la
+   pelota y de lado solo lo que no cubre la raqueta tendida (LUNGE_ARM 90). El golpe (lungeShot) sale en ese frame
+   (lungeAt, se limpia en startPoint), no al empezar a tirarse: antes golpeaba a distancia sin tocar la pelota.
+ - ULTI RAYO y VIENTO con efectos propios (fx/elementImpactFx.ts): en el bote (infernoGroundFx desvía) RAYO = rayo del
+   cielo, arcos por la cancha, marca con grietas, chispas y trueno; VIENTO = torbellino, remolino de suelo, hojas en espiral,
+   ráfagas y sonido de viento. Contra el personaje (powerImpactFx): lightningBlast / windBlast. Mientras dura el aturdido,
+   ultiStunFx (MatchScene.ultiStunOn en fireImpact / playerImpact / netBotStunned): electrocutado o remolino de hojas.
+   Golpe de raqueta (infernoImpactFx): zapBurst / leafBurst. Fuego, hielo y tulipán sin cambios.
+ - RED: el rival se ve con SU estilo de color (PlayerProfile.color, enviado en mm:find; el servidor lo valida en
+   handlers/index.ts) en el VS y en el partido. SOMBRA / SUPERSALTO llegan al rival con la acción nueva game:action
+   'defensive' (kind, x, y, tx, ty, ms; añadida a guard.ts y a los dos protocol.ts): netRemoteDefensive / netBotFlyTick /
+   netEndBotFly muestran el clon corriendo + cambio de lugar o el salto en parábola + caída. Hay que DESPLEGAR el backend.
+ - ADMOB PRODUCCIÓN: public/app-ads.txt (pub-7815459145400244). Build de producción: npm run cap:release (vite --mode
+   release, .env.release: anuncios reales, sin modo prueba). Anuncio simulado SOLO en desarrollo (import.meta.env.DEV;
+   ni dev.adsSim ni window.GameNxoAds funcionan en builds). Consentimiento UMP (admobProvider.gatherConsent) ANTES de
+   cargar anuncios; si queda pendiente no se piden. AJUSTES muestra PRIVACIDAD > ELEGIR solo donde aplica (UE).
+   .env: VITE_ADMOB_TEST_DEVICES (anuncios de prueba en tus teléfonos) y VITE_ADMOB_CONSENT_DEBUG=EEA (probar el aviso).
+ - PERSONAJE INICIAL por plataforma (solo jugadores NUEVOS, sin partida guardada): web = Mai (con skin:mai en propiedad,
+   nombre Mai), app = Nxo. src/platformStarter.ts (primer import de main.ts) -> playerStore.setStarterSkin -> migratePlayer(raw,
+   starter) -> newPlayer(starter). La Mai del Pase en la web cuenta como repetida (da el dinero de duplicado).
+ - PERFECT TIMING más claro: TimingRing (fx/timingFx.ts) = aro que se cierra sobre la pelota y encaja en el instante
+   ideal del toque (MatchScene.updateTimingRing predice el contacto con stepBall; TIMING.ring). Se apaga en AJUSTES >
+   GUÍA DE TIMING (Settings.timingGuide). Notas: ¡PERFECTO! / BIEN (tic) / PRONTO-TARDE (golpe grave), gradeSound. RACHA:
+   desde 3 PERFECTO seguidos (TIMING.streak) cada uno adelanta 1 s la recarga del ESPECIAL y del DEFENSIVO
+   (AbilityButton.reduceCooldown) + texto RACHA ×N y arpegio (playStreakFx).

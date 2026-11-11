@@ -3,7 +3,10 @@ import { FONT } from './theme';
 import { arcadeButton } from './modeButtons';
 import { ONLINE_URL, getOnlineMode, setOnlineMode } from '../net/config';
 import { disconnect } from '../net/NetClient';
+import { DEV_LEVEL, isDevMode } from '../domain/devMode';
+import { writeDevMode } from '../domain/devMode';
 import { RIVAL_OPTIONS, type RivalSetting, type ShakeLevel, getSettings, setSettings } from '../logic/Settings';
+import { adsPrivacyAvailable, openAdsPrivacy } from '../ads/ads';
 
 /**
  * Diálogo AJUSTES (mismo estilo que RANGOS): sonido, vibración y temblor de pantalla.
@@ -36,10 +39,12 @@ export function showSettings(scene: Phaser.Scene, o: { depth?: number; onClose?:
 
   // ---------------------------------------------------------------- panel
   const pw = Math.min(620, W - 40);
-  const rowH = 112;
   const headH = 104;
   const footH = 150;
-  const rows = 5;
+  // PRIVACIDAD DE ANUNCIOS: solo donde aplica el aviso de consentimiento (UE); en Chile no aparece
+  const privacy = adsPrivacyAvailable();
+  const rows = privacy ? 8 : 7;
+  const rowH = rows > 7 ? 100 : 108;
   const ph = headH + rowH * rows + footH;
   const panel = scene.add.container(W / 2, H / 2).setScrollFactor(0).setDepth(depth + 1);
   panel.add(scene.add.rectangle(0, 0, pw, ph, 0x000000, 0.001).setInteractive()); // no cierra al tocar dentro
@@ -115,6 +120,35 @@ export function showSettings(scene: Phaser.Scene, o: { depth?: number; onClose?:
       'OFF',
     ),
   );
+
+  // MODO DESARROLLO: ON = perfil de pruebas aparte (nivel 20, todo desbloqueado); OFF = tu perfil (nivel 1 y solo lo inicial si es nuevo).
+  // La app arranca en ON. Al cambiarlo se guarda y la app se REINICIA, para que arranque entera con el perfil que corresponde.
+  const devSub = (on: boolean) => (on ? `Nivel ${DEV_LEVEL} · todo desbloqueado` : 'Tu perfil · lo inicial desbloqueado');
+  const subDev = label(5, 'MODO DESARROLLO', devSub(isDevMode()), devIcon);
+  panel.add(
+    toggle(
+      scene,
+      x + pw - 92,
+      rowY(5),
+      isDevMode(),
+      (on) => {
+        writeDevMode(on);
+        subDev.setText(`Reiniciando… ${devSub(on)}`);
+        scene.time.delayedCall(300, () => window.location.reload());
+      },
+      'ON',
+      'OFF',
+    ),
+  );
+
+  // GUÍA DE TIMING: aro que se cierra sobre la pelota en el momento ideal del toque (Perfect Timing)
+  label(6, 'GUÍA DE TIMING', 'Aro sobre la pelota al golpear', timingIcon);
+  panel.add(toggle(scene, x + pw - 92, rowY(6), s.timingGuide, (on) => setSettings({ timingGuide: on })));
+
+  if (privacy) {
+    label(7, 'PRIVACIDAD', 'Consentimiento de anuncios', shieldIcon);
+    panel.add(pillButton(scene, x + pw - 34, rowY(7), 'ELEGIR', () => void openAdsPrivacy()));
+  }
 
   // ---------------------------------------------------------------- pie
   const btnY = y + ph - 92;
@@ -244,7 +278,48 @@ function cycler(scene: Phaser.Scene, right: number, y: number, initial: RivalSet
   return c;
 }
 
+/** Botón pastilla (mismo estilo que el selector del rival; `right` = borde derecho). */
+function pillButton(scene: Phaser.Scene, right: number, y: number, text: string, onTap: () => void) {
+  const w = 160;
+  const h = 50;
+  const c = scene.add.container(right - w / 2, y);
+  const bg = scene.add.graphics();
+  bg.fillStyle(0x0a1638, 1).fillRoundedRect(-w / 2 - 3, -h / 2 - 3, w + 6, h + 6, 16);
+  bg.fillStyle(NEON, 1).fillRoundedRect(-w / 2, -h / 2, w, h, 14);
+  bg.fillStyle(0xffffff, 0.16).fillRoundedRect(-w / 2 + 3, -h / 2 + 3, w - 6, h * 0.38, 10);
+  c.add(bg);
+  c.add(scene.add.text(0, 0, text, { fontFamily: FONT, fontSize: '19px', color: '#ffffff' }).setOrigin(0.5));
+  c.setSize(w + 16, h + 16).setInteractive({ useHandCursor: true });
+  c.on('pointerup', () => {
+    scene.tweens.add({ targets: c, scale: { from: 0.92, to: 1 }, duration: 140, ease: 'Back.easeOut' });
+    onTap();
+  });
+  return c;
+}
+
 // ---------------------------------------------------------------- iconos (dibujados)
+function timingIcon(g: Phaser.GameObjects.Graphics) {
+  // pelota con el aro guía alrededor
+  g.fillStyle(0xd7f25a, 1).fillCircle(0, 0, 6);
+  g.lineStyle(2, 0xffffff, 0.6).strokeCircle(0, 0, 10);
+  g.lineStyle(3, 0xffe066, 1).strokeCircle(0, 0, 16);
+}
+
+function shieldIcon(g: Phaser.GameObjects.Graphics) {
+  g.fillStyle(0xffffff, 1);
+  g.beginPath().moveTo(0, -15).lineTo(13, -9).lineTo(11, 5).lineTo(0, 15).lineTo(-11, 5).lineTo(-13, -9).closePath().fillPath();
+  g.lineStyle(3.5, 0x3ccf5a, 1);
+  g.beginPath().moveTo(-6, 0).lineTo(-1, 5).lineTo(7, -5).strokePath();
+}
+
+function devIcon(g: Phaser.GameObjects.Graphics) {
+  // llave de herramientas: "</>" estilizado
+  g.lineStyle(3.5, 0xffffff, 1);
+  g.beginPath().moveTo(-6, -9).lineTo(-15, 0).lineTo(-6, 9).strokePath();
+  g.beginPath().moveTo(6, -9).lineTo(15, 0).lineTo(6, 9).strokePath();
+  g.lineStyle(3.5, 0xffd23f, 1).lineBetween(3, -12, -3, 12);
+}
+
 function globeIcon(g: Phaser.GameObjects.Graphics) {
   g.lineStyle(3, 0xffffff, 1).strokeCircle(0, 0, 14);
   g.lineBetween(-14, 0, 14, 0);

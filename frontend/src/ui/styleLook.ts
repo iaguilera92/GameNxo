@@ -19,6 +19,7 @@ export interface StyleLook {
 export const STYLE_LOOK: Record<StyleId, StyleLook> = {
   classic: { color: 0x3a8bff, dark: 0x1a4fb0, trail: 0xffffff, sparkle: false, perk: 'Estela blanca' },
   red: { color: 0xff4f5e, dark: 0xb3202f, trail: 0xff5a6a, sparkle: false, perk: 'Estela roja' },
+  pink: { color: 0xff6fae, dark: 0xc23a7d, trail: 0xff8fc4, sparkle: false, perk: 'Estela rosada' },
   green: { color: 0x62d935, dark: 0x2f8f14, trail: 0x7dff5a, sparkle: false, perk: 'Estela verde' },
   gold: { color: 0xffc42e, dark: 0xc98600, trail: 0xffd23f, sparkle: true, perk: 'Estela dorada con chispas' },
 };

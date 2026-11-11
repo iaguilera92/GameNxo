@@ -33,6 +33,46 @@ export function drawBlinkIcon(g: Phaser.GameObjects.Graphics, R: number) {
   g.fillStyle(0xffffff).fillCircle(cx, 0, R * 0.12);
 }
 
+/** Icono del poder SOMBRA: tu silueta clara y, detrás, su clon de sombra morado corriendo hacia delante. */
+export function drawShadowIcon(g: Phaser.GameObjects.Graphics, R: number) {
+  const body = (dx: number, col: number, a: number, k = 1) => {
+    g.fillStyle(col, a).fillCircle(dx, -R * 0.36 * k, R * 0.2 * k); // cabeza
+    g.fillStyle(col, a).fillRoundedRect(dx - R * 0.2 * k, -R * 0.14 * k, R * 0.4 * k, R * 0.5 * k, R * 0.12 * k); // cuerpo
+    g.fillStyle(col, a).fillRoundedRect(dx - R * 0.2 * k, R * 0.32 * k, R * 0.14 * k, R * 0.3 * k, R * 0.06); // piernas
+    g.fillStyle(col, a).fillRoundedRect(dx + R * 0.06 * k, R * 0.32 * k, R * 0.14 * k, R * 0.3 * k, R * 0.06);
+  };
+  // estela del clon
+  for (let i = 0; i < 3; i++) g.lineStyle(R * 0.07, 0xd4bfff, 0.6 - i * 0.18).lineBetween(R * (0.15 + i * 0.12), -R * 0.1 + i * R * 0.18, R * (0.55 + i * 0.12), -R * 0.1 + i * R * 0.18);
+  body(R * 0.32, 0x2a1450, 0.9, 1.05); // clon (oscuro, delante)
+  g.lineStyle(R * 0.05, 0xb48cff, 1).strokeCircle(R * 0.32, -R * 0.38, R * 0.21);
+  body(-R * 0.3, C.outline, 1, 1.12); // tú (contorno)
+  body(-R * 0.3, 0xffffff, 1, 1);
+}
+
+/** Icono del poder SUPERSALTO: arco del salto con una flecha y la onda de choque en el suelo. */
+export function drawJumpIcon(g: Phaser.GameObjects.Graphics, R: number) {
+  // onda de choque al caer
+  g.lineStyle(R * 0.1 + 4, C.outline).strokeEllipse(R * 0.3, R * 0.5, R * 0.9, R * 0.3);
+  g.lineStyle(R * 0.1, 0xfff2c2).strokeEllipse(R * 0.3, R * 0.5, R * 0.9, R * 0.3);
+  // arco del salto
+  const arc = (w: number, col: number) => g.lineStyle(w, col).beginPath().arc(0, R * 0.35, R * 0.62, Math.PI * 1.05, Math.PI * 1.85).strokePath();
+  arc(R * 0.16 + 6, C.outline);
+  arc(R * 0.16, 0xffffff);
+  // punta de flecha al final del arco, apuntando hacia abajo
+  const ax = Math.cos(Math.PI * 1.85) * R * 0.62;
+  const ay = R * 0.35 + Math.sin(Math.PI * 1.85) * R * 0.62;
+  const tri = [ax - R * 0.22, ay - R * 0.05, ax + R * 0.2, ay - R * 0.12, ax + R * 0.06, ay + R * 0.28];
+  g.fillStyle(C.outline).fillTriangle(tri[0] - 3, tri[1] - 3, tri[2] + 3, tri[3] - 3, tri[4], tri[5] + 4);
+  g.fillStyle(0xffffff).fillTriangle(tri[0], tri[1], tri[2], tri[3], tri[4], tri[5]);
+}
+
+/** Icono de un poder del DEFENSIVO que no es el DASH (DESTELLO, SOMBRA, SUPERSALTO). */
+export function drawDefensiveIcon(g: Phaser.GameObjects.Graphics, id: string, R: number) {
+  if (id === 'shadow') drawShadowIcon(g, R);
+  else if (id === 'jump') drawJumpIcon(g, R);
+  else drawBlinkIcon(g, R);
+}
+
 /** Dibuja el icono de una habilidad centrado en (0,0) con radio de referencia R. */
 export function drawAbilityIcon(g: Phaser.GameObjects.Graphics, icon: AbilityIcon, R: number) {
   if (icon === 'dash') {

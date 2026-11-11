@@ -54,7 +54,7 @@ export const CFG = {
   powerSpeed: 1,
   /** igual, pero por nivel de rival (si existe, manda sobre powerSpeed) */
   powerSpeedByTier: null as null | Record<string, number>,
-  /** segundos de aturdimiento al alcanzar un tiro de poder; 0 = POWER_IMPACT.stunMs */
+  /** segundos de aturdimiento al alcanzar un tiro de poder (los dos tipos); 0 = los del juego (SMASH 0,65 s · ULTI 1,5 s) */
   stunS: 0,
   /** velocidad de la devolución floja tras alcanzarlo, sobre SHOT_SPEED; 0,55 = como el juego */
   weakK: 0.55,
@@ -233,7 +233,8 @@ export function playMatch(tierA: BotTier, abilA: Abilities, tierB: BotTier, abil
     const o = other(a);
     a.stats.gotStunned++;
     if (r.powerOwner !== null) ag[r.powerOwner].stats.shotReached++;
-    a.body.stun = CFG.stunS || stunSeconds();
+    // el MISMO aturdido que el juego según el tiro (SMASH 0,65 s · ULTI 1,5 s; logic/PowerImpact.stunMsFor)
+    a.body.stun = CFG.stunS || stunSeconds(r.powerKind === 'ulti' ? 'inferno' : 'smash');
     a.body.x = knockbackX(a.body.x, B_X[1]);
     const tx = NET_X - (NET_X - COURT.left) * rnd(0.3, 0.6);
     const ty = LAT_C + rnd(-0.5, 0.5) * HALF_W;

@@ -163,12 +163,7 @@ function glow(g: Phaser.GameObjects.Graphics, x: number, y: number, rx: number, 
 // ================================================================ pista dura (azul)
 
 function drawHard(g: Phaser.GameObjects.Graphics) {
-  // sombra bajo la cancha + borde grueso marino
-  g.fillStyle(0x000000, 0.28);
-  g.fillPoints([P(COURT.left - 18, dT - 16), P(COURT.left - 18, dB + 16), P(COURT.right + 14, dB + 16), P(COURT.right + 14, dT - 16)], true);
-  g.fillStyle(0x0a1638, 1);
-  g.fillPoints([P(COURT.left - 9, dT - 9), P(COURT.left - 9, dB + 9), P(COURT.right + 7, dB + 9), P(COURT.right + 7, dT - 9)], true);
-
+  // sin sombra ni borde oscuro alrededor (hacían que la cancha pareciera flotar): el borde es la línea blanca
   // pasillos de dobles: azul profundo; individuales: degradado (más claro cerca)
   g.fillStyle(0x1d4aa0, 1);
   quad(g, COURT.left, dT, COURT.right, dB);
@@ -194,7 +189,7 @@ function drawHard(g: Phaser.GameObjects.Graphics) {
   // sombra del muro del fondo
   for (let i = 0; i < 6; i++) {
     g.fillStyle(0x061033, 0.16 * (1 - i / 6));
-    quad(g, COURT.right - 40 - i * 14, dT, COURT.right + 7, dB);
+    quad(g, COURT.right - 40 - i * 14, dT, COURT.right, dB);
   }
 
   // líneas: halo neón + blanco
@@ -206,9 +201,7 @@ function drawHard(g: Phaser.GameObjects.Graphics) {
 
 function drawClay(g: Phaser.GameObjects.Graphics) {
   // la textura de arcilla la pone la imagen: aquí solo se matiza y se pintan las líneas
-  // contorno exterior apenas más oscuro (marca el límite de la cancha)
-  g.fillStyle(0x6e230a, 0.18);
-  g.fillPoints([P(COURT.left - 14, dT - 12), P(COURT.left - 14, dB + 12), P(COURT.right + 10, dB + 12), P(COURT.right + 10, dT - 12)], true);
+  // sin contorno oscuro alrededor: el límite de la cancha lo marcan las líneas blancas
   // superficie: tinte cálido algo más saturado que el exterior
   g.fillStyle(0xd2561f, 0.3);
   quad(g, COURT.left, dT, COURT.right, dB);
@@ -233,10 +226,9 @@ function drawClay(g: Phaser.GameObjects.Graphics) {
   // sombra del muro del fondo
   for (let i = 0; i < 6; i++) {
     g.fillStyle(0x3a1206, 0.13 * (1 - i / 6));
-    quad(g, COURT.right - 40 - i * 14, dT, COURT.right + 10, dB);
+    quad(g, COURT.right - 40 - i * 14, dT, COURT.right, dB);
   }
 
-  // líneas: sombra terrosa + blanco hueso (cinta de arcilla)
-  strokeLines(g, 9, 0x6e230a, 0.35);
+  // líneas: blanco hueso (cinta de arcilla), sin sombra oscura
   strokeLines(g, 5, 0xfbf3e6, 1);
 }

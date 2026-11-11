@@ -2,7 +2,8 @@
  * PASE DE BATALLA — configuración de la temporada (niveles, premios, precio). Sin lógica de premios:
  * operations.addXp la usa para llenar el pase sin imports circulares.
  *
- * El pase entrega dinero (billetes) y cosméticos; las monedas quedan reservadas para Ranked.
+ * El pase entrega algo de dinero (billetes), cosméticos (efecto pelota, cargando golpe), los 3 EMOTES, Rayos para la
+ * ZONA y el personaje del final; las monedas quedan reservadas para Ranked.
  */
 import type { ItemId, PlayerState, StyleId } from './player';
 import type { SkinId } from '../characters/skins';
@@ -11,7 +12,9 @@ import { newBattlePass } from './battlePassState';
 export type BpReward =
   | { kind: 'cash'; amount: number }
   | { kind: 'item'; item: ItemId; name: string }
-  | { kind: 'character'; skin: SkinId; style?: StyleId; name: string };
+  | { kind: 'character'; skin: SkinId; style?: StyleId; name: string }
+  /** Rayos de la ZONA (zone.rays): se gastan en sus atributos (PERSONALIZACIÓN) */
+  | { kind: 'rays'; amount: number };
 
 export type BpTrack = 'free' | 'prem';
 
@@ -21,16 +24,18 @@ export interface BpTier {
 }
 
 const $ = (amount: number): BpReward => ({ kind: 'cash', amount });
-// Conversión de antiguos premios en monedas a dinero, manteniendo un valor moderado.
-const cashReward = (coins: number): BpReward => ({ kind: 'cash', amount: Math.max(5, Math.round(coins / 15)) });
 const it = (item: ItemId, name: string): BpReward => ({ kind: 'item', item, name });
+const rays = (amount: number): BpReward => ({ kind: 'rays', amount });
 
 export const BP_SEASON = {
   id: 'S1',
   name: 'TEMPORADA 1',
   /** EXP por nivel del pase */
   xpPerTier: 100,
-  /** precio del Pase Premium en DINERO (el camino gratis da dinero suficiente a mitad de temporada) */
+  /**
+   * precio del Pase Premium en DINERO. Hoy no se usa (premiumRealMoney: se paga con dinero real); el camino gratis ya NO
+   * alcanza para pagarlo (da 40).
+   */
   premiumCash: 120,
   /**
    * El Pase Premium se paga SOLO con dinero real (compra dentro de la app). Precio mostrado en CLP.
@@ -38,41 +43,49 @@ export const BP_SEASON = {
    */
   premiumRealPrice: '$3.990 CLP',
   premiumRealMoney: true,
-  /** si un premio de cosmético ya se tiene: compensación en dinero */
-  duplicateCash: 10,
-  /** regalo de bienvenida (no cuenta como nivel del pase) */
-  welcome: { free: $(10), prem: $(20) } as { free: BpReward; prem: BpReward },
-  /** niveles 1..N (índice 0 = nivel 1) */
+  /** si un premio de cosmético ya se tiene: compensación en dinero (baja: no debe inflar el dinero del pase) */
+  duplicateCash: 3,
+  /** regalo de bienvenida (no cuenta como nivel del pase): el primer emote, para tener uno desde la primera partida */
+  welcome: { free: it('emote:happy', 'Risa'), prem: $(5) } as { free: BpReward; prem: BpReward },
+  /**
+   * DINERO DEL PASE (11-11-2026, con el usuario): un pase COMPLETO (gratis + premium) da como mucho para 2 objetos de la
+   * Tienda de 50: GRATIS 40 y PREMIUM 60 (con la bienvenida) = 100. El resto del dinero sale de la ruleta, el premio
+   * diario y la clasificación semanal. Antes daba 175 + 535.
+   * niveles 1..N (índice 0 = nivel 1): entre medio, los emotes (3 y 11), los efectos
+   * de pelota (ROSADO 5, ORO 10 premium y VERDE 15), el cargando golpe TULIPÁN (12 premium), Rayos para la ZONA (25) y Mai (30).
+   * ESTILOS DE COLOR del personaje (domain/charColors.ts): AZUL 8 y VERDE 18 (gratis); MORADO 7, DORADO 21 y SOMBRA 27
+   * (premium). Se equipan en PERSONALIZACIÓN.
+   */
   tiers: [
-    { free: cashReward(50), prem: cashReward(150) },
-    { free: cashReward(60), prem: $(10) },
-    { free: $(10), prem: cashReward(200) },
-    { free: cashReward(80), prem: $(15) },
-    { free: it('style:red', 'Estilo Rojo'), prem: cashReward(250) },
-    { free: $(15), prem: $(20) },
-    { free: cashReward(100), prem: cashReward(300) },
-    { free: cashReward(100), prem: $(20) },
-    { free: $(20), prem: cashReward(300) },
-    { free: cashReward(120), prem: it('style:gold', 'Estilo Oro') },
-    { free: cashReward(120), prem: $(25) },
-    { free: $(20), prem: cashReward(350) },
-    { free: cashReward(130), prem: $(25) },
-    { free: cashReward(140), prem: cashReward(350) },
-    { free: it('style:green', 'Estilo Verde'), prem: $(30) },
-    { free: $(25), prem: cashReward(400) },
-    { free: cashReward(150), prem: $(30) },
-    { free: cashReward(160), prem: cashReward(400) },
-    { free: $(25), prem: $(35) },
-    { free: cashReward(200), prem: cashReward(500) },
-    { free: cashReward(170), prem: $(35) },
-    { free: $(30), prem: cashReward(500) },
-    { free: cashReward(180), prem: $(40) },
-    { free: cashReward(190), prem: cashReward(550) },
-    { free: $(30), prem: $(50) },
-    { free: cashReward(200), prem: cashReward(600) },
-    { free: cashReward(210), prem: $(50) },
-    { free: $(40), prem: cashReward(650) },
-    { free: cashReward(230), prem: $(60) },
+    { free: $(1), prem: $(2) },
+    { free: $(1), prem: $(2) },
+    { free: it('emote:cool', 'Pensando'), prem: $(2) },
+    { free: $(1), prem: $(2) },
+    { free: it('style:pink', 'Rosado'), prem: $(2) },
+    { free: $(2), prem: $(2) },
+    { free: $(1), prem: it('color:morado', 'Color Morado') },
+    { free: it('color:azul', 'Color Azul'), prem: $(2) },
+    { free: $(2), prem: $(2) },
+    { free: $(1), prem: it('style:gold', 'Oro') },
+    { free: it('emote:wow', 'Enojado'), prem: $(2) },
+    { free: $(2), prem: it('charge:tulip', 'Tulipán') },
+    { free: $(1), prem: $(2) },
+    { free: $(2), prem: $(2) },
+    { free: it('style:green', 'Verde'), prem: $(2) },
+    { free: $(2), prem: $(3) },
+    { free: $(1), prem: $(2) },
+    { free: it('color:verde', 'Color Verde'), prem: $(3) },
+    { free: $(2), prem: $(3) },
+    { free: $(2), prem: $(3) },
+    { free: $(1), prem: it('color:dorado', 'Color Dorado') },
+    { free: $(2), prem: $(2) },
+    { free: $(2), prem: $(3) },
+    { free: $(3), prem: $(2) },
+    { free: rays(1), prem: rays(2) },
+    { free: $(2), prem: $(3) },
+    { free: $(3), prem: it('color:sombra', 'Color Sombra') },
+    { free: $(3), prem: $(3) },
+    { free: $(3), prem: $(4) },
     { free: { kind: 'character', skin: 'mai', name: 'Mai' }, prem: { kind: 'character', skin: 'mai', style: 'gold', name: 'Mai · Estilo Oro' } },
   ] as BpTier[],
 };

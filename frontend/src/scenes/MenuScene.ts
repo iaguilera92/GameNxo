@@ -3,6 +3,7 @@ import { C, FONT, restartOnResize, textStyle } from '../ui/theme';
 import { Character, playerLook } from '../objects/Character';
 import { getProfile, levelProgress } from '../logic/Profile';
 import { addPortrait } from '../characters/portrait';
+import { applyCharColor } from '../fx/CharColorFx';
 import type { SkinId } from '../characters/skins';
 import { roundedPoly } from '../ui/shapes';
 import { RankBadge, preloadRankBadges } from '../ui/RankBadge';
@@ -98,8 +99,11 @@ export class MenuScene extends Phaser.Scene {
     const px = W / 2 + HERO_SHIFT_X;
     this.add.ellipse(px, feetY, 460, 90, 0x0a1a3a, 0.5);
     // retrato estático si la skin lo tiene; si no, el personaje animado de siempre
-    if (!addPortrait(this, p.skin as SkinId, px, feetY + 8, HERO_H)) {
+    const portrait = addPortrait(this, p.skin as SkinId, px, feetY + 8, HERO_H);
+    if (portrait) applyCharColor(portrait, p.color, p.skin); // tu ESTILO DE COLOR (PERSONALIZACIÓN)
+    else {
       const hero = new Character(this, px - 10, feetY, playerLook(p.skin), 'front').setScale(4.8);
+      applyCharColor(hero, p.color, p.skin);
       this.time.addEvent({ delay: 2800, loop: true, callback: () => hero.swing() });
     }
 

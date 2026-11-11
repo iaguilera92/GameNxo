@@ -58,6 +58,7 @@ const PALETTES = {
   red: { body: { top: 0xff8a94, mid: 0xff4f5e, bottom: 0xc42536, shadow: 0x1f6bff, shadowA: 0.95, glossA: 0.3 }, text: '#ffffff', stroke: 6 },
   blue: { body: { top: 0x6fb2ff, mid: 0x2f7bff, bottom: 0x153f9e, shadow: 0x0a1638, shadowA: 0.9, glossA: 0.3 }, text: '#ffffff', stroke: 6 },
   grey: { body: { top: 0x3c465e, mid: 0x2e374c, bottom: 0x232a3b, shadow: 0x1f6bff, shadowA: 0.35, glossA: 0.08 }, text: '#8d99b5', stroke: 0 },
+  green: { body: { top: 0x7dffa8, mid: 0x2fd46a, bottom: 0x168a40, shadow: 0x0a1638, shadowA: 0.9, glossA: 0.3 }, text: '#ffffff', stroke: 6 },
 };
 export type ArcadePalette = keyof typeof PALETTES;
 

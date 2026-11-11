@@ -29,9 +29,11 @@ interface Art {
 
 /** valores que imprime tools/build-charge-fx.mjs */
 export const CHARGE_ART: Record<SpriteChargeFx, Art> = {
-  fire: { key: 'charge-fire', file: 'assets/charge-fire.png', cw: 256, ch: 262, anchorFy: 0.863, ringFill: 0.83, additive: true },
+  // fuego (11-11-2026): hoja nueva en .webp, como el tulipán
+  fire: { key: 'charge-fire', file: 'assets/charge-fire.webp', cw: 256, ch: 236, anchorFy: 0.856, ringFill: 0.86, additive: true },
   energy: { key: 'charge-energy', file: 'assets/charge-energy.png', cw: 256, ch: 230, anchorFy: 0.83, ringFill: 0.88, additive: true },
-  tulip: { key: 'charge-tulip', file: 'assets/charge-tulip.png', cw: 256, ch: 287, anchorFy: 0.868, ringFill: 0.89, additive: false },
+  // tulipán (11-11-2026): hoja nueva en .webp (la herramienta saca el .png y tools/convert-image.mjs lo pasa a webp)
+  tulip: { key: 'charge-tulip', file: 'assets/charge-tulip.webp', cw: 256, ch: 256, anchorFy: 0.84, ringFill: 0.83, additive: false },
 };
 
 /** Ancho del aro en pantalla (px) a escala 1 de perspectiva: el del aro clásico (120 px) a carga máxima. */

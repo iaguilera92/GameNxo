@@ -3,6 +3,7 @@ import { FONT } from './theme';
 import { roundedPoly } from './shapes';
 import { Character, type CharacterLook } from '../objects/Character';
 import { addPortrait } from '../characters/portrait';
+import { applyCharColor } from '../fx/CharColorFx';
 import type { SkinId } from '../characters/skins';
 
 /**
@@ -18,6 +19,8 @@ export interface VersusSide {
   portraitSkin?: SkinId;
   /** victorias totales: se muestran bajo la placa con un trofeo. 0 o sin dato = no se muestra nada */
   wins?: number;
+  /** ESTILO DE COLOR del personaje (solo el jugador; fx/CharColorFx.ts) */
+  color?: string;
 }
 
 const BLUE = { main: 0x2f7bff, deep: 0x0b2a78, glow: 0x6fb2ff, text: '#9fd0ff' };
@@ -91,6 +94,7 @@ export function showVersus(scene: Phaser.Scene, player: VersusSide, rival: Versu
     const obj: Phaser.GameObjects.Image | Character =
       portrait ?? new Character(scene, fromX, feetY, side.look, 'front').setScale(height / 150);
     obj.setDepth(5);
+    if (side.color && side.color !== 'classic') applyCharColor(obj, side.color, side.portraitSkin ?? 'nxo');
     // el rival (abajo a la derecha) mira hacia la izquierda, hacia el jugador
     if (!top && obj instanceof Character) obj.facing = -1;
     if (!top && portrait) portrait.setFlipX(true);

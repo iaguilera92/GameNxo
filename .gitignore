@@ -6,6 +6,7 @@ frontend/android/app/build
 frontend/android/build
 frontend/android/.gradle
 frontend/android/local.properties
+frontend/.env
 # backend
 backend/dist
 backend/.env

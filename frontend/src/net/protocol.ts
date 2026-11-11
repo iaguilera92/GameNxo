@@ -55,6 +55,8 @@ export interface PlayerProfile {
   zoneStats?: ZoneStatLevels;
   /** efecto de carga elegido: classic | fire | energy | tulip (sin él, el rival usa el de su personaje) */
   charge?: string;
+  /** ESTILO DE COLOR del personaje (azul, verde…; sin él o 'classic' = colores de siempre) */
+  color?: string;
 }
 
 export interface FindRequest {
@@ -146,8 +148,10 @@ export interface HitMsg {
  *  smash-armed / smash-disarmed el emisor arma / consume su SMASH (aura en el rival)
  *  smash-cine                   empieza la cinemática del SMASH del emisor (data: x, y, overhead, ms)
  *  inferno-cine                 empieza la cinemática del INFERNO del emisor (data: x, y, tx, ty, ms, power)
+ *  defensive                    SOMBRA / SUPERSALTO del emisor (data: kind = shadow | jump, x, y, tx, ty, ms)
  */
 export type ActionKind =
+  | 'defensive'
   | 'toss'
   | 'catch'
   | 'sprint-start'

@@ -2082,6 +2082,7 @@ export class MatchScene extends Phaser.Scene {
     for (const a of [this.player, this.bot]) {
       this.clearRacket(a); // la raqueta perdida vuelve a la mano en el punto siguiente
       a.ch.releaseRemate(); // pose de remate sin golpe (punto terminado a mitad): vuelve a animarse
+      this.diagCause = 'saque'; // (log) el salto a la posición de saque es normal
       a.stun = 0;
       a.warp = 1;
       a.vanished = false;
@@ -4748,6 +4749,9 @@ export class MatchScene extends Phaser.Scene {
     // fin del punto / partido: su reacción (celebra / se lamenta, victoria / derrota) no se corta con la carrera
     // (la interpolación aún lo mueve unos ms y eso la cancelaba: se veía otra animación)
     if (r && (this.phase === 'pointover' || this.phase === 'over')) {
+      // deja de correr (si no, se queda la carrera congelada); su reacción (estado ocupado) no se corta con esto
+      bt.ch.setMoving(false, 0);
+      bt.ch.setCharging(false);
       this.rivalChargeT = 0;
       this.rivalChargeFx(dt);
       return;

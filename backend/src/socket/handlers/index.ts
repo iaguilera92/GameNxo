@@ -223,6 +223,7 @@ export function registerSocketHandlers(io: Server) {
         // en el log: golpes y acciones que pasan por el servidor (los estados no: son 20 por segundo)
         if (!volatile) {
           const d = data as { kind?: unknown; seq?: unknown };
+          if (d.kind === 'ping' || d.kind === 'pong') return; // medición del retraso cada 2 s: solo ruido en el log
           matchLog.write(room.id, 'srv', { ev: `relay:${ev}`, from: rooms.roleOf(room, socket.id), kind: String(d.kind ?? ''), seq: typeof d.seq === 'number' ? d.seq : undefined });
         }
       });

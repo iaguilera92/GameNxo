@@ -361,3 +361,19 @@ NOTAS PARA CLAUDE (pendientes detectados por Kiro, sin corregir)
    destello, "JUEGO, SET Y PARTIDO", marcador final (la cifra del ganador sube, corona), sello ¡PARTIDO GANADO! con
    rayos + confeti + fanfarria o PARTIDO PERDIDO con ceniza + notas que bajan. Luego endMatch (pantalla de resultados
    sin cambios). MatchScene.pointTo pone phase = 'over' al empezar el final (el OVER del servidor no lo duplica).
+
+[12-11-2026] Claude: ANÁLISIS del primer LOG-PARTIDO (Nxo vs Nxo, 4621 líneas)
+ - CAUSA de los saltos: RemoteInterp.push hacía { t, st, ...s } y el StateMsg recibido trae su propio t (reloj del EMISOR)
+   -> pisaba la hora local. Con relojes desfasados un lado veía al rival quieto (estados "en el futuro") hasta el golpe
+   (host: 1033 de 1375 muestras con el rival lejos de su estado real; guest: 1). Ahora { ...s, t, st }.
+ - pointover: el rival quedaba con la carrera congelada (run-in-place): netBotTick hace setMoving(false) en pointover/over.
+ - Log: el servidor ya no registra ping/pong; el salto a la posición de saque sale con cause=saque.
+[12-11-2026] KIRO: resultado de partido ONLINE con el duelo de apuestas (solo en MODO DESARROLLO)
+ - MatchEndScene: los 2 cuadros del duelo (TÚ / RIVAL bajo las recompensas) solo salían con d.ranked, y online no se
+   apuesta, así que nunca salían. Nuevo MatchEndScene.duel(): Ranked = la apuesta real (como antes); partido online
+   (d.lan) + isDevMode() = duelo de PRUEBA con la entrada x1 de tu liga (matchStakes(myLeague(), 1)), cabecera
+   "(PRUEBA, sin monedas)". Solo visual: no cobra ni paga monedas. Con el modo desarrollo apagado, online sin cuadros.
+ - rankedDuel(c, w, y0, duel) recibe el duelo; el botón OTRA RANKED / OTRA PARTIDA y el ascenso siguen leyendo d.ranked.
+ - Si se agrega apuesta real online: rellenar el mismo Duel con lo apostado (demo: false).
+ - deploy.sh borra los logs de partidas (logs/matches y LOG-PARTIDO.txt) en cada despliegue, justo antes de reiniciar;
+   deploy.log se conserva. DEPLOY_KEEP_LOGS=1 para no borrarlos.

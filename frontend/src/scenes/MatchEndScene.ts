@@ -12,12 +12,16 @@ import { openWheel, whenWheelReady } from './WheelScene';
 import { drawWheelFace, drawXpIcon } from '../ui/wheelArt';
 import { WHEEL } from '../domain/wheelConfig';
 import { getPlayer } from '../domain/playerStore';
-import { myPosition, rankedState, settleCurrentRanked } from '../logic/Ranked';
+import { myLeague, myPosition, rankedState, settleCurrentRanked } from '../logic/Ranked';
+import { matchStakes } from '../domain/rankedConfig';
+import { isDevMode } from '../domain/devMode';
 import { recordWin } from '../logic/Stats';
 import { showInterstitial } from '../ads/ads';
 import type { EndClip } from '../objects/NxoActor';
 
 type DuelClips = { idle: EndClip; victory: EndClip; defeat: EndClip };
+/** Lo que muestran los dos cuadros del duelo: entrada de cada uno, bolsa y cambio neto. `demo` = solo visual (sin monedas). */
+type Duel = { entry: number; pot: number; delta: number; demo: boolean };
 
 /** Id único de partida (ruletas: cada partida se cuenta una sola vez). */
 function newMatchId(): string {
@@ -264,7 +268,7 @@ export class MatchEndScene extends Phaser.Scene {
     this.banner(W, win);
     const btnH = 84;
     const btnY = H - 26 - btnH / 2;
-    const panelH = 108 + 16 + CARD_H + 22 + (d.ranked ? RANKED_H : 0);
+    const panelH = 108 + 16 + CARD_H + 22 + (this.duel() ? RANKED_H : 0);
     const panelTop = btnY - btnH / 2 - 14 - panelH;
     this.resultPanel(W, panelTop, panelH);
     this.buttons(W, btnY, btnH);
@@ -401,12 +405,10 @@ export class MatchEndScene extends Phaser.Scene {
     if (!store._coins) store._coins = addCoins(d.surrendered ? COINS_SURRENDER : d.win ? COINS_WIN : COINS_LOSS);
     this.rewardCards(c, W, top, w, sepY + 16);
 
-    // --- ranking: solo si llega (clasificatoria con competitivo desbloqueado). No se inventan puntos.
-    if (d.ranked) {
-      const r = d.ranked;
-      this.rankedDuel(c, w, sepY + 16 + CARD_H + 20);
-      if (r.promotedTo) this.levelUp(W / 2, top - 26, 0, '¡ASCENSO DE LIGA!');
-    }
+    // --- duelo de apuestas: Ranked (con la apuesta real) o, en desarrollo, el partido online (de prueba)
+    const duel = this.duel();
+    if (duel) this.rankedDuel(c, w, sepY + 16 + CARD_H + 20, duel);
+    if (d.ranked?.promotedTo) this.levelUp(W / 2, top - 26, 0, '¡ASCENSO DE LIGA!');
 
     // entrada: sube desde abajo junto con los botones
     c.setAlpha(0).setY(top + 60);
@@ -595,20 +597,40 @@ export class MatchEndScene extends Phaser.Scene {
   }
 
   /**
-   * Duelo de apuestas Ranked: dos cuadros (TÚ · RIVAL) con lo apostado por cada uno. Las monedas del que
+   * Qué duelo se muestra (null = ninguno):
+   *  - Ranked: la apuesta real que se liquidó (d.ranked).
+   *  - MODO DESARROLLO + partido online (d.lan): online aún no se apuesta nada, pero los cuadros se ven para probarlos,
+   *    con la entrada x1 de tu liga. Es SOLO visual: no se cobra ni se paga ninguna moneda.
+   */
+  private duel(): Duel | null {
+    const d = this.d;
+    const r = d.ranked;
+    if (r) {
+      const entry = r.entry ?? Math.abs(r.delta);
+      return { entry, pot: r.pot ?? entry * 2, delta: r.delta, demo: false };
+    }
+    if (d.lan && isDevMode()) {
+      const { entry, prize } = matchStakes(myLeague(), 1);
+      return { entry, pot: prize, delta: d.win ? prize - entry : -entry, demo: true };
+    }
+    return null;
+  }
+
+  /**
+   * Duelo de apuestas: dos cuadros (TÚ · RIVAL) con lo apostado por cada uno. Las monedas del que
    * perdió vuelan al cuadro del que ganó: el ganador sube a la bolsa completa y el perdedor queda en 0.
    */
-  private rankedDuel(c: Phaser.GameObjects.Container, w: number, y0: number) {
+  private rankedDuel(c: Phaser.GameObjects.Container, w: number, y0: number, r: Duel) {
     const d = this.d;
-    const r = d.ranked!;
-    const entry = r.entry ?? Math.abs(r.delta);
-    const pot = r.pot ?? entry * 2;
+    const entry = r.entry;
+    const pot = r.pot;
     const rivalStake = pot - entry;
     const won = r.delta > 0;
-    // cabecera: resultado de la apuesta (rendirse = perderla)
+    // cabecera: resultado de la apuesta (rendirse = perderla); la de prueba lo dice
     const hy = y0 + 18;
+    const headText = `${won ? 'Has ganado la apuesta' : 'Has perdido la apuesta'}${r.demo ? ' (PRUEBA, sin monedas)' : ''}:`;
     const head = this.add
-      .text(0, hy, won ? 'Has ganado la apuesta:' : 'Has perdido la apuesta:', { fontFamily: FONT, fontSize: '22px', color: won ? '#ffd23f' : '#ff9aa3', stroke: '#0a1638', strokeThickness: 5 })
+      .text(0, hy, headText, { fontFamily: FONT, fontSize: '22px', color: won ? '#ffd23f' : '#ff9aa3', stroke: '#0a1638', strokeThickness: 5 })
       .setOrigin(0.5)
       .setLetterSpacing(1);
     fitText(head, w - 48);

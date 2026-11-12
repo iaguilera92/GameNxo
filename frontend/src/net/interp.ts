@@ -55,7 +55,8 @@ export class RemoteInterp {
     const sane = !!last && last.st !== -Infinity && senderT > last.st && senderT - last.st < 1000;
     const ideal = !last ? recvT : sane ? last.t + (senderT - last.st) : recvT;
     const t = Math.min(recvT, Math.max(recvT - MAX_LAG, ideal, last ? last.t + 1 : -Infinity));
-    this.buf.push({ t, st: senderT, ...s });
+    // (...s primero: el estado recibido trae su propio `t` = reloj del EMISOR, que no debe pisar la hora local)
+    this.buf.push({ ...s, t, st: senderT });
     if (this.buf.length > 60) this.buf.shift();
   }
 
@@ -64,7 +65,7 @@ export class RemoteInterp {
    * siguientes continúan desde este punto.
    */
   reset(now: number, s: RemoteSnap) {
-    this.buf = [{ t: now - this.delayMs, st: -Infinity, ...s }];
+    this.buf = [{ ...s, t: now - this.delayMs, st: -Infinity }];
   }
 
   clear() {

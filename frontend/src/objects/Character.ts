@@ -477,6 +477,11 @@ export class Character extends Phaser.GameObjects.Container {
     return this.nxo?.serveBounceBall() ?? null;
   }
 
+  /** Suelta la pose del REMATE sin golpear (ver NxoActor.releaseRemate). */
+  releaseRemate() {
+    this.nxo?.releaseRemate();
+  }
+
   /** Estirada con su animación (hojas nuevas). false = sin hoja: el llamador inclina el cuerpo. */
   lunge(side: number): boolean {
     return this.nxo?.lunge(side) ?? false;

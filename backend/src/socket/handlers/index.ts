@@ -13,6 +13,8 @@ import {
   EV,
   type FindRequest,
   type MatchedMsg,
+  type ResumeRequest,
+  type ResumedMsg,
   type OverMsg,
   type ScoreMsg,
   type SearchingMsg,
@@ -47,6 +49,8 @@ export function registerSocketHandlers(io: Server) {
     },
   );
   const readyTimers = new Map<string, NodeJS.Timeout>();
+  /** RECONEXIÓN: jugador ausente (clave) -> temporizador que lo da por perdido */
+  const awayTimers = new Map<string, NodeJS.Timeout>();
   /** duración máxima de cada partido en curso */
   const matchTimers = new Map<string, NodeJS.Timeout>();
 
@@ -64,6 +68,11 @@ export function registerSocketHandlers(io: Server) {
       const t = timers.get(room.id);
       if (t) clearTimeout(t);
       timers.delete(room.id);
+    }
+    for (const p of room.players) {
+      const t = awayTimers.get(p.token);
+      if (t) clearTimeout(t);
+      awayTimers.delete(p.token);
     }
     log(`sala ${short(room.id)} terminada: gana ${msg.winner} (${msg.reason}) ${msg.games.host}-${msg.games.guest}`);
     rooms.finish(room.id);
@@ -158,8 +167,8 @@ export function registerSocketHandlers(io: Server) {
         }
         // emparejados: los dos pasan al partido sin confirmaciones
         const [host, guest] = room.players;
-        const toHost: MatchedMsg = { roomId: room.id, role: 'host', opponent: guest.profile, gamesToWin: CONFIG.gamesToWin };
-        const toGuest: MatchedMsg = { roomId: room.id, role: 'guest', opponent: host.profile, gamesToWin: CONFIG.gamesToWin };
+        const toHost: MatchedMsg = { roomId: room.id, role: 'host', opponent: guest.profile, gamesToWin: CONFIG.gamesToWin, token: host.token };
+        const toGuest: MatchedMsg = { roomId: room.id, role: 'guest', opponent: host.profile, gamesToWin: CONFIG.gamesToWin, token: guest.token };
         io.to(host.id).emit(EV.MATCHED, toHost);
         io.to(guest.id).emit(EV.MATCHED, toGuest);
         log(`emparejados ${host.profile.name} vs ${guest.profile.name} sala ${short(room.id)} 2/2 → PLAYING`);
@@ -227,6 +236,25 @@ export function registerSocketHandlers(io: Server) {
       }),
     );
 
+    // RECONEXIÓN: vuelve con su clave (otra conexión) y recupera su sitio; los dos rejuegan el punto en curso
+    socket.on(
+      EV.RESUME,
+      guarded<ResumeRequest>('ctl', (req) => {
+        const r = rooms.rejoin(String(req?.roomId ?? ''), String(req?.token ?? ''), socket.id);
+        if (!r) {
+          socket.emit(EV.ERROR, { code: 'not_in_room', message: 'No se pudo volver al partido' });
+          return;
+        }
+        const t = awayTimers.get(r.player.token);
+        if (t) clearTimeout(t);
+        awayTimers.delete(r.player.token);
+        const msg: ResumedMsg = { score: scoreMsg(r.room) };
+        socket.emit(EV.RESUMED, msg);
+        if (r.opponent) io.to(r.opponent.id).emit(EV.OPPONENT_BACK, msg.score);
+        log(`reconectado ${r.player.profile.name} a la sala ${short(r.room.id)} (${short(socket.id)})`);
+      }),
+    );
+
     const leave = (reason: 'abandon' | 'disconnect') => {
       const r = rooms.leave(socket.id, reason);
       if (!r) return;
@@ -241,9 +269,36 @@ export function registerSocketHandlers(io: Server) {
       EV.LEAVE,
       guarded('ctl', () => leave('abandon')),
     );
-    socket.on('disconnect', () => {
-      log(`desconectado ${short(socket.id)}`);
+    socket.on('disconnect', (why: string) => {
+      log(`desconectado ${short(socket.id)} (${why})`);
       try {
+        // en pleno partido: su sitio se guarda unos segundos por si reconecta (datos móviles, túnel, cambio de red)
+        const room = rooms.roomOf(socket.id);
+        // (solo cortes de red: 'ping timeout' / 'transport close'; un corte forzado por abuso o mensaje enorme pierde al instante)
+        const netDrop = why === 'ping timeout' || why === 'transport close';
+        if (netDrop && room && room.status === 'PLAYING' && started.has(room.id) && CONFIG.reconnectGraceMs > 0) {
+          const a = rooms.markAway(socket.id);
+          if (a) {
+            if (a.opponent) io.to(a.opponent.id).emit(EV.OPPONENT_AWAY, {});
+            const oldId = socket.id;
+            const token = a.player.token;
+            awayTimers.set(
+              token,
+              setTimeout(() => {
+                awayTimers.delete(token);
+                const cur = rooms.get(a.room.id);
+                const p = cur?.players.find((x) => x.token === token);
+                if (!cur || !p?.away || p.id !== oldId) return; // ya volvió o la sala terminó
+                const r = rooms.leave(oldId, 'disconnect');
+                if (!r?.wasPlaying) return;
+                if (r.opponent) io.to(r.opponent.id).emit(EV.OPPONENT_LEFT, { reason: 'disconnect' });
+                finish(r.room);
+              }, CONFIG.reconnectGraceMs),
+            );
+            log(`ausente ${a.player.profile.name} en la sala ${short(room.id)}: ${CONFIG.reconnectGraceMs} ms para volver`);
+            return;
+          }
+        }
         leave('disconnect');
       } catch (e) {
         log(`error al liberar la sala de ${short(socket.id)}:`, e);

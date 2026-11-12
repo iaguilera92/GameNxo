@@ -1,7 +1,13 @@
-// SIMULADOR DE ECONOMÍA: 3 perfiles de jugador durante N días con los módulos REALES de src/domain (sin copiar números).
-//   node tools/sim-economy.mjs                  (60 días, semilla 1, los 3 perfiles)
+// SIMULADOR DE ECONOMÍA: 4 perfiles de jugador durante N días con los módulos REALES de src/domain (sin copiar números).
+// Qué mide y por qué: ECONOMIA.txt (raíz del repo).
+//   node tools/sim-economy.mjs                  (60 días, semilla 1, los 4 perfiles)
 //   node tools/sim-economy.mjs --days=60 --seed=7 --profile=casual
-//   node tools/sim-economy.mjs --runs=20        (promedia 20 semillas: días de nivel / compras = mediana)
+//   node tools/sim-economy.mjs --runs=20        (20 semillas: días de nivel / compras = mediana)
+//   node tools/sim-economy.mjs --runs=20 --propuesta   (+ lo aprobado que aún no está en src/domain)
+// Variantes para probar números sin tocar archivos (se pueden combinar):
+//   --inicio=5000 (monedas iniciales) --pase=350 (XP por nivel del pase) --semBronce=6000 --semBronceDinero=0
+//   --semPlata=8000 --domingo=3500 (monedas del domingo) --premio=1.9 (premio Ranked = entrada × N)
+//   --posDinero=50,20,5 (dinero Top 1 / 10 / 50) --xp=100,120 (curva: XP del nivel 1 y cuánto sube por nivel)
 // Igual que tools/test-ranked.mjs: Node carga los .ts del dominio directamente (un hook añade ".ts" al resolver).
 //
 // Supuestos (los mismos para todos los perfiles; cambian por perfil solo las partidas, sesiones, anuncios y apuesta):
@@ -9,15 +15,19 @@
 //   - Cada partida: XP y monedas de MatchEndScene (XP_WIN/XP_LOSS, COINS_WIN/COINS_LOSS), liquidación Ranked y ruleta
 //     (recordWin: 1 por partida completada, hasta WHEEL.perDay). No hay rendiciones.
 //   - Se reclama todo lo que se puede del Pase (camino GRATIS), los premios semanales de Ranked y, si el perfil lo hace,
-//     el premio diario. Los Rayos se gastan en la ZONA en cuanto está desbloqueada (nivel 10).
+//     el premio diario. Los Rayos se gastan en la ZONA en cuanto está desbloqueada (UNLOCK_LEVEL.zone).
 //   - Tienda: compra el ítem más barato que pueda (nivel mínimo incluido), en cuanto le alcanza el dinero.
 //   - Anuncios x2: premio diario y/o ruletas (los únicos x2 que existen hoy).
-//   - Temporada del pase = los días simulados (BP_SEASON no tiene fecha de cierre).
+//   - Pase MENSUAL (BP_SEASON.month): cada mes del calendario es una temporada nueva con los mismos premios (los
+//     cosméticos ya obtenidos salen como "repetido"). El reloj del juego (gameClock) sigue al de la simulación.
+//   - Empieza el lunes 01-03-2027: el primer mes de pase es completo (marzo) y el segundo también (abril).
+//   - COLCHÓN RANKED: antes de cada partida se mira cuántas entradas x1 de su liga puede pagar con su saldo.
 import { register } from 'node:module';
 
-// con --propuesta la curva de XP propuesta (src/config.ts no es del dominio y su export no se puede cambiar en memoria)
-// se simula reescribiendo esa línea al cargar el archivo
-const XP_PROPOSED = process.argv.includes('--propuesta') ? 'return 200 + (lvl - 1) * 100' : '';
+// --xp=a,b: otra curva de XP. xpToNext vive en src/config.ts (no es del dominio) y un export no se cambia en memoria:
+// se reescribe esa línea al cargar el archivo
+const XP_ARG = process.argv.find((a) => a.startsWith('--xp='))?.slice(5).split(',').map(Number);
+const XP_PROPOSED = XP_ARG ? `${XP_ARG[0]} + (lvl - 1) * ${XP_ARG[1]};` : '';
 const hook = `
 export async function resolve(spec, ctx, next) {
   if ((spec.startsWith('./') || spec.startsWith('../')) && !/\\.[cm]?[jt]s$/.test(spec)) {
@@ -29,7 +39,7 @@ export async function load(url, ctx, next) {
   const r = await next(url, ctx);
   const x = ${JSON.stringify(XP_PROPOSED)};
   if (x && url.endsWith('/src/config.ts')) {
-    const src = String(r.source).replace('100 + (lvl - 1) * 50', x.replace('return ', ''));
+    const src = String(r.source).replace(/(xpToNext = \\(lvl: number\\) => )[^;]+;/, '$1' + x);
     return { ...r, source: src };
   }
   return r;
@@ -47,6 +57,7 @@ const BP = await import('../src/domain/battlePass.ts');
 const SHOP = await import('../src/domain/shopCatalog.ts');
 const Z = await import('../src/domain/zoneProgress.ts');
 const U = await import('../src/domain/unlocks.ts');
+const TS = await import('../src/domain/timeSource.ts');
 const CFG = await import('../src/config.ts');
 
 // ---------------------------------------------------------------- argumentos
@@ -55,36 +66,78 @@ const DAYS = Number(args.days ?? 60);
 const SEED = Number(args.seed ?? 1);
 const RUNS = Math.max(1, Number(args.runs ?? 1));
 const ONLY = args.profile ?? null;
-/** probabilidad de ganar: la del perfil en Bronce y LEAGUE_PENALTY menos por cada liga de más (el rival sube con la liga) */
-const LEAGUE_PENALTY = 0.05;
+/**
+ * Rival de Ranked como en el juego: MatchmakingScene usa nivel = tuyo ±2 + 2 por liga (tope MAX_LEVEL) y BotProfile.TIERS da
+ * su dificultad (copiado aquí: BotProfile importa Phaser y no carga en Node; mantener igual a src/ai/BotProfile.ts).
+ * El % de victorias del perfil es contra un rival de SU nivel; cada punto de dificultad de más resta DIFF_TO_WIN puntos
+ * (un tramo, 0,45 → 0,60, ≈ −10 %). Con nivel 17+ el rival ya es Experto en todas las ligas: la liga no cambia nada.
+ */
+const BOT_TIERS = [[1, 0.24], [3, 0.34], [6, 0.45], [11, 0.6], [17, 0.75]];
+const botDifficulty = (lvl) => BOT_TIERS.reduce((d, [from, v]) => (lvl >= from ? v : d), BOT_TIERS[0][1]);
+const DIFF_TO_WIN = 0.67;
+function winChance(base, playerLevel, league, rnd) {
+  const delta = Math.floor(rnd() * 5) - 2;
+  const own = Math.max(1, Math.min(CFG.MAX_LEVEL, playerLevel + delta));
+  const rival = Math.min(CFG.MAX_LEVEL, own + 2 * RC.LEAGUE_ORDER.indexOf(league));
+  return Math.max(0.25, base - DIFF_TO_WIN * (botDifficulty(rival) - botDifficulty(own)));
+}
 
-// ---------------------------------------------------------------- propuesta (se prueba EN MEMORIA, sin tocar archivos)
-// Con --propuesta se cambian los objetos de configuración exportados antes de simular. Así se comparan antes/después.
-// Cuando el usuario apruebe, estos números se escriben en src/domain y este bloque se vacía.
+// ---------------------------------------------------------------- propuesta y variantes (EN MEMORIA, sin tocar archivos)
+// --propuesta: lo APROBADO que aún no está en src/domain. Al pasarlo a src/domain, se quita de aquí.
+//   Hoy: el pase de la Temporada 2 en adelante pide 350 XP por nivel (battlePassConfig.ts dice 100 hasta entonces).
 const PROPOSAL = {};
-if (args.propuesta) applyProposal();
-function applyProposal() {
-  PROPOSAL.startingCoins = 3000;
-  BP.BP_SEASON.xpPerTier = 300;
+if (args.propuesta) BP.BP_SEASON.xpPerTier = 350;
+applyVariants();
+/** Variantes sueltas (--inicio, --pase, …; ver la cabecera): cambian solo lo que se pasa. */
+function applyVariants() {
+  const has = (k) => args[k] != null;
+  const n = (k) => Number(args[k]);
+  if (has('inicio')) PROPOSAL.startingCoins = n('inicio');
+  if (has('pase')) BP.BP_SEASON.xpPerTier = n('pase');
   const lg = RC.RANKED.leagues;
-  const wk = { bronze: [6000, 10], silver: [8000, 15], gold: [9000, 20], platinum: [12000, 40], diamond: [15000, 60], challenger: [20000, 80] };
-  for (const [k, [c, g]] of Object.entries(wk)) lg[k].weekly = { coins: c, cash: g };
-  const prices = { 'style:red': 8, 'style:green': 8, 'style:gold': 20, 'style:pink': 12, 'inferno:ice': 35, 'inferno:wind': 50, 'inferno:lightning': 65, 'inferno:tulip': 65, 'smash:ice': 40, 'smash:wind': 45, 'smash:lightning': 50, 'charge:fire': 30, 'charge:energy': 30, 'charge:tulip': 40, 'defensive:blink': 45, 'defensive:shadow': 45, 'defensive:jump': 45 };
-  for (const it of SHOP.SHOP_ITEMS) it.price = prices[it.id];
-  L.LOGIN.rewards[6] = { coins: 2500, cash: 10 };}
+  if (has('semBronce')) lg.bronze.weekly = { ...lg.bronze.weekly, coins: n('semBronce') };
+  if (has('semBronceDinero')) lg.bronze.weekly = { ...lg.bronze.weekly, cash: n('semBronceDinero') };
+  if (has('semPlata')) lg.silver.weekly = { ...lg.silver.weekly, coins: n('semPlata') };
+  if (has('domingo')) L.LOGIN.rewards[6] = { ...L.LOGIN.rewards[6], coins: n('domingo') };
+  if (has('premio')) RC.RANKED.prizeMult = n('premio');
+  if (has('posDinero')) args.posDinero.split(',').map(Number).forEach((c, i) => RC.RANKED.positionPrizes[i] && (RC.RANKED.positionPrizes[i].cash = c));
+}
 
 // ---------------------------------------------------------------- perfiles
 const PROFILES = {
   casual: { label: 'CASUAL', sessions: [12], matches: [3], winRate: 0.45, bet: 1, login: false, adLogin: false, adWheels: 0 },
   regular: { label: 'REGULAR', sessions: [12, 20], matches: [4, 4], winRate: 0.5, bet: 1, login: true, adLogin: true, adWheels: 1 },
   intenso: { label: 'INTENSO', sessions: [10, 15, 20], matches: [7, 7, 6], winRate: 0.55, bet: 2, login: true, adLogin: true, adWheels: 99 },
+  // prueba de estrés: juega como el casual pero pierde 6 de cada 10 (el peor caso para el colchón de Ranked)
+  novato: { label: 'NOVATO (estrés)', sessions: [12], matches: [3], winRate: 0.4, bet: 1, login: false, adLogin: false, adWheels: 0 },
 };
 
 // ---------------------------------------------------------------- utilidades
 const H = 3_600_000;
 const D = 24 * H;
-/** lunes 09-11-2026 00:00 de Chile (UTC-3) */
-const START = Date.UTC(2026, 10, 9, 3);
+/** lunes 01-03-2027 00:00 de Chile (UTC-3): mes de pase completo desde el primer día */
+const START = Date.UTC(2027, 2, 1, 3);
+/** pase mensual: la temporada es el mes del calendario (hora de Chile) */
+const monthOf = (ms) => W.cycleIdAt(ms).slice(0, 7);
+function syncPassSeason(now) {
+  TS.setServerTime(now); // bpSeasonInfo() / bpAddXpInPlace usan el reloj del juego
+  const m = monthOf(now);
+  if (BP.BP_SEASON.month !== m) {
+    BP.BP_SEASON.month = m;
+    BP.BP_SEASON.id = `S-${m}`;
+  }
+}
+/** Costo mínimo en CLP de juntar al menos `n` de dinero con los paquetes (combinando paquetes). */
+function cheapestPacks(n) {
+  const packs = SHOP.CASH_PACKS;
+  const max = n + Math.max(...packs.map((p) => p.cash));
+  const best = new Array(max + 1).fill(Infinity);
+  best[0] = 0;
+  for (let i = 1; i <= max; i++) for (const p of packs) best[i] = Math.min(best[i], (best[Math.max(0, i - p.cash)] ?? Infinity) + p.clp);
+  let m = Infinity;
+  for (let i = n; i <= max; i++) m = Math.min(m, best[i]);
+  return m;
+}
 function rngFrom(seed) {
   let s = seed >>> 0;
   return () => {
@@ -142,12 +195,19 @@ function simulate(profileKey, seed) {
   let maxLossStreak = 0;
   let lossStreak = 0;
   let brokeDays = 0; // días que empezó sin poder pagar la entrada de su liga
+  let allOwnedDay = null; // día en que tiene toda la tienda (comprada o regalada)
   const leagueDay = {};
+  // colchón Ranked: entradas x1 de su liga que puede pagar antes de cada partida (fase de subir de nivel / nivel máximo)
+  const cush = { lev: { min: Infinity, low: 0, n: 0 }, end: { min: Infinity, low: 0, n: 0 } };
+  // pase mensual: nivel alcanzado y día en que lo completa, por temporada
+  const passBy = {};
+  syncPassSeason(START);
 
   for (let day = 0; day < DAYS; day++) {
     let brokeToday = false;
     for (let si = 0; si < pr.sessions.length; si++) {
       const now = START + day * D + pr.sessions[si] * H;
+      syncPassSeason(now);
       s = R.syncRanked(s, now);
       s = W.syncCycle(s, now);
       if (!leagueDay[s.ranked.league]) leagueDay[s.ranked.league] = day + 1;
@@ -166,6 +226,14 @@ function simulate(profileKey, seed) {
         const id = `m${++matchN}`;
         const entry1 = RC.matchStakes(s.ranked.league, 1).entry;
         if (s.coins < entry1) brokeToday = true;
+        {
+          const c = cush[s.level < CFG.MAX_LEVEL ? 'lev' : 'end'];
+          const n = Math.floor(s.coins / entry1);
+          if (n < c.min) c.minDay = day + 1;
+          c.min = Math.min(c.min, n);
+          c.n++;
+          if (n < 10) c.low++;
+        }
         // JUGAR: Ranked con la apuesta del perfil si alcanza (si no, x1; si no, amistoso)
         let ranked = false;
         for (const bet of pr.bet === 2 ? [2, 1] : [1]) {
@@ -176,7 +244,8 @@ function simulate(profileKey, seed) {
             break;
           }
         }
-        const win = rnd() < Math.max(0.3, pr.winRate - LEAGUE_PENALTY * RC.LEAGUE_ORDER.indexOf(s.ranked.league));
+        // amistoso: rival de tu nivel (sin el +2 por liga); Ranked: sube con la liga
+        const win = rnd() < winChance(pr.winRate, s.level, ranked ? s.ranked.league : 'bronze', rnd);
         lossStreak = win ? 0 : lossStreak + 1;
         maxLossStreak = Math.max(maxLossStreak, lossStreak);
         // recompensas del final de partida (MatchEndScene)
@@ -230,7 +299,8 @@ function simulate(profileKey, seed) {
         if (!r.ok) continue;
         const gemsBefore = s.gems;
         book(r.given.kind === 'cash' && BP.BP_SEASON.tiers[t - 1].free.kind !== 'cash' ? 'pase (repetido)' : 'pase', r.state);
-        if (r.given.kind !== 'cash') events.push(day + 1);
+        // un nivel con cosmético cuenta como novedad aunque salga repetido: una temporada nueva trae premios nuevos
+        if (BP.BP_SEASON.tiers[t - 1].free.kind !== 'cash') events.push(day + 1);
         gemsEarned += Math.max(0, s.gems - gemsBefore);
       }
       // ZONA: los Rayos se gastan en cuanto se desbloquea
@@ -254,7 +324,16 @@ function simulate(profileKey, seed) {
       }
     }
     if (brokeToday) brokeDays++;
+    if (allOwnedDay == null && SHOP.SHOP_ITEMS.every((it) => P.owns(s, it.id))) allOwnedDay = day + 1;
     if (passDay == null && BP.bpLevel(s.bp.xp).level >= BP.BP_TIERS) passDay = day + 1;
+    {
+      const id = BP.BP_SEASON.month;
+      const lvl = s.bp.season === BP.BP_SEASON.id ? BP.bpLevel(s.bp.xp).level : 0;
+      const p = (passBy[id] ??= { level: 0, doneDay: null, days: 0, firstDay: day + 1 });
+      p.level = lvl;
+      p.days++;
+      if (p.doneDay == null && lvl >= BP.BP_TIERS) p.doneDay = day + 1 - p.firstDay + 1; // día del mes en que lo completa
+    }
     // dinero ganado total (para "cuándo podría comprar cada ítem ahorrando solo para él")
     const earned = Object.entries(led.gems).filter(([k, v]) => v > 0 && k !== 'tienda').reduce((a, [, v]) => a + v, 0);
     for (const it of SHOP.SHOP_ITEMS) if (earned >= it.price) firstAffordDay[it.id] ??= day + 1;
@@ -264,7 +343,7 @@ function simulate(profileKey, seed) {
   }
   const evDays = [...new Set(events)].sort((a, b) => a - b);
   const gaps = evDays.map((d, i) => d - (i ? evDays[i - 1] : 0));
-  return { s, passDay, led, levelDay, bought, balances, firstAffordDay, rankedMatches, friendly, maxLossStreak, brokeDays, leagueDay, evDays, maxGap: Math.max(0, ...gaps, DAYS - (evDays.at(-1) ?? 0)), avgGap: evDays.length ? DAYS / evDays.length : null };
+  return { s, passDay, passBy, cush, allOwnedDay, led, levelDay, bought, balances, firstAffordDay, rankedMatches, friendly, maxLossStreak, brokeDays, leagueDay, evDays, maxGap: Math.max(0, ...gaps, DAYS - (evDays.at(-1) ?? 0)), avgGap: evDays.length ? DAYS / evDays.length : null };
 }
 
 // ---------------------------------------------------------------- informe
@@ -306,13 +385,28 @@ function report(key) {
     return `${pad(it.id, 18)} ${padL(it.price, 3)} (${SHOP.clpLabel(it.clp)}) · ${gift ? 'REGALO (pase / ruleta)' : `compra día ${b ?? '—'}`} · ahorrando solo para él: día ${a ?? '—'}`;
   });
   console.log(`Tienda (compra el más barato que alcance; "—" = no en ${DAYS} días):\n  ${items.join('\n  ')}`);
-  const allDay = med((r) => (r.bought.length === SHOP.SHOP_ITEMS.length ? Math.max(...r.bought.map((x) => x.day)) : null));
-  console.log(`Toda la tienda: ${allDay ? `día ${allDay}` : `no (compra ${fmt(mean((r) => r.bought.length))} de ${SHOP.SHOP_ITEMS.length})`} · algo nuevo (compra, premio del pase, cosmético o desbloqueo) cada ${mean((r) => r.avgGap ?? DAYS).toFixed(1)} días de media; la mayor espera ${fmt(mean((r) => r.maxGap))} días`);
-  console.log(`Pase (gratis) al final: ${Math.round((mean((r) => BP.bpLevel(r.s.bp.xp).level) / BP.BP_TIERS) * 100)} % · completo el día ${med((r) => r.passDay) ?? '—'}`);
+  const allDay = med((r) => r.allOwnedDay);
+  console.log(`Toda la tienda (comprada o regalada): ${allDay ? `día ${allDay}` : `no (tiene ${fmt(mean((r) => SHOP.SHOP_ITEMS.filter((it) => P.owns(r.s, it.id)).length))} de ${SHOP.SHOP_ITEMS.length})`} · algo nuevo (compra, premio del pase, cosmético o desbloqueo) cada ${mean((r) => r.avgGap ?? DAYS).toFixed(1)} días de media; la mayor espera ${fmt(mean((r) => r.maxGap))} días`);
+  // pase mensual: % al cerrar cada mes y día del mes en que se completa
+  const months = Object.keys(r0.passBy);
+  console.log(`Pase gratis (mensual): ${months.map((m) => `${m} (${r0.passBy[m].days} días): ${Math.round((mean((r) => r.passBy[m]?.level ?? 0) / BP.BP_TIERS) * 100)} %, completo el día ${med((r) => r.passBy[m]?.doneDay ?? null) ?? '—'} del mes`).join(' · ')}`);
+  // colchón Ranked (meta: al menos 10 entradas de su liga en todo momento mientras sube del nivel 1 al 20)
+  for (const [ph, name] of [['lev', 'subiendo del nivel 1 al 20'], ['end', 'ya en nivel 20']]) {
+    const withData = runs.filter((r) => r.cush[ph].n > 0);
+    if (!withData.length) continue;
+    const worst = Math.min(...withData.map((r) => r.cush[ph].min));
+    const medMin = median(withData.map((r) => r.cush[ph].min));
+    const low = withData.reduce((a, r) => a + r.cush[ph].low, 0) / withData.reduce((a, r) => a + r.cush[ph].n, 0);
+    console.log(`COLCHÓN Ranked ${name}: mínimo ${medMin} entradas (mediana, el día ${median(withData.map((r) => r.cush[ph].minDay))}) · peor semilla ${worst} · partidas con menos de 10 entradas: ${(low * 100).toFixed(1)} %`);
+  }
+  // dinero ganado (sin restar gastos) y su valor al precio del paquete más chico
+  const small = SHOP.CASH_PACKS.reduce((a, p) => (p.cash < a.cash ? p : a));
+  const earned = mean((r) => Object.entries(r.led.gems).filter(([k, v]) => v > 0 && k !== 'tienda').reduce((a, [, v]) => a + v, 0));
+  console.log(`DINERO ganado en ${DAYS} días: ${fmt(earned)} (${fmt((earned / DAYS) * 7)} por semana) · vale ${SHOP.clpLabel(Math.round((earned * small.clp) / small.cash))} al precio del paquete "${small.name}"`);
 }
 
 // ---------------------------------------------------------------- referencia fija del inventario
-console.log(`ECONOMÍA · ${DAYS} días · semilla ${SEED}${RUNS > 1 ? ` (+${RUNS - 1})` : ''} · inicio lunes 09-11-2026`);
+console.log(`ECONOMÍA${args.propuesta ? ' (PROPUESTA)' : ''} · ${DAYS} días · semilla ${SEED}${RUNS > 1 ? ` (+${RUNS - 1})` : ''} · inicio lunes 01-03-2027`);
 console.log(`XP total al nivel ${CFG.MAX_LEVEL}: ${fmt(Array.from({ length: CFG.MAX_LEVEL - 1 }, (_, i) => CFG.xpToNext(i + 1)).reduce((a, b) => a + b, 0))} · pase: ${BP.BP_TIERS} niveles × ${BP.BP_SEASON.xpPerTier} XP · tienda completa: ${SHOP.SHOP_ITEMS.reduce((a, i) => a + i.price, 0)} de dinero`);
 const ev = WC.WHEEL.slots.reduce((acc, sl) => {
   const p = sl.weight / 10000;
@@ -333,6 +427,11 @@ console.log(`Ruleta (valor esperado por giro): ${fmt(ev.coins)} monedas · ${fmt
   const avgG = six.reduce((a, r) => a + r.cash, 0) / six.length;
   console.log(`Premio diario: días 1-6 = ${fmt(avgC)} monedas + ${avgG.toFixed(1)} dinero de media; día 7 = ${fmt(lr.at(-1).coins)} + ${lr.at(-1).cash} (equivale a ${(lr.at(-1).coins / avgC).toFixed(1)} diarios en monedas, ${avgG ? (lr.at(-1).cash / avgG).toFixed(1) : '∞'} en dinero) · semana completa: ${fmt(lr.reduce((a, r) => a + r.coins, 0))} + ${lr.reduce((a, r) => a + r.cash, 0)}`);
   console.log(`Ranked: entrada Bronce ${RC.matchStakes('bronze', 1).entry} · saldo inicial ${fmt(PROPOSAL.startingCoins ?? P.STARTING_COINS)} (= ${Math.floor((PROPOSAL.startingCoins ?? P.STARTING_COINS) / RC.matchStakes('bronze', 1).entry)} entradas) · semanal por liga (monedas/dinero): ${RC.LEAGUE_ORDER.map((k) => `${k} ${fmt(RC.RANKED.leagues[k].weekly.coins)}/${RC.RANKED.leagues[k].weekly.cash}`).join(', ')}`);
+}
+{
+  // precio directo en CLP vs juntar ese dinero con paquetes: el directo nunca debería ser más caro
+  const bad = SHOP.SHOP_ITEMS.map((it) => ({ it, packs: cheapestPacks(it.price) })).filter((x) => x.it.clp > x.packs);
+  console.log(`Precio directo en CLP más caro que comprar el dinero en paquetes: ${bad.length ? bad.map((x) => `${x.it.id} ${SHOP.clpLabel(x.it.clp)} > ${SHOP.clpLabel(x.packs)}`).join(' · ') : 'ninguno'}`);
 }
 for (const k of Object.keys(PROFILES)) if (!ONLY || ONLY === k) report(k);
 

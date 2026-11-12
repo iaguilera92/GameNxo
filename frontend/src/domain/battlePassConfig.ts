@@ -36,7 +36,11 @@ export const BP_SEASON = {
    * (menú, Tienda y pantalla del Pase) hasta que se publique otro con un `id` y un `month` nuevos (se reinicia solo).
    */
   month: '2026-11',
-  /** EXP por nivel del pase */
+  /**
+   * EXP por nivel del pase. Temporada 1: 100. DESDE LA TEMPORADA 2 (al cambiar `id` y `month`): 350 (economía aprobada,
+   * ECONOMIA.txt: el casual lo completa cerca del día 25 del mes, el regular en ~2 semanas). No cambiarlo en plena
+   * temporada: bajaría el nivel del pase de quien ya avanzó (los niveles se calculan como EXP / xpPerTier).
+   */
   xpPerTier: 100,
   /**
    * precio del Pase Premium en DINERO. Hoy no se usa (premiumRealMoney: se paga con dinero real); el camino gratis ya NO

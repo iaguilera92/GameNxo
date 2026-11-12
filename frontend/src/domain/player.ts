@@ -91,8 +91,8 @@ export const itemId = {
 };
 
 export const STARTER_ITEMS: ItemId[] = ['ability:dash', 'ability:smash', 'skin:nxo', 'style:classic'];
-/** alcanza para 3 entradas de Bronce (500): se compite desde la primera partida */
-export const STARTING_COINS = 1500;
+/** 10 entradas de Bronce (500): un jugador nuevo puede jugar 10 Ranked aunque las pierda todas (ECONOMIA.txt) */
+export const STARTING_COINS = 5000;
 
 /** Personaje con el que empieza un jugador nuevo: Nxo en la app (APK); Mai en la web (lo elige main.ts). */
 export type StarterSkin = 'nxo' | 'mai';

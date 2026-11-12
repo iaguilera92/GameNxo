@@ -9,7 +9,8 @@ import { TIMING, type TimingGrade } from '../logic/PerfectTiming';
  *  - BIEN: texto celeste y un "tic" limpio. PRONTO / TARDE: texto naranja / rojo y un golpe sordo y grave.
  *    Cada nota suena distinta para aprender el ritmo de oído.
  */
-export function playTimingFx(scene: Phaser.Scene, grade: TimingGrade, head: { x: number; y: number }, contact: { x: number; y: number }) {
+/** `remote` = nota del rival en red: se ve y se oye, sin vibración ni temblor de cámara. */
+export function playTimingFx(scene: Phaser.Scene, grade: TimingGrade, head: { x: number; y: number }, contact: { x: number; y: number }, remote = false) {
   const text = TIMING.fx.text[grade];
   if (!text) return;
   const perfect = grade === 'perfect';
@@ -32,8 +33,10 @@ export function playTimingFx(scene: Phaser.Scene, grade: TimingGrade, head: { x:
   const ring = scene.add.circle(contact.x, contact.y, 10, 0xffe066, 0).setStrokeStyle(3, 0xffe066).setDepth(3700).setBlendMode(Phaser.BlendModes.ADD);
   scene.tweens.add({ targets: ring, scale: 3, alpha: 0, duration: 240, onComplete: () => ring.destroy() });
 
-  scene.cameras.main.shake(TIMING.fx.shake.ms, TIMING.fx.shake.intensity);
-  vibrate(TIMING.fx.vibrateMs);
+  if (!remote) {
+    scene.cameras.main.shake(TIMING.fx.shake.ms, TIMING.fx.shake.intensity);
+    vibrate(TIMING.fx.vibrateMs);
+  }
   if (TIMING.fx.sound) perfectSound(scene);
 }
 

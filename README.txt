@@ -151,7 +151,8 @@ BOT_DIFFICULTY       0..1 (actual 0.45).
 GAMES_TO_WIN 2, GOLDEN_POINT false (true = punto de oro en 40-40).
 DASH_COOLDOWN 10, SMASH_COOLDOWN 30, SMASH_SPEED_MULT 1.75,
 STUN_DURATION 1.0, KNOCKBACK_DIST 110.
-MAX_LEVEL 30, XP_WIN 60, XP_LOSS 25, xpToNext(nivel) = 100 + (nivel-1)*50.
+MAX_LEVEL 20, XP_WIN 60, XP_LOSS 25, xpToNext(nivel) = 100 + (nivel-1)*120.
+Economía completa (monedas, dinero, XP, pase, Ranked, tienda): ECONOMIA.txt.
 COURT, NET_X, NET_HEIGHT, GRAVITY, BOUNCE_DAMP, SHOT_SPEED, SERVE_SPEED,
 PLAYER_SPEED, HIT_RANGE, HIT_MAX_Z, SIDE_MARGIN.
 Tipos de golpe (velocidad/altura/zona): MatchScene.playerHit().

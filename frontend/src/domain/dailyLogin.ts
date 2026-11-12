@@ -23,7 +23,8 @@ export const LOGIN = {
     { coins: 500, cash: 5 },
     { coins: 600, cash: 0 },
     { coins: 800, cash: 0 },
-    { coins: 1_500, cash: 10 },
+    // domingo: vale más que los otros 6 días juntos (2.850), para volver el último día de la semana (ECONOMIA.txt)
+    { coins: 3_500, cash: 10 },
   ] as LoginReward[],
 };
 

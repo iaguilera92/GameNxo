@@ -7,8 +7,11 @@
  * todavía se esté viendo la pantalla VS. Si algo llega antes de que la escena del partido se conecte (attach),
  * queda guardado y se le entrega al conectarse: no se pierde ningún aviso entre escenas.
  */
-import { EV, type ActionMsg, type HitMsg, type OverMsg, type OpponentLeftMsg, type PlayerProfile, type PointMsg, type Role, type ScoreMsg, type StateMsg } from './protocol';
-import type { NetTransport } from './NetClient';
+import { EV, type ActionMsg, type HitMsg, type OverMsg, type OpponentLeftMsg, type PlayerProfile, type PointMsg, type ResumedMsg, type Role, type ScoreMsg, type StateMsg } from './protocol';
+import { connect, type NetTransport } from './NetClient';
+
+/** RECONEXIÓN: tiempo máximo intentando volver al partido (el servidor guarda el sitio RECONNECT_GRACE_MS = 15 s) */
+const RECONNECT_MS = 14000;
 import { mirrorBall, mirrorX, mirrorY } from './mirror';
 
 export interface MatchNetHandlers {
@@ -23,6 +26,13 @@ export interface MatchNetHandlers {
   onScore(s: ScoreMsg): void;
   onOver(o: OverMsg, iWon: boolean): void;
   onOpponentLeft(o: OpponentLeftMsg): void;
+  /** RECONEXIÓN (opcionales): este teléfono perdió la conexión y está intentando volver */
+  onReconnecting?(): void;
+  /** volvió al partido: marcador oficial (se rejuega el punto en curso) */
+  onReconnected?(score: ScoreMsg): void;
+  /** el rival se cortó y está reconectando (partido en pausa) / volvió */
+  onOpponentAway?(): void;
+  onOpponentBack?(score: ScoreMsg): void;
   /** se perdió la conexión con el servidor */
   onDisconnect(): void;
 }
@@ -46,12 +56,21 @@ export class MatchNet {
   ended: NetEnd | null = null;
   private endDelivered = false;
 
+  /** conexión actual (cambia al reconectar) */
+  get transport(): NetTransport {
+    return this.tr;
+  }
+  /** reconectando ahora mismo */
+  reconnecting = false;
+
   constructor(
-    readonly transport: NetTransport,
+    private tr: NetTransport,
     readonly roomId: string,
     readonly role: Role,
     readonly opponent: PlayerProfile,
     readonly gamesToWin: number,
+    /** clave del emparejamiento para volver a la sala tras un corte (sin ella no se reconecta) */
+    private readonly token?: string,
   ) {
     // escucha de ciclo de vida desde el emparejamiento (pantalla VS incluida)
     const on = <T>(ev: string, cb: (d: T) => void) => {
@@ -66,7 +85,68 @@ export class MatchNet {
     });
     on<OpponentLeftMsg>(EV.OPPONENT_LEFT, (m) => this.end({ kind: 'left', msg: m }));
     on<OverMsg>(EV.OVER, (m) => this.end({ kind: 'over', msg: m }));
-    on('disconnect', () => this.end({ kind: 'disconnect' }));
+    on('disconnect', () => this.onDrop());
+    on(EV.OPPONENT_AWAY, () => this.handlers?.onOpponentAway?.());
+    on<ScoreMsg>(EV.OPPONENT_BACK, (s) => this.handlers?.onOpponentBack?.(s));
+  }
+
+  /** Se cortó la conexión: en pleno partido (y con clave) se intenta volver; si no, fin por desconexión. */
+  private onDrop() {
+    if (this.ended || this.reconnecting) return;
+    if (!this.started || !this.token) {
+      this.end({ kind: 'disconnect' });
+      return;
+    }
+    void this.reconnect();
+  }
+
+  /**
+   * RECONEXIÓN: conecta de nuevo (varios intentos hasta RECONNECT_MS), pasa todas las escuchas a la conexión nueva y
+   * pide volver a la sala con la clave. Bien = onReconnected(marcador); mal = fin por desconexión.
+   */
+  private async reconnect() {
+    this.reconnecting = true;
+    this.handlers?.onReconnecting?.();
+    const deadline = performance.now() + RECONNECT_MS;
+    const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
+    while (!this.ended && performance.now() < deadline) {
+      let next: NetTransport;
+      try {
+        next = await connect(Math.max(800, Math.min(3000, deadline - performance.now())));
+      } catch {
+        await wait(600);
+        continue;
+      }
+      // las escuchas (ciclo de vida y partido) pasan a la conexión nueva
+      for (const [ev, f] of [...this.early, ...this.bound]) {
+        this.tr.off(ev, f);
+        next.on(ev, f);
+      }
+      this.tr = next;
+      const res = await new Promise<ResumedMsg | null>((resolve) => {
+        const ok = (m: ResumedMsg) => done(m);
+        const bad = () => done(null);
+        const t = setTimeout(() => done(null), 3000);
+        const done = (v: ResumedMsg | null) => {
+          clearTimeout(t);
+          next.off(EV.RESUMED, ok as (d: never) => void);
+          next.off(EV.ERROR, bad as (d: never) => void);
+          resolve(v);
+        };
+        next.on(EV.RESUMED, ok as (d: never) => void);
+        next.on(EV.ERROR, bad as (d: never) => void);
+        next.emit(EV.RESUME, { roomId: this.roomId, token: this.token });
+      });
+      if (this.ended) break;
+      if (res) {
+        this.reconnecting = false;
+        this.handlers?.onReconnected?.(res.score);
+        return;
+      }
+      break; // el servidor no lo aceptó (la sala terminó): no tiene sentido seguir
+    }
+    this.reconnecting = false;
+    if (!this.ended) this.end({ kind: 'disconnect' });
   }
 
   private end(e: NetEnd) {

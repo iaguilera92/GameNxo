@@ -57,3 +57,6 @@ Para jugar en LAN, pon la IPv4 del PC (`ipconfig`) en el juego: Ajustes > **SERV
 [docs/MULTIJUGADOR.md](docs/MULTIJUGADOR.md).
 
 Estado detallado del juego y controles: `README.txt`.
+
+Economía del juego (monedas, dinero, XP, pase, Ranked, tienda, ruleta y premio diario), por qué es así y dónde se
+cambia cada número: `ECONOMIA.txt`. Simulador: `cd frontend && node tools/sim-economy.mjs --runs=20`.

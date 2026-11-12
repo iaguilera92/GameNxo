@@ -155,3 +155,40 @@ test('sin límite de tiempo de partido: la sala sigue PLAYING tras mucho tiempo'
   ft.advance(60 * 60 * 1000);
   assert.equal(rm.roomOf('A')?.status, 'PLAYING');
 });
+
+test('RECONEXIÓN: ausente conserva su sitio y vuelve con su clave (otra conexión)', () => {
+  const { rm } = setup();
+  rm.find('a', P('A'));
+  const m = rm.find('b', P('B'));
+  assert.equal(m.type, 'matched');
+  const room = (m as { room: ReturnType<RoomManager['get']> & object }).room;
+  const tokenA = room.players[0].token;
+  assert.ok(tokenA && tokenA !== room.players[1].token);
+  const a = rm.markAway('a')!;
+  assert.equal(a.player.away, true);
+  assert.equal(a.opponent?.id, 'b');
+  assert.equal(room.status, 'PLAYING');
+  // clave equivocada o jugador no ausente: no
+  assert.equal(rm.rejoin(room.id, 'mala', 'a2'), null);
+  assert.equal(rm.rejoin(room.id, room.players[1].token, 'b2'), null);
+  // vuelve: nueva conexión, mismo sitio
+  const r = rm.rejoin(room.id, tokenA, 'a2')!;
+  assert.equal(r.player.id, 'a2');
+  assert.equal(r.player.away, false);
+  assert.equal(rm.roomOf('a2')?.id, room.id);
+  assert.equal(rm.roomOf('a'), undefined);
+  assert.equal(rm.roleOf(room, 'a2'), 'host');
+  // ya no está ausente: la misma clave no sirve otra vez
+  assert.equal(rm.rejoin(room.id, tokenA, 'a3'), null);
+});
+
+test('RECONEXIÓN: si no vuelve, su salida da la victoria al rival', () => {
+  const { rm } = setup();
+  rm.find('a', P('A'));
+  rm.find('b', P('B'));
+  rm.markAway('a');
+  const r = rm.leave('a', 'disconnect')!;
+  assert.equal(r.room.status, 'FINISHED');
+  assert.equal(r.room.result?.winner, 'guest');
+  assert.equal(rm.rejoin(r.room.id, r.room.players[0].token, 'a2'), null);
+});

@@ -35,18 +35,22 @@ export const SHOP_ITEMS: ShopItem[] = [
   { id: 'inferno:lightning', kind: 'inferno', name: 'Rayo', price: 80, clp: 2490, minLevel: 1, available: true },
   { id: 'inferno:tulip', kind: 'inferno', name: 'Tulipán', price: 80, clp: 2490, minLevel: 1, available: true },
   // poderes del ESPECIAL (SMASH). El fuego es de todos
-  { id: 'smash:ice', kind: 'smash', name: 'Hielo', price: 45, clp: 1690, minLevel: 1, available: true },
-  { id: 'smash:wind', kind: 'smash', name: 'Viento', price: 50, clp: 1790, minLevel: 1, available: true },
+  { id: 'smash:ice', kind: 'smash', name: 'Hielo', price: 45, clp: 1390, minLevel: 1, available: true },
+  { id: 'smash:wind', kind: 'smash', name: 'Viento', price: 50, clp: 1490, minLevel: 1, available: true },
   { id: 'smash:lightning', kind: 'smash', name: 'Rayo', price: 55, clp: 1990, minLevel: 1, available: true },
   // efectos de CARGA (el aro bajo el jugador al cargar un golpe). Nxo trae el de fuego y Mai el de tulipán; el clásico es de todos
   { id: 'charge:fire', kind: 'charge', name: 'Fuego', price: 35, clp: 1290, minLevel: 1, available: true },
   { id: 'charge:energy', kind: 'charge', name: 'Energía', price: 35, clp: 1290, minLevel: 1, available: true },
-  { id: 'charge:tulip', kind: 'charge', name: 'Tulipán', price: 45, clp: 1690, minLevel: 1, available: true },
+  { id: 'charge:tulip', kind: 'charge', name: 'Tulipán', price: 45, clp: 1390, minLevel: 1, available: true },
   // poderes del DEFENSIVO (el DASH es de todos)
-  { id: 'defensive:blink', kind: 'defensive', name: 'Destello', price: 50, clp: 1790, minLevel: 1, available: true },
-  { id: 'defensive:shadow', kind: 'defensive', name: 'Sombra', price: 50, clp: 1790, minLevel: 1, available: true },
-  { id: 'defensive:jump', kind: 'defensive', name: 'Supersalto', price: 50, clp: 1790, minLevel: 1, available: true },
+  { id: 'defensive:blink', kind: 'defensive', name: 'Destello', price: 50, clp: 1490, minLevel: 1, available: true },
+  { id: 'defensive:shadow', kind: 'defensive', name: 'Sombra', price: 50, clp: 1490, minLevel: 1, available: true },
+  { id: 'defensive:jump', kind: 'defensive', name: 'Supersalto', price: 50, clp: 1490, minLevel: 1, available: true },
 ];
+/*
+ * REGLA DE PRECIOS EN CLP (ECONOMIA.txt): el precio directo de un ítem nunca es más caro que juntar su dinero con los
+ * paquetes de abajo (ej. un ítem de 50 de dinero cuesta como mucho $1.490 = "Puñado"). tools/sim-economy.mjs lo revisa.
+ */
 
 /** Paquetes de DINERO virtual que se compran con dinero real (CLP). Referencia: ~$35 CLP por unidad, con bonus en los grandes. */
 export interface CashPack {

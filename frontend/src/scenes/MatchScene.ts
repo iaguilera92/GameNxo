@@ -91,8 +91,9 @@ import { queueGazeArt, showInfernoGaze } from '../fx/infernoGaze';
 import { ZONE, ZoneTracker, type Side as ZoneSide } from '../logic/Zone';
 import { ZoneFx } from '../fx/ZoneFx';
 import type { MatchNet } from '../net/MatchNet';
-import type { ActionMsg, HitMsg, PointMsg, StateMsg } from '../net/protocol';
+import type { ActionMsg, HitMsg, PointMsg, ScoreMsg, StateMsg } from '../net/protocol';
 import { mirrorX, mirrorY } from '../net/mirror';
+import { RemoteInterp } from '../net/interp';
 import { POINT_SPLASH_MS, isMatchPoint, showPointSplash } from '../fx/pointSplash';
 import { showSideNotice } from '../fx/sideNotice';
 import { TIMING, TimingTracker, type ShotClass, type TimingResult, applyError, evaluateCharge, nextStreak, timedSpeed, timingMods } from '../logic/PerfectTiming';
@@ -264,6 +265,10 @@ export class MatchScene extends Phaser.Scene {
   private netPrev = { x: 0, y: 0 };
   /** último estado del rival (ya espejado) */
   private netRemote: StateMsg | null = null;
+  /** posición del rival interpolada entre sus estados reales (~100 ms en el pasado; net/interp.ts) */
+  private netInterp = new RemoteInterp(100);
+  /** hasta cuándo (performance.now) su posición la manda una animación propia (estirada, DESTELLO, teletransporte) */
+  private netBotLockUntil = 0;
   /** DASH del rival en curso (para sus sombras) */
   private netBotDash: { t: number; ghosts: number } | null = null;
   /** DASH del BOT en curso: sus 3 sombras mientras corre (los mismos efectos que el tuyo) */
@@ -583,11 +588,19 @@ export class MatchScene extends Phaser.Scene {
     this.smashBtn.setArt(elementTexture(this, BUTTON_ART.smash.key, this.smashEl) ?? BUTTON_ART.smash.key);
     this.smashBtn.setArmedColor(SMASH_LOOK[this.smashEl].ring);
     this.surrenderBtn = this.makeSurrenderIcon();
+    this.autoPlay = false;
+    this.autoBtn = this.makeAutoButton();
     // solo los emotes desbloqueados (premios del Pase de Batalla); sin ninguno no hay botón
     this.emotes = new Emotes(this, () => this.headPos(this.player), ownedEmotes(getPlayer().owned));
     // en red: tus emotes también los ve el rival; el aura del SMASH armado del rival; sin restos de una partida anterior
     this.netHit = {};
     this.netLastState = null;
+    this.netInterp.clear(); // sin estados del rival de una partida anterior
+    this.netRtt = 0;
+    this.netPingAt = 0;
+    this.netLastMsgAt = performance.now();
+    this.netWeak = null;
+    this.netBotLockUntil = 0;
     this.netRemoteCine = false;
     this.netDeferred = [];
     // aura de llamas del rival: en estado ZONA (zoneRender), también contra el BOT
@@ -725,10 +738,145 @@ export class MatchScene extends Phaser.Scene {
     this.dashBtn.setPosition(W - 250, H - 115);
     this.surrenderBtn.setPosition(W - 46, 150);
     this.emotes.setPosition(W - 46, 226);
+    this.autoBtn.setPosition(W - 46, 302); // AUTO, bajo el botón de emojis
     this.serveNormalBtn.setPosition(W - 110, H - 225);
     this.serveSpinBtn.setPosition(W - 250, H - 115);
     this.serveClockText.setPosition(W / 2, 200);
     this.secondTag.setPosition(W / 2, 144); // bajo el marcador (ScoreBoard mide ~120 px con la píldora JUEGO)
+  }
+
+  // ---------------------------------------------------------------- AUTO (piloto automático para pruebas)
+  /** AUTO encendido: el jugador se mueve, saca y usa habilidades solo (para probar el online sin otra persona) */
+  private autoPlay = false;
+  private autoBtn!: Phaser.GameObjects.Container;
+  /** dirección de golpe del AUTO (se renueva cada ~0,9 s) y distancia a su punto de golpeo */
+  private autoAim = new Phaser.Math.Vector2();
+  private autoAimAt = 0;
+  private autoGap = 0;
+  private autoServeT = 0;
+  /** s hasta el punto de golpeo previsto (−1 = no hay) y si cargará el golpe de esta pelota */
+  private autoContactT = -1;
+  private autoChargeWant = false;
+  /** ya decidió habilidades para la pelota actual del rival (una vez por pelota) */
+  private autoAbilFor = false;
+
+  /** Botón redondo AUTO (bajo los emojis): verde = encendido. */
+  private makeAutoButton() {
+    const R = 30;
+    const c = this.add.container(0, 0).setScrollFactor(0).setDepth(5600);
+    const g = this.add.graphics();
+    const txt = this.add.text(0, 1, 'AUTO', { fontFamily: '"Lilita One", "Arial Black", sans-serif', fontSize: '17px', color: '#ffffff', stroke: '#0a1638', strokeThickness: 4 }).setOrigin(0.5);
+    const draw = () => {
+      g.clear();
+      g.fillStyle(C.outline).fillCircle(0, 4, R + 6);
+      g.fillStyle(this.autoPlay ? 0x1f8a3a : 0x2a3a66).fillCircle(0, 5, R);
+      g.fillStyle(this.autoPlay ? 0x3ccf5a : 0x4a5f99).fillCircle(0, 0, R - 2);
+      g.fillStyle(0xffffff, 0.25).fillEllipse(-4, -13, 34, 12);
+    };
+    draw();
+    c.add([g, txt]);
+    c.setSize(R * 2 + 16, R * 2 + 16).setInteractive({ useHandCursor: true });
+    c.on('pointerdown', (_p: Phaser.Input.Pointer, _x: number, _y: number, e: Phaser.Types.Input.EventData) => {
+      e?.stopPropagation?.();
+      this.autoPlay = !this.autoPlay;
+      this.autoServeT = 0;
+      if (!this.autoPlay) stopMotion(this.motion);
+      draw();
+      this.tweens.add({ targets: c, scale: { from: 0.88, to: 1 }, duration: 200, ease: 'Back.easeOut' });
+      const h = this.headPos(this.player);
+      this.popText(h.x, h.y - 10, this.autoPlay ? 'AUTO ON' : 'AUTO OFF', this.autoPlay ? '#9dffb0' : '#cfe0ff', 24);
+    });
+    return c;
+  }
+
+  /**
+   * Movimiento del AUTO (en ejes del joystick): con la pelota viniendo, va al punto donde podrá golpearla (tras el bote,
+   * a altura cómoda; con la misma física stepBall); si no, vuelve al centro cerca del fondo.
+   */
+  private autoMoveVector(): Phaser.Math.Vector2 {
+    const pl = this.player;
+    const b = this.ball.s;
+    let tx = P_X[0] + (P_X[1] - P_X[0]) * 0.15;
+    let ty = LAT_C;
+    if (this.phase === 'rally' && this.lastHitter !== 'player' && b.vx < 0) {
+      const s = { ...b };
+      let bounces = this.bounces;
+      const dt = 1 / 60;
+      let pick: { x: number; y: number } | null = null;
+      this.autoContactT = -1;
+      for (let t = 0; t < 2.5; t += dt) {
+        const ev = stepBall(s, dt);
+        if (ev === 'net') break;
+        if (ev === 'bounce' && ++bounces >= 2) break;
+        if (s.x < NET_X - 30 && s.z < HIT_MAX_Z * 0.8 && (bounces >= 1 || s.z > 40)) {
+          pick = { x: s.x, y: s.y };
+          this.autoContactT = t;
+          if (bounces >= 1 && s.vz < 0) break; // ya botó y baja: buen punto de golpeo
+        }
+      }
+      if (pick) {
+        tx = clamp(pick.x - 15, P_X[0], P_X[1]);
+        ty = clamp(pick.y, Y_MIN, Y_MAX);
+      }
+    }
+    // cancha -> joystick: derecha = +y, arriba = hacia la red (+x)
+    const vx = ty - pl.y;
+    const vy = -(tx - pl.x);
+    const len = Math.hypot(vx, vy);
+    this.autoGap = len;
+    if (len < 6) return new Phaser.Math.Vector2();
+    const k = Math.min(1, len / 50) / len;
+    return new Phaser.Math.Vector2(vx * k, vy * k);
+  }
+
+  /** Cada fotograma del AUTO: dirección de golpe, saque y habilidades. */
+  private autoTick(dt: number) {
+    if (!this.autoPlay || this.paused || this.cine.active) return;
+    const now = this.time.now;
+    if (now > this.autoAimAt) {
+      const r = Math.random();
+      this.autoAim.set(r < 0.5 ? 0 : r < 0.7 ? -1 : r < 0.9 ? 1 : 0, r >= 0.9 ? (r < 0.95 ? -1 : 1) : 0);
+      this.autoAimAt = now + 900;
+    }
+    // saque: se coloca un instante, lanza y golpea en lo alto
+    if (this.server === 'player' && this.phase === 'serve' && this.serveCtl.state === 'POSITIONING') {
+      this.autoServeT += dt;
+      if (this.autoServeT > 0.8) {
+        this.autoServeT = 0;
+        this.onServeButton('normal', true);
+      }
+    } else if (this.server === 'player' && this.phase === 'toss' && this.serveCtl.state === 'AIMING' && this.ball.s.vz <= 0) {
+      this.onServeButton(this.serveCtl.kind ?? 'normal');
+    } else this.autoServeT = 0;
+    // habilidades: una decisión por cada pelota del rival (ESPECIAL / ULTI a veces; DEFENSIVO si no llega)
+    const fresh = this.lastHitter === 'bot' && !this.autoAbilFor;
+    this.autoAbilFor = this.lastHitter === 'bot';
+    if (fresh) this.autoChargeWant = Math.random() < 0.55; // cargar este golpe (más de la mitad de las veces)
+    if (fresh && this.phase === 'rally' && !this.serveLock) {
+      // ULTI cargada: la arma SIEMPRE (prueba su cinemática, la raqueta perdida y el aturdido del rival);
+      // si no, ESPECIAL a veces
+      if (this.smashBtn.inferno && this.smashBtn.ready && !this.inferno.armed) this.smashBtn.tryActivate();
+      else if (!this.smashBtn.inferno && this.smashBtn.ready && !this.smashArmed && Math.random() < 0.35) this.smashBtn.tryActivate();
+    }
+    // golpe cargado: ya colocado y con la pelota a ~0,2–1,4 s, empieza a cargar (sale al contacto, como el tuyo)
+    if (
+      this.autoChargeWant &&
+      !this.charging &&
+      this.phase === 'rally' &&
+      this.lastHitter === 'bot' &&
+      !this.smashArmed &&
+      !this.inferno.armed &&
+      this.autoGap < 14 &&
+      this.autoContactT >= 0.2 &&
+      this.autoContactT <= 1.4 &&
+      this.unlocked('charge')
+    ) {
+      this.autoChargeWant = false;
+      this.toggleCharge();
+    }
+    if (this.phase === 'rally' && this.lastHitter === 'bot' && !this.serveLock && this.autoGap > 150 && this.dashBtn.ready && !this.dashRun && !this.dashHit) {
+      this.dashBtn.tryActivate();
+    }
   }
 
   // ---------------------------------------------------------------- rendirse
@@ -1123,6 +1271,17 @@ export class MatchScene extends Phaser.Scene {
     pl.vanished = true;
     this.dashHit = { t: plan.t, elapsed: 0, x: tx, y: ty };
     this.portalFx(pl.x, pl.y);
+    // en red el rival ve los mismos portales y la reaparición (netRemoteWarp)
+    this.net?.sendAction('defensive', {
+      kind: 'warp',
+      x: pl.x,
+      y: pl.y,
+      tx,
+      ty,
+      out: (fast ? DASH_WARP.fastOut : DASH_WARP.out) * 1000,
+      in: (fast ? DASH_WARP.fastIn : DASH_WARP.in) * 1000,
+      delay: fast ? 0 : DASH_WARP.delay * 1000,
+    });
     this.tweens.add({
       targets: pl,
       warp: 0,
@@ -1331,6 +1490,8 @@ export class MatchScene extends Phaser.Scene {
     this.portalFx(from.x, from.y, 0x45d9ff, 0xd9f7ff);
     const h = this.headPos(pl);
     this.popText(h.x, h.y - 10, 'DEFENSIVO', '#c9a4ff', 26);
+    // en red el rival ve la misma estela, portales y reaparición (netRemoteWarp)
+    this.net?.sendAction('defensive', { kind: 'blink', x: from.x, y: from.y, tx, ty, out: (fast ? BLINK.fastOut : BLINK.out) * 1000, in: (fast ? BLINK.fastIn : BLINK.in) * 1000, delay: 0 });
 
     this.tweens.add({
       targets: pl,
@@ -1918,6 +2079,7 @@ export class MatchScene extends Phaser.Scene {
     this.endShadowRun(); // un clon de SOMBRA a medio camino no pasa al punto siguiente
     for (const a of [this.player, this.bot]) {
       this.clearRacket(a); // la raqueta perdida vuelve a la mano en el punto siguiente
+      a.ch.releaseRemate(); // pose de remate sin golpe (punto terminado a mitad): vuelve a animarse
       a.stun = 0;
       a.warp = 1;
       a.vanished = false;
@@ -2110,6 +2272,8 @@ export class MatchScene extends Phaser.Scene {
     if (!this.serveCtl.pressHit(srv.ch.serveContactDelay())) return;
     srv.ch.serveRelease();
     this.serveJump(srv, srv.ch.serveContactDelay());
+    // en red el rival ve el golpe del saque a la vez (clip del golpe y salto), no al llegar la pelota
+    if (srv === this.player) this.net?.sendAction('serve-swing');
     this.serveNormalBtn.setCue(false);
     this.serveSpinBtn.setCue(false);
   }
@@ -2897,6 +3061,8 @@ export class MatchScene extends Phaser.Scene {
     const ty = clamp(c.y - side * Math.min(arm, gapY), Y_MIN, Y_MAX);
     const ms = Math.max(60, c.t * 1000);
     this.tweens.add({ targets: pl, x: tx, y: ty, duration: ms, ease: 'Quad.easeOut' });
+    // en red el rival ve la estirada AL EMPEZAR (no 0,2 s tarde con el golpe): lado y punto de llegada
+    this.net?.sendAction('lunge', { side, x: pl.x, y: pl.y, tx, ty, ms });
     // inclinación de "casi me caigo" y recuperación tambaleante
     const rig = pl.ch.rig;
     this.tweens.killTweensOf(rig);
@@ -3329,6 +3495,8 @@ export class MatchScene extends Phaser.Scene {
         this.dashBtn.reduceCooldown(TIMING.streak.cdS);
         this.time.delayedCall(fxDelay, () => playStreakFx(this, n, this.headPos(this.player)));
       }
+      // en red el rival ve tu nota (¡PERFECTO! / BIEN / PRONTO / TARDE) y tu racha sobre tu personaje
+      if (timed.grade !== 'none' && timed.grade !== 'off') this.net?.sendAction('timing', { grade: timed.grade, streak: n, ms: fxDelay });
     }
     this.lastHitter = 'player';
     this.bounces = 0;
@@ -3531,6 +3699,7 @@ export class MatchScene extends Phaser.Scene {
   // ---------------------------------------------------------------- update
   /** Vector de entrada en pantalla: x = derecha, y = abajo. */
   private inputVector(): Phaser.Math.Vector2 {
+    if (this.autoPlay) return this.autoMoveVector();
     const v = this.joy.value.clone();
     const k = this.keys;
     if (k && v.lengthSq() === 0) {
@@ -3543,6 +3712,7 @@ export class MatchScene extends Phaser.Scene {
 
   /** Dirección para el golpe: joystick actual, o la última en los últimos 250 ms. */
   private shotDir(): Phaser.Math.Vector2 {
+    if (this.autoPlay) return this.autoAim.clone(); // AUTO: dirección de golpe propia (no la de su movimiento)
     const v = this.inputVector();
     if (v.lengthSq() > 0.09) return v;
     if (this.time.now - this.lastDirAt < 250) return this.lastDir.clone();
@@ -3742,7 +3912,11 @@ export class MatchScene extends Phaser.Scene {
     // --- bot
     const bt = this.bot;
     // en red el rival es el otro jugador: se mueve con su estado (sin IA)
-    if (this.net) this.netBotTick(dt);
+    if (this.net) {
+      this.netBotTick(dt);
+      this.netSignalTick();
+      this.netPingTick();
+    }
     else {
     // movimiento del rival: lo decide el cerebro (src/ai/BotBrain.ts); aquí solo se aplica
     // ZONA del rival: más rápido mientras dure (se restaura tras el paso)
@@ -3889,6 +4063,7 @@ export class MatchScene extends Phaser.Scene {
     this.ball.quietFx = this.infernoFlight;
     this.fire.update(this.ball.s, this.infernoFlight, this.ball.sprite.visible);
     this.tickRemate(dt); // REMATE del globo: salto, apuntado, aro
+    this.autoTick(dt); // AUTO: saque y habilidades del piloto automático
     this.tickBotRemate(dt); // REMATE del BOT
     this.tickServeJump(dt); // salto del saque (visual)
     this.renderActors();
@@ -4072,7 +4247,8 @@ export class MatchScene extends Phaser.Scene {
     const grade: 'perfect' | 'early' | 'late' = Math.abs(p - 1) <= REMATE.perfect ? 'perfect' : p < 1 ? 'early' : 'late';
     const target = this.remateTarget(r.aim);
     this.endRemate();
-    this.net?.sendAction('remate-end'); // antes del golpe: el rival vuelve a velocidad normal y luego recibe el golpe
+    // antes del golpe: el rival vuelve a velocidad normal y luego recibe el golpe (con la nota, para el SMASH! / ¡AL AIRE!)
+    this.net?.sendAction('remate-end', { grade: p < REMATE.whiff ? 'whiff' : grade });
     if (p < REMATE.whiff) {
       // demasiado pronto: golpe AL AIRE. Hace el gesto pero no le pega; la pelota sigue en juego a velocidad normal y
       // el jugador cae y se recupera un instante (poco margen para responderla)
@@ -4386,10 +4562,23 @@ export class MatchScene extends Phaser.Scene {
     };
     net.attach({
       onStart: intro,
-      onState: (st) => (this.netRemote = st),
-      onHit: (h) => this.netApplyHit(h),
-      onAction: (a) => this.netApplyAction(a),
-      onPoint: (pm, forMe) => this.netApplyPoint(pm, forMe),
+      onState: (st) => {
+        this.netLastMsgAt = performance.now();
+        this.netRemote = st;
+        this.netInterp.push(st.t, performance.now(), st);
+      },
+      onHit: (h) => {
+        this.netLastMsgAt = performance.now();
+        this.netApplyHit(h, performance.now());
+      },
+      onAction: (a) => {
+        this.netLastMsgAt = performance.now();
+        this.netApplyAction(a);
+      },
+      onPoint: (pm, forMe) => {
+        this.netLastMsgAt = performance.now();
+        this.netApplyPoint(pm, forMe);
+      },
       onScore: () => undefined, // el marcador local ya aplica los mismos puntos; el oficial valida el final
       onOver: (_o, iWon) => {
         if (!introStarted) return abortPreStart('PARTIDO CANCELADO');
@@ -4397,12 +4586,19 @@ export class MatchScene extends Phaser.Scene {
         if (this.phase !== 'over') this.time.delayedCall(2600, () => this.phase !== 'over' && this.endMatch(iWon));
       },
       onOpponentLeft: (o) => {
+        this.netHoldEnd();
         if (!introStarted) return abortPreStart('EL RIVAL ABANDONÓ');
         if (this.phase === 'over') return;
         this.banner(o.reason === 'abandon' ? 'EL RIVAL SE RINDIÓ' : 'RIVAL DESCONECTADO', '#ffd23f', 52, 1200);
         this.time.delayedCall(1500, () => this.phase !== 'over' && this.endMatch(true));
       },
+      // RECONEXIÓN: pausa con aviso mientras uno de los dos vuelve; al volver se rejuega el punto en curso
+      onReconnecting: () => this.netHold('RECONECTANDO…'),
+      onReconnected: (sc) => this.netResume(sc),
+      onOpponentAway: () => this.netHold('RIVAL RECONECTANDO…'),
+      onOpponentBack: (sc) => this.netResume(sc),
       onDisconnect: () => {
+        this.netHoldEnd();
         if (!introStarted) return abortPreStart('SIN CONEXIÓN');
         if (this.phase === 'over') return;
         this.banner('SIN CONEXIÓN', '#ff7a85', 56, 1200);
@@ -4440,6 +4636,7 @@ export class MatchScene extends Phaser.Scene {
     const i = this.netHit;
     this.netHit = {};
     this.net.sendHit({
+      t: this.time.now, // hora del golpe en su reloj (el mismo de game:state): el rival mide cuánto tardó en llegar
       kind: this.serving ? 'serve' : 'hit',
       ball: { x: s.x, y: s.y, z: s.z, vx: s.vx, vy: s.vy, vz: s.vz, damp: s.damp, fric: s.fric, ay: s.ay },
       x: this.player.x,
@@ -4502,18 +4699,262 @@ export class MatchScene extends Phaser.Scene {
       this.rivalChargeFx(dt);
       return;
     }
-    const r = this.netRemote;
-    if (r) {
+    // estirada / DESTELLO / teletransporte del rival en curso: su animación manda sobre la posición
+    if (performance.now() < this.netBotLockUntil) {
+      this.rivalChargeT = 0;
+      this.rivalChargeFx(dt);
+      return;
+    }
+    // posición interpolada entre sus estados reales (net/interp.ts); sin estados aún, la última conocida
+    const smp = this.netInterp.sample(performance.now());
+    const r = smp?.snap ?? this.netRemote;
+    if (smp) {
+      bt.x = smp.x;
+      bt.y = smp.y;
+    } else if (this.netRemote) {
       const k = Math.min(1, dt * 14);
-      bt.x += (r.x - bt.x) * k;
-      bt.y += (r.y - bt.y) * k;
-      bt.ch.setMoving(r.moving, r.dirX);
-      bt.ch.setCharging(r.charging && !r.moving);
-      if (r.charging && !r.moving) this.rivalChargeT += dt;
+      bt.x += (this.netRemote.x - bt.x) * k;
+      bt.y += (this.netRemote.y - bt.y) * k;
+    }
+    // REMATE del rival: se coloca bajo la pelota con la raqueta arriba (pose remateHold) y el aro se cierra sobre la pelota
+    if (this.netRemateOn) {
+      this.netRemateT += dt;
+      if (this.netRemateRing) this.drawRemateRing(this.netRemateRing, this.netRemateT / this.netRemateDur);
+      this.rivalChargeT = 0;
+      this.rivalChargeFx(dt);
+      return; // sin setMoving / setCharging: romperían la pose de remate (su teléfono lo mueve hacia la pelota)
+    }
+    if (r) {
+      // carrera al ritmo de su velocidad real (como la tuya: PlayerMotion.runAnimRate)
+      const speedK = smp ? smp.speed / PLAYER_SPEED : undefined;
+      const moving = smp ? r.moving || smp.speed > PLAYER_SPEED * MOTION.moveMin : r.moving;
+      // ya no remata y se mueve: si su pose de remate quedó sin golpe (no llegó o fue al aire), se suelta para correr
+      if (moving) bt.ch.releaseRemate();
+      bt.ch.setMoving(moving, r.dirX, moving && speedK !== undefined ? Math.max(speedK, MOTION.moveMin) : speedK);
+      bt.ch.setCharging(r.charging && !moving);
+      if (r.charging && !moving) this.rivalChargeT += dt;
       else this.rivalChargeT = 0;
     } else this.rivalChargeT = 0;
     this.rivalChargeFx(dt);
     this.updateFacing(bt);
+  }
+
+  /**
+   * Nota del golpe del rival (aviso 'timing'): su ¡PERFECTO! / BIEN / PRONTO / TARDE y su RACHA ×N sobre su personaje,
+   * en el instante de su contacto. Solo se ve y se oye: sin vibración ni temblor (eso es para quien golpea).
+   */
+  private netRemoteTiming(d: ActionMsg['data']) {
+    const g = d?.grade;
+    if (g !== 'perfect' && g !== 'good' && g !== 'early' && g !== 'late') return;
+    const n = Math.floor(Number(d?.streak) || 0);
+    const at = clamp(Number(d?.ms) || 0, 0, 400);
+    this.time.delayedCall(at, () => {
+      const head = this.headPos(this.bot);
+      const b = project(this.ball.s.x, this.ball.s.y, this.ball.s.z);
+      playTimingFx(this, g, head, { x: b.sx, y: b.sy }, true);
+      if (g === 'perfect' && n >= TIMING.streak.from) playStreakFx(this, n, head);
+    });
+  }
+
+  /** aviso RECONECTANDO… en pantalla (partido en pausa) */
+  private netHoldUi: Phaser.GameObjects.Container | null = null;
+
+  /**
+   * RECONEXIÓN: el partido se congela (física, relojes y controles) con un aviso en el centro mientras este teléfono
+   * o el rival vuelve a conectarse. Lo termina netResume (volvió) o el fin del partido.
+   */
+  private netHold(text: string) {
+    if (this.phase === 'over') return;
+    this.stopCharge();
+    this.joy.release();
+    this.joy.enabled = false;
+    this.paused = true;
+    this.time.paused = true;
+    if (this.netWeak) {
+      this.netWeak.destroy();
+      this.netWeak = null;
+    }
+    this.netHoldUi?.destroy();
+    const W = this.scale.width;
+    const H = this.scale.height;
+    const c = this.add.container(W / 2, H * 0.42).setScrollFactor(0).setDepth(7900);
+    const g = this.add.graphics();
+    g.fillStyle(0x02060f, 0.82).fillRoundedRect(-230, -70, 460, 140, 22);
+    g.lineStyle(3, 0xffc42e, 0.9).strokeRoundedRect(-230, -70, 460, 140, 22);
+    const title = this.add.text(0, -18, text, { fontFamily: '"Lilita One", "Arial Black", sans-serif', fontSize: '34px', color: '#ffd23f', stroke: '#0a1638', strokeThickness: 6 }).setOrigin(0.5);
+    const sub = this.add.text(0, 30, 'El partido sigue al volver la conexión', { fontFamily: '"Lilita One", "Arial Black", sans-serif', fontSize: '18px', color: '#cfe0ff' }).setOrigin(0.5);
+    c.add([g, title, sub]);
+    c.setScale(0.8).setAlpha(0);
+    this.tweens.add({ targets: c, scale: 1, alpha: 1, duration: 220, ease: 'Back.easeOut' });
+    this.tweens.add({ targets: title, alpha: { from: 1, to: 0.45 }, duration: 600, yoyo: true, repeat: -1 });
+    this.netHoldUi = c;
+  }
+
+  /** Quita el aviso y descongela (sin tocar el punto). */
+  private netHoldEnd() {
+    if (this.netHoldUi) {
+      const c = this.netHoldUi;
+      this.netHoldUi = null;
+      this.tweens.killTweensOf(c);
+      c.list.forEach((o) => this.tweens.killTweensOf(o));
+      c.destroy();
+    }
+    if (this.paused && !this.dialog.length) {
+      this.paused = false;
+      this.time.paused = false;
+      this.joy.enabled = true;
+    }
+  }
+
+  /**
+   * Volvió la conexión (de este teléfono o del rival): marcador OFICIAL del servidor y se REJUEGA el punto en curso
+   * desde el saque (los dos teléfonos hacen lo mismo, así quedan iguales aunque se perdiera algún mensaje).
+   */
+  private netResume(sc: ScoreMsg) {
+    this.netHoldEnd();
+    if (this.phase === 'over' || !this.net) return;
+    const host = this.net.role === 'host';
+    this.score.points = host ? [sc.points.host, sc.points.guest] : [sc.points.guest, sc.points.host];
+    this.score.games = host ? [sc.games.host, sc.games.guest] : [sc.games.guest, sc.games.host];
+    this.updateHud();
+    this.netInterp.clear();
+    this.netLastMsgAt = performance.now();
+    this.netPendingToss = null;
+    this.faults = 0;
+    if (this.cine.active) this.cine.cancel(); // una cinemática a medias no sigue en el punto repetido
+    showCallout(this, 'SE REPITE EL PUNTO', 0xffc42e, 900);
+    this.phase = 'pointover';
+    this.startPoint();
+  }
+
+  /** último mensaje del rival (performance.now): sin mensajes > NET_WEAK_MS = señal débil */
+  private netLastMsgAt = 0;
+  /** icono de señal débil sobre el rival (null = no se muestra) */
+  private netWeak: Phaser.GameObjects.Container | null = null;
+
+  /** ¿Señal débil? Más de 1 s sin ningún mensaje del rival (su estado llega al menos cada 250 ms aunque esté quieto). */
+  private netSignalWeak() {
+    if (this.phase === 'over' || this.phase === 'intro' || this.netRemoteCine || this.cine.active || this.paused) return false;
+    return performance.now() - this.netLastMsgAt > 1000;
+  }
+
+  /** Muestra / quita el icono de señal débil sobre el rival y lo deja quieto (sin correr en el sitio). */
+  private netSignalTick() {
+    const weak = this.netSignalWeak();
+    if (weak) {
+      this.bot.ch.setMoving(false, 0);
+      this.bot.ch.setCharging(false);
+      if (!this.netWeak) this.netWeak = this.makeWeakSignalIcon();
+      const h = this.headPos(this.bot);
+      this.netWeak.setPosition(h.x, h.y - 46);
+    } else if (this.netWeak) {
+      const w = this.netWeak;
+      this.netWeak = null;
+      this.tweens.killTweensOf(w);
+      this.tweens.add({ targets: w, alpha: 0, scale: 0.6, duration: 180, onComplete: () => w.destroy() });
+    }
+  }
+
+  /** Icono de señal débil: 4 barras (solo la primera encendida, en rojo) y "SEÑAL DÉBIL", latiendo. */
+  private makeWeakSignalIcon() {
+    const c = this.add.container(0, 0).setDepth(4500);
+    const g = this.add.graphics();
+    g.fillStyle(0x0a1638, 0.85).fillRoundedRect(-62, -24, 124, 46, 12);
+    g.lineStyle(2, 0xff5a6a, 0.9).strokeRoundedRect(-62, -24, 124, 46, 12);
+    for (let i = 0; i < 4; i++) {
+      const h = 6 + i * 5;
+      g.fillStyle(i === 0 ? 0xff5a6a : 0x4a5674, 1).fillRect(-50 + i * 8, 6 - h, 5, h);
+    }
+    const txt = this.add.text(14, -1, ['SEÑAL', 'DÉBIL'], { fontFamily: '"Lilita One", "Arial Black", sans-serif', fontSize: '14px', color: '#ffb3ba', align: 'center', lineSpacing: -4 }).setOrigin(0.5);
+    c.add([g, txt]);
+    c.setScale(0.6).setAlpha(0);
+    this.tweens.add({ targets: c, scale: 1, alpha: 1, duration: 200, ease: 'Back.easeOut' });
+    this.tweens.add({ targets: c, alpha: { from: 1, to: 0.55 }, duration: 500, yoyo: true, repeat: -1, delay: 220 });
+    return c;
+  }
+
+  /** instante (performance.now) de la última estirada del rival que llegó con su aviso: su golpe no la repite */
+  private netLungeAt = -1e9;
+
+  /** ESTIRADA del rival al empezar (aviso 'lunge'): se tira hacia el mismo lado y llega al punto a la vez que él. */
+  private netRemoteLunge(d: ActionMsg['data']) {
+    const from = this.netBotPos(d?.x, d?.y);
+    const to = this.netBotPos(d?.tx, d?.ty);
+    const side = -Math.sign(Number(d?.side) || 1); // su derecha es nuestra izquierda
+    if (!from || !to || this.phase !== 'rally') return;
+    const bt = this.bot;
+    const ms = clamp(Number(d?.ms) || 200, 60, 600);
+    this.tweens.killTweensOf(bt);
+    bt.x = from.x;
+    bt.y = from.y;
+    bt.ch.facing = side;
+    if (!bt.ch.lunge(side)) bt.ch.swing();
+    this.dustFx(bt.x, bt.y);
+    this.netLungeAt = performance.now();
+    this.netBotLockUntil = performance.now() + ms + 40;
+    this.tweens.add({
+      targets: bt,
+      x: to.x,
+      y: to.y,
+      duration: ms,
+      ease: 'Quad.easeOut',
+      onComplete: () => {
+        this.dustFx(to.x, to.y);
+        this.netAnchor(to.x, to.y);
+      },
+    });
+  }
+
+  /** ida y vuelta medida con 'ping' / 'pong' (ms, suavizado; 0 = aún sin medir) */
+  private netRtt = 0;
+  private netPingAt = 0;
+
+  /** Cada ~2 s: 'ping' con la hora local; el rival responde 'pong' con la misma hora y aquí sale la ida y vuelta. */
+  private netPingTick() {
+    const now = performance.now();
+    if (now - this.netPingAt < 2000) return;
+    this.netPingAt = now;
+    this.net?.sendAction('ping', { t: now });
+  }
+
+  private netOnPong(t: number) {
+    const rtt = performance.now() - t;
+    if (!Number.isFinite(rtt) || rtt < 0 || rtt > 3000) return;
+    this.netRtt = this.netRtt ? this.netRtt + (rtt - this.netRtt) * 0.3 : rtt;
+  }
+
+  /**
+   * Cuánto tardó en llegar este golpe (s): lo que tardó por encima del mensaje más rápido (hora del golpe en su reloj
+   * frente al desfase mínimo de sus estados) + el mínimo de la red (media ida y vuelta). Acotado a 0..0,25 s.
+   */
+  private netHitDelay(h: HitMsg, recvAt: number): number {
+    const off = this.netInterp.minOffset;
+    if (typeof h.t !== 'number' || off === null) return this.netRtt ? Math.min(0.25, this.netRtt / 2000) : 0;
+    const extra = Math.max(0, recvAt - h.t - off);
+    const base = this.netRtt / 2;
+    return clamp((extra + base) / 1000, 0, 0.25);
+  }
+
+  /**
+   * Avanza la pelota recién recibida `sec` segundos con la misma física, pero se para ANTES de su primer bote o de la
+   * red: esos eventos los decide el juego normal (punto, falta, bote del saque), aquí solo se recupera el tiempo perdido.
+   */
+  private netAdvanceBall(sec: number) {
+    if (sec <= 0.005) return;
+    const s = this.ball.s;
+    const dt = 1 / 240;
+    for (let t = 0; t + dt <= sec; t += dt) {
+      const test = { ...s };
+      const ev = stepBall(test, dt);
+      if (ev) break;
+      Object.assign(s, test);
+    }
+  }
+
+  /** El rival está AHORA en (x, y): la interpolación se muestra desde ahí (golpe, teletransporte, cinemática). */
+  private netAnchor(x: number, y: number) {
+    const r = this.netRemote;
+    this.netInterp.reset(performance.now(), { x, y, moving: false, dirX: 0, facing: r?.facing ?? -1, charging: false, stunned: r?.stunned ?? false });
   }
 
   /** Carga del rival vista desde aquí: aro en el suelo, brillo del cuerpo y la raqueta y, al máximo, chispas (como las suyas). */
@@ -4561,7 +5002,8 @@ export class MatchScene extends Phaser.Scene {
   }
 
   /** Golpe / saque del rival: se aplica como un golpe del bot (pelota, animación y efectos de siempre). */
-  private netApplyHit(h: HitMsg) {
+  /** `recvAt` = llegada (performance.now); sin él (golpe aplicado tras una cinemática) no se compensa el retraso. */
+  private netApplyHit(h: HitMsg, recvAt?: number) {
     if (this.phase === 'over') return;
     this.netRemoteRemate(false); // por si no llegó 'remate-end': su golpe termina la cámara lenta
     this.netEndBotFly(true); // su golpe llegó: la SOMBRA / SUPERSALTO ya terminó en su teléfono
@@ -4575,6 +5017,8 @@ export class MatchScene extends Phaser.Scene {
     const bt = this.bot;
     bt.x = h.x;
     bt.y = h.y;
+    // golpe: se muestra YA en el punto del contacto (la raqueta coincide con la pelota) y sigue desde ahí
+    if (performance.now() >= this.netBotLockUntil) this.netAnchor(h.x, h.y);
     const s = this.ball.s;
     s.x = h.ball.x;
     s.y = h.ball.y;
@@ -4585,6 +5029,8 @@ export class MatchScene extends Phaser.Scene {
     s.damp = h.ball.damp;
     s.fric = h.ball.fric;
     s.ay = h.ball.ay; // curva del saque con efecto (ya espejada por MatchNet)
+    // la pelota llega con el retraso de la red: se avanza lo que tardó el mensaje (sin pasar su bote ni la red)
+    if (recvAt !== undefined) this.netAdvanceBall(this.netHitDelay(h, recvAt));
     // bola de fuego (SMASH / INFERNO del rival): al alcanzarla, el impacto de siempre (aturdido + devolución floja)
     if (h.power && !h.inferno) this.setSmashFlight(this.netRivalSmashEl); // su SMASH, con el poder que armó
     this.ball.setPower(h.power || h.inferno);
@@ -4612,13 +5058,35 @@ export class MatchScene extends Phaser.Scene {
       this.serving = false;
       const side = -Math.sign(h.lunge);
       bt.ch.facing = side;
-      fx = bt.ch.lunge(side) ? 0 : bt.ch.swing();
+      // ya se tiró con su aviso 'lunge': no se repite la estirada (solo el efecto del contacto)
+      if (performance.now() - this.netLungeAt < 900) fx = 0;
+      else fx = bt.ch.lunge(side) ? 0 : bt.ch.swing();
     } else {
       // animación exacta: los mismos datos (cargado / remate / volea / smash) que usó el emisor
       this.serving = false;
       fx = bt.ch.swing(h.power || h.charged, h.overhead, h.special ?? (h.power && h.overhead), h.volley);
     }
     if (fx >= 0) this.hitFxAt(fx, s.x, s.y, s.z, h.power || h.inferno, 0.15, !!h.inferno, h.inferno ? infernoElementFor(this.net?.opponent.skin, this.netRivalInferno) : h.power ? this.netRivalSmashEl : undefined);
+    // REMATE del globo del rival: la misma onda, sacudida y, si fue justo al cierre del aro, SMASH! dorado
+    const rg = this.netRemateGrade;
+    this.netRemateGrade = null;
+    if (fx >= 0 && rg) {
+      const pr = project(s.x, s.y, s.z);
+      this.tweens.add({ targets: bt, lift: 0, duration: 320, ease: 'Quad.easeIn' });
+      this.time.delayedCall(fx, () => {
+        this.ball.setImpactTrail(rg === 'perfect' ? 1 : 0.9, rg === 'perfect' ? 0xffd23f : 0xffffff);
+        this.cameras.main.shake(rg === 'perfect' ? 240 : 150, rg === 'perfect' ? 0.017 : 0.01);
+        for (const [d, col] of [[0, 0xffffff], [90, 0xffd23f]] as const) {
+          const ring = this.add.ellipse(pr.sx, pr.sy, 40 * pr.s, 26 * pr.s).setStrokeStyle(7 * pr.s, col, 0.95).setDepth(3500).setBlendMode(Phaser.BlendModes.ADD).setAlpha(0);
+          this.tweens.add({ targets: ring, scale: 7, alpha: { from: 0.95, to: 0 }, duration: 480, delay: d, ease: 'Cubic.easeOut', onStart: () => ring.setAlpha(0.95), onComplete: () => ring.destroy() });
+        }
+        if (rg === 'perfect') {
+          superSmashFx(this, pr.sx, pr.sy);
+          const hd = this.headPos(bt);
+          this.popText(hd.x, hd.y - 30, 'SMASH!', '#ffd23f', 44);
+        }
+      });
+    }
     // cortita cargada del rival: el mismo aviso que ve él sobre su personaje
     if (fx >= 0 && h.charged && h.shotKind === 'drop') {
       this.time.delayedCall(fx, () => {
@@ -4659,6 +5127,16 @@ export class MatchScene extends Phaser.Scene {
       if (this.server !== 'bot') return;
       if (this.phase === 'serve') this.beginToss(kind);
       else this.netPendingToss = kind;
+    } else if (a.kind === 'lunge') this.netRemoteLunge(a.data);
+    else if (a.kind === 'timing') this.netRemoteTiming(a.data);
+    else if (a.kind === 'ping') this.net?.sendAction('pong', { t: Number(a.data?.t) || 0 });
+    else if (a.kind === 'pong') this.netOnPong(Number(a.data?.t));
+    else if (a.kind === 'serve-swing') {
+      // golpe del saque del rival: del lanzamiento al clip del golpe y su salto (como en su teléfono)
+      if (this.server === 'bot' && this.phase === 'toss') {
+        this.bot.ch.serveRelease();
+        this.serveJump(this.bot, this.bot.ch.serveContactDelay());
+      }
     } else if (a.kind === 'catch') {
       if (this.server === 'bot' && this.phase === 'toss') {
         this.netApplying = true;
@@ -4681,7 +5159,7 @@ export class MatchScene extends Phaser.Scene {
     else if (a.kind === 'defensive') this.netRemoteDefensive(a.data);
     else if (a.kind === 'racket') this.netRemoteRacket(a.data);
     else if (a.kind === 'remate-start') this.netRemoteRemate(true, a.data);
-    else if (a.kind === 'remate-end') this.netRemoteRemate(false);
+    else if (a.kind === 'remate-end') this.netRemoteRemate(false, a.data);
     else if (a.kind === 'stunned') this.netBotStunned(Number(a.data?.ms));
     else if (a.kind === 'emote') this.emotes.showRemote(String(a.data?.kind ?? ''), () => this.headPos(this.bot));
     else if (a.kind === 'smash-armed') {
@@ -4705,6 +5183,10 @@ export class MatchScene extends Phaser.Scene {
    * y luego cambian de lugar; SUPERSALTO = salto en parábola con estela y caída con onda de choque.
    */
   private netRemoteDefensive(d: ActionMsg['data']) {
+    if (d?.kind === 'blink' || d?.kind === 'warp') {
+      this.netRemoteWarp(d);
+      return;
+    }
     const kind = d?.kind === 'shadow' || d?.kind === 'jump' ? d.kind : null;
     const from = this.netBotPos(d?.x, d?.y);
     const to = this.netBotPos(d?.tx, d?.ty);
@@ -4716,7 +5198,7 @@ export class MatchScene extends Phaser.Scene {
     bt.y = from.y;
     bt.ch.setMoving(false, 0);
     bt.ch.setCharging(false);
-    const fly: NonNullable<typeof this.netBotFly> = { kind, from, to, t: 0, dur, ghosts: 0 };
+    const fly: NonNullable<MatchScene['netBotFly']> = { kind, from, to, t: 0, dur, ghosts: 0 };
     const h = this.headPos(bt);
     if (kind === 'shadow') {
       const clone = new Character(this, 0, 0, this.rivalLk(), 'front');
@@ -4733,6 +5215,66 @@ export class MatchScene extends Phaser.Scene {
     }
     this.netBotFly = fly;
     this.netBotFlyTick(0);
+  }
+
+  /**
+   * DESTELLO / DASH de teletransporte del rival (aviso 'defensive' kind blink | warp): desaparece en su sitio (portal; el
+   * DESTELLO además deja estela y sombras por el camino) y reaparece en el punto con otro portal, a los mismos tiempos.
+   */
+  private netRemoteWarp(d: NonNullable<ActionMsg['data']>) {
+    const from = this.netBotPos(d.x, d.y);
+    const to = this.netBotPos(d.tx, d.ty);
+    if (!from || !to || this.phase === 'over') return;
+    const bt = this.bot;
+    const blink = d.kind === 'blink';
+    const out = clamp(Number(d.out) || 120, 40, 600);
+    const inn = clamp(Number(d.in) || 120, 40, 600);
+    const delay = clamp(Number(d.delay) || 0, 0, 600);
+    const col = blink ? 0x45d9ff : undefined;
+    const light = blink ? 0xd9f7ff : undefined;
+    this.netEndBotFly(false);
+    this.tweens.killTweensOf(bt);
+    bt.x = from.x;
+    bt.y = from.y;
+    bt.ch.setMoving(false, 0);
+    bt.ch.setCharging(false);
+    this.netBotLockUntil = performance.now() + out + delay + inn + 60;
+    if (blink) {
+      const a = project(from.x, from.y);
+      const b = project(to.x, to.y);
+      const k = a.s * VIEW.CHAR_K;
+      this.dashFx.burst(a.sx, a.sy, k, bt.ch.depth);
+      if (Math.hypot(to.x - from.x, to.y - from.y) > 40) {
+        for (let i = 0; i < 3; i++) {
+          const f = (i + 1) / 4;
+          bt.x = from.x + (to.x - from.x) * f;
+          bt.y = from.y + (to.y - from.y) * f;
+          this.renderActors();
+          this.dashFx.ghost(bt.ch, i, bt.ch.depth);
+        }
+        bt.x = from.x;
+        bt.y = from.y;
+        this.renderActors();
+      }
+      this.dashFx.streak(a.sx, a.sy - 70 * k, b.sx, b.sy - 70 * k, k, bt.ch.depth);
+      const h = this.headPos(bt);
+      this.popText(h.x, h.y - 10, 'DEFENSIVO', '#c9a4ff', 26);
+    }
+    this.portalFx(from.x, from.y, col, light);
+    this.tweens.add({
+      targets: bt,
+      warp: 0,
+      duration: out,
+      ease: 'Quad.easeIn',
+      onComplete: () => {
+        bt.x = to.x;
+        bt.y = to.y;
+        this.netAnchor(to.x, to.y);
+        if (this.netRemote) this.netRemote = { ...this.netRemote, x: to.x, y: to.y, moving: false };
+        this.portalFx(to.x, to.y, col, light);
+        this.tweens.add({ targets: bt, warp: 1, duration: inn, delay, ease: 'Back.easeOut' });
+      },
+    });
   }
 
   /** Avanza la SOMBRA / SUPERSALTO del rival. true = sigue en curso (manda sobre su posición). */
@@ -4784,6 +5326,7 @@ export class MatchScene extends Phaser.Scene {
     bt.y = f.to.y;
     // su próximo estado ya viene desde el punto: sin deslizarse de vuelta mientras llega
     if (this.netRemote) this.netRemote = { ...this.netRemote, x: f.to.x, y: f.to.y, moving: false };
+    this.netAnchor(f.to.x, f.to.y);
   }
 
   /** Posición del rival que llega en un aviso (coordenadas del emisor → espejadas y dentro de su zona). */
@@ -4811,6 +5354,7 @@ export class MatchScene extends Phaser.Scene {
     bt.x = pos.x;
     bt.y = pos.y;
     if (this.netRemote) this.netRemote = { ...this.netRemote, x: pos.x, y: pos.y, moving: false, charging: false };
+    this.netAnchor(pos.x, pos.y);
     bt.ch.setMoving(false, 0);
     bt.ch.setCharging(false);
     this.rivalChargeT = 0; // la escena se congela: su brillo de carga se apaga ya (netBotTick no corre durante la cinemática)
@@ -4891,6 +5435,7 @@ export class MatchScene extends Phaser.Scene {
         bt.x = to.x;
         bt.y = to.y;
         if (this.netRemote) this.netRemote = { ...this.netRemote, x: to.x, y: to.y };
+        this.netAnchor(to.x, to.y);
         bt.ch.setCharging(false); // suelta la pose de espera: su golpe sigue desde la raqueta atrás
         this.ghosts.end();
         this.netEndRemoteCine();
@@ -4928,6 +5473,12 @@ export class MatchScene extends Phaser.Scene {
 
   /** el rival está rematando un globo (red): cámara lenta aquí también */
   private netRemateOn = false;
+  /** su aro que se cierra sobre la pelota (tiempo de juego transcurrido / hasta el contacto) */
+  private netRemateRing: Phaser.GameObjects.Graphics | null = null;
+  private netRemateT = 0;
+  private netRemateDur = 0.4;
+  /** cómo terminó su remate ('remate-end'): lo usa su golpe para los efectos (SMASH! si fue justo al cierre) */
+  private netRemateGrade: 'perfect' | 'early' | 'late' | null = null;
 
   /**
    * REMATE del rival (red): la misma cámara lenta mientras apunta (sin acercar la cámara ni ver su apuntado) y su salto.
@@ -4940,6 +5491,13 @@ export class MatchScene extends Phaser.Scene {
       const slow = clamp(Number(d?.slow) || 1, REMATE.minSlow, 1);
       const T = clamp(Number(d?.t) || 0.4, 0.12, 0.8);
       this.netRemateOn = true;
+      this.netRemateT = 0;
+      this.netRemateDur = T;
+      this.netRemateGrade = null;
+      this.netRemateRing?.destroy();
+      this.netRemateRing = this.add.graphics().setDepth(4000);
+      bt.ch.setMoving(false, 0);
+      bt.ch.setCharging(false);
       this.setSlowMo(slow);
       this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.setSlowMo(1));
       // salto hasta el contacto (en tiempo de juego: con la cámara lenta dura lo mismo que en su teléfono)
@@ -4951,6 +5509,16 @@ export class MatchScene extends Phaser.Scene {
     }
     if (!this.netRemateOn) return;
     this.netRemateOn = false;
+    const grade = d?.grade;
+    this.netRemateGrade = grade === 'perfect' || grade === 'early' || grade === 'late' ? grade : null;
+    this.netRemateRing?.destroy();
+    this.netRemateRing = null;
+    // golpe al aire (demasiado pronto): hace el gesto y no le pega, como en su teléfono
+    if (grade === 'whiff') {
+      bt.ch.swing(true, true, true);
+      const h = this.headPos(bt);
+      this.popText(h.x, h.y - 20, '¡AL AIRE!', '#ff9aa3', 32);
+    }
     if (this.netRemateLabel?.active) {
       this.tweens.killTweensOf(this.netRemateLabel);
       this.netRemateLabel.destroy();

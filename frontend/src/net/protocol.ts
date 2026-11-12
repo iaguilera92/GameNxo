@@ -20,6 +20,8 @@ export const EV = {
   CANCEL: 'mm:cancel',
   /** la escena del partido ya cargó (cuando están los dos, el servidor manda START) */
   READY: 'game:ready',
+  /** volver a un partido tras un corte (data: ResumeRequest) */
+  RESUME: 'game:resume',
   /** estado del propio jugador (~20 Hz): se reenvía al rival */
   STATE: 'game:state',
   /** golpe / saque propio con la pelota resultante: se reenvía al rival */
@@ -39,6 +41,12 @@ export const EV = {
   ERROR: 'mm:error',
   START: 'game:start',
   OPPONENT_LEFT: 'game:opponent-left',
+  /** el rival se cortó: el partido queda en pausa mientras reconecta (como mucho RECONNECT_GRACE_MS) */
+  OPPONENT_AWAY: 'game:opponent-away',
+  /** el rival volvió (data: ScoreMsg oficial): se rejuega el punto en curso */
+  OPPONENT_BACK: 'game:opponent-back',
+  /** reconexión aceptada (data: ResumedMsg) */
+  RESUMED: 'game:resumed',
   SCORE: 'game:score',
   OVER: 'game:over',
 } as const;
@@ -76,6 +84,19 @@ export interface MatchedMsg {
   opponent: PlayerProfile;
   /** reglas del partido (las mismas que el modo BOT) */
   gamesToWin: number;
+  /** clave para reconectar a esta sala si se corta la conexión (game:resume) */
+  token?: string;
+}
+
+/** Reconexión: la sala y la clave que dio el emparejamiento. */
+export interface ResumeRequest {
+  roomId: string;
+  token: string;
+}
+
+/** Reconexión aceptada: marcador oficial (se rejuega el punto en curso desde él). */
+export interface ResumedMsg {
+  score: ScoreMsg;
 }
 
 export interface ErrorMsg {
@@ -114,6 +135,8 @@ export type HitKind = 'hit' | 'serve';
 
 export interface HitMsg {
   seq: number;
+  /** hora del golpe en el reloj del emisor (el de StateMsg.t): el receptor compensa lo que tardó en llegar */
+  t?: number;
   kind: HitKind;
   ball: BallWire;
   /** posición del que golpea en el momento del golpe */
@@ -148,14 +171,22 @@ export interface HitMsg {
  *  smash-armed / smash-disarmed el emisor arma / consume su SMASH (aura en el rival)
  *  smash-cine                   empieza la cinemática del SMASH del emisor (data: x, y, overhead, ms)
  *  inferno-cine                 empieza la cinemática del INFERNO del emisor (data: x, y, tx, ty, ms, power)
- *  defensive                    SOMBRA / SUPERSALTO del emisor (data: kind = shadow | jump, x, y, tx, ty, ms)
+ *  defensive                    SOMBRA / SUPERSALTO / DESTELLO / teletransporte del emisor (data: kind = shadow | jump | blink | warp, x, y, tx, ty, ms | out, in, delay)
  *  racket                       raqueta del emisor tras recibir la ULTI (data: lost = true + x, y donde cae · lost = false: la recogió)
+ *  timing                       nota del golpe del emisor (data: grade = perfect | good | early | late, streak, ms)
+ *  lunge                        el emisor empieza su ESTIRADA (data: side, x, y, tx, ty, ms)
+ *  serve-swing                  el emisor golpea su saque (del lanzamiento al golpe, con su salto)
  *  remate-start / remate-end    el emisor empieza a rematar un globo (data: slow = cámara lenta, t = s de juego hasta el contacto) / golpea
  */
 export type ActionKind =
   | 'racket'
   | 'remate-start'
   | 'remate-end'
+  | 'serve-swing'
+  | 'lunge'
+  | 'timing'
+  | 'ping'
+  | 'pong'
   | 'defensive'
   | 'toss'
   | 'catch'

@@ -65,6 +65,8 @@ export function sanitizeHit(d: unknown): HitMsg | null {
     overhead: d.overhead === true,
     volley: d.volley === true,
   };
+  const t = num(d.t);
+  if (t !== null) out.t = t;
   if (d.special === true) out.special = true;
   if (d.shock === true) out.shock = true;
   if (d.serveSpin === true) out.serveSpin = true;
@@ -74,10 +76,16 @@ export function sanitizeHit(d: unknown): HitMsg | null {
   return out;
 }
 
-const ACTIONS = new Set<ActionKind>(['toss', 'catch', 'sprint-start', 'sprint-end', 'stunned', 'emote', 'smash-armed', 'smash-disarmed', 'smash-cine', 'inferno-cine', 'defensive', 'racket', 'remate-start', 'remate-end']);
+/**
+ * Nombre de una acción: minúsculas, números y guiones (2..24), p. ej. 'remate-start'. Las acciones son SOLO visuales
+ * (el servidor no las interpreta y no tocan pelota ni marcador; los datos se limpian abajo y hay límite de mensajes),
+ * así que se reenvía cualquiera con nombre válido: una acción visual nueva del cliente ya no obliga a redesplegar.
+ * Cada cliente ignora las que no conoce. Las conocidas están en ActionKind (events/protocol.ts).
+ */
+const ACTION_NAME = /^[a-z][a-z0-9-]{1,23}$/;
 
 export function sanitizeAction(d: unknown): ActionMsg | null {
-  if (!isObj(d) || typeof d.kind !== 'string' || !ACTIONS.has(d.kind as ActionKind)) return null;
+  if (!isObj(d) || typeof d.kind !== 'string' || !ACTION_NAME.test(d.kind)) return null;
   const out: ActionMsg = { kind: d.kind as ActionKind };
   if (isObj(d.data)) {
     const data: Record<string, number | string | boolean> = {};

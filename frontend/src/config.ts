@@ -39,8 +39,12 @@ export const XP_LOSS = 25;
 export const COINS_WIN = 50;
 export const COINS_LOSS = 10;
 export const COINS_SURRENDER = 0;
-/** XP necesaria para pasar del nivel `lvl` al siguiente. */
-export const xpToNext = (lvl: number) => 100 + (lvl - 1) * 50;
+/**
+ * XP necesaria para pasar del nivel `lvl` al siguiente. Los primeros niveles son rápidos (DEFENSIVO, ESPECIAL y ULTI en la
+ * primera semana, domain/unlocks.ts) y cada nivel pide 120 más: 22.420 XP del 1 al 20 (antes 100 + 50 por nivel = 10.450).
+ * Ver ECONOMIA.txt.
+ */
+export const xpToNext = (lvl: number) => 100 + (lvl - 1) * 120;
 
 // Cancha en coordenadas lógicas (x = largo: jugador en x pequeños, rival en x grandes;
 // y = ancho). La vista vertical en perspectiva se calcula en src/view/projection.ts.

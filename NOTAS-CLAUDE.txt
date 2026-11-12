@@ -240,3 +240,78 @@ NOTAS PARA CLAUDE (pendientes detectados por Kiro, sin corregir)
  - NxoActor.impactStun(kind, ms, throwRacket): con false la mano queda vacía pero la raqueta suelta la dibuja MatchScene.
  - Red: acción nueva game:action 'racket' (lost + x, y / lost false), añadida a guard.ts y a los dos protocol.ts. Hay
    que DESPLEGAR el backend.
+
+[12-11-2026] Claude: REMATE del rival en red
+ - netBotTick: con netRemateOn no llama setMoving/setCharging (rompían la pose remateHold) y dibuja SU aro que se cierra
+   (drawRemateRing en netRemateRing). remate-end lleva data.grade (perfect | early | late | whiff): whiff = gesto +
+   ¡AL AIRE!; en netApplyHit, onda, sacudida y con perfect SMASH! + superSmashFx (netRemateGrade). Sin cambios de protocolo.
+ - CARRERA del rival pegada: la pose remateHold (estado busy "remate", anims en pausa) no se soltaba si no llegaba el
+   golpe. NxoActor/Character.releaseRemate() nuevo; se llama en placeForServe (ambos) y en netBotTick cuando el rival se mueve.
+ - BOTÓN AUTO (MatchScene.makeAutoButton, bajo los emojis en layout): piloto automático para probar el online solo.
+   inputVector -> autoMoveVector (va al punto de golpeo previsto con stepBall o al centro del fondo); shotDir -> autoAim
+   (dirección aleatoria cada ~0,9 s); autoTick: saque (lanza y golpea en lo alto), ESPECIAL 35 % por pelota del rival,
+   DEFENSIVO si queda lejos (autoGap > 150). Se apaga al salir del partido (autoPlay = false en create).
+
+[12-11-2026] Claude: SERVIDOR ONLINE desactualizado + acciones libres
+ - Probado contra el servidor de AWS: solo reenvía smash-cine / smash-armed; descarta remate-start/end, defensive y racket
+   (el despliegue automático del último push no se aplicó: revisar backend/deploy.log en el EC2).
+ - guard.sanitizeAction ya no usa lista fija: reenvía cualquier acción con nombre /^[a-z][a-z0-9-]{1,23}$/ (solo visuales,
+   datos limpiados, límite de mensajes). Acciones visuales nuevas ya NO requieren redesplegar. HAY QUE DESPLEGAR una vez.
+ - SAQUE del rival en red pegado: NxoActor.swing() en estado serve llamaba releaseServe(), que no pasa del clip de
+   LANZAMIENTO al del golpe (tossing seguía true) -> personaje ocupado para siempre. Ahora llama serveRelease().
+   Nueva acción 'serve-swing' (beginSwing del jugador): el rival hace serveRelease + serveJump a tiempo (salto del saque).
+
+[12-11-2026] Claude: MOVIMIENTOS del rival en red
+ - net/interp.ts (RemoteInterp): el rival se muestra ~100 ms en el pasado, interpolado entre sus estados reales (hora del
+   emisor + desfase mínimo). netBotTick usa sample(); carrera al ritmo de su velocidad real (setMoving con speedK).
+   netAnchor(x, y) fija su posición actual en golpes, teletransportes, cinemáticas y fin de SOMBRA/SUPERSALTO.
+   netBotLockUntil: mientras dura su estirada / DESTELLO / teletransporte, la animación manda sobre la posición.
+ - Acción 'lunge' (playerLunge): el rival se tira AL EMPEZAR (netRemoteLunge); su golpe no repite la estirada.
+ - 'defensive' con kind blink | warp (startBlink / DASH de teletransporte): netRemoteWarp = portales, estela, sombras.
+   No hace falta desplegar el backend para esto si ya está el filtro de acciones libre.
+ - Acción 'timing' (playerHit): el rival ve tu nota y tu RACHA (netRemoteTiming; playTimingFx(..., remote=true) sin
+   vibración ni temblor). La carga del rival ya se replicaba (aura y rayos al 100 % a 1,1 s, pelota setMaxCharge y shockFx).
+ - SEÑAL DÉBIL: netLastMsgAt (cualquier mensaje del rival); > 1 s sin mensajes (fuera de intro/cinemáticas/pausa) =
+   icono sobre el rival (makeWeakSignalIcon) y rival quieto (netSignalTick, llamado tras netBotTick).
+ - AUTO más completo: carga ~55 % de los golpes (colocado y con la pelota a 0,2–1,4 s: toggleCharge; autoContactT) y
+   arma SIEMPRE la ULTI cuando la tiene (smashBtn.inferno). Con la carga puede salir la estirada.
+ - PARED / VALLA con poder: WallFx.elementHit (hielo esquirlas + escarcha + copo; rayo descarga en zigzag; viento remolino,
+   hojas y ráfagas; tulipán pétalos; fuego brasas) + elementSound. Vale para ESPECIAL y ULTI (wallEl).
+ - PELOTA del rival compensada: HitMsg.t (hora del golpe en su reloj; guard.sanitizeHit la deja pasar). netHitDelay =
+   (llegada − t − desfase mínimo) + media ida y vuelta (acciones 'ping'/'pong' cada 2 s, netRtt), máx. 0,25 s.
+   netAdvanceBall avanza la pelota con stepBall y se para ANTES del primer bote o la red. Hay que DESPLEGAR el backend.
+[12-11-2026] KIRO: ECONOMÍA (aprobada por el usuario) -> ECONOMIA.txt en la raíz (leer antes de tocar números)
+ - ECONOMIA.txt explica monedas, dinero, XP, pase, Ranked, tienda, ruleta, premio diario, anuncios y ZONA: de dónde sale
+   cada cosa, por qué cada número y en qué archivo se cambia. Si cambias un número de economía, actualízalo ahí.
+ - Cambios (solo configuración): STARTING_COINS 1.500 -> 5.000 (player.ts; 10 entradas de Bronce) · semanal Ranked Bronce
+   3.000 -> 6.000 y Plata 6.000 -> 8.000 (rankedConfig.ts) · domingo del premio diario 1.500 -> 3.500 (+10 igual;
+   dailyLogin.ts) · xpToNext 100 + (n-1)*50 -> 100 + (n-1)*120 (config.ts; 22.420 XP al nivel 20) · CLP directo:
+   smash:ice y charge:tulip 1.690 -> 1.390, smash:wind y los 3 defensive 1.790 -> 1.490 (shopCatalog.ts; regla: el
+   directo nunca más caro que juntar ese dinero con paquetes).
+ - PENDIENTE PARA LA TEMPORADA 2 DEL PASE: xpPerTier 100 -> 350 (battlePassConfig.ts, comentado ahí). Hacerlo al cambiar
+   id/month del pase, NO en plena temporada (bajaría el nivel del pase de quien ya avanzó: nivel = xp / xpPerTier).
+ - Partidas guardadas: sin migración ni cambio de PLAYER_SCHEMA_VERSION. Las 5.000 son solo para jugadores nuevos.
+ - Meta del usuario: del nivel 1 al 20, monedas para al menos 10 Ranked. Simulado: casual 99,4 % de sus partidas con
+   >= 10 entradas (antes 86 %).
+ - Simulador: frontend/tools/sim-economy.mjs (módulos reales de src/domain; 4 perfiles: casual, regular, intenso, novato;
+   pase mensual; rival de Ranked como MatchmakingScene + BotProfile, con BOT_TIERS copiado: si cambias los tramos de
+   src/ai/BotProfile.ts, cámbialos también ahí). `node tools/sim-economy.mjs --runs=20` desde frontend/.
+ - RIESGO para quien toque Ranked/bots: desde el nivel 17 el rival ya es Experto en todas las ligas (nivel del rival con
+   tope 20). Un nivel 20 que gana > 50 % multiplica monedas sin límite y uno de 50 % llega a Challenger en ~2 meses con
+   monedas gratis. No toca la Tienda (el dinero tiene techo semanal), pero la liga deja de medir habilidad. Sin cambiar.
+[12-11-2026] KIRO: dos cambios en el partido (para no deshacerlos)
+ - MatchScene.powerPulse YA NO usa preFX ColorMatrix: en el APK el personaje desaparecía y quedaban cuadros rotos al armar
+   el ESPECIAL (preFX en sprites dentro de un Container). Solo queda la onda de luz (un poco más visible). No volver a
+   poner preFX/postFX en los sprites del personaje.
+ - ZONA (logic/Zone.ts): minPoints 4 -> 2 (2 puntos ganados y 2 abajo) y también entra quien va 0-40 en un juego.
+   onPoint(winner, gameEnded): MatchScene le pasa res.gameWinner !== null. Determinista en los dos teléfonos.
+
+[12-11-2026] Claude: RECONEXIÓN online
+ - Servidor: cada jugador recibe una clave (MatchedMsg.token). Corte de red en pleno partido (ping timeout / transport
+   close) = jugador AUSENTE (RoomManager.markAway) con RECONNECT_GRACE_MS (15 s) para volver con game:resume
+   {roomId, token} (RoomManager.rejoin, nueva conexión). Avisos: game:opponent-away / game:opponent-back (marcador) y
+   game:resumed (marcador). Si no vuelve: OPPONENT_LEFT y gana el rival, como antes. Tests en rooms.test.ts.
+ - Cliente: MatchNet reconecta solo hasta 14 s (onDrop/reconnect; pasa las escuchas a la conexión nueva).
+   MatchScene: netHold ('RECONECTANDO…' / 'RIVAL RECONECTANDO…', partido en pausa), netResume = marcador oficial y
+   SE REPITE EL PUNTO desde el saque en los dos teléfonos. Probado de punta a punta con un servidor local.
+   Hay que DESPLEGAR el backend.

@@ -630,7 +630,10 @@ export class NxoActor {
   swing(overhead: boolean, power = false, special = false, volley = false): number {
     if (this.state === 'victory') return 0;
     if (this.state === 'serve') {
-      this.releaseServe(); // el saque ya estÃ¡ en marcha: solo asegurar que termina el golpe
+      // el saque ya está en marcha: asegurar que termina el golpe. serveRelease (no releaseServe): si aún está en el
+      // LANZAMIENTO pasa al clip del golpe; antes se quedaba en el clip del lanzamiento, ocupado para siempre (rival en
+      // red: su saque llega por game:hit sin pasar por serveRelease). (Claude, 12-11-2026)
+      this.serveRelease();
       return 0;
     }
     if (this.state === 'swing' && !this.swingInterruptible) return 0;
@@ -693,6 +696,17 @@ export class NxoActor {
     this.playClip(useSpecial ? this.sk('smash-power') : this.clip('smash').key, useSpecial ? this.P.special.start : this.geo.smashStart);
     this.sprite.anims.pause();
     return true;
+  }
+
+  /**
+   * Suelta la pose del REMATE sin golpear (punto terminado, golpe al aire o remate del rival en red que no llegó a su
+   * golpe). Sin esto el estado 'remate' queda ocupado y el personaje ya no anima la carrera. (Claude, 12-11-2026)
+   */
+  releaseRemate() {
+    if (this.state !== 'remate') return;
+    if (this.sprite.anims.isPaused) this.sprite.anims.resume();
+    this.enter('idle');
+    this.refresh();
   }
 
   /** Inicio del toque del saque (la pelota acaba de salir). El golpe llega con serveRelease(). */

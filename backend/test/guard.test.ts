@@ -31,7 +31,13 @@ test('sanitizeHit: pelota obligatoria, booleanos estrictos, texto recortado, opc
 });
 
 test('sanitizeAction: tipo permitido y datos acotados', () => {
-  assert.equal(sanitizeAction({ kind: 'hackear' }), null);
+  // cualquier nombre válido pasa (acciones visuales nuevas sin redesplegar); los inválidos no
+  assert.deepEqual(sanitizeAction({ kind: 'accion-nueva' }), { kind: 'accion-nueva' });
+  assert.equal(sanitizeAction({ kind: 'Mayus' }), null);
+  assert.equal(sanitizeAction({ kind: 'con espacio' }), null);
+  assert.equal(sanitizeAction({ kind: 'x'.repeat(40) }), null);
+  assert.equal(sanitizeAction({ kind: '<script>' }), null);
+  assert.equal(sanitizeAction({ kind: 42 }), null);
   assert.equal(sanitizeAction(undefined), null);
   const data: Record<string, unknown> = {};
   for (let i = 0; i < 30; i++) data['k' + i] = i;

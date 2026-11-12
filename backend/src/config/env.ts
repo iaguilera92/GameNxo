@@ -30,6 +30,8 @@ export const CONFIG = {
   searchTimeoutMs: num(process.env.SEARCH_TIMEOUT_MS, 5000),
   /** espera máxima a que los dos clientes carguen el partido antes de empezar igualmente */
   readyTimeoutMs: num(process.env.READY_TIMEOUT_MS, 12000),
+  /** RECONEXIÓN: tiempo que se guarda el sitio de un jugador que se cortó en pleno partido (0 = pierde al instante) */
+  reconnectGraceMs: num(process.env.RECONNECT_GRACE_MS, 15000),
   /** duración máxima de un partido en curso (después se cierra la sala por tiempo: gana quien vaya arriba) */
   maxMatchMs: num(process.env.MAX_MATCH_MS, 30 * 60_000),
   /** tamaño máximo de un mensaje de un cliente (bytes); más grande = se corta esa conexión */

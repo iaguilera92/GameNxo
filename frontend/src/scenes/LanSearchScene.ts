@@ -80,7 +80,7 @@ export class LanSearchScene extends Phaser.Scene {
           this.done = true;
           cancel.destroy();
           this.tweens.add({ targets: c, alpha: 0, scale: 0.85, duration: 220 });
-          this.versus(new MatchNet(tr, m.roomId, m.role, m.opponent, m.gamesToWin));
+          this.versus(new MatchNet(tr, m.roomId, m.role, m.opponent, m.gamesToWin, m.token));
         };
         const onTimeout = () => this.noRival('No se encontró rival');
         const onError = (e: ErrorMsg) => this.noRival(e.message);

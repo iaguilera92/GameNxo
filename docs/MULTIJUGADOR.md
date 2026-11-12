@@ -234,7 +234,9 @@ es uno de esos cuatro; sin él, el rival usa el de su personaje (Nxo = `fire`, M
 
 Producción (AWS): `npm run build` y `npm run start:prod` con **un solo proceso** (las salas viven en memoria).
 Archivos listos en `backend/deploy/` (systemd y pm2) y `backend/.env.example`. Los mensajes del cliente se validan y
-limitan por segundo (`src/socket/guard.ts`); `STATE` se envía como volátil.
+limitan por segundo (`src/socket/guard.ts`); `STATE` se envía como volátil. `game:action` reenvía CUALQUIER acción
+con nombre válido (minúsculas, números y guiones; son solo visuales): una acción visual nueva del cliente no obliga a
+redesplegar el backend (cada cliente ignora las que no conoce).
 | `SEARCH_TIMEOUT_MS` | 5000 | tiempo máximo de búsqueda |
 | `READY_TIMEOUT_MS` | 12000 | espera máxima a que los dos carguen |
 | `GAMES_TO_WIN` / `GOLDEN_POINT` | 2 / 0 | reglas (las mismas que `frontend/src/config.ts`) |

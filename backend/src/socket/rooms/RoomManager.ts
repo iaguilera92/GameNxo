@@ -22,6 +22,10 @@ export interface RoomPlayer {
   id: string;
   profile: PlayerProfile;
   ready: boolean;
+  /** clave secreta para RECONECTAR a esta sala tras un corte (se le da al emparejar) */
+  token: string;
+  /** desconectado y esperando a que reconecte (el partido sigue reservado unos segundos) */
+  away?: boolean;
 }
 
 export interface RoomResult {
@@ -110,7 +114,7 @@ export class RoomManager {
       if (r.status === 'WAITING' && r.players.length === 1 && r.players[0].id !== playerId && (!target || r.createdAt < target.createdAt)) target = r;
     if (target) {
       this.clearSearch(target.id);
-      target.players.push({ id: playerId, profile, ready: false });
+      target.players.push({ id: playerId, profile, ready: false, token: randomUUID() });
       target.status = 'FULL';
       this.playerRoom.set(playerId, target.id);
       // completa: empieza sin confirmaciones (FULL -> PLAYING)
@@ -120,7 +124,7 @@ export class RoomManager {
     const room: Room = {
       id: randomUUID(),
       status: 'WAITING',
-      players: [{ id: playerId, profile, ready: false }],
+      players: [{ id: playerId, profile, ready: false, token: randomUUID() }],
       createdAt: this.now(),
       score: newScore(),
       result: null,
@@ -227,6 +231,37 @@ export class RoomManager {
       room.result = { winner: role === 'host' ? 'guest' : 'host', reason, games: this.gamesOf(room) };
     }
     return { room, opponent, wasPlaying: true };
+  }
+
+  /**
+   * RECONEXIÓN — el jugador se cortó en pleno partido: queda "ausente" (su sitio se guarda) en vez de perder.
+   * Devuelve la sala y al rival a avisar; null si no estaba jugando.
+   */
+  markAway(playerId: string): { room: Room; player: RoomPlayer; opponent?: RoomPlayer } | null {
+    const room = this.roomOf(playerId);
+    if (!room || room.status !== 'PLAYING') return null;
+    const player = room.players.find((p) => p.id === playerId);
+    if (!player) return null;
+    player.away = true;
+    return { room, player, opponent: this.opponentOf(room, playerId) };
+  }
+
+  /**
+   * RECONEXIÓN — vuelve con otra conexión (`newId`) y su clave: recupera su sitio en la sala. null si la sala ya no
+   * está en juego, la clave no es de un jugador ausente o la nueva conexión ya está en otra sala.
+   */
+  rejoin(roomId: string, token: string, newId: string): { room: Room; player: RoomPlayer; opponent?: RoomPlayer } | null {
+    const room = this.rooms.get(roomId);
+    if (!room || room.status !== 'PLAYING' || typeof token !== 'string') return null;
+    const player = room.players.find((p) => p.token === token);
+    if (!player || !player.away) return null;
+    const cur = this.playerRoom.get(newId);
+    if (cur && cur !== roomId) return null;
+    if (this.playerRoom.get(player.id) === room.id) this.playerRoom.delete(player.id);
+    player.id = newId;
+    player.away = false;
+    this.playerRoom.set(newId, room.id);
+    return { room, player, opponent: this.opponentOf(room, newId) };
   }
 
   /** Libera una sala terminada: borra la sala y los jugadores quedan libres para buscar otra. */

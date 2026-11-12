@@ -20,7 +20,7 @@ const NEON = 0x3a7bff;
 const GOLD = 0xffc42e;
 const NAV = {
   key: 'nav-ranking',
-  file: 'assets/barra-ranking.png',
+  file: 'assets/barra-ranking.webp',
   w: 2172,
   h: 724,
   box: { x0: 46, y0: 170, x1: 2124, y1: 540 },
@@ -55,7 +55,7 @@ export class RankedScene extends Phaser.Scene {
   preload() {
     if (!this.textures.exists('menu-bg')) this.load.image('menu-bg', 'assets/menu-bg.webp');
     if (!this.textures.exists(NAV.key)) this.load.image(NAV.key, NAV.file);
-    if (!this.textures.exists('ranked-title')) this.load.image('ranked-title', 'assets/ranked-titulo.png');
+    if (!this.textures.exists('ranked-title')) this.load.image('ranked-title', 'assets/ranked-titulo.webp');
     preloadRankBadges(this.load); // todas: tabla de líderes y lista de ligas
   }
 

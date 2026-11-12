@@ -55,22 +55,22 @@ const GLOW = 'fx-inferno-glow';
 const TONGUE = 'fx-inferno-tongue';
 
 /**
- * Bola de fuego animada (public/assets/inferno-ball.png): 8 frames en 4×2 celdas de 192 px, sacados de
+ * Bola de fuego animada (public/assets/inferno-ball.webp): 8 frames en 4×2 celdas de 192 px, sacados de
  * inferno-1.png con cada frame recentrado en su bola (el centro de la celda = centro de la pelota) y
  * reducidos para móvil. Si la imagen falta se usa la bola dibujada por código (nunca las dos).
  */
-export const FIREBALL_ART = { key: 'inferno-ball', file: 'assets/inferno-ball.png', cell: 192, frames: 9, fps: 14, anim: 'inferno-ball-spin', fill: 0.6 }; // 9 frames (hoja de 5 columnas, tools/build-inferno-ball.mjs); fill = parte de la celda que ocupa el cuerpo de la bola
+export const FIREBALL_ART = { key: 'inferno-ball', file: 'assets/inferno-ball.webp', cell: 192, frames: 9, fps: 14, anim: 'inferno-ball-spin', fill: 0.6 }; // 9 frames (hoja de 5 columnas, tools/build-inferno-ball.mjs); fill = parte de la celda que ocupa el cuerpo de la bola
 
 /**
- * BOLA DE HIELO (INFERNO de Mai, public/assets/inferno-ball-ice.png): misma rejilla, frames y ritmo que la de fuego
+ * BOLA DE HIELO (INFERNO de Mai, public/assets/inferno-ball-ice.webp): misma rejilla, frames y ritmo que la de fuego
  * (tools/build-ice-ball.mjs). Su remolino ocupa ~88 % de la celda; con fill 0,7 se ve de un tamaño parecido a la
  * bola de fuego (cuyas llamas sobresalen más de su cuerpo).
  */
-export const ICEBALL_ART = { key: 'inferno-ball-ice', file: 'assets/inferno-ball-ice.png', cell: 192, frames: 9, fps: 14, anim: 'inferno-ball-ice-spin', fill: 0.7 };
+export const ICEBALL_ART = { key: 'inferno-ball-ice', file: 'assets/inferno-ball-ice.webp', cell: 192, frames: 9, fps: 14, anim: 'inferno-ball-ice-spin', fill: 0.7 };
 
 /** Bolas de VIENTO y RAYO (tools/build-power-ball.mjs): 10 frames (5 + 5), mismo ritmo; fill con el mismo criterio que el hielo. */
-const WINDBALL_ART = { key: 'inferno-ball-wind', file: 'assets/inferno-ball-wind.png', cell: 192, frames: 10, fps: 14, anim: 'inferno-ball-wind-spin', fill: 0.67 };
-const LIGHTNINGBALL_ART = { key: 'inferno-ball-lightning', file: 'assets/inferno-ball-lightning.png', cell: 192, frames: 10, fps: 14, anim: 'inferno-ball-lightning-spin', fill: 0.64 };
+const WINDBALL_ART = { key: 'inferno-ball-wind', file: 'assets/inferno-ball-wind.webp', cell: 192, frames: 10, fps: 14, anim: 'inferno-ball-wind-spin', fill: 0.67 };
+const LIGHTNINGBALL_ART = { key: 'inferno-ball-lightning', file: 'assets/inferno-ball-lightning.webp', cell: 192, frames: 10, fps: 14, anim: 'inferno-ball-lightning-spin', fill: 0.64 };
 
 /**
  * Hoja de una bola. Las cuadradas (fuego, hielo, viento, rayo) usan solo key…fill. Las bolas CON RASTRO (tulipán) añaden:
@@ -105,7 +105,7 @@ export interface BallArt {
  */
 const TULIPBALL_ART: BallArt = {
   key: 'inferno-ball-tulip',
-  file: 'assets/inferno-ball-tulip.png',
+  file: 'assets/inferno-ball-tulip.webp',
   cell: 384,
   cellH: 174,
   frames: 10,
@@ -115,7 +115,7 @@ const TULIPBALL_ART: BallArt = {
   seq: [3, 4, 5, 6, 5, 4],
   rot: Math.PI / 2,
   origin: [0.852, 0.557],
-  trail: { key: 'inferno-ball-tulip-trail', file: 'assets/inferno-ball-tulip-trail.png' },
+  trail: { key: 'inferno-ball-tulip-trail', file: 'assets/inferno-ball-tulip-trail.webp' },
   ghosts: false,
 };
 

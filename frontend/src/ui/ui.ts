@@ -88,10 +88,3 @@ export function flatButton(
   return c;
 }
 
-/** Candado pequeño dorado (para elementos "próximamente"). */
-export function lockBadge(scene: Phaser.Scene, x: number, y: number) {
-  const g = scene.add.graphics({ x, y });
-  g.fillStyle(UI.gold).fillRoundedRect(-8, -1, 16, 12, 3);
-  g.lineStyle(3, UI.gold).strokeCircle(0, -3, 5.5);
-  return g;
-}

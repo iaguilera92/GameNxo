@@ -62,11 +62,6 @@ const PALETTES = {
 };
 export type ArcadePalette = keyof typeof PALETTES;
 
-/** Botón principal amarillo con texto + chevron, latido suave y rebote al pulsar. */
-export function playButton(scene: Phaser.Scene, x: number, y: number, w: number, h: number, onClick: () => void, label = 'JUGAR') {
-  return arcadeButton(scene, x, y, w, h, label, onClick, { palette: 'yellow', chevron: true, pulse: true });
-}
-
 /** Botón arcade con la forma común (amarillo o rojo), opcionalmente con chevron y latido. */
 export function arcadeButton(
   scene: Phaser.Scene,

@@ -25,7 +25,7 @@ const PORTRAITS: Partial<Record<SkinId, PortraitDef>> = {
   },
   mai: {
     key: 'portrait-mai',
-    file: 'assets/characters/mai_portrait.png',
+    file: 'assets/characters/mai_portrait.webp',
     w: 1130,
     h: 1392,
     box: { x0: 118, y0: 4, x1: 1070, y1: 1356 },

@@ -38,16 +38,16 @@ export function formatRankPosition(pos: number | undefined | null, max = 999): s
 export const RANK_UNLOCK_LEVEL = 1;
 
 export const RANKS: RankDef[] = [
-  { id: 'bronze', name: 'Bronce', tier: 1, image: 'assets/bronce.png' },
-  { id: 'silver', name: 'Plata', tier: 2, image: 'assets/plata.png' },
-  { id: 'gold', name: 'Oro', tier: 3, image: 'assets/oro.png' },
-  { id: 'platinum', name: 'Platino', tier: 4, image: 'assets/platino.png' },
-  { id: 'diamond', name: 'Diamante', tier: 5, image: 'assets/diamante.png' },
+  { id: 'bronze', name: 'Bronce', tier: 1, image: 'assets/bronce.webp' },
+  { id: 'silver', name: 'Plata', tier: 2, image: 'assets/plata.webp' },
+  { id: 'gold', name: 'Oro', tier: 3, image: 'assets/oro.webp' },
+  { id: 'platinum', name: 'Platino', tier: 4, image: 'assets/platino.webp' },
+  { id: 'diamond', name: 'Diamante', tier: 5, image: 'assets/diamante.webp' },
   {
     id: 'challenger',
     name: 'Challenger',
     tier: 6,
-    image: 'assets/challenger.png',
+    image: 'assets/challenger.webp',
     topOnly: 500,
     numberSlot: { cx: 627 / 1254, cy: 948 / 1254, w: 300 / 1254, h: 130 / 1254 },
   },

@@ -7,11 +7,11 @@ import Phaser from 'phaser';
  * (sobre el muro del fondo, lejos de la cancha), se queda ~5 s caminando y picoteando y se va volando por el mismo lado.
  * El lado (izquierda / derecha) se sortea en cada partido. No interactúa con nada del juego.
  *
- * Hoja: public/assets/ambiente/paloma.png (tools/build-paloma.mjs), 8 x 3 celdas de 135 x 120, mirando a la derecha:
+ * Hoja: public/assets/ambiente/paloma.webp (tools/build-paloma.mjs), 8 x 3 celdas de 135 x 120, mirando a la derecha:
  *   fila 0  suelo (quieta / camina / picotea)   fila 1  despegue (al revés = aterrizaje)   fila 2  vuelo
  */
 const KEY = 'ambiente-paloma';
-const FILE = 'assets/ambiente/paloma.png';
+const FILE = 'assets/ambiente/paloma.webp';
 const CELL = { w: 135, h: 120 };
 const COLS = 8;
 

@@ -673,15 +673,6 @@ export class WheelScene extends Phaser.Scene {
   }
 }
 
-/** Textos del premio. */
-export function rewardText(r: WheelReward): { line1: string; line2?: string } {
-  const n = (v: number) => v.toLocaleString('es-CL');
-  if (r.kind === 'item') return { line1: `¡${r.name.toUpperCase()}!`, line2: 'Nuevo cosmético en tu inventario' };
-  if (r.kind === 'xp') return { line1: `+${n(r.amount)} EXP` };
-  if (r.duplicateOf !== undefined) return { line1: `+${n(r.amount)} MONEDAS`, line2: r.duplicateOf ? 'Ya tenías ese cosmético: compensación' : 'Ya tienes todos los cosméticos: compensación' };
-  return { line1: `+${n(r.amount)} MONEDAS` };
-}
-
 /** Abre la ruleta `index` encima de la escena actual. */
 /**
  * Abre la ruleta encima de `scene`. Devuelve la escena, o null si Phaser la dejó EN COLA: añadirla por primera vez a mitad

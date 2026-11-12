@@ -1,5 +1,5 @@
 {
-  "source": "pj-nxo-rival-1.png / pj-nxo-rival-2.png (tools/build-nxo-v2.mjs)",
+  "source": "pj-nxo-rival-1.png / pj-nxo-rival-2.png (tools/build-moves.mjs)",
   "view": "front",
   "cell": {
     "w": 178,

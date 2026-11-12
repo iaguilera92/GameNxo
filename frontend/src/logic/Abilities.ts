@@ -48,5 +48,3 @@ export const ABILITIES: Record<AbilityId, AbilityDef> = {
   freeze: { id: 'freeze', name: 'Hielo', desc: 'Próximamente', cooldown: 25, icon: 'lock', color: C.grey, colorDark: C.greyDark, owned: false, price: 1000 },
 };
 
-export const SHOP_PREVIEW: AbilityId[] = ['wall', 'curve', 'freeze'];
-

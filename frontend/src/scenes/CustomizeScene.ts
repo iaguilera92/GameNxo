@@ -36,8 +36,8 @@ import { ZONE } from '../logic/Zone';
 
 /** Arte de los botones de habilidad. `box` = círculo visible en px de la imagen (sin margen transparente). */
 const ABILITY_ART: Partial<Record<AbilityId, { key: string; file: string; w: number; h: number; box: { x0: number; y0: number; x1: number; y1: number } }>> = {
-  dash: { key: 'btn-dash', file: 'assets/btn-dash.png', w: 1312, h: 1199, box: { x0: 144, y0: 99, x1: 1146, y1: 1122 } },
-  smash: { key: 'btn-smash', file: 'assets/btn-smash.png', w: 1312, h: 1199, box: { x0: 153, y0: 105, x1: 1134, y1: 1116 } },
+  dash: { key: 'btn-dash', file: 'assets/btn-dash.webp', w: 1312, h: 1199, box: { x0: 144, y0: 99, x1: 1146, y1: 1122 } },
+  smash: { key: 'btn-smash', file: 'assets/btn-smash.webp', w: 1312, h: 1199, box: { x0: 153, y0: 105, x1: 1134, y1: 1116 } },
 };
 
 const NAVY = 0x0b1733;

@@ -31,7 +31,7 @@ interface Art {
 export const CHARGE_ART: Record<SpriteChargeFx, Art> = {
   // fuego (11-11-2026): hoja nueva en .webp, como el tulipán
   fire: { key: 'charge-fire', file: 'assets/charge-fire.webp', cw: 256, ch: 236, anchorFy: 0.856, ringFill: 0.86, additive: true },
-  energy: { key: 'charge-energy', file: 'assets/charge-energy.png', cw: 256, ch: 230, anchorFy: 0.83, ringFill: 0.88, additive: true },
+  energy: { key: 'charge-energy', file: 'assets/charge-energy.webp', cw: 256, ch: 230, anchorFy: 0.83, ringFill: 0.88, additive: true },
   // tulipán (11-11-2026): hoja nueva en .webp (la herramienta saca el .png y tools/convert-image.mjs lo pasa a webp)
   tulip: { key: 'charge-tulip', file: 'assets/charge-tulip.webp', cw: 256, ch: 256, anchorFy: 0.84, ringFill: 0.83, additive: false },
 };

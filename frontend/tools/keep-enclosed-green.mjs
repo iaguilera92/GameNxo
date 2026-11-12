@@ -4,7 +4,7 @@
 //   - a 3-4 px de su borde están rodeadas sobre todo por `ring` (el rosa de la gorra; los huecos de fondo entre brazo,
 //     cuerpo y raqueta tienen piel, pelo o ropa alrededor),
 //   - no son oscuras (los huecos del cuello de la raqueta vienen en verde oscuro) y casi no tienen píxeles del verde del fondo.
-// Usado por build-nxo-v2.mjs y build-nxo-inferno.mjs (solo en las hojas de MAI).
+// Usado por build-moves.mjs y build-ulti.mjs (solo en las hojas de MAI).
 
 /** rosa de la gorra y de los pétalos de MAI (el azul supera al verde: no confunde la piel) */
 export const PINK = (r, g, b) => r > 150 && b > g && r - g > 50;

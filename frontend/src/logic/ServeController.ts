@@ -18,11 +18,6 @@ export type ServeState = 'POSITIONING' | 'TOSS' | 'AIMING' | 'SWING' | 'SERVE_RE
 export type ServeKind = 'normal' | 'spin';
 export type ServeQuality = 'perfect' | 'normal' | 'weak' | 'low' | 'miss';
 
-/** Altura de la pelota (z) a los `t` segundos del lanzamiento: misma ecuación que stepBall. */
-export function tossHeight(z0: number, t: number) {
-  return z0 + SERVE.tossVz * t - 0.5 * GRAVITY * t * t;
-}
-
 /** Instante (s) en que la pelota alcanza su punto más alto. */
 export const APEX_T = SERVE.tossVz / GRAVITY;
 

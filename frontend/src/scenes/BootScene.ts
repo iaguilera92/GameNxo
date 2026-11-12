@@ -30,8 +30,8 @@ export class BootScene extends Phaser.Scene {
     this.load.image('loading-bg', 'assets/loading-bg.webp');
     // recursos del menú: así el menú aparece al instante detrás del cargando
     this.load.image('menu-bg', 'assets/menu-bg.webp');
-    this.load.image('btn-jugar', 'assets/btn-jugar.png');
-    this.load.image('nav-bar', 'assets/nav-bar.png');
+    this.load.image('btn-jugar', 'assets/btn-jugar.webp');
+    this.load.image('nav-bar', 'assets/nav-bar.webp');
     this.load.audio('vs', 'mp3/vs.mp3'); // sonido de la pantalla VS (la cache de audio es global)
     queueAmbienteLoad(this.load); // ambiente del partido (estadio)
     bootRanked(); // partida Ranked a medias = abandono; cierre de semana / mes

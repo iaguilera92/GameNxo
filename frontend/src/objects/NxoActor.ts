@@ -20,7 +20,7 @@ import { runAnimRate } from '../logic/PlayerMotion';
 
 /**
  * Hojas NUEVAS de NXO de espaldas (public/personajes/Nxo/pj-nxo-1..4.png, cortadas con
- * tools/build-nxo-v2.mjs): todas las tiras viven en assets/characters/nxo-v2/ con la misma celda y ancla.
+ * tools/build-moves.mjs): todas las tiras viven en assets/characters/nxo-v2/ con la misma celda y ancla.
  * Con ellas NO se voltea nada: correr a la izquierda, frenadas, etc. ya vienen dibujados.
  */
 const V2_DIR = 'nxo-v2';
@@ -183,8 +183,8 @@ const INFERNO_HOLD_MAX_MS = 3500;
 
 /**
  * Juego de hojas v2 de un personaje: tiras en assets/characters/<dir>/ y sus JSON. `key` prefija las texturas/animaciones.
- * 'nxo' = NXO de espaldas (jugador); 'nxo-front' = el rival (NXO de frente, tools/build-nxo-v2.mjs front);
- * 'mai' = MAI de espaldas (jugadora, tools/build-nxo-v2.mjs mai).
+ * 'nxo' = NXO de espaldas (jugador); 'nxo-front' = el rival (NXO de frente, tools/build-moves.mjs front);
+ * 'mai' = MAI de espaldas (jugadora, tools/build-moves.mjs mai).
  */
 type Pack = {
   dir: string;
@@ -812,7 +812,7 @@ export class NxoActor {
 
   /**
    * Dónde está el centro del cordaje en el frame de impacto del saque en curso (medido sobre las tiras, ver
-   * tools/build-nxo-v2.mjs): `z` = altura sobre los pies y `dx` = lado (+ = derecha de la pantalla), en unidades del
+   * tools/build-moves.mjs): `z` = altura sobre los pies y `dx` = lado (+ = derecha de la pantalla), en unidades del
    * personaje. El saque con efecto suma el salto por código del propio sprite (jumpAt), que ya está en el frame 5.
    */
   serveRacket(): RacketSpot {

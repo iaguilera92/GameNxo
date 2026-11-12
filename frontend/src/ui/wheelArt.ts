@@ -13,15 +13,6 @@ export const GOLD = 0xffc42e;
 export const SECTOR = (Math.PI * 2) / WHEEL.slots.length;
 export const sectorCenter = (i: number) => -Math.PI / 2 + i * SECTOR;
 
-/** Colores del sector según tipo de premio y rareza. */
-export function slotColors(s: WheelSlot): { fill: number; light: number; dark: number } {
-  if (s.prize.kind === 'cosmetic') return { fill: 0x7b2cff, light: 0xb27bff, dark: 0x4a12b0 };
-  if (s.prize.kind === 'epic') return { fill: 0xff3da8, light: 0xff8fcf, dark: 0xb3126a };
-  if (s.prize.kind === 'xp') return s.rarity === 'rare' ? { fill: 0x2a46ff, light: 0x6f86ff, dark: 0x16239e } : { fill: 0x2f8bff, light: 0x7cc0ff, dark: 0x1653b8 };
-  if (s.rarity === 'rare') return { fill: 0xff8a1e, light: 0xffc06a, dark: 0xc4560a };
-  return { fill: 0xffc42e, light: 0xffe27a, dark: 0xd98a00 };
-}
-
 export const isSpecial = (s: WheelSlot) => s.rarity === 'special' || s.rarity === 'epic';
 
 // ---------------------------------------------------------------- iconos (centrados en 0,0)

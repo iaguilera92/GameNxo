@@ -545,4 +545,74 @@ NOTAS PARA CLAUDE (pendientes detectados por Kiro, sin corregir)
    raqueta en la mano izquierda (docs Â§6). Pack nxo-v2 regenerado y pasado a WebP (build-nxo-v2: WEBP = FRONT || !MAI),
    celda 222x142. serveRacket de espaldas medido otra vez: normal dx -25 z 147, efecto dx -33 z 143.
 
-(Kiro, 12-11-2026) Hojas de NXO de espaldas renombradas: pj-nxo-sprites-N.png -> pj-nxo-N.png (build-nxo-v2.mjs, docs y JSON al día). Los respaldos en Old sprites conservan su nombre.
+(Kiro, 12-11-2026) Hojas de NXO de espaldas renombradas: pj-nxo-sprites-N.png -> pj-nxo-N.png (build-nxo-v2.mjs, docs y JSON al dï¿½a). Los respaldos en Old sprites conservan su nombre.
+
+(Kiro, 12-11-2026) Todas las tiras de personajes en WebP: mai-v2 (build-nxo-v2 ahora WEBP = true) y los packs antiguos mai-sprites, nxo-front-sprites, mai-front-sprites convertidos con convert-image (JSON apuntan a .webp). Si se vuelven a correr build-nxo-sprites.mjs / build-nxo-extra.mjs, sacan PNG: convertir a WebP y borrar el PNG.
+
+(Kiro, 12-11-2026) Todos los respaldos de hojas (antes en public/personajes/**/Old sprites/) movidos a _temp/respaldo_oficial/{Mai,Mai/rival,Nxo,Nxo/rival}/ (fuera de frontend/public: nunca llegan al APK). Al cambiar una hoja, la anterior va ahï¿½.
+
+(Kiro, 12-11-2026) Sin uso movidos a _temp/respaldo_oficial/assets-sin-uso/: nxo_portrait.png, nxo-front-sprites/, mai-sprites/ (los JSON nxo-front-sprites.json y mai-sprites.json SI se usan, como config de hoja).
+
+(Kiro, 12-11-2026) Herramientas de sprites GENERICAS: build-moves.mjs <id|all> (movimientos, antes build-nxo-v2) y build-ulti.mjs <id|all> (ULTI 6x9, antes build-nxo-inferno), con el registro tools/characters.mjs (nxo, nxo-front, mai, mai-front). Verificado: las 131 tiras y los JSON de ULTI salen byte a byte iguales; los JSON de movimientos solo cambian el texto 'source'. Las herramientas viejas y build-nxo-extra.mjs estan en _temp/respaldo_oficial/tools-viejas/. Se quito el modo de hoja de 1 fila. Personaje nuevo = una entrada en characters.mjs.
+
+(Kiro, 12-11-2026) tools/characters.mjs: contrato unico MOVES_STANDARD (nxo, nxo-front) y excepciones temporales de Mai en MAI_LEGACY_MOVES (hojas 3 y 4 de Mai no siguen el orden de NXO). Al llegar las hojas nuevas de Mai: borrar MAI_LEGACY_MOVES, usar MOVES_STANDARD, quitar bounce:null de Mai en NxoActor.
+
+=================================================================
+RESUMEN PARA CLAUDE (Kiro, 12-11-2026): CAMBIOS DE SPRITES, MULTIMEDIA Y HERRAMIENTAS BUILD
+=================================================================
+Lo que antes estaba disperso en las notas de arriba, en un solo lugar. Detalle completo: docs/COMO-TRABAJAR-SPRITES-MOVIMIENTOS.md
+(Â§3 comandos y tabla de herramientas, Â§6 diferencias por personaje, Â§7 cambiar hojas / personaje nuevo). Nada se ha commiteado ni subido.
+
+1. HERRAMIENTAS BUILD (cambio de fondo)
+   - Ya NO existen build-nxo-v2.mjs, build-nxo-inferno.mjs ni build-nxo-extra.mjs (estan en _temp/respaldo_oficial/tools-viejas/).
+   - Ahora hay DOS herramientas genericas, para cualquier personaje y vista (desde frontend/):
+       node tools/build-moves.mjs <id|all>   las 4 hojas de movimientos (8 filas x 8 frames) -> public/assets/characters/<id>-v2/*.webp
+                                              + src/characters/<id>-{sprites,hits,move,special,extra}.json
+       node tools/build-ulti.mjs  <id|all>   la ULTI (6 filas x 9, rejilla fija) -> public/assets/characters/<id>-inferno/*.webp
+                                              + src/characters/<id>-inferno.json      (2.o argumento "png" = tiras en PNG, solo pruebas)
+     ids: nxo | nxo-front | mai | mai-front  (mai-front solo tiene ULTI; sus movimientos aun no estan procesados).
+   - Todo lo que cambia entre personajes vive en tools/characters.mjs (una entrada por pack): carpeta y prefijo de las hojas,
+     vista, columnas, orden de filas, clips derivados, espejos (flipRows), cortes a mano (cutAt), detalles verdes (gorra de Mai),
+     posicion de la raqueta en el saque (serveRacket). Las herramientas no se tocan para un personaje nuevo: UNA entrada nueva.
+   - Contrato unico: MOVES_STANDARD (8 columnas, filas en el orden de ROWS_NXO). nxo y nxo-front lo usan tal cual. Las hojas 3 y 4 de
+     MAI NO lo cumplen todavia: sus diferencias estan aisladas y marcadas TEMPORALES en MAI_LEGACY_MOVES (aturdido en la fila 4 de la
+     hoja 3, sin recover-left, hoja 4 con 9 columnas y filas 1-2 sin bote ni lanzamiento). Cuando lleguen sus hojas nuevas con el orden
+     de NXO: borrar MAI_LEGACY_MOVES, usar MOVES_STANDARD y quitar el bounce:null de Mai en NxoActor.ts.
+   - Se quito el modo de ULTI de "hoja de 1 fila" (ningun pack lo usaba). Se mantiene build-nxo-sprites.mjs SOLO porque Mai rival
+     (mai-front-sprites/) aun carga la hoja antigua; cuando Mai rival pase a build-moves.mjs se puede borrar.
+   - VERIFICADO: se regenero todo con las herramientas nuevas y se comparo con la salida anterior: las 131 tiras WebP y los JSON de la
+     ULTI salen byte a byte iguales; los JSON de movimientos solo cambian el texto "source" (ahora dice tools/build-moves.mjs).
+     tsc y npm run build pasan. NO se probo en partido.
+
+2. HOJAS Y NOMBRES
+   - Nxo de espaldas renombradas: pj-nxo-sprites-N.png -> pj-nxo-N.png (N=1..4). Hoja 2 nueva instalada (raqueta en la mano izquierda en
+     las filas 2-8; serveRacket remedido: normal dx -25 z 147, efecto dx -33 z 143).
+   - ULTI 6x9 instalada para los 4 packs: pj-nxo-ulti, pj-nxo-rival-ulti, pj-mai-ulti, pj-mai-rival-ulti. OJO: el RIVAL DE MAI NO USA la
+     ULTI nueva en el juego: su pack (mai-front) no existe en NxoActor.PACKS; sigue con la hoja antigua (mai-front-sprites). Conectarlo
+     implica procesar tambien pj-mai-rival-2..4.png.
+   - Mai de espaldas y Nxo (espaldas y rival) usan los clips ULTI (ulti-hit, ulti-stun, idle-nr, run-nr, pickup); packs sin ellos
+     usan inferno-hit/stunned.
+
+3. MULTIMEDIA / PESO DEL APK
+   - TODAS las tiras de personajes estan en WebP (nxo-v2, nxo-front-v2, mai-v2, *-inferno y los packs antiguos mai-front-sprites...).
+     Las herramientas viejas sueltas (build-nxo-sprites.mjs, build-inferno-ball, build-power-ball, build-paloma, make-button-sprites)
+     aun sacan PNG: convertir con tools/convert-image.mjs y borrar el PNG.
+   - 30 PNG de interfaz (ligas, botones, barras, titulos, monedas, billetes, bolas de poder, charge-energy, retrato de Mai, paloma)
+     pasados a WebP y las rutas en src/ actualizadas. dist: 46,8 -> 21,1 MB. Los PNG originales estan en
+     _temp/respaldo_oficial/ui-png-originales/. Se refresco android/app/src/main/assets con cap sync (21,1 MB); el APK de 102 MB que hay
+     es el viejo: hay que recompilar (npm run apk).
+   - Respaldos de hojas (antes en public/personajes/**/Old sprites/): ahora en _temp/respaldo_oficial/{Mai,Mai/rival,Nxo,Nxo/rival}/,
+     FUERA de frontend/public. Al cambiar una hoja, la anterior va ahi. Sin uso, movidos a _temp/respaldo_oficial/assets-sin-uso/:
+     nxo_portrait.png, nxo-front-sprites/, mai-sprites/ (los JSON nxo-front-sprites.json y mai-sprites.json SI se usan como config).
+   - _temp/ NO esta en .gitignore: decidir si se sube.
+
+4. PENDIENTE
+   - Hojas nuevas de Mai (3 y 4) con el contrato de NXO; luego hojas 1-4 de Mai rival y su pack en NxoActor/catalog.
+   - Limpieza de codigo sin uso en src/ y herramientas (no hecha todavia).
+   - Probar en partido: Mai (WebP + ULTI), Nxo con la hoja 2 nueva, y recompilar el APK.
+
+(Kiro, 12-11-2026) PENDIENTE DE ARTE (a hacer despues, detalle en docs §8): redibujar hoja 3 de Mai espaldas, hoja 4 de Mai espaldas (8 columnas + bote/lanzamiento) y hoja 3 de Mai rival (una animacion por fila). Por confirmar: hoja 2 y filas 1-2 de la hoja 4 de Mai rival. Hasta entonces Mai rival sigue con su hoja antigua y no se procesa su pack.
+
+(Kiro, 12-11-2026) Reglas de sprites actualizadas: .kiro/steering/sprites.md y docs §0 (reglas 7-10) ahora fijan los 2 builds genericos + characters.mjs, el contrato unico y los pasos para un personaje nuevo o un cambio de sprites.
+
+(Kiro, 12-11-2026) Limpieza de codigo: borradas 15 exportaciones sin ningun uso (en src, tools ni backend): playerDisplayName, slotColors, lockBadge, rewardText, DEFAULT_SKIN, cycleSkin, MONTHS_ES, tossHeight, playButton, SHOP_PREVIEW, GAME_NAME, STUN_DURATION, EMOTE_NAME, isEmote. Se dejaron a proposito (API de dominio o funcion en espera, sin uso hoy): spendCoins, equipAbility, setPlayerRepository, grantBattlePassSpin, battlePassSpinIndex, onSettingsChange. 150+ exportaciones mas solo se usan dentro de su propio archivo o en tests (tipos/helpers): no se tocaron. tsc (con --noUnusedLocals), build y test-*.mjs pasan.

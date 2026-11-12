@@ -1,7 +1,7 @@
 # Sprites de los personajes: hojas fuente, filas y cómo se cortan
 
 Contrato de las hojas de sprites. Léelo antes de tocar una imagen de `frontend/public/personajes/`, las
-herramientas `frontend/tools/build-nxo-*.mjs` o las tiras de `frontend/public/assets/characters/`.
+herramientas `frontend/tools/build-moves.mjs` / `build-ulti.mjs` / `characters.mjs` o las tiras de `frontend/public/assets/characters/`.
 Si cambias una hoja, una fila o una herramienta, actualiza este documento en el mismo cambio.
 
 Última actualización: 12-11-2026.
@@ -11,7 +11,7 @@ Si cambias una hoja, una fila o una herramienta, actualiza este documento en el 
 1. **Fuente única.** Los sprites de un personaje salen SIEMPRE de sus hojas en `frontend/public/personajes/<Personaje>/`
    (el rival, en `rival/`). Una imagen nueva (de Descargas, de un chat…) se deja primero ahí, con el nombre exacto que
    lee la herramienta. Nunca se copia directo a `assets/characters/`.
-2. **Flujo.** Hoja fuente (`personajes/`) → herramienta (`tools/build-nxo-v2.mjs`, `build-nxo-inferno.mjs`) → tiras en
+2. **Flujo.** Hoja fuente (`personajes/`) → herramienta (`tools/build-moves.mjs`, `build-ulti.mjs`) → tiras en
    `frontend/public/assets/characters/<pack>/` y JSON en `frontend/src/characters/`. El juego solo carga las tiras.
    Tiras y JSON son generados: no se editan a mano, se regeneran desde la hoja.
 3. **Contrato antes de instalar.** Comparar la hoja con las secciones 4 y 5 (rejilla 8 × 8, fondo liso, raqueta en la
@@ -19,17 +19,27 @@ Si cambias una hoja, una fila o una herramienta, actualiza este documento en el 
    sigue el contrato no se instala sin preguntar.
 4. **Tiras en WebP** (decidido el 12-11-2026). Desde la próxima hoja que se procese, las tiras de `assets/characters/`
    van en `.webp` con transparencia: pesan unas 4 veces menos en el APK. El primer pack en WebP es el rival NXO
-   (`nxo-front-v2/`, 12-11-2026): `build-nxo-v2.mjs` escribe cada tira en PNG, la convierte con
-   `tools/convert-image.mjs` (calidad 0,92), borra el PNG y deja los JSON apuntando a `.webp` (constante `WEBP`; hoy
-   solo con `front`). NXO de espaldas (`nxo-v2/`, `WEBP = FRONT || !MAI`) también, desde la hoja 2 del 12-11-2026; Mai sigue en PNG. La ULTI completa de NXO (`nxo-inferno/`, `nxo-front-inferno/`) también va en WebP (`build-nxo-inferno.mjs`,
+   (`nxo-front-v2/`, 12-11-2026): `build-moves.mjs` escribe cada tira en PNG, la convierte con
+   `tools/convert-image.mjs` (calidad 0,92), borra el PNG y deja los JSON apuntando a `.webp` (constante `WEBP`, hoy
+   siempre `true`). TODAS las tiras de personajes están en WebP desde el 12-11-2026: `nxo-v2`, `nxo-front-v2`, `mai-v2` y los packs antiguos (`mai-sprites`, `nxo-front-sprites`, `mai-front-sprites`, convertidos a mano). Las herramientas viejas (`build-nxo-sprites.mjs`) aún sacan PNG: convertir y borrar el PNG. La ULTI completa de NXO (`nxo-inferno/`, `nxo-front-inferno/`) también va en WebP (`build-ulti.mjs`,
    modo de 6 × 9). Al pasar otro pack a WebP: activarlo en `WEBP`, regenerar y revisar de cerca los bordes. Si queda
    un halo, subir la calidad. La conversión abre Chrome headless por tira: el corte tarda un par de minutos.
 5. **Tamaño del frame.** WebP no baja la memoria del teléfono: cada frame ocupa ancho × alto × 4 bytes en la GPU,
    sea PNG o WebP. La celda tiene que ser la justa para lo que dibuja, sin aire de más. La del rival NXO bajó de
    250 × 206 a 178 × 136 con las hojas 1-3 del 12-11-2026.
-6. **Al terminar.** Mover la hoja anterior a `Old sprites/`, regenerar, leer el log, mirar las tiras, correr
+6. **Al terminar.** Mover la hoja anterior a `_temp/respaldo_oficial/<Personaje>/`, regenerar, leer el log, mirar las tiras, correr
    `npx tsc --noEmit` y `npm run build`, comprobar que los demás packs no cambian y actualizar este documento.
-7. **En el juego.** No poner preFX/postFX en los sprites del personaje: están dentro de un Container y en el APK se rompe
+7. **Solo dos herramientas y un registro.** `build-moves.mjs <id|all>` (movimientos) y `build-ulti.mjs <id|all>` (ULTI) sirven
+   para cualquier personaje; lo que cambia de uno a otro vive en `tools/characters.mjs`. No se crea una herramienta por
+   personaje ni se meten excepciones en las herramientas.
+8. **Contrato único.** Todos los personajes y vistas traen las mismas hojas y filas; solo cambia el diseño. Si una hoja no
+   lo cumple, se redibuja (queda en la §8) y no se añade una excepción al registro. Las de hoy (`MAI_LEGACY_MOVES`) son
+   temporales.
+9. **Personaje nuevo, en orden.** a) Hojas en `personajes/<Personaje>/` con los nombres `pj-<id>-1..4.png` y
+   `pj-<id>-ulti.png`; b) comparar con el contrato (regla 3); c) entrada nueva en `tools/characters.mjs`; d) correr los dos
+   builds y revisar log y tiras; e) conectar el pack en el juego (`NxoActor.ts` PACKS, `sheets.ts`, `catalog.ts`);
+   f) mirada y retrato vienen del arte; g) `tsc`, `npm run build`, probar en partido y actualizar este documento.
+10. **En el juego.** No poner preFX/postFX en los sprites del personaje: están dentro de un Container y en el APK se rompe
    el dibujo. El estilo de color usa su propio pipeline de dibujo (`fx/CharColorFx.ts`).
 
 ## 1. Dónde están las imágenes
@@ -46,19 +56,19 @@ frontend/public/personajes/
 │   ├── pj-nxo-mirada.webp              franja de los ojos del INFERNO        (la carga el juego)
 │   ├── pj-nxo.webp                     retrato: menú, PERSONAJE y VS         (la carga el juego)
 │   ├── emojis/                         nxo-risa, nxo-pensando, nxo-enojado   (fuentes: el juego usa assets/emotes/)
-│   ├── Old sprites/                    versiones anteriores
+│   ├── _temp/respaldo_oficial/                    versiones anteriores
 │   └── rival/
 │       ├── pj-nxo-rival-1.png … -4.png hojas de movimientos, de frente (rival)
 │       ├── pj-nxo-rival-ulti.png       ULTI completa, de frente (6 filas × 9; la que se usa desde el 12-11-2026)
 │       ├── pj-nxo-rival-inferno.png    INFERNO DRIVE antiguo de 1 fila (respaldo, ya no se procesa)
-│       └── Old sprites/
+│       └── _temp/respaldo_oficial/
 └── Mai/
     ├── pj-mai-1.png … -4.png           hojas de movimientos, de espaldas
     ├── pj-mai-ulti.png                 ULTI completa (6 × 9), de espaldas
     ├── pj-mai-mirada.webp              franja de los ojos del INFERNO        (la carga el juego)
     ├── pj-mai.png                      referencia del diseño
     └── rival/                          pj-mai-rival-1..4.png, pj-mai-rival-ulti.png (solo la hoja 1 y la ULTI en uso; ver §6)
-        └── Old sprites/                hojas 1, 2 e INFERNO anteriores (-antes-new)
+        └── _temp/respaldo_oficial/                hojas 1, 2 e INFERNO anteriores (-antes-new)
 ```
 
 Reglas:
@@ -71,7 +81,7 @@ Reglas:
   juego tiene que leer otro archivo de aquí, hay que añadirlo a esa lista.
 - Los emojis de `Nxo/emojis/` son fuentes: `node tools/build-emote-thumbs.mjs` genera las miniaturas de 160 px que usa
   el juego (`public/assets/emotes/`). No van al APK (12-11-2026).
-- Para cambiar una hoja: mover la anterior a `Old sprites/` con un sufijo (`pj-nxo-rival-2-antes-new.png`),
+- Para cambiar una hoja: mover la anterior a `_temp/respaldo_oficial/<Personaje>/` con un sufijo (`pj-nxo-rival-2-antes-new.png`),
   dejar la nueva con el nombre exacto que lee la herramienta (sin `-new`) y regenerar (sección 3).
 - Los nombres de Nxo de espaldas son históricos (`pj-nxo-N`, `pj-nxo-sprite-inferno`). Un personaje
   nuevo sigue el patrón de Mai: `pj-<id>-1..4.png`, `pj-<id>-inferno.png`, `pj-<id>-mirada.webp` y, en
@@ -114,22 +124,26 @@ Archivos del código que mueven las animaciones (rescatado de `MOVIMIENTOS-PERSO
 Desde `frontend/`:
 
 ```powershell
-node tools/build-nxo-v2.mjs          # NXO de espaldas: hojas 1-4 -> nxo-v2/ + nxo-*.json
-node tools/build-nxo-v2.mjs front    # NXO rival:       hojas 1-4 -> nxo-front-v2/ + nxo-front-*.json
-node tools/build-nxo-v2.mjs mai      # MAI de espaldas: hojas 1-4 -> mai-v2/ + mai-*.json
+# Movimientos (hojas 1-4): un personaje por vez, o todos
+node tools/build-moves.mjs nxo          # NXO de espaldas: hojas 1-4 -> nxo-v2/ + nxo-*.json
+node tools/build-moves.mjs nxo-front    # NXO rival:       hojas 1-4 -> nxo-front-v2/ + nxo-front-*.json
+node tools/build-moves.mjs mai          # MAI de espaldas: hojas 1-4 -> mai-v2/ + mai-*.json
+node tools/build-moves.mjs all          # todos los que tienen hojas de movimientos
 
-node tools/build-nxo-inferno.mjs public/personajes/Nxo/pj-nxo-ulti.png   # ULTI completa de NXO de espaldas (6 × 9) -> nxo-inferno/*.webp + nxo-inferno.json
-node tools/build-nxo-inferno.mjs public/personajes/Nxo/rival/pj-nxo-rival-ulti.png public/assets/characters/nxo-front-inferno nxo-front-inferno.json front   # ULTI completa del rival (6 × 9)
-node tools/build-nxo-inferno.mjs public/personajes/Mai/pj-mai-ulti.png public/assets/characters/mai-inferno mai-inferno.json`n# rival de Mai: ... Mai/rival/pj-mai-rival-ulti.png public/assets/characters/mai-front-inferno mai-front-inferno.json front
-
+# ULTI (hoja de 6 × 9): lo mismo
+node tools/build-ulti.mjs nxo           # -> nxo-inferno/*.webp + nxo-inferno.json
+node tools/build-ulti.mjs nxo-front     # -> nxo-front-inferno/
+node tools/build-ulti.mjs mai           # -> mai-inferno/
+node tools/build-ulti.mjs mai-front     # -> mai-front-inferno/ (cortada, aún sin conectar al juego)
+node tools/build-ulti.mjs all           # todos los que tienen ULTI
 npx tsc --noEmit
 npm run build
 ```
 
-Cada herramienta imprime el tamaño y la celda de cada hoja, el alto de pie medido, la escala por fila y avisos
+**Contrato único:** todos los personajes y vistas traen las mismas 4 hojas (8 filas × 8 frames, mismo orden de filas, mismos movimientos); solo cambia el diseño. Hoy NXO lo cumple y **las hojas 3 y 4 de MAI no** (aturdido en la fila 4 de la hoja 3, sin recuperación izquierda, hoja 4 con 9 columnas y sus filas 1-2 sin bote ni lanzamiento): esas diferencias están marcadas como TEMPORALES en `tools/characters.mjs` (`MAI_LEGACY_MOVES`) y se borran cuando lleguen sus hojas nuevas con el orden de NXO. Solo hay DOS herramientas, y valen para cualquier personaje: `build-moves.mjs` (las 4 hojas de movimientos) y `build-ulti.mjs` (la ULTI). Lo que cambia de un personaje a otro (carpeta de las hojas, nombre de las hojas, orden de filas, columnas, cortes a mano, espejos, posición de la raqueta en el saque) vive en **`tools/characters.mjs`**, una entrada por pack (`nxo`, `nxo-front`, `mai`, `mai-front`); las herramientas no se tocan. Cada una imprime el tamaño y la celda de cada hoja, el alto de pie medido, la escala por fila y avisos
 como `pieza ancha` (una pieza más ancha que su celda): revisa el log y mira las tiras antes de dar una hoja por buena.
 
-`build-nxo-v2.mjs`, por hoja:
+`build-moves.mjs`, por hoja:
 
 1. Quita el fondo: verde de croma (con limpieza del reflejo verde en el borde) o blanco casi puro. El blanco se
    quita rellenando desde el borde de la imagen, así que lo blanco encerrado en el dibujo (camiseta, cordaje) se
@@ -139,7 +153,7 @@ como `pieza ancha` (una pieza más ancha que su celda): revisa el log y mira las
    la imagen: una hoja puede medir 1536×1024, 1254×1254 o 1330×1182.
 3. Separa las piezas conexas y asigna cada una a su celda por la posición de los pies. Entre filas corta por la
    línea más vacía de cada columna, buscando entre 40 px por encima y 16 px por debajo del límite nominal. Si dos
-   frames se tocan más abajo, la línea se pone a mano en `CUT_AT` (hoja → `'fila de arriba/frame'` → y en px de la
+   frames se tocan más abajo, la línea se pone a mano en `cutAt` (`tools/characters.mjs`) (hoja → `'fila de arriba/frame'` → y en px de la
    hoja). Las piezas sueltas (raqueta, estrellas, polvo) van con el cuerpo más cercano de su columna, y un trozo
    que ese corte separó de un cuerpo vuelve a su cuerpo.
 4. Apoya cada fila en su suelo (mediana de la base de sus frames) y la escala para que su **frame 1, de pie**,
@@ -149,7 +163,7 @@ como `pieza ancha` (una pieza más ancha que su celda): revisa el log y mira las
    del suelo, y los JSON con fps y fotogramas clave. El juego escala cada pack por su `standHeight`: una hoja
    dibujada más grande da más resolución, no un personaje más grande.
 
-`build-nxo-inferno.mjs` hace lo mismo con la hoja del INFERNO: fondo verde o transparente, separa los 9 frames
+`build-ulti.mjs` hace lo mismo con la hoja del INFERNO: fondo verde o transparente, separa los 9 frames
 por columnas vacías (o por piezas si dos se solapan sin tocarse), escala con el frame 1 de pie a 140 px y
 empaqueta los 9 en una textura de 3 columnas.
 
@@ -158,8 +172,27 @@ Con una hoja cuadrada (alto / ancho > 0,8: la ULTI completa de 6 × 9) cambia de
 que roza el borde de la celda no se corta) y las manchas de menos de 30 px se ignoran. Una sola escala para todas
 las filas (el frame 1 de la fila 1, de pie, mide 140 px), cada fila apoyada en la mediana de sus suelos y el ancla
 en el centro del cuerpo (píxeles oscuros: las estrellas y destellos no lo mueven). Escribe una textura de 3 × 3 por
-clip, todas con la misma celda, en WebP (con `png` como 6.º argumento las deja en PNG para probar). Las hojas de 1
-fila (rival y Mai) siguen igual.
+clip, todas con la misma celda, en WebP (con `png` como 2.º argumento, `node tools/build-ulti.mjs <id> png`, las deja en PNG para probar). Las hojas antiguas de 1 fila ya no se procesan (la herramienta vieja está en `_temp/respaldo_oficial/tools-viejas/`).
+
+### Todas las herramientas de `frontend/tools/` que tocan imágenes
+
+| Herramienta | Qué hace | Estado |
+|---|---|---|
+| `build-moves.mjs` | Corta las hojas 1-4 (8 filas × 8) de NXO espaldas / rival / Mai en tiras WebP + JSON. | **En uso** |
+| `build-ulti.mjs` | Corta la ULTI (6 × 9) de cualquier personaje en tiras WebP + JSON. | **En uso** |
+| `characters.mjs` | Registro de personajes: qué hojas, filas, columnas y ajustes tiene cada pack. Lo leen las dos herramientas. | **En uso** |
+| `convert-image.mjs` | Convierte PNG ↔ WebP con Chrome headless. Lo llaman las otras herramientas. | **En uso** |
+| `build-nxo-sprites.mjs` | Primera generación: la hoja NO tenía rejilla fija, así que mide filas y frames (valles de la proyección, componentes conexas), escala por fila y escribe `<id>-sprites/*.png` + `nxo-sprites.json` / `mai-sprites.json`. | **Antigua.** Solo sigue ligada a **Mai rival** (`mai-front-sprites/`, hoja sin migrar). Saca PNG: convertir a WebP a mano. Cuando Mai rival pase a `build-moves.mjs`, se puede borrar. |
+| `paste-row.mjs` | Pega una animación suelta (frames en cuadrícula) como fila de una hoja de NXO. | Auxiliar para armar hojas. |
+| `keep-enclosed-green.mjs` | Conserva los detalles verdes encerrados en el personaje (hojas de la gorra de Mai) al quitar el croma. | Auxiliar de `build-moves.mjs`. |
+| `build-end-poses.mjs` | Poses de la pantalla de resultado para un personaje de frente sin hoja nueva (`mai-front-end/`). | En uso para Mai rival. |
+| `png-lite.mjs` | Lector/escritor PNG mínimo, sin dependencias. | Librería interna. |
+| `build-inferno-ball.mjs`, `build-power-ball.mjs`, `build-trail-ball.mjs` | Hojas de las bolas del INFERNO (fuego, hielo, viento, rayo, tulipán). | En uso. **Sacan PNG** (convertir a WebP). |
+| `build-charge-fx.mjs` | Hoja del aro de carga bajo el jugador. | En uso. |
+| `build-paloma.mjs`, `build-emote-thumbs.mjs`, `make-button-sprites.mjs`, `make-android-icons.mjs` | Paloma del ambiente, miniaturas de emotes, botones ligeros del partido, íconos de la app. | En uso. Los dos primeros y `make-button-sprites` sacan PNG. |
+| `preview-char-colors.mjs` | Vista previa de los estilos de color (`fx/CharColorFx.ts`). | Auxiliar. |
+
+Las demás (`sim-*.mjs`, `test-*.mjs`, `apk.mjs`) no son de imágenes: simulaciones, pruebas y compilar el APK.
 
 ## 4. Reglas de dibujo (valen para todas las hojas)
 
@@ -230,7 +263,7 @@ retocar ambos juntos.
 sacador (`MatchScene.serveJump`) y el lado en el que sube la pelota salen de ahí. Está medido sobre cada tira y se
 guarda en `src/characters/<pack>-hits.json` como `serveRacket: { normal: { dx, z }, spin: { dx, z } }`, en
 unidades del personaje (alto 150): `z` = altura del centro del cordaje sobre los pies y `dx` = desplazamiento lateral
-(+ = derecha de la pantalla). Lo escribe `tools/build-nxo-v2.mjs` (constante `K.serveRacket`). **Si se cambia la
+(+ = derecha de la pantalla). Lo escribe `tools/build-moves.mjs` (constante `K.serveRacket`). **Si se cambia la
 hoja 2 (filas 5 o 6) o la hoja del saque de un personaje hay que volver a medirlo**: abrir el frame 5 de la tira,
 anotar el centro del óvalo de la raqueta en píxeles (sobre los pies y respecto al centro de la celda) y multiplicar por
 `150 / standHeight`. Valores actuales: NXO espaldas 147 / 143 (z normal / efecto; dx −25 / −33, hoja 2 del 12-11-2026), NXO rival 148 / 146 (dx −10 / −19,
@@ -286,7 +319,7 @@ haber columnas vacías; si dos se solapan (la raqueta de uno por encima del otro
 
 ### Hoja de la ULTI completa (6 filas × 9)
 
-NXO de espaldas (`Nxo/pj-nxo-ulti.png`) y NXO rival de frente (`Nxo/rival/pj-nxo-rival-ulti.png`, argumento `front`, sin espejo), del 12-11-2026; las hojas de 1 fila quedan de respaldo. Mai de espaldas y de frente (`Mai/pj-mai-ulti.png`, `Mai/rival/pj-mai-rival-ulti.png`) también, del 12-11-2026. Llegaron de 1254×1254 (celda 139×209): la herramienta corta por ancho/9 × alto/6, así que vale cualquier tamaño.
+NXO de espaldas (`Nxo/pj-nxo-ulti.png`) y NXO rival de frente (`Nxo/rival/pj-nxo-rival-ulti.png`, sin espejo), del 12-11-2026; las hojas de 1 fila quedan de respaldo. Mai de espaldas y de frente (`Mai/pj-mai-ulti.png`, `Mai/rival/pj-mai-rival-ulti.png`) también, del 12-11-2026. Llegaron de 1254×1254 (celda 139×209): la herramienta corta por ancho/9 × alto/6, así que vale cualquier tamaño.
 Rejilla fija de 9 columnas × 6 filas, celdas iguales, fondo verde croma liso. Los efectos dibujados (estela,
 estallido, sudor, estrellas, polvo, brillos) van en blanco o amarillo, nunca en verde, y son parte del frame. El
 frame 1 de la fila 1 de pie, como en las otras hojas. Sin pelota.
@@ -313,9 +346,9 @@ pupilas (`eyes`), de donde salen los rayos: si cambia la imagen, hay que volver 
 ## 6. Diferencias por personaje y vista
 
 Las secciones 4 y 5 son el contrato. Estas son las excepciones que la herramienta ya conoce
-(`tools/build-nxo-v2.mjs`):
+(`tools/build-moves.mjs`):
 
-**MAI de espaldas** (`ROWS_MAI`, `DERIVED`, `SCALE_AS`):
+**MAI de espaldas** (`ROWS_MAI`, `derived`, `scaleAs` en `characters.mjs`):
 
 - Hojas 1 y 2: igual que NXO.
 - Hoja 3: 1 `dive-right` · 2 `dive-left` (ya se levanta en los frames 7-8) · 3 `recover-right` · 4 `stunned` ·
@@ -327,9 +360,9 @@ Las secciones 4 y 5 son el contrato. Estas son las excepciones que la herramient
   con `bounce: false` y el saque (filas 5 y 6 de la hoja 2) arranca en su frame 1 y se pausa en el trofeo.
 - Las hojas verdes de la flor de la gorra se recuperan después del croma (`keep-enclosed-green.mjs`, solo Mai).
 
-**NXO de espaldas** (sin argumento):
+**NXO de espaldas** (`nxo`):
 
-- Hoja 2 nueva del 12-11-2026 (1254×1254, fondo verde; la anterior en `Nxo/Old sprites/pj-nxo-sprites-2-antes-new.png`).
+- Hoja 2 nueva del 12-11-2026 (1254×1254, fondo verde; la anterior en `Nxo/_temp/respaldo_oficial/pj-nxo-sprites-2-antes-new.png`).
   Instalada a pedido aunque no cumple la mano: en las filas 2-8 el frame 1 lleva la raqueta a la **izquierda** de la
   imagen (mano izquierda) y en varias filas cambia de lado entre frames. El golpe arranca en su frame de espera, así que
   el frame 1 no se ve, pero puede notarse el cambio de mano desde el reposo. `serveRacket` medido de nuevo.
@@ -337,11 +370,11 @@ Las secciones 4 y 5 son el contrato. Estas son las excepciones que la herramient
 
 **NXO rival, de frente** (`front`):
 
-Hojas 1, 2 y 3 nuevas del 12-11-2026 (las anteriores están en `Nxo/rival/Old sprites/` con el sufijo
+Hojas 1, 2 y 3 nuevas del 12-11-2026 (las anteriores están en `Nxo/rival/_temp/respaldo_oficial/` con el sufijo
 `-antes-new`; la 2, `-antes-new-12-11-2026`). La hoja 4 y el INFERNO no cambiaron. Tiras en WebP (sección 0.4).
 
 - Hoja 1 (1536×1024, fondo verde): ya no se espeja entera (`FLIP_SHEETS` vacío). Se espejan solo las filas 1
-  `idle`, 4 `victory` y 8 `defeat` (`FLIP_ROWS`), que llegan con la raqueta a la derecha de la imagen. Las carreras
+  `idle`, 4 `victory` y 8 `defeat` (`flipRows` en `characters.mjs`), que llegan con la raqueta a la derecha de la imagen. Las carreras
   (filas 2, 3, 5, 6 y 7) corren hacia la derecha de la imagen, como pide el contrato, pero con la raqueta en la mano
   izquierda; espejarlas las haría correr al revés. Por eso, al correr, el rival lleva la raqueta en la otra mano y
   puede verse el cambio de mano al pasar de la frenada al reposo. Para arreglarlo hay que pedir esas filas otra vez
@@ -352,23 +385,23 @@ Hojas 1, 2 y 3 nuevas del 12-11-2026 (las anteriores están en `Nxo/rival/Old sp
   iguales a los de espaldas (sección 5). `serveRacket` medido de nuevo.
 - Hoja 3 (1536×1024, fondo verde): filas en el orden del contrato, sin espejo. En `dive-right` el alcance máximo
   está solo en el frame 4 (en el 5 la raqueta ya queda detrás); en `dive-left`, en los frames 4-5. Coincide con
-  `LUNGE_CONTACT_S`. Dos frames tocan al de la fila de abajo y llevan corte a mano (`CUT_AT`): fila 2 frame 7
+  `LUNGE_CONTACT_S`. Dos frames tocan al de la fila de abajo y llevan corte a mano (`cutAt` en `characters.mjs`): fila 2 frame 7
   (y = 284) y fila 5 frames 4 y 5 (y = 668). En los frames 4 y 5 del aturdido queda una mancha de 1-2 px del pelo
   del salto de abajo entre los pies.
-- Hoja 4, fila 1 (`serve-bounce`): llega espejada y se espeja solo esa fila (`FLIP_ROWS`). El pack usa
+- Hoja 4, fila 1 (`serve-bounce`): llega espejada y se espeja solo esa fila (`flipRows` en `characters.mjs`). El pack usa
   `BOUNCE_FRONT` (bota con la raqueta, a la izquierda de la imagen).
 - ULTI completa (`pj-nxo-rival-ulti.png`, 12-11-2026): fila 6 (`pickup`) no cumple la mano: en los frames 3-8 la
   raqueta queda a la **derecha** de la imagen (mano izquierda) y en el 9 vuelve a la izquierda, así que al terminar
   de recogerla se ve un cambio de mano. El resto de filas cumple. Para arreglarlo hay que pedir esa fila otra vez.
-- INFERNO antiguo (respaldo): ya trae la raqueta en la mano derecha, se corta sin espejo con el argumento `front` (solo marca
+- INFERNO antiguo (respaldo): ya trae la raqueta en la mano derecha, se cortaba sin espejo (solo marca
   `view: front` en el JSON). Con `flip` se espejaría cada frame y cambiarían los frames clave: mejor pedir la hoja
   bien.
 
 **MAI rival**: usa todavía la hoja antigua (`mai-front-sprites/`, `tools/build-nxo-sprites.mjs`). Sus hojas nuevas
-están en `Mai/rival/` sin procesar, salvo la hoja 1 (ver la excepción de abajo). `build-nxo-v2.mjs mai front` aún no
+están en `Mai/rival/` sin procesar, salvo la hoja 1 (ver la excepción de abajo). `build-moves.mjs mai-front` aún no
 existe: para procesar el pack hacen falta las 4 hojas y el INFERNO de Mai rival.
 
-- **Hojas nuevas del 12-11-2026** (hoja 1, hoja 2 e INFERNO; las anteriores en `Mai/rival/Old sprites/` con el sufijo
+- **Hojas nuevas del 12-11-2026** (hoja 1, hoja 2 e INFERNO; las anteriores en `Mai/rival/_temp/respaldo_oficial/` con el sufijo
   `-antes-new`). Hojas 3 y 4 siguen siendo las del 10-11-2026, de dibujo viejo.
   - Hoja 1 (1536×1024, verde): derrota (fila 8) termina de rodillas con la raqueta en el suelo; victoria (fila 4)
     estable. **Incumple el contrato en la fila 2 (`run`)**: corre hacia la izquierda de la imagen, igual que la fila 6
@@ -447,26 +480,46 @@ Cambiar una hoja con el mismo orden de filas:
 1. Compararla con este contrato: rejilla, fondo, mano, frame 1 de pie y las filas en su orden. Si una fila no
    cuadra, no instalarla: pedirla otra vez o adaptar el registro de filas de ese personaje en la herramienta (y
    aquí).
-2. Mover la anterior a `Old sprites/` y dejar la nueva con el nombre exacto.
+2. Mover la anterior a `_temp/respaldo_oficial/<Personaje>/` y dejar la nueva con el nombre exacto.
 3. Regenerar su pack (sección 3), leer el log, mirar las tiras y pasar `npx tsc --noEmit` y `npm run build`.
 4. Comprobar que los demás packs no cambian (`git status` de sus carpetas de tiras y sus JSON).
 
 Cambiar una sola fila: `node tools/paste-row.mjs <hoja.png> <fila 1-8> <nueva.png> <cols> <rows> [frames] [feet] [height]`
 pega una animación suelta (frames en cuadrícula) en esa fila, a la escala y la línea de pies de su frame 1 actual.
-Deja el fondo en verde puro, así que sirve para hojas de fondo verde. Antes, copia la hoja a `Old sprites/`
+Deja el fondo en verde puro, así que sirve para hojas de fondo verde. Antes, copia la hoja a `_temp/respaldo_oficial/<Personaje>/`
 (`-antes-filaN`).
 
 Añadir una hoja (5, 6…):
 
 1. Definir antes sus filas en la sección 5, con las mismas reglas (8 filas × 8 frames).
-2. En `tools/build-nxo-v2.mjs`: añadir la hoja a `ROWS_NXO` (y a `ROWS_MAI` si aplica) y a `COLS`, ampliar los
-   bucles `[1, 2, 3, 4]` (corte y escala) y poner en `REF` la fila de referencia de la hoja, una con el frame 1 de
-   pie.
+2. En `tools/characters.mjs`: añadir la hoja a `rows` y a `cols` del personaje (`ROWS_NXO` / `ROWS_MAI`). En
+   `tools/build-moves.mjs`: ampliar los bucles `[1, 2, 3, 4]` (corte y escala) y poner en `REF` la fila de referencia
+   de la hoja, una con el frame 1 de pie.
 3. Añadir los clips nuevos al JSON `extra` (bloque `write(PFX + 'extra', …)`) con fps, bucle y fotogramas clave.
    `NxoActor` carga solos todos los clips de `extra`, pero el juego solo reproduce los que algún código llama
    (`emote(nombre)` o un estado nuevo).
 
-Personaje nuevo: las mismas 4 hojas, INFERNO y mirada, con este contrato. En la herramienta necesita su registro
-de filas y sus nombres (`SRC_DIR`, `SRC_NAME`, `DIR`, `PFX`); en el juego, una entrada en `PACKS` (`NxoActor.ts`)
-y en `catalog.ts`.
+Personaje nuevo: las mismas 4 hojas, la ULTI y la mirada, con este contrato. Pasos:
 
+1. Dejar las hojas en `public/personajes/<Personaje>/` (y `rival/` para la vista de frente) con el patrón `pj-<id>-1..4.png`, `pj-<id>-ulti.png`.
+2. Añadir una entrada en `tools/characters.mjs` (copiar la de `nxo` o `mai` y ajustar; los campos están explicados arriba del archivo).
+3. `node tools/build-moves.mjs <id>` y `node tools/build-ulti.mjs <id>`, revisar el log y las tiras.
+4. En el juego: una entrada en `PACKS` (`NxoActor.ts`), su JSON en `sheets.ts` y el personaje en `catalog.ts`.
+
+
+
+## 8. Pendiente de arte (hojas por redibujar)
+
+Anotado el 12-11-2026. Ninguna de estas hojas se instala hasta que cumpla el contrato (�4 y �5); mientras tanto el juego sigue con lo que ya tiene.
+
+| Hoja | Qu� falta | Qu� desbloquea |
+|---|---|---|
+| **Mai de espaldas, hoja 3** (`Mai/pj-mai-3.png`) | Una animaci�n por fila, en el orden de NXO: 1 estirada der � 2 estirada izq � 3 recuperaci�n der � 4 recuperaci�n izq � 5 aturdido � 6 punto ganado � 7 punto perdido � 8 espera. Hoy el aturdido est� en la fila 4, no hay recuperaci�n izquierda y la fila 7 es un salto sin uso. | Borrar `MAI_LEGACY_MOVES` de `tools/characters.mjs` (parte de la hoja 3: `derived`, `scaleAs`). |
+| **Mai de espaldas, hoja 4** (`Mai/pj-mai-4.png`) | 8 columnas (hoy 9) y las filas 1 y 2 como bote y lanzamiento del saque. | Quitar `bounce: null` de Mai en `NxoActor.ts` y el resto de `MAI_LEGACY_MOVES`. |
+| **Mai rival, hoja 3** (`Mai/rival/pj-mai-rival-3.png`) | Igual que la de espaldas: hoy las filas 1 a 3 son una sola secuencia (se lanza, se arrastra, aturdida, se levanta) en vez de una animaci�n por fila. | Procesar el pack `mai-front` con `build-moves.mjs mai-front` y conectarlo (`NxoActor.ts`, `sheets.ts`). |
+
+Por confirmar (puede no requerir redibujar):
+- **Mai rival, hoja 2:** en derecha y rev�s la raqueta cruza al lado derecho de la imagen en el impacto (frames 6 y 7). Comprobar que es el lado correcto para el rival.
+- **Mai rival, hoja 4:** las filas 1 y 2 no se distinguen bien como bote y lanzamiento del saque.
+
+Las hojas 1 de Mai rival y de espaldas, la 2 de espaldas y la ULTI de los cuatro packs ya cumplen.

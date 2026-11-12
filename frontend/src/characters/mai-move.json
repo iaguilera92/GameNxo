@@ -18,7 +18,7 @@
   "landRate": 2.6,
   "animations": {
     "brake-turn": {
-      "file": "brake-turn.png",
+      "file": "brake-turn.webp",
       "frames": 8,
       "fps": 14,
       "loop": false

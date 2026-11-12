@@ -46,13 +46,13 @@ const HERO_SHIFT_X = 112;
 const BG_ZOOM = 1.12;
 
 /**
- * Barra inferior en imagen (public/assets/nav-bar.png). `box` = contenido visible en píxeles
+ * Barra inferior en imagen (public/assets/nav-bar.webp). `box` = contenido visible en píxeles
  * de la imagen (sin el margen transparente); `split` = límites entre las 3 pestañas (0..1).
  * Si la imagen no existe se dibuja la barra vectorial de antes.
  */
 const NAV = {
   key: 'nav-home',
-  file: 'assets/barra-inicio.png',
+  file: 'assets/barra-inicio.webp',
   w: 2172,
   h: 724,
   box: { x0: 46, y0: 170, x1: 2124, y1: 540 },
@@ -68,10 +68,10 @@ export class MenuScene extends Phaser.Scene {
 
   preload() {
     if (!this.textures.exists('menu-bg')) this.load.image('menu-bg', 'assets/menu-bg.webp');
-    if (!this.textures.exists('btn-jugar')) this.load.image('btn-jugar', 'assets/btn-jugar.png');
-    if (!this.textures.exists('daily-coins-art')) this.load.image('daily-coins-art', 'assets/monedas.png');
-    if (!this.textures.exists('daily-cash-art')) this.load.image('daily-cash-art', 'assets/billetes.png');
-    if (!this.textures.exists('daily-title-art')) this.load.image('daily-title-art', 'assets/premio-diario.png');
+    if (!this.textures.exists('btn-jugar')) this.load.image('btn-jugar', 'assets/btn-jugar.webp');
+    if (!this.textures.exists('daily-coins-art')) this.load.image('daily-coins-art', 'assets/monedas.webp');
+    if (!this.textures.exists('daily-cash-art')) this.load.image('daily-cash-art', 'assets/billetes.webp');
+    if (!this.textures.exists('daily-title-art')) this.load.image('daily-title-art', 'assets/premio-diario.webp');
     if (!this.textures.exists(NAV.key)) this.load.image(NAV.key, NAV.file);
     preloadRankBadges(this.load, [myLeague()]);
   }

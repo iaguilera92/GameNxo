@@ -9,7 +9,7 @@
 // - Cada frame se escala con UN solo factor: el personaje del frame 1 nuevo mide lo mismo que el frame 1 actual de esa fila.
 // - Horizontal: la CABEZA (pelo oscuro) de cada frame queda en el centro de su celda (los frames generados derivan de lado).
 // - Vertical: los pies de cada frame quedan en la misma linea que los pies del frame 1 actual.
-// - El fondo queda en verde puro (#00FF00), como el resto de la hoja (build-nxo-v2.mjs lo quita).
+// - El fondo queda en verde puro (#00FF00), como el resto de la hoja (build-moves.mjs lo quita).
 import { decode, save } from './png-lite.mjs';
 const [sheetPath, rowArg, newPath, colsArg, rowsArg, framesArg, feetArg, heightArg] = process.argv.slice(2);
 const ROW = Number(rowArg) - 1;

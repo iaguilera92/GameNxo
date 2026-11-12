@@ -121,9 +121,6 @@ export function bpSeasonInfo(now = gameClock.now()) {
   return { over, lastDay, month: m, year: y, daysLeft };
 }
 
-/** Meses en español (para mostrar el término del Pase). */
-export const MONTHS_ES = ['ENERO', 'FEBRERO', 'MARZO', 'ABRIL', 'MAYO', 'JUNIO', 'JULIO', 'AGOSTO', 'SEPTIEMBRE', 'OCTUBRE', 'NOVIEMBRE', 'DICIEMBRE'];
-
 /** Suma EXP al pase (la llama operations.addXp). Pura: modifica el clon que recibe. Con el Pase terminado no suma. */
 export function bpAddXpInPlace(n: PlayerState, amount: number) {
   if (bpSeasonInfo().over) return;

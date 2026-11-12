@@ -906,8 +906,3 @@ export class MatchEndScene extends Phaser.Scene {
     }
   }
 }
-
-/** Nombre del jugador para el overlay (perfil real). */
-export function playerDisplayName() {
-  return getProfile().name;
-}

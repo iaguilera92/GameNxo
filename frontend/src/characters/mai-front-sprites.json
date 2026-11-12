@@ -15,21 +15,21 @@
   "smashStart": 1,
   "animations": {
     "idle": {
-      "file": "idle.png",
+      "file": "idle.webp",
       "frames": 7,
       "fps": 9,
       "loop": true,
       "scale": 1
     },
     "run": {
-      "file": "run.png",
+      "file": "run.webp",
       "frames": 7,
       "fps": 14,
       "loop": true,
       "scale": 0.89
     },
     "forehand": {
-      "file": "forehand.png",
+      "file": "forehand.webp",
       "frames": 8,
       "fps": 15,
       "loop": false,
@@ -37,7 +37,7 @@
       "scale": 0.905
     },
     "serve": {
-      "file": "serve.png",
+      "file": "serve.webp",
       "frames": 6,
       "fps": 12,
       "loop": false,
@@ -45,21 +45,21 @@
       "scale": 1.042
     },
     "victory": {
-      "file": "victory.png",
+      "file": "victory.webp",
       "frames": 7,
       "fps": 10,
       "loop": false,
       "scale": 1.137
     },
     "runstop": {
-      "file": "runstop.png",
+      "file": "runstop.webp",
       "frames": 2,
       "fps": 12,
       "loop": false,
       "scale": 0.89
     },
     "backhand": {
-      "file": "backhand.png",
+      "file": "backhand.webp",
       "frames": 8,
       "fps": 15,
       "loop": false,
@@ -67,7 +67,7 @@
       "scale": 0.905
     },
     "smash": {
-      "file": "smash.png",
+      "file": "smash.webp",
       "frames": 6,
       "fps": 14,
       "loop": false,

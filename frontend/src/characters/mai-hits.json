@@ -13,48 +13,57 @@
   "hold": 1,
   "serveWait": 2,
   "smashStart": 2,
-  "serveRacket": { "normal": { "dx": 12, "z": 128 }, "spin": { "dx": 20, "z": 146 } },
+  "serveRacket": {
+    "normal": {
+      "dx": 12,
+      "z": 128
+    },
+    "spin": {
+      "dx": 20,
+      "z": 146
+    }
+  },
   "holdForehand": 1,
   "holdPower": 3,
   "holdPowerForehand": 3,
   "animations": {
     "forehand": {
-      "file": "forehand.png",
+      "file": "forehand.webp",
       "frames": 8,
       "fps": 15,
       "loop": false,
       "impact": 6
     },
     "backhand": {
-      "file": "backhand.png",
+      "file": "backhand.webp",
       "frames": 8,
       "fps": 15,
       "loop": false,
       "impact": 5
     },
     "forehand-power": {
-      "file": "forehand-power.png",
+      "file": "forehand-power.webp",
       "frames": 8,
       "fps": 15,
       "loop": false,
       "impact": 5
     },
     "backhand-power": {
-      "file": "backhand-power.png",
+      "file": "backhand-power.webp",
       "frames": 8,
       "fps": 15,
       "loop": false,
       "impact": 5
     },
     "serve": {
-      "file": "serve.png",
+      "file": "serve.webp",
       "frames": 8,
       "fps": 12,
       "loop": false,
       "impact": 4
     },
     "smash": {
-      "file": "smash.png",
+      "file": "smash.webp",
       "frames": 8,
       "fps": 14,
       "loop": false,

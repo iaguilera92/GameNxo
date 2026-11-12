@@ -16,17 +16,8 @@ export const CATALOG: SkinDef[] = [
   { id: 'mai', name: 'Mai', sex: 'f', sheets: { back: 'mai', front: 'mai-front' } },
 ];
 
-export const DEFAULT_SKIN: SkinId = 'nxo';
-
 export function skinById(id: SkinId): SkinDef {
   return CATALOG.find((s) => s.id === id) ?? CATALOG[0];
-}
-
-/** Siguiente/anterior skin del catálogo (para el selector con flechas). */
-export function cycleSkin(id: SkinId, dir: 1 | -1): SkinId {
-  const i = CATALOG.findIndex((s) => s.id === id);
-  const n = CATALOG.length;
-  return CATALOG[(((i < 0 ? 0 : i) + dir) % n + n) % n].id;
 }
 
 /**

@@ -1,5 +1,5 @@
 {
-  "source": "pj-nxo-1.png / pj-nxo-2.png (tools/build-nxo-v2.mjs)",
+  "source": "pj-nxo-1.png / pj-nxo-2.png (tools/build-moves.mjs)",
   "view": "back",
   "cell": {
     "w": 222,

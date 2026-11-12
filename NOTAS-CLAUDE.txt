@@ -322,3 +322,42 @@ NOTAS PARA CLAUDE (pendientes detectados por Kiro, sin corregir)
  - Rival en red al acabar el punto: en pointover / over netBotTick ya no llama setMoving / setCharging (la
    interpolación lo movía unos ms y cortaba pointEnd / defeat). Saque sin salto en red = backend sin desplegar
    (serve-swing no llega).
+
+[12-11-2026] Claude: SALTOS del rival + LOG DE PARTIDAS
+ - CAUSA de "corre en el sitio y aparece pegándole": guard.ts recortaba TODO número a ±100000, también la hora del
+   cliente (ms): pasados ~100 s llegaba siempre 100000 y la interpolación descartaba los estados. Ahora time() no
+   recorta (StateMsg.t / HitMsg.t) y RemoteInterp ya no descarta un estado si la hora no crece (usa la llegada).
+ - LOG: el juego (net/matchDiag.ts, MatchScene.diagTick) manda en lotes game:log: send/recv de golpes y avisos,
+   hit-apply (retraso, avance), point, snap cada 1 s (personajes: posición, estado/clip#frame), run-in-place, teleport
+   (con causa), stuck (> 3 s en estado ocupado), no-state. NxoActor/Character.debugInfo(). Apagar: localStorage
+   'dev.netLog' = '0'. Servidor: socket/matchLog.ts -> backend/logs/matches/<fecha>/<sala>.jsonl (+ eventos del
+   servidor: matched, start, relay, point, away, rejoin, over). API: GET /api/match-logs y /api/match-logs/<sala> con
+   LOG_KEY (cabecera x-log-key o ?key=). Sin LOG_KEY la API no existe. Hay que DESPLEGAR.
+[12-11-2026] KIRO: limpieza de imágenes del APK (punto 1e de la auditoría de rendimiento: ya hecho, no repetir)
+ - Borradas (sin uso en src/ ni en tools/; quedan en el historial de git): public/assets/ruleta.png, nxo-logo.png,
+   nxo-logo-alt.png y public/ambiente-4.webp.
+ - Movidas a frontend/art/ (fuentes de herramientas; fuera de public/ no van al APK): ambiente-paloma.png y
+   ambiente-avion.png -> art/ambiente/ (tools/build-paloma.mjs actualizado) y nxo-logo-prev.png -> art/
+   (tools/make-android-icons.mjs actualizado).
+ - vite.config.ts: KEEP_IN_PERSONAJES ya no copia Nxo/emojis (fuentes de tools/build-emote-thumbs.mjs; el juego usa
+   assets/emotes/). docs/SPRITES.md actualizado. Imágenes en dist: 69,4 -> 59,7 MB.
+ - README.txt se fusionó en README.md (preparar PC nuevo, comandos, cómo está hecho el partido, notas para la IA) y se borró.
+ - LOG-PARTIDO: backend/logs/LOG-PARTIDO.txt = el mismo log en texto legible, SOLO la última partida (se reescribe
+   al emparejar otra). Eventos "mv" cada 100 ms desde cada teléfono: me / rv (posición dibujada y estado/clip#frame),
+   rvNet (último estado recibido del rival), lag, age, ball, lock. Leer: tail -f ~/GameNxo/backend/logs/LOG-PARTIDO.txt
+   o GET /api/log-partido?key=LOG_KEY. Apagar: LOG_PARTIDO=0 (servidor) o dev.netLog = 0 (juego). Lotes del juego
+   <= 25 eventos y ~6 KB (tope del servidor 8 KB).
+[12-11-2026] KIRO: ESTILO DE COLOR del personaje sin PostFX (punto 2 de la auditoría de rendimiento: ya hecho, no repetir)
+ - fx/CharColorFx.ts: el color ya no es un PostFX por sprite (framebuffer propio del tamaño de la pantalla + pasada a
+   pantalla completa cada fotograma). Ahora es un pipeline de DIBUJO del sprite: CharColorSpritePipeline (SinglePipeline
+   de Phaser + el mismo croma en su fragment shader, antes del tinte). Un solo pipeline para todo el juego ('CharColorSprite');
+   cada sprite guarda sus parámetros en un WeakMap y onBind() vacía el lote solo si cambia el color.
+ - Misma API: applyCharColor(objeto, color, skin) / applyCharColor(objeto, null) (resetPipeline). Las llamadas de
+   MatchScene, Menu, Personalizar, VS y MatchEnd no cambian.
+ - Comprobado en Chrome (WebGL): mismo resultado que antes con NXO y Mai en azul, dorado, sombra y verde (diferencia media
+   < 0,1 de 255; como mucho 7 píxeles de 72.000 con diferencia > 8, en los bordes), también con varios colores seguidos
+   en el mismo lote. No poner encima un preFX/postFX en los sprites del personaje.
+ - FIN DEL PARTIDO con espectáculo: fx/matchFinale.ts (playMatchFinale, ~3,2 s) reemplaza el banner "¡PARTIDO GANADO!":
+   destello, "JUEGO, SET Y PARTIDO", marcador final (la cifra del ganador sube, corona), sello ¡PARTIDO GANADO! con
+   rayos + confeti + fanfarria o PARTIDO PERDIDO con ceniza + notas que bajan. Luego endMatch (pantalla de resultados
+   sin cambios). MatchScene.pointTo pone phase = 'over' al empezar el final (el OVER del servidor no lo duplica).

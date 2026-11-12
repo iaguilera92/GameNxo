@@ -22,6 +22,8 @@ export const EV = {
   READY: 'game:ready',
   /** volver a un partido tras un corte (data: ResumeRequest) */
   RESUME: 'game:resume',
+  /** LOG de diagnóstico del partido (data: { e: [ {ev, ...} ] }): solo lo guarda el servidor, no se reenvía */
+  LOG: 'game:log',
   /** estado del propio jugador (~20 Hz): se reenvía al rival */
   STATE: 'game:state',
   /** golpe / saque propio con la pelota resultante: se reenvía al rival */

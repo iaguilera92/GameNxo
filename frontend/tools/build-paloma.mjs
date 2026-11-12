@@ -1,4 +1,4 @@
-// Corta la hoja de la PALOMA del ambiente (public/ambiente-paloma.png: 8 columnas x 3 filas, celdas de 271,5 x 241,3 px)
+// Corta la hoja de la PALOMA del ambiente (art/ambiente/ambiente-paloma.png: 8 columnas x 3 filas, celdas de 271,5 x 241,3 px)
 // en una cuadrícula limpia de celdas enteras y a la mitad de tamaño -> public/assets/ambiente/paloma.png.
 //   fila 1  en el suelo: quieta, camina, picotea (8 frames, en bucle)
 //   fila 2  despegue: de pie -> alas abiertas -> en el aire (8 frames; al revés = aterrizaje)
@@ -6,7 +6,8 @@
 // La paloma mira a la DERECHA. Uso: node tools/build-paloma.mjs  (fx/AmbientBird.ts carga el resultado)
 //
 // AVIÓN: node tools/build-paloma.mjs avion
-//   public/ambiente-avion.png (8 columnas x 1 fila, mirando a la derecha; se va achicando = se aleja)
+//   art/ambiente/ambiente-avion.png (8 columnas x 1 fila, mirando a la derecha; se va achicando = se aleja)
+// Las hojas fuente viven en art/ (fuera de public/: no van al APK).
 //   -> public/assets/ambiente/avion.png (fx/AmbientPlane.ts)
 import { mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -15,7 +16,7 @@ import { decode, save } from './png-lite.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const PLANE = process.argv[2] === 'avion';
-const SRC = join(ROOT, 'public', PLANE ? 'ambiente-avion.png' : 'ambiente-paloma.png');
+const SRC = join(ROOT, 'art', 'ambiente', PLANE ? 'ambiente-avion.png' : 'ambiente-paloma.png');
 const OUT_DIR = join(ROOT, 'public', 'assets', 'ambiente');
 const OUT_NAME = PLANE ? 'avion.png' : 'paloma.png';
 const COLS = 8;

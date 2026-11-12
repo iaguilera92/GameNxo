@@ -94,10 +94,12 @@ import type { MatchNet } from '../net/MatchNet';
 import type { ActionMsg, HitMsg, PointMsg, ScoreMsg, StateMsg } from '../net/protocol';
 import { mirrorX, mirrorY } from '../net/mirror';
 import { RemoteInterp } from '../net/interp';
+import { MatchDiag, netLogOn } from '../net/matchDiag';
 import { POINT_SPLASH_MS, isMatchPoint, showPointSplash } from '../fx/pointSplash';
 import { showSideNotice } from '../fx/sideNotice';
 import { TIMING, TimingTracker, type ShotClass, type TimingResult, applyError, evaluateCharge, nextStreak, timedSpeed, timingMods } from '../logic/PerfectTiming';
 import { TimingRing, perfectSound, playStreakFx, playTimingFx, vibrate } from '../fx/timingFx';
+import { playMatchFinale } from '../fx/matchFinale';
 import { getSettings } from '../logic/Settings';
 import { MOTION, type MotionEvent, createMotion, stepMotion, stopMotion } from '../logic/PlayerMotion';
 import { DASH, type DashRun, createRun, guaranteeStep, planSprint, sampleTrajectory, shouldCancelRun, stepRun } from '../logic/DashSprint';
@@ -2640,6 +2642,7 @@ export class MatchScene extends Phaser.Scene {
     this.time.delayedCall(1100, () => this.startPoint(true));
   }
   private pointTo(w: Who, reason: string, color: string) {
+    this.diag?.log('point', { w, reason, score: `${this.score.points.join('-')} / ${this.score.games.join('-')}`, phase: this.phase });
     if (this.phase !== 'rally') return;
     if (this.netGate('point', w, reason, color)) return;
     this.phase = 'pointover';
@@ -2663,8 +2666,11 @@ export class MatchScene extends Phaser.Scene {
       const win = res.matchWinner === 0;
       (win ? this.player : this.bot).ch.victory();
       (win ? this.bot : this.player).ch.defeat();
-      this.time.delayedCall(500, () => this.banner(win ? '¡PARTIDO GANADO!' : 'PARTIDO PERDIDO', win ? '#ffd23f' : '#ff7a85', 68, 1300));
-      this.time.delayedCall(2400, () => this.endMatch(win));
+      // FIN DEL PARTIDO con espectáculo (fx/matchFinale.ts): marcador final, sello, confeti / ceniza y sonido; luego la
+      // pantalla de resultados de siempre
+      this.phase = 'over'; // ya terminó: el fin oficial del servidor (red) no vuelve a lanzar endMatch a mitad del final
+      const ms = playMatchFinale(this, { win, playerName: getProfile().name, rivalName: this.botName, games: [this.score.games[0], this.score.games[1]] });
+      this.time.delayedCall(ms + 150, () => this.endMatch(win));
       return;
     }
     // reacción al punto (hojas nuevas de NXO; no-op para el resto)
@@ -3916,6 +3922,7 @@ export class MatchScene extends Phaser.Scene {
       this.netBotTick(dt);
       this.netSignalTick();
       this.netPingTick();
+      this.diagTick(dt);
     }
     else {
     // movimiento del rival: lo decide el cerebro (src/ai/BotBrain.ts); aquí solo se aplica
@@ -4560,11 +4567,20 @@ export class MatchScene extends Phaser.Scene {
       this.banner(msg, '#ffd23f', 50, 1400);
       this.time.delayedCall(1800, () => this.scene.start('Menu'));
     };
+    // LOG de diagnóstico al servidor (logs/matches): eventos, golpes / avisos y anomalías de sprites
+    this.diag = netLogOn() ? new MatchDiag((e) => net.sendLog(e)) : null;
+    this.diagReset();
+    if (this.diag) {
+      const d = this.diag;
+      net.trace = (dir, type, kind, extra) => d.log(dir, { type, kind, phase: this.phase, ...extra });
+      d.log('session', { role: net.role, me: getProfile().name, skin: getProfile().skin, rival: net.opponent.name, rivalSkin: net.opponent.skin, ua: navigator.userAgent.slice(0, 80) });
+    }
     net.attach({
       onStart: intro,
       onState: (st) => {
         this.netLastMsgAt = performance.now();
         this.netRemote = st;
+        this.diagStateAt = performance.now();
         this.netInterp.push(st.t, performance.now(), st);
       },
       onHit: (h) => {
@@ -4612,7 +4628,12 @@ export class MatchScene extends Phaser.Scene {
       abortPreStart('NO SE PUDO INICIAR');
     });
     // fin de la escena = fin de la sesión de red (quita todas las escuchas)
-    this.events.once('shutdown', () => net.dispose());
+    this.events.once('shutdown', () => {
+      this.diag?.log('end', { phase: this.phase });
+      this.diag?.flush();
+      net.trace = null;
+      net.dispose();
+    });
   }
 
   /**
@@ -4936,8 +4957,11 @@ export class MatchScene extends Phaser.Scene {
    */
   private netHitDelay(h: HitMsg, recvAt: number): number {
     const off = this.netInterp.minOffset;
-    if (typeof h.t !== 'number' || off === null) return this.netRtt ? Math.min(0.25, this.netRtt / 2000) : 0;
-    const extra = Math.max(0, recvAt - h.t - off);
+    const half = this.netRtt ? Math.min(0.25, this.netRtt / 2000) : 0;
+    if (typeof h.t !== 'number' || off === null) return half;
+    const extra = recvAt - h.t - off;
+    // hora absurda (recortada por un servidor antiguo, reloj raro): solo la media ida y vuelta
+    if (!Number.isFinite(extra) || extra < -50 || extra > 1500) return half;
     const base = this.netRtt / 2;
     return clamp((extra + base) / 1000, 0, 0.25);
   }
@@ -4958,8 +4982,136 @@ export class MatchScene extends Phaser.Scene {
     }
   }
 
+  // ---------------------------------------------------------------- LOG de diagnóstico (red)
+  private diag: MatchDiag | null = null;
+  private diagSnapAt = 0;
+  private diagMvAt = 0;
+  private diagStateAt = 0;
+  private diagPrev = { x: 0, y: 0 };
+  private diagRunStill = 0;
+  private diagRunLogged = false;
+  private diagNoStateLogged = false;
+  /** por qué se movió el rival de golpe en este fotograma (anchor, hit, warp…) */
+  private diagCause = '';
+  private diagStuck: Record<'player' | 'bot', { state: string; t: number; logged: boolean }> = {
+    player: { state: '', t: 0, logged: false },
+    bot: { state: '', t: 0, logged: false },
+  };
+
+  private diagReset() {
+    this.diagSnapAt = 0;
+    this.diagStateAt = performance.now();
+    this.diagPrev = { x: this.bot?.x ?? 0, y: this.bot?.y ?? 0 };
+    this.diagRunStill = 0;
+    this.diagRunLogged = false;
+    this.diagNoStateLogged = false;
+    this.diagCause = '';
+    this.diagStuck = { player: { state: '', t: 0, logged: false }, bot: { state: '', t: 0, logged: false } };
+  }
+
+  private diagBotPos() {
+    return `${Math.round(this.bot.x)},${Math.round(this.bot.y)}`;
+  }
+
+  /** Foto de un personaje para el log: posición, estado del sprite, clip y frame. */
+  private diagActor(a: Actor) {
+    const d = a.ch.debugInfo();
+    return `${Math.round(a.x)},${Math.round(a.y)} ${d ? `${d.state}/${d.anim}#${d.frame}${d.paused ? ' P' : ''}` : '-'}${a.stun > 0 ? ' stun' : ''}${a.vanished ? ' vanish' : ''}${a.lift ? ` lift${Math.round(a.lift)}` : ''}`;
+  }
+
+  /**
+   * Cada fotograma en red: foto cada 1 s y detección de anomalías del rival (corre sin moverse, saltos de posición,
+   * estados que no terminan, sin estados) y del jugador (estados que no terminan).
+   */
+  private diagTick(dt: number) {
+    const d = this.diag;
+    if (!d) return;
+    const now = performance.now();
+    const bt = this.bot;
+    // MOVIMIENTO cada 100 ms (LOG-PARTIDO): dónde se dibuja cada uno, su animación y cuánto va el rival por detrás de su
+    // último estado recibido (lag); con esto se ve de dónde sale cualquier salto
+    if (now >= this.diagMvAt && (this.phase === 'rally' || this.phase === 'serve' || this.phase === 'toss')) {
+      this.diagMvAt = now + 100;
+      const r = this.netRemote;
+      const ib = bt.ch.debugInfo();
+      const ip = this.player.ch.debugInfo();
+      const b = this.ball.s;
+      d.log('mv', {
+        me: `${Math.round(this.player.x)},${Math.round(this.player.y)}`,
+        meA: ip ? `${ip.state}/${ip.anim}#${ip.frame}` : undefined,
+        rv: `${Math.round(bt.x)},${Math.round(bt.y)}`,
+        rvA: ib ? `${ib.state}/${ib.anim}#${ib.frame}${ib.paused ? 'P' : ''}` : undefined,
+        rvNet: r ? `${Math.round(r.x)},${Math.round(r.y)}${r.moving ? ' mov' : ''}${r.charging ? ' carga' : ''}` : '-',
+        lag: r ? Math.round(Math.hypot(r.x - bt.x, r.y - bt.y)) : undefined,
+        age: Math.round(now - this.diagStateAt),
+        ball: `${Math.round(b.x)},${Math.round(b.y)},${Math.round(b.z)}`,
+        lock: this.netBotLockUntil > now ? 1 : undefined,
+      });
+    }
+    if (now >= this.diagSnapAt) {
+      this.diagSnapAt = now + 1000;
+      const b = this.ball.s;
+      d.log('snap', {
+        phase: this.phase,
+        srv: this.server,
+        me: this.diagActor(this.player),
+        rival: this.diagActor(bt),
+        ball: `${Math.round(b.x)},${Math.round(b.y)},${Math.round(b.z)} v${Math.round(b.vx)},${Math.round(b.vy)},${Math.round(b.vz)}`,
+        hitter: this.lastHitter ?? '-',
+        rMoving: this.netRemote?.moving,
+        stateAge: Math.round(now - this.diagStateAt),
+        rtt: Math.round(this.netRtt),
+        lock: this.netBotLockUntil > now,
+        remate: this.netRemateOn,
+        cine: this.cine.active,
+      });
+    }
+    // sin estados del rival
+    if (now - this.diagStateAt > 500 && this.phase !== 'over') {
+      if (!this.diagNoStateLogged) d.log('no-state', { age: Math.round(now - this.diagStateAt), phase: this.phase, rival: this.diagActor(bt) });
+      this.diagNoStateLogged = true;
+    } else this.diagNoStateLogged = false;
+    // salto de posición del rival en un fotograma
+    const moved = Math.hypot(bt.x - this.diagPrev.x, bt.y - this.diagPrev.y);
+    if (moved > 60) d.log('teleport', { dist: moved, from: `${Math.round(this.diagPrev.x)},${Math.round(this.diagPrev.y)}`, to: this.diagBotPos(), cause: this.diagCause || '?', phase: this.phase, rival: this.diagActor(bt) });
+    this.diagPrev = { x: bt.x, y: bt.y };
+    this.diagCause = '';
+    // corre sin moverse (clip de carrera y < ~6 u/s durante > 300 ms)
+    const info = bt.ch.debugInfo();
+    const running = !!info && /run|walk|dash/.test(info.anim);
+    if (running && moved < 0.1 * Math.max(dt * 60, 1)) {
+      this.diagRunStill += dt;
+      if (this.diagRunStill > 0.3 && !this.diagRunLogged) {
+        this.diagRunLogged = true;
+        d.log('run-in-place', { still: this.diagRunStill * 1000, phase: this.phase, rival: this.diagActor(bt), rMoving: this.netRemote?.moving, stateAge: Math.round(now - this.diagStateAt), lock: this.netBotLockUntil > now });
+      }
+    } else {
+      this.diagRunStill = 0;
+      this.diagRunLogged = false;
+    }
+    // estados ocupados que no terminan (> 3 s)
+    const busy = ['serve', 'remate', 'swing', 'dive', 'stun', 'emote', 'sprint', 'inferno', 'turn', 'land'];
+    for (const [who, a] of [['player', this.player], ['bot', bt]] as const) {
+      const st = a.ch.debugInfo()?.state ?? '';
+      const k = this.diagStuck[who];
+      if (st !== k.state) {
+        k.state = st;
+        k.t = 0;
+        k.logged = false;
+      } else if (busy.includes(st)) {
+        k.t += dt;
+        if (k.t > 3 && !k.logged) {
+          k.logged = true;
+          d.log('stuck', { who, state: st, secs: k.t, phase: this.phase, actor: this.diagActor(a) });
+        }
+      }
+    }
+    d.tick(now);
+  }
+
   /** El rival está AHORA en (x, y): la interpolación se muestra desde ahí (golpe, teletransporte, cinemática). */
   private netAnchor(x: number, y: number) {
+    this.diagCause = 'anchor';
     const r = this.netRemote;
     this.netInterp.reset(performance.now(), { x, y, moving: false, dirX: 0, facing: r?.facing ?? -1, charging: false, stunned: r?.stunned ?? false });
   }
@@ -5037,7 +5189,12 @@ export class MatchScene extends Phaser.Scene {
     s.fric = h.ball.fric;
     s.ay = h.ball.ay; // curva del saque con efecto (ya espejada por MatchNet)
     // la pelota llega con el retraso de la red: se avanza lo que tardó el mensaje (sin pasar su bote ni la red)
-    if (recvAt !== undefined) this.netAdvanceBall(this.netHitDelay(h, recvAt));
+    if (recvAt !== undefined) {
+      const adv = this.netHitDelay(h, recvAt);
+      this.netAdvanceBall(adv);
+      this.diag?.log('hit-apply', { kind: h.kind, adv: adv * 1000, rtt: this.netRtt, off: this.netInterp.minOffset ?? -1, t: h.t, bx: h.x, by: h.y, from: this.diagBotPos() });
+    }
+    this.diagCause = 'hit';
     // bola de fuego (SMASH / INFERNO del rival): al alcanzarla, el impacto de siempre (aturdido + devolución floja)
     if (h.power && !h.inferno) this.setSmashFlight(this.netRivalSmashEl); // su SMASH, con el poder que armó
     this.ball.setPower(h.power || h.inferno);

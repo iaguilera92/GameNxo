@@ -11,3 +11,4 @@ frontend/.env
 backend/dist
 backend/.env
 backend/deploy.log
+backend/logs/

@@ -14,6 +14,8 @@ const LIM = 1e5;
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
 const num = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) ? Math.max(-LIM, Math.min(LIM, v)) : null);
 const str = (v: unknown, max: number): string | null => (typeof v === 'string' ? v.slice(0, max) : null);
+/** marca de tiempo del cliente (ms de su reloj: crece sin parar durante el partido); NO se recorta a LIM */
+const time = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) && v >= 0 && v < 1e13 ? v : null);
 
 export function sanitizeState(d: unknown): StateMsg | null {
   if (!isObj(d)) return null;
@@ -21,7 +23,7 @@ export function sanitizeState(d: unknown): StateMsg | null {
   const y = num(d.y);
   if (x === null || y === null) return null;
   return {
-    t: num(d.t) ?? 0,
+    t: time(d.t) ?? 0,
     x,
     y,
     moving: d.moving === true,
@@ -65,7 +67,7 @@ export function sanitizeHit(d: unknown): HitMsg | null {
     overhead: d.overhead === true,
     volley: d.volley === true,
   };
-  const t = num(d.t);
+  const t = time(d.t);
   if (t !== null) out.t = t;
   if (d.special === true) out.special = true;
   if (d.shock === true) out.shock = true;
@@ -104,6 +106,27 @@ export function sanitizeAction(d: unknown): ActionMsg | null {
   return out;
 }
 
+/** Lote del LOG de diagnóstico del cliente: hasta 40 entradas planas (números, textos cortos, booleanos). */
+export function sanitizeLog(d: unknown): Record<string, number | string | boolean>[] | null {
+  const arr = isObj(d) && Array.isArray(d.e) ? d.e : null;
+  if (!arr) return null;
+  const out: Record<string, number | string | boolean>[] = [];
+  for (const raw of arr.slice(0, 40)) {
+    if (!isObj(raw)) continue;
+    const e: Record<string, number | string | boolean> = {};
+    let n = 0;
+    for (const [k, v] of Object.entries(raw)) {
+      if (++n > 24) break;
+      const key = k.slice(0, 16);
+      if (typeof v === 'number' && Number.isFinite(v)) e[key] = Math.round(v * 100) / 100;
+      else if (typeof v === 'string') e[key] = v.slice(0, 120);
+      else if (typeof v === 'boolean') e[key] = v;
+    }
+    if (typeof e.ev === 'string') out.push(e);
+  }
+  return out;
+}
+
 export function sanitizePoint(d: unknown): PointMsg | null {
   if (!isObj(d)) return null;
   const seq = num(d.seq);
@@ -128,6 +151,7 @@ export const LIMITS = {
   action: { rate: 15, burst: 25 },
   point: { rate: 4, burst: 8 },
   ctl: { rate: 2, burst: 6 }, // buscar, cancelar, listo, salir
+  log: { rate: 2, burst: 6 }, // diagnóstico del partido (lotes cada ~2 s)
 } as const;
 export type LimitKey = keyof typeof LIMITS;
 

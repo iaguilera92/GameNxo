@@ -40,6 +40,8 @@ export const CONFIG = {
   drainTimeoutMs: num(process.env.DRAIN_TIMEOUT_MS, 120_000),
   /** secreto del webhook de GitHub (Settings > Webhooks > Secret). Vacío = el webhook de despliegue está desactivado */
   webhookSecret: process.env.WEBHOOK_SECRET ?? '',
+  /** clave para leer los logs de partidas por la API (/api/match-logs); vacía = API de logs apagada */
+  logKey: process.env.LOG_KEY ?? '',
   /** rama que dispara el despliegue */
   deployBranch: process.env.DEPLOY_BRANCH ?? 'main',
   /** reglas del partido: las mismas que el modo BOT (frontend/src/config.ts: GAMES_TO_WIN, GOLDEN_POINT) */

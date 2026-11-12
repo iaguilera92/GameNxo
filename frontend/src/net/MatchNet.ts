@@ -62,6 +62,8 @@ export class MatchNet {
   }
   /** reconectando ahora mismo */
   reconnecting = false;
+  /** LOG de diagnóstico (lo pone MatchScene): cada golpe / aviso / punto enviado o recibido */
+  trace: ((dir: 'send' | 'recv', type: string, kind: string, extra?: Record<string, number | string | boolean | undefined>) => void) | null = null;
 
   constructor(
     private tr: NetTransport,
@@ -187,14 +189,19 @@ export class MatchNet {
         if (m.seq <= this.lastHitIn) return; // repetido
         this.lastHitIn = m.seq;
       }
+      this.trace?.('recv', 'hit', m.kind, { seq: m.seq, shot: m.shotKind, power: m.power, inferno: m.inferno, special: m.special, lunge: m.lunge, impact: m.impact });
       h.onHit({ ...m, x: mirrorX(m.x), y: mirrorY(m.y), ball: mirrorBall(m.ball) });
     });
-    on<ActionMsg>(EV.ACTION, (a) => h.onAction(a));
+    on<ActionMsg>(EV.ACTION, (a) => {
+      if (a.kind !== 'ping' && a.kind !== 'pong') this.trace?.('recv', 'action', a.kind, { sub: typeof a.data?.kind === 'string' ? a.data.kind : undefined, grade: typeof a.data?.grade === 'string' ? a.data.grade : undefined });
+      h.onAction(a);
+    });
     on<PointMsg>(EV.POINT, (p) => {
       if (typeof p.seq === 'number') {
         if (p.seq <= this.lastPointIn) return; // repetido
         this.lastPointIn = p.seq;
       }
+      this.trace?.('recv', 'point', p.kind, { to: p.to, reason: p.reason });
       h.onPoint(p, p.to === 'opponent');
     });
     on<ScoreMsg>(EV.SCORE, (s) => h.onScore(s));
@@ -229,15 +236,23 @@ export class MatchNet {
   }
 
   sendHit(h: Omit<HitMsg, 'seq'>) {
+    this.trace?.('send', 'hit', h.kind, { seq: this.hitSeq, shot: h.shotKind, power: h.power, inferno: h.inferno, special: h.special, lunge: h.lunge, impact: h.impact });
     this.transport.emit(EV.HIT, { ...h, seq: this.hitSeq++ });
   }
 
   sendAction(kind: ActionMsg['kind'], data?: ActionMsg['data']) {
+    if (kind !== 'ping' && kind !== 'pong') this.trace?.('send', 'action', kind, { sub: typeof data?.kind === 'string' ? data.kind : undefined, grade: typeof data?.grade === 'string' ? data.grade : undefined });
     this.transport.emit(EV.ACTION, { kind, data });
+  }
+
+  /** LOG de diagnóstico: un lote de eventos para el servidor (no llega al rival). */
+  sendLog(entries: Record<string, number | string | boolean>[]) {
+    if (entries.length) this.transport.emit(EV.LOG, { e: entries });
   }
 
   /** Punto / falta / let decidido aquí (somos el juez de la pelota). `forMe` = el punto es para el jugador local. */
   sendPoint(kind: PointMsg['kind'], forMe: boolean, reason: string, color: string, games?: [number, number]) {
+    this.trace?.('send', 'point', kind, { to: forMe ? 'me' : 'opponent', reason });
     this.transport.emit(EV.POINT, { seq: this.pointSeq++, kind, to: forMe ? 'me' : 'opponent', reason, color, games });
   }
 

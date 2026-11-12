@@ -18,7 +18,7 @@ frontend/public/personajes/
 │   ├── pj-nxo-sprite-inferno.png       INFERNO DRIVE, de espaldas
 │   ├── pj-nxo-mirada.webp              franja de los ojos del INFERNO        (la carga el juego)
 │   ├── pj-nxo.webp                     retrato: menú, PERSONAJE y VS         (la carga el juego)
-│   ├── emojis/                         nxo-risa, nxo-pensando, nxo-enojado   (los carga el juego)
+│   ├── emojis/                         nxo-risa, nxo-pensando, nxo-enojado   (fuentes: el juego usa assets/emotes/)
 │   ├── Old sprites/                    versiones anteriores
 │   └── rival/
 │       ├── pj-nxo-rival-1.png … -4.png hojas de movimientos, de frente (rival)
@@ -38,8 +38,10 @@ Reglas:
   (`public/assets/characters/<carpeta>/`) y escriben los JSON (`src/characters/`). Tiras y JSON son
   archivos generados: no se editan a mano, se regeneran.
 - `npm run build` quita de `dist/` (y del APK) todo `personajes/` salvo lo que lista `KEEP_IN_PERSONAJES` en
-  `frontend/vite.config.ts` (hoy: `Nxo/pj-nxo.webp`, `Nxo/pj-nxo-mirada.webp`, `Nxo/emojis`,
-  `Mai/pj-mai-mirada.webp`). Si el juego tiene que leer otro archivo de aquí, hay que añadirlo a esa lista.
+  `frontend/vite.config.ts` (hoy: `Nxo/pj-nxo.webp`, `Nxo/pj-nxo-mirada.webp`, `Mai/pj-mai-mirada.webp`). Si el
+  juego tiene que leer otro archivo de aquí, hay que añadirlo a esa lista.
+- Los emojis de `Nxo/emojis/` son fuentes: `node tools/build-emote-thumbs.mjs` genera las miniaturas de 160 px que usa
+  el juego (`public/assets/emotes/`). No van al APK (12-11-2026).
 - Para cambiar una hoja: mover la anterior a `Old sprites/` con un sufijo (`pj-nxo-rival-2-antes-new.png`),
   dejar la nueva con el nombre exacto que lee la herramienta (sin `-new`) y regenerar (sección 3).
 - Los nombres de Nxo de espaldas son históricos (`pj-nxo-sprites-N`, `pj-nxo-sprite-inferno`). Un personaje

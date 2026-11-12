@@ -50,10 +50,10 @@ export class RemoteInterp {
     if (this.offset === null || off < this.offset) this.offset = off;
     else this.offset += (off - this.offset) * 0.002;
     const last = this.buf[this.buf.length - 1];
-    if (last && senderT <= last.st && last.st !== -Infinity) return; // llegó desordenado: se ignora
-    // separación del emisor desde el anterior (acotada), pegada a la hora de llegada
-    const gap = last && last.st !== -Infinity ? Math.min(400, Math.max(0, senderT - last.st)) : 0;
-    const ideal = last ? last.t + gap : recvT;
+    // separación del emisor desde el anterior (acotada), pegada a la hora de llegada. Una hora del emisor que no crece
+    // (servidor antiguo que la recortaba, reloj raro) NO descarta el estado: se coloca a su hora de llegada.
+    const sane = !!last && last.st !== -Infinity && senderT > last.st && senderT - last.st < 1000;
+    const ideal = !last ? recvT : sane ? last.t + (senderT - last.st) : recvT;
     const t = Math.min(recvT, Math.max(recvT - MAX_LAG, ideal, last ? last.t + 1 : -Infinity));
     this.buf.push({ t, st: senderT, ...s });
     if (this.buf.length > 60) this.buf.shift();

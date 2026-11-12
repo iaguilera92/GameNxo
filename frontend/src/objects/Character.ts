@@ -477,6 +477,11 @@ export class Character extends Phaser.GameObjects.Container {
     return this.nxo?.serveBounceBall() ?? null;
   }
 
+  /** Diagnóstico: estado, clip y frame del sprite (null = sin hojas nuevas). */
+  debugInfo() {
+    return this.nxo?.debugInfo() ?? null;
+  }
+
   /** Suelta la pose del REMATE sin golpear (ver NxoActor.releaseRemate). */
   releaseRemate() {
     this.nxo?.releaseRemate();

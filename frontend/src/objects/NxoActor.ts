@@ -698,6 +698,12 @@ export class NxoActor {
     return true;
   }
 
+  /** Diagnóstico (log de partidas en red): estado, clip y frame actuales del sprite. (Claude, 12-11-2026) */
+  debugInfo(): { state: string; anim: string; frame: number; paused: boolean } {
+    const a = this.sprite.anims;
+    return { state: this.state, anim: a.currentAnim?.key ?? '', frame: Number(a.currentFrame?.textureFrame ?? -1), paused: a.isPaused };
+  }
+
   /**
    * Suelta la pose del REMATE sin golpear (punto terminado, golpe al aire o remate del rival en red que no llegó a su
    * golpe). Sin esto el estado 'remate' queda ocupado y el personaje ya no anima la carrera. (Claude, 12-11-2026)

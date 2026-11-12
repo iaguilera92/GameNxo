@@ -5,9 +5,10 @@ import { join } from 'node:path';
 /**
  * public/personajes contiene las hojas FUENTE de los sprites (las que procesan tools/build-nxo-*.mjs) y copias
  * de seguridad ("Old sprites"): ~50 MB que el juego no usa y que acabarían dentro del APK. El juego solo lee de
- * personajes/ el retrato WebP de Nxo, las franjas de la mirada (INFERNO de Nxo y Mai) y los emojis; el resto se quita de dist.
+ * personajes/ el retrato WebP de Nxo y las franjas de la mirada (INFERNO de Nxo y Mai); el resto se quita de dist.
+ * (Los emojis de personajes/Nxo/emojis/ son fuentes de tools/build-emote-thumbs.mjs: el juego usa assets/emotes/.)
  */
-const KEEP_IN_PERSONAJES = ['Nxo/pj-nxo.webp', 'Nxo/pj-nxo-mirada.webp', 'Nxo/emojis', 'Mai/pj-mai-mirada.webp'];
+const KEEP_IN_PERSONAJES = ['Nxo/pj-nxo.webp', 'Nxo/pj-nxo-mirada.webp', 'Mai/pj-mai-mirada.webp'];
 function trimSourceArt(): Plugin {
   let outDir = 'dist';
   return {

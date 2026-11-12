@@ -8,7 +8,8 @@
 import type { Server, Socket } from 'socket.io';
 import { CONFIG } from '../../config/env.js';
 import { RoomManager, type Room } from '../rooms/RoomManager.js';
-import { SocketLimiter, sanitizeAction, sanitizeHit, sanitizePoint, sanitizeState, type LimitKey } from '../guard.js';
+import { SocketLimiter, sanitizeAction, sanitizeHit, sanitizeLog, sanitizePoint, sanitizeState, type LimitKey } from '../guard.js';
+import { MatchLogger } from '../matchLog.js';
 import {
   EV,
   type FindRequest,
@@ -37,6 +38,9 @@ const clientIp = (socket: Socket) => {
   }
   return socket.handshake.address;
 };
+
+/** log de diagnóstico de partidas (logs/matches/…): lo lee la API protegida con LOG_KEY */
+export const matchLog = new MatchLogger();
 
 export function registerSocketHandlers(io: Server) {
   const rooms = new RoomManager(
@@ -75,6 +79,7 @@ export function registerSocketHandlers(io: Server) {
       awayTimers.delete(p.token);
     }
     log(`sala ${short(room.id)} terminada: gana ${msg.winner} (${msg.reason}) ${msg.games.host}-${msg.games.guest}`);
+    matchLog.write(room.id, 'srv', { ev: 'over', winner: msg.winner, reason: msg.reason, games: `${msg.games.host}-${msg.games.guest}` });
     rooms.finish(room.id);
     started.delete(room.id);
   };
@@ -87,6 +92,7 @@ export function registerSocketHandlers(io: Server) {
     if (t) clearTimeout(t);
     readyTimers.delete(room.id);
     for (const p of room.players) io.to(p.id).emit(EV.START, { roomId: room.id });
+    matchLog.write(room.id, 'srv', { ev: 'start', host: room.players[0]?.profile.name, guest: room.players[1]?.profile.name });
     matchTimers.set(
       room.id,
       setTimeout(() => {
@@ -172,6 +178,7 @@ export function registerSocketHandlers(io: Server) {
         io.to(host.id).emit(EV.MATCHED, toHost);
         io.to(guest.id).emit(EV.MATCHED, toGuest);
         log(`emparejados ${host.profile.name} vs ${guest.profile.name} sala ${short(room.id)} 2/2 → PLAYING`);
+        matchLog.write(room.id, 'srv', { ev: 'matched', host: host.profile.name, hostSkin: host.profile.skin, guest: guest.profile.name, guestSkin: guest.profile.skin });
         // si alguno no llega a cargar, se empieza igualmente al vencer la espera
         readyTimers.set(
           room.id,
@@ -213,10 +220,26 @@ export function registerSocketHandlers(io: Server) {
         const opp = rooms.opponentOf(room, socket.id);
         if (!opp) return;
         (volatile ? io.to(opp.id).volatile : io.to(opp.id)).emit(ev, data);
+        // en el log: golpes y acciones que pasan por el servidor (los estados no: son 20 por segundo)
+        if (!volatile) {
+          const d = data as { kind?: unknown; seq?: unknown };
+          matchLog.write(room.id, 'srv', { ev: `relay:${ev}`, from: rooms.roleOf(room, socket.id), kind: String(d.kind ?? ''), seq: typeof d.seq === 'number' ? d.seq : undefined });
+        }
       });
     socket.on(EV.STATE, relay(EV.STATE, 'state', sanitizeState, true));
     socket.on(EV.HIT, relay(EV.HIT, 'hit', sanitizeHit));
     socket.on(EV.ACTION, relay(EV.ACTION, 'action', sanitizeAction));
+    // LOG de diagnóstico del cliente: se guarda con su rol (host / guest); no se reenvía
+    socket.on(
+      EV.LOG,
+      guarded<unknown>('log', (raw) => {
+        const entries = sanitizeLog(raw);
+        const room = rooms.roomOf(socket.id);
+        if (!entries || !room) return;
+        const src = rooms.roleOf(room, socket.id) ?? '?';
+        for (const e of entries) matchLog.write(room.id, src, e);
+      }),
+    );
 
     // punto del juez de la pelota: marcador oficial + reenvío al rival
     socket.on(
@@ -230,6 +253,7 @@ export function registerSocketHandlers(io: Server) {
         if (msg.kind !== 'point') return; // faltas y let no suman en el marcador oficial
         const res = rooms.point(socket.id, msg.seq, msg.to === 'me');
         if (!res) return;
+        matchLog.write(res.room.id, 'srv', { ev: 'point', by: rooms.roleOf(res.room, socket.id), to: msg.to, reason: msg.reason, score: `${res.room.score.points.join('-')} / ${res.room.score.games.join('-')}` });
         const sc = scoreMsg(res.room);
         for (const p of res.room.players) io.to(p.id).emit(EV.SCORE, sc);
         if (res.matchOver) finish(res.room);
@@ -250,6 +274,7 @@ export function registerSocketHandlers(io: Server) {
         awayTimers.delete(r.player.token);
         const msg: ResumedMsg = { score: scoreMsg(r.room) };
         socket.emit(EV.RESUMED, msg);
+        matchLog.write(r.room.id, 'srv', { ev: 'rejoin', who: r.player.profile.name });
         if (r.opponent) io.to(r.opponent.id).emit(EV.OPPONENT_BACK, msg.score);
         log(`reconectado ${r.player.profile.name} a la sala ${short(r.room.id)} (${short(socket.id)})`);
       }),
@@ -296,6 +321,7 @@ export function registerSocketHandlers(io: Server) {
               }, CONFIG.reconnectGraceMs),
             );
             log(`ausente ${a.player.profile.name} en la sala ${short(room.id)}: ${CONFIG.reconnectGraceMs} ms para volver`);
+            matchLog.write(room.id, 'srv', { ev: 'away', who: a.player.profile.name, why });
             return;
           }
         }

@@ -1,4 +1,5 @@
-// Genera los iconos de la app Android a partir del logo oficial (public/assets/nxo-logo-prev.png: logo sobre negro).
+// Genera los iconos de la app Android a partir del logo oficial (art/nxo-logo-prev.png: logo sobre negro; fuera de
+// public/ para que no vaya al APK).
 //   node tools/make-android-icons.mjs
 // Escribe en android/app/src/main/res:
 //   mipmap-*/ic_launcher_foreground.png  capa frontal del icono adaptativo (logo con transparencia, zona segura)
@@ -12,7 +13,7 @@ import { decode, save } from './png-lite.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const RES = join(ROOT, 'android', 'app', 'src', 'main', 'res');
-const SRC = join(ROOT, 'public', 'assets', 'nxo-logo-prev.png');
+const SRC = join(ROOT, 'art', 'nxo-logo-prev.png');
 
 // --- logo: el fondo es negro puro, así que alpha = canal máximo y el color se des-premultiplica
 const src = decode(SRC);

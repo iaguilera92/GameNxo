@@ -86,3 +86,9 @@ test('cierre por tiempo: gana quien va arriba (juegos, luego puntos); empate tot
   rm2.find('B', P('B'));
   assert.equal(rm2.endByTimeout(rm2.roomOf('A')!.id)!.result!.winner, 'host');
 });
+
+test('marcas de tiempo del cliente: no se recortan (crecen todo el partido)', () => {
+  assert.equal(sanitizeState({ t: 250000.5, x: 1, y: 2 })!.t, 250000.5);
+  assert.equal(sanitizeHit({ ...hit, t: 3_600_000 })!.t, 3_600_000);
+  assert.equal(sanitizeState({ t: -5, x: 1, y: 2 })!.t, 0);
+});

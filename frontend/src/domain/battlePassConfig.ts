@@ -8,6 +8,7 @@
 import type { ItemId, PlayerState, StyleId } from './player';
 import type { SkinId } from '../characters/skins';
 import { newBattlePass } from './battlePassState';
+import { gameClock } from './timeSource';
 
 export type BpReward =
   | { kind: 'cash'; amount: number }
@@ -30,6 +31,11 @@ const rays = (amount: number): BpReward => ({ kind: 'rays', amount });
 export const BP_SEASON = {
   id: 'S1',
   name: 'TEMPORADA 1',
+  /**
+   * Mes de la temporada ('AAAA-MM'): el Pase TERMINA el último día de ese mes (hora de Chile). Terminado, queda bloqueado
+   * (menú, Tienda y pantalla del Pase) hasta que se publique otro con un `id` y un `month` nuevos (se reinicia solo).
+   */
+  month: '2026-11',
   /** EXP por nivel del pase */
   xpPerTier: 100,
   /**
@@ -93,8 +99,30 @@ export const BP_SEASON = {
 /** EXP máxima del pase (último nivel). */
 export const bpMaxXp = () => BP_SEASON.tiers.length * BP_SEASON.xpPerTier;
 
-/** Suma EXP al pase (la llama operations.addXp). Pura: modifica el clon que recibe. */
+/** "AAAA-MM-DD" del día en hora de Chile. */
+const chileDay = (ms: number) => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Santiago', year: 'numeric', month: '2-digit', day: '2-digit' }).format(ms);
+
+/**
+ * Fecha de término del Pase: último día de su mes (BP_SEASON.month). `over` = ya terminó (desde el día siguiente);
+ * `daysLeft` cuenta hoy (1 = último día).
+ */
+export function bpSeasonInfo(now = gameClock.now()) {
+  const [y, m] = BP_SEASON.month.split('-').map(Number);
+  const lastDay = new Date(Date.UTC(y, m, 0)).getUTCDate();
+  const last = `${BP_SEASON.month}-${String(lastDay).padStart(2, '0')}`;
+  const today = chileDay(now);
+  const over = today > last;
+  const [ty, tm, td] = today.split('-').map(Number);
+  const daysLeft = over ? 0 : Math.round((Date.UTC(y, m - 1, lastDay) - Date.UTC(ty, tm - 1, td)) / 86_400_000) + 1;
+  return { over, lastDay, month: m, year: y, daysLeft };
+}
+
+/** Meses en español (para mostrar el término del Pase). */
+export const MONTHS_ES = ['ENERO', 'FEBRERO', 'MARZO', 'ABRIL', 'MAYO', 'JUNIO', 'JULIO', 'AGOSTO', 'SEPTIEMBRE', 'OCTUBRE', 'NOVIEMBRE', 'DICIEMBRE'];
+
+/** Suma EXP al pase (la llama operations.addXp). Pura: modifica el clon que recibe. Con el Pase terminado no suma. */
 export function bpAddXpInPlace(n: PlayerState, amount: number) {
+  if (bpSeasonInfo().over) return;
   if (n.bp.season !== BP_SEASON.id) n.bp = newBattlePass(BP_SEASON.id);
   n.bp.xp = Math.min(bpMaxXp(), n.bp.xp + Math.max(0, Math.floor(amount)));
 }

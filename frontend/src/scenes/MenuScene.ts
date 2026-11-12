@@ -20,6 +20,7 @@ import { getPlayer, onPlayerChange } from '../domain/playerStore';
 import { DailyWheels } from '../ui/DailyWheels';
 import { showSettings } from '../ui/SettingsDialog';
 import { BP_TIERS, bpClaimable, bpLevel, syncSeason } from '../domain/battlePass';
+import { bpSeasonInfo } from '../domain/battlePassConfig';
 import type { PlayerState } from '../domain/player';
 import { openWheel } from './WheelScene';
 import { markWheelPresented, syncWheels, wheelToPresent } from '../logic/Wheels';
@@ -258,8 +259,38 @@ export class MenuScene extends Phaser.Scene {
     this.gearButton(gx, gy, gs, () => showSettings(this));
   }
 
+  /** PASE DE BATALLA terminado (fin de mes): bloqueado con candado hasta que llegue otro. */
+  private passWidgetLocked(x: number, y: number, w: number) {
+    const h = 76;
+    const c = this.add.container(x, y);
+    const g = this.add.graphics();
+    g.fillStyle(0x000000, 0.35).fillRoundedRect(3, 6, w, h, 20);
+    g.fillStyle(0x3a4256, 1).fillRoundedRect(0, 0, w, h, 20);
+    g.fillStyle(0x4c556c, 1).fillRoundedRect(0, 0, w, h * 0.55, { tl: 20, tr: 20, bl: 8, br: 8 });
+    g.lineStyle(3, 0x1c2232, 1).strokeRoundedRect(0, 0, w, h, 20);
+    // candado
+    const lx = 10 + 43;
+    g.fillStyle(0x1c2232, 1).fillCircle(lx, h / 2, 29);
+    g.lineStyle(4, 0xc8d2ea, 1).beginPath().arc(lx, h / 2 - 6, 9, Math.PI, 0).strokePath();
+    g.lineBetween(lx - 9, h / 2 - 6, lx - 9, h / 2).lineBetween(lx + 9, h / 2 - 6, lx + 9, h / 2);
+    g.fillStyle(0xc8d2ea, 1).fillRoundedRect(lx - 13, h / 2, 26, 18, 5);
+    c.add(g);
+    const tx = lx + 43 + 10;
+    const tw = w - tx - 16;
+    const title = this.add.text(tx, 14, 'PASE DE BATALLA', { fontFamily: FONT, fontSize: '23px', color: '#c8d2ea', stroke: '#1c2232', strokeThickness: 5 }).setOrigin(0, 0);
+    fitText(title, tw);
+    c.add(title);
+    const sub = this.add.text(tx, 46, 'TERMINADO · PRÓXIMO PASE PRONTO', { fontFamily: FONT, fontSize: '14px', color: '#9aa6c2' }).setOrigin(0, 0).setLetterSpacing(1);
+    fitText(sub, tw);
+    c.add(sub);
+    const hit = this.add.rectangle(0, 0, w, h, 0x000000, 0.001).setOrigin(0).setInteractive({ useHandCursor: true });
+    c.add(hit);
+    hit.on('pointerup', () => this.toast('El Pase de Batalla terminó. Pronto llega uno nuevo'));
+  }
+
   /** Acceso al PASE DE BATALLA: nivel del pase, barra de progreso y aviso de premios por reclamar. */
   private passWidget(x: number, y: number, w: number) {
+    if (bpSeasonInfo().over) return this.passWidgetLocked(x, y, w);
     const s = syncSeason(getPlayer() as PlayerState);
     const { level, progress } = bpLevel(s.bp.xp);
     const ready = bpClaimable(s);

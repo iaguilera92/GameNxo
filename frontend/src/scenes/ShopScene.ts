@@ -10,6 +10,7 @@ import { elementTexture } from '../ui/AbilityButton';
 import { type DefensivePower, defensiveOwned, defensivePowerDef, defensivePowerOf } from '../domain/defensivePowers';
 import { drawDefensiveIcon, drawDisc } from '../ui/icons';
 import { BP_SEASON, syncSeason } from '../domain/battlePass';
+import { bpSeasonInfo } from '../domain/battlePassConfig';
 import type { PlayerState } from '../domain/player';
 import { drawCashIcon } from './BattlePassScene';
 import { type ItemId, type StyleId, owns } from '../domain/player';
@@ -138,10 +139,13 @@ export class ShopScene extends Phaser.Scene {
     const ch = 300;
     // ---------------------------------------------------------------- ofertas: el Pase de Batalla, primero y en grande
     // (una sola tarjeta del alto y el ancho de la fila de EFECTO PELOTA)
-    this.sectionTitle(W, y, 'OFERTAS');
-    y += titleGap;
-    this.passOffer(30, y, W - 60, ch, syncSeason(getPlayer() as PlayerState).bp.premium);
-    y += ch + 52;
+    // (con el Pase terminado no hay oferta: la sección no sale)
+    if (!bpSeasonInfo().over) {
+      this.sectionTitle(W, y, 'OFERTAS');
+      y += titleGap;
+      this.passOffer(30, y, W - 60, ch, syncSeason(getPlayer() as PlayerState).bp.premium);
+      y += ch + 52;
+    }
 
     // ---------------------------------------------------------------- efecto pelota (estela de los golpes)
     this.sectionTitle(W, y, 'EFECTO PELOTA', INFO.style);
@@ -271,6 +275,40 @@ export class ShopScene extends Phaser.Scene {
     }
     g.lineStyle(4, 0xfff1b8, 1).strokeRoundedRect(x, y, w, h, r);
     c.add(g);
+    // brillo que recorre el borde: dos destellos opuestos que dan la vuelta a la tarjeta (con estela que se apaga)
+    const edge = this.add.graphics().setBlendMode(Phaser.BlendModes.ADD);
+    c.add(edge);
+    const per = 2 * (w + h);
+    /** punto del borde a la distancia `d` (desde la esquina superior izquierda, en sentido horario) */
+    const at = (d: number) => {
+      const t = ((d % per) + per) % per;
+      if (t < w) return { px: x + t, py: y };
+      if (t < w + h) return { px: x + w, py: y + (t - w) };
+      if (t < 2 * w + h) return { px: x + w - (t - w - h), py: y + h };
+      return { px: x, py: y + h - (t - 2 * w - h) };
+    };
+    const run = { d: 0 };
+    const trail = 150;
+    const edgeTw = this.tweens.add({
+      targets: run,
+      d: per,
+      duration: 2600,
+      repeat: -1,
+      onUpdate: () => {
+        edge.clear();
+        for (const off of [0, per / 2]) {
+          for (let k = 0; k < 10; k++) {
+            const a = at(run.d + off - (k * trail) / 10);
+            const b = at(run.d + off - ((k + 1) * trail) / 10);
+            const f = 1 - k / 10;
+            edge.lineStyle(6 * f + 2, 0xffffff, 0.85 * f).lineBetween(a.px, a.py, b.px, b.py);
+          }
+          const head = at(run.d + off);
+          edge.fillStyle(0xffffff, 1).fillCircle(head.px, head.py, 5);
+        }
+      },
+    });
+    c.once(Phaser.GameObjects.Events.DESTROY, () => edgeTw.remove());
 
     // premio mayor: MAI a la izquierda, de pie sobre el borde de abajo, con resplandor detrás
     const box = { x0: 118, y0: 4, x1: 1070, y1: 1356 }; // caja visible de mai_portrait.png (1130 × 1392), como en BattlePassScene
@@ -295,7 +333,8 @@ export class ShopScene extends Phaser.Scene {
     const title = this.add.text(tx, y + 50, 'PASE DE BATALLA', { fontFamily: FONT, fontSize: '34px', color: '#ffffff', stroke: dark, strokeThickness: 7 }).setOrigin(0.5);
     fitText(title, colW);
     const season = this.add.text(tx, y + 88, BP_SEASON.name, { fontFamily: FONT, fontSize: '18px', color: dark }).setOrigin(0.5).setLetterSpacing(2);
-    const prize = this.add.text(tx, y + 128, 'PREMIO MAYOR', { fontFamily: FONT, fontSize: '16px', color: '#fff6d8', stroke: dark, strokeThickness: 4 }).setOrigin(0.5).setLetterSpacing(1);
+    const prize = this.add.text(tx, y + 128, '¡CONSIGUE MÚLTIPLES RECOMPENSAS!', { fontFamily: FONT, fontSize: '16px', color: '#fff6d8', stroke: dark, strokeThickness: 4 }).setOrigin(0.5).setLetterSpacing(1);
+    fitText(prize, colW);
     const who = this.add.text(tx, y + 160, 'NUEVO PERSONAJE: MAI', { fontFamily: FONT, fontSize: '22px', color: '#ffffff', stroke: dark, strokeThickness: 6 }).setOrigin(0.5);
     fitText(who, colW);
     c.add([title, season, prize, who]);

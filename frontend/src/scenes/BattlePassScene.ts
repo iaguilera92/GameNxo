@@ -1,9 +1,9 @@
 import Phaser from 'phaser';
 import { FONT, restartOnResize, textStyle } from '../ui/theme';
 import { stadiumBg } from '../ui/ui';
-import { arcadeButton } from '../ui/modeButtons';
 import { fitText } from '../ui/fitText';
 import { commit, getPlayer, onPlayerChange } from '../domain/playerStore';
+import { bpSeasonInfo } from '../domain/battlePassConfig';
 import { BP_SEASON, BP_TIERS, type BpReward, type BpTrack, bpBonusSpinIndex, bpBuyPremium, bpCanClaim, bpClaim, bpClaimBonus, bpClaimWelcome, bpLevel, syncSeason } from '../domain/battlePass';
 import type { PlayerState } from '../domain/player';
 import { type ChargeFxId, chargeFxDef } from '../domain/chargeFx';
@@ -84,13 +84,18 @@ export class BattlePassScene extends Phaser.Scene {
   create() {
     const W = this.scale.width;
     const H = this.scale.height;
+    // Pase terminado: bloqueado hasta que llegue otro (el menú lo muestra con candado)
+    if (bpSeasonInfo().over) {
+      this.scene.start('Menu');
+      return;
+    }
     restartOnResize(this);
     this.cameras.main.fadeIn(200, 0, 0, 0);
     stadiumBg(this, 0.6);
     // temporada al día (si cambió, el pase empieza de cero)
     commit((s) => ({ ok: true as const, state: syncSeason(s) }));
     this.rows.clear();
-    this.leftW = Math.round(W * 0.4);
+    this.leftW = Math.round(W * 0.46); // GRATIS 46 % · PREMIUM 54 %
 
     // lista: de la cabecera al borde de abajo, recortada
     this.listTop = HEAD_H;
@@ -163,7 +168,7 @@ export class BattlePassScene extends Phaser.Scene {
     this.top.add(this.add.text(px + 40, py + 34, String(level), { fontFamily: FONT, fontSize: '28px', color: '#0a1638', stroke: '#fff0a8', strokeThickness: 3 }).setOrigin(0.5));
     const bx = px + 90;
     const bw = Math.max(80, pw - 90);
-    const lvl = this.add.text(bx, py - 6, done ? '¡PASE COMPLETADO!' : `NIVEL ${level + 1} DE ${BP_TIERS}`, { fontFamily: FONT, fontSize: '20px', color: '#ffffff', stroke: '#061431', strokeThickness: 4 }).setOrigin(0, 0.5);
+    const lvl = this.add.text(bx + bw / 2, py - 6, done ? '¡PASE COMPLETADO!' : `NIVEL ${level + 1} DE ${BP_TIERS}`, { fontFamily: FONT, fontSize: '20px', color: '#ffffff', stroke: '#061431', strokeThickness: 4 }).setOrigin(0.5);
     fitText(lvl, bw);
     this.top.add(lvl);
     const g = this.add.graphics();
@@ -173,7 +178,11 @@ export class BattlePassScene extends Phaser.Scene {
     g.fillStyle(0xffd86a, 1).fillRoundedRect(bx, py + 14, fw, 12, { tl: 13, tr: 13, bl: 0, br: 0 });
     this.top.add(g);
     this.top.add(this.add.text(bx + bw / 2, py + 27, done ? 'COMPLETO' : `${into} / ${BP_SEASON.xpPerTier}`, { fontFamily: FONT, fontSize: '17px', color: '#ffffff', stroke: '#3a2400', strokeThickness: 4 }).setOrigin(0.5));
-    this.top.add(this.add.text(bx, py + 58, done ? 'Has llegado al último nivel' : 'Gana EXP jugando partidas', { fontFamily: FONT, fontSize: '14px', color: '#c4d7f7' }).setOrigin(0, 0.5));
+    // fecha de término (fin de mes) y días que quedan
+    const se = bpSeasonInfo();
+    const ends = this.add.text(bx + bw / 2, py + 62, se.daysLeft <= 1 ? '¡ÚLTIMO DÍA!' : `QUEDAN ${se.daysLeft} DÍAS`, { fontFamily: FONT, fontSize: '21px', color: se.daysLeft <= 3 ? '#ffb0b8' : '#ffe9a8', stroke: '#061431', strokeThickness: 4 }).setOrigin(0.5);
+    fitText(ends, bw);
+    this.top.add(ends);
 
     // escudo del PREMIUM (derecha): baja sobre la lista, con la corona arriba
     const sx = W - 24 - shieldW / 2;
@@ -196,8 +205,7 @@ export class BattlePassScene extends Phaser.Scene {
     if (s.bp.premium) {
       this.top.add(this.add.text(sx, sTop + 88, '¡ACTIVO!', { fontFamily: FONT, fontSize: '28px', color: '#9fe8a0', stroke: '#0a3a18', strokeThickness: 6 }).setOrigin(0.5));
     } else {
-      const btn = arcadeButton(this, sx, sTop + 96, Math.min(220, shieldW - 50), 62, BP_SEASON.premiumRealPrice, () => this.buyPremium(), { palette: 'green' });
-      this.top.add(btn);
+      this.top.add(this.priceButton(sx, sTop + 96, Math.min(220, shieldW - 50), 62, BP_SEASON.premiumRealPrice, () => this.buyPremium()));
     }
   }
 
@@ -270,13 +278,30 @@ export class BattlePassScene extends Phaser.Scene {
     // franjas de fondo: más vivas en los niveles alcanzados
     const reached = row === 0 || level >= row;
     const bg = this.add.graphics();
-    bg.fillStyle(reached ? 0x2a7be0 : 0x16408c, 1).fillRect(0, 0, L, h);
-    bg.fillStyle(reached ? 0xf5a623 : 0xb9771c, 1).fillRect(L, 0, W - L, h);
-    bg.fillStyle(0xffffff, reached ? 0.1 : 0.05).fillRect(0, 0, W, h * 0.35);
-    bg.fillStyle(0x0b2a66, 1).fillRect(0, h - 4, L, 4);
-    bg.fillStyle(0x8a5208, 1).fillRect(L, h - 4, W - L, 4);
+    // columna GRATIS: azul pizarra apagado (no compite con la premium), con un leve degradado
+    const [fT, fB] = reached ? [0x3f5f8f, 0x2c4670] : [0x283a5c, 0x1c2a45];
+    bg.fillGradientStyle(fT, fT, fB, fB, 1).fillRect(0, 0, L, h);
+    // columna PREMIUM: esmeralda en degradado (claro arriba, profundo abajo) y brillante
+    const [pT, pB] = reached ? [0x3fe0a0, 0x0c8a57] : [0x1d8f63, 0x0a4f36];
+    bg.fillGradientStyle(pT, pT, pB, pB, 1).fillRect(L, 0, W - L, h);
+    bg.fillStyle(0xffffff, reached ? 0.08 : 0.04).fillRect(0, 0, L, h * 0.3);
+    bg.fillStyle(0xffffff, reached ? 0.16 : 0.07).fillRect(L, 0, W - L, h * 0.32);
+    // franjas de brillo en diagonal sobre la esmeralda
+    bg.fillStyle(0xffffff, reached ? 0.1 : 0.05);
+    for (const fx of [0.3, 0.72]) {
+      const sx0 = L + (W - L) * fx;
+      bg.fillPoints([{ x: sx0, y: 0 }, { x: sx0 + 36, y: 0 }, { x: sx0 - 30, y: h }, { x: sx0 - 66, y: h }], true);
+    }
+    bg.fillStyle(0x16233d, 1).fillRect(0, h - 4, L, 4);
+    bg.fillStyle(0x05432b, 1).fillRect(L, h - 4, W - L, 4);
     bg.fillStyle(0x06173d, 0.5).fillRect(L - 2, 0, 4, h);
     c.add(bg);
+    // destello que titila en la esmeralda (solo en las filas visibles: se para al salir)
+    if (reached) {
+      const st = this.add.star(L + (W - L) * (0.15 + ((row * 37) % 70) / 100), h * 0.2, 4, 3, 9, 0xffffff).setBlendMode(Phaser.BlendModes.ADD);
+      c.add(st);
+      this.loop({ targets: st, alpha: { from: 0.1, to: 1 }, scale: { from: 0.5, to: 1.2 }, angle: 45, duration: 900, delay: (row * 230) % 1200, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
+    }
 
     // premios: GRATIS a la izquierda, PREMIUM a la derecha (el rombo del nivel va en la unión)
     this.rewardCell(c, row, 'free', 0, L, h);
@@ -329,10 +354,10 @@ export class BattlePassScene extends Phaser.Scene {
       }
       if (reward.kind === 'character' && this.textures.exists('portrait-mai')) c.add(this.add.image(cx, iy, 'portrait-mai').setDisplaySize(68, 88));
       const label = rewardLabel(reward);
-      const t = this.add.text(cx, cy + 46, label.top, { fontFamily: FONT, fontSize: '26px', color: '#ffffff', stroke: prem ? '#5a3200' : '#06122e', strokeThickness: 5 }).setOrigin(0.5);
+      const t = this.add.text(cx, cy + 46, label.top, { fontFamily: FONT, fontSize: '26px', color: '#ffffff', stroke: prem ? '#04392a' : '#06122e', strokeThickness: 5 }).setOrigin(0.5);
       fitText(t, w - 50);
       c.add(t);
-      c.add(this.add.text(cx, cy + 72, label.sub, { fontFamily: FONT, fontSize: '13px', color: prem ? '#4a2a00' : '#d1e3ff' }).setOrigin(0.5).setLetterSpacing(1));
+      c.add(this.add.text(cx, cy + 72, label.sub, { fontFamily: FONT, fontSize: '13px', color: prem ? '#d4ffea' : '#d1e3ff' }).setOrigin(0.5).setLetterSpacing(1));
     }
 
     if (claimed) {
@@ -346,10 +371,10 @@ export class BattlePassScene extends Phaser.Scene {
     if (needPrem) {
       // pestaña con candado arriba de la celda (como el Pass Royale)
       const tab = this.add.graphics({ x: cx, y: 0 });
-      tab.fillStyle(0x8a5208, 1).fillRoundedRect(-36, -2, 72, 34, { tl: 0, tr: 0, bl: 12, br: 12 });
-      tab.fillStyle(0xf2c04a, 1).fillRoundedRect(-32, -2, 64, 30, { tl: 0, tr: 0, bl: 10, br: 10 });
-      tab.lineStyle(3, 0x5a3200, 1).beginPath().arc(0, 10, 6, Math.PI, 0).strokePath();
-      tab.fillStyle(0x5a3200, 1).fillRoundedRect(-8, 10, 16, 12, 3);
+      tab.fillStyle(0x05432b, 1).fillRoundedRect(-36, -2, 72, 34, { tl: 0, tr: 0, bl: 12, br: 12 });
+      tab.fillStyle(0x6fe8b4, 1).fillRoundedRect(-32, -2, 64, 30, { tl: 0, tr: 0, bl: 10, br: 10 });
+      tab.lineStyle(3, 0x05432b, 1).beginPath().arc(0, 10, 6, Math.PI, 0).strokePath();
+      tab.fillStyle(0x05432b, 1).fillRoundedRect(-8, 10, 16, 12, 3);
       c.add(tab);
     }
     if (!ready) {
@@ -407,7 +432,7 @@ export class BattlePassScene extends Phaser.Scene {
       this.loop({ targets: st, alpha: { from: 0.1, to: 1 }, scale: { from: 0.5, to: 1.15 }, angle: 45, duration: 700 + i * 140, delay: i * 190, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
     });
 
-    const name = this.add.text(0, h * 0.31, reward.name.split(' · ')[0].toUpperCase(), { fontFamily: FONT, fontSize: '40px', color: '#ffffff', stroke: prem ? '#5a3200' : '#06122e', strokeThickness: 7 }).setOrigin(0.5);
+    const name = this.add.text(0, h * 0.31, reward.name.split(' · ')[0].toUpperCase(), { fontFamily: FONT, fontSize: '40px', color: '#ffffff', stroke: prem ? '#04392a' : '#06122e', strokeThickness: 7 }).setOrigin(0.5);
     fitText(name, w - 20);
     cell.add(name);
     const tagY = h * 0.42;
@@ -672,6 +697,36 @@ export class BattlePassScene extends Phaser.Scene {
   }
 
   // ================================================================ piezas
+  /**
+   * Botón verde de precio al estilo Clash Royale ("¡Mejorar!"): rectángulo redondeado verde brillante con borde oscuro,
+   * canto inferior más oscuro (relieve), brillo arriba y el texto blanco con contorno. Se hunde al pulsarlo.
+   */
+  private priceButton(x: number, y: number, w: number, h: number, label: string, onClick: () => void) {
+    const c = this.add.container(x, y);
+    const face = this.add.container(0, 0);
+    const r = 14;
+    const g = this.add.graphics();
+    g.fillStyle(0x0b3d12, 1).fillRoundedRect(-w / 2 - 3, -h / 2 - 3, w + 6, h + 9, r + 3); // borde oscuro
+    g.fillStyle(0x1f8a2c, 1).fillRoundedRect(-w / 2, -h / 2 + 4, w, h, r); // canto inferior (relieve)
+    g.fillStyle(0x43c83c, 1).fillRoundedRect(-w / 2, -h / 2, w, h, r);
+    g.fillStyle(0x6fe05a, 1).fillRoundedRect(-w / 2 + 3, -h / 2 + 3, w - 6, h * 0.48, { tl: r - 2, tr: r - 2, bl: 6, br: 6 });
+    g.fillStyle(0xffffff, 0.35).fillRoundedRect(-w / 2 + 10, -h / 2 + 6, w - 20, 7, 4); // brillo
+    face.add(g);
+    const t = this.add.text(0, 1, label, { fontFamily: FONT, fontSize: `${Math.round(h * 0.42)}px`, color: '#ffffff', stroke: '#0b3d12', strokeThickness: 6 }).setOrigin(0.5);
+    t.setShadow(0, 3, '#0b3d12', 0, true, false);
+    fitText(t, w - 20);
+    face.add(t);
+    c.add(face);
+    c.setSize(w, h + 6).setInteractive({ useHandCursor: true });
+    c.on('pointerdown', () => face.setY(3));
+    c.on('pointerout', () => face.setY(0));
+    c.on('pointerup', () => {
+      face.setY(0);
+      onClick();
+    });
+    return c;
+  }
+
   private burst(x: number, y: number, col: number) {
     for (let i = 0; i < 14; i++) {
       const a = (i / 14) * Math.PI * 2;

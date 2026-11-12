@@ -70,6 +70,8 @@ export interface BotTickResult {
   moving: boolean;
   /** DASH del rival: empieza / termina el sprint en este paso */
   sprint?: SprintEvt;
+  /** con sprint 'end': terminó llegando al punto (la escena pone la frenada); false = cortado lejos (sigue corriendo) */
+  landed?: boolean;
   /** dirección lateral en pantalla (para la animación de carrera) */
   dirX: number;
   /** ya está colocado y pasó la espera: la escena lanza la pelota */
@@ -139,6 +141,11 @@ const DASH_AI = {
   /** duración del sprint (s) y multiplicador de velocidad */
   time: 0.34,
   mult: 2.4,
+  /**
+   * Solo animación: a esta distancia (px) del punto el sprint termina con la frenada de la hoja. A 2,4× empieza a frenar
+   * a ~40 px y le quedan ~0,1 s, lo que dura la frenada. La velocidad extra sigue hasta acabar `time` (mismo juego).
+   */
+  landDist: 30,
 };
 const SMASH_AI = {
   /**
@@ -168,6 +175,8 @@ export class BotBrain {
   private ultiCharge = 0;
   /** s que le quedan de sprint (DASH en curso) */
   private dashT = 0;
+  /** la animación del sprint sigue en pantalla (termina al llegar al punto o al acabar dashT) */
+  private dashAnim = false;
   /** ya decidió si usar el DASH para la pelota que viene */
   private dashDecided = false;
   private wasReading = false;
@@ -290,6 +299,7 @@ export class BotBrain {
       if (!inp.noAbilities && this.dashCd <= 0 && need > DASH_AI.needS && Math.random() < this.abil.dash) {
         this.dashT = DASH_AI.time;
         this.dashCd = DASH_COOLDOWN * this.abil.cd;
+        this.dashAnim = true;
         sprint = 'start';
       }
     }
@@ -297,7 +307,8 @@ export class BotBrain {
       this.dashT -= dt;
       if (this.dashT <= 0 || frozen) {
         this.dashT = 0;
-        sprint = 'end';
+        if (this.dashAnim) sprint = 'end';
+        this.dashAnim = false;
       }
     }
 
@@ -345,7 +356,15 @@ export class BotBrain {
     body.x = cx;
     body.y = cy;
     const sp = Math.hypot(this.vel.x, this.vel.y);
-    return { moving: sp > MOVE.runAnim, dirX: this.vel.y, readyToToss: false, sprint }; // +y de cancha = derecha en pantalla
+    // DASH: al llegar al punto, la animación del sprint termina con la frenada (la velocidad extra sigue hasta dashT)
+    const near = Math.hypot(this.ai.target.x - body.x, this.ai.target.y - body.y) <= DASH_AI.landDist;
+    let landed = sprint === 'end' && near;
+    if (this.dashAnim && sprint === null && near) {
+      this.dashAnim = false;
+      sprint = 'end';
+      landed = true;
+    }
+    return { moving: sp > MOVE.runAnim, dirX: this.vel.y, readyToToss: false, sprint, landed }; // +y de cancha = derecha en pantalla
   }
 
   /**
@@ -365,8 +384,21 @@ export class BotBrain {
    *  3. EJECUCIÓN: destino, velocidad y margen sobre la red; con error según la calidad y, a veces, fuera.
    * Solo decide números: la física la aplica la escena con aimShot, igual que siempre.
    */
-  /** `noPower` (Claude): saque o su resto en juego: no lanza el ESPECIAL con este golpe. */
-  planShot(ball: BallState, ctx: ShotContext, ulti = false, noPower = false): ShotPlan {
+  /** ¿Tiene el ESPECIAL listo? (recarga cumplida y su nivel lo usa). Lo usa la escena para el alcance extra. */
+  get smashReady(): boolean {
+    return this.smashCd <= 0 && this.abil.smash > 0;
+  }
+
+  /** Probabilidad de usar el ESPECIAL en un golpe (la misma que planShot, según su modo). */
+  get smashChance(): number {
+    return this.abil.smash * (this._mode === 'competitivo' ? 1.35 : this._mode === 'concentrado' ? 1.15 : 1);
+  }
+
+  /**
+   * `noPower` (Claude): saque o su resto en juego: no lanza el ESPECIAL con este golpe.
+   * `forcePower` (Claude): llegó con el alcance extra del ESPECIAL: este golpe ES el ESPECIAL (si está listo).
+   */
+  planShot(ball: BallState, ctx: ShotContext, ulti = false, noPower = false, forcePower = false): ShotPlan {
     const ai = this.ai;
     const d = ai.d;
     const away = ctx.playerY > LAT_C ? -1 : 1; // lado contrario al jugador
@@ -398,7 +430,7 @@ export class BotBrain {
     // (modo COMPETITIVO) o con el jugador en la red (poco tiempo para esquivarla)
     if (!noPower && this.smashCd <= 0 && this.abil.smash > 0 && q >= SMASH_AI.minQuality) {
       const want = this.abil.smash * (this._mode === 'competitivo' ? 1.35 : this._mode === 'concentrado' ? 1.15 : 1) * (depth > 0.5 ? 1.3 : 1);
-      if (Math.random() < want) {
+      if (forcePower || Math.random() < want) {
         this.smashCd = SMASH_COOLDOWN * this.abil.cd;
         this.lastIntents = ['deep', this.lastIntents[0]];
         return {

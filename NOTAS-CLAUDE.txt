@@ -377,3 +377,104 @@ NOTAS PARA CLAUDE (pendientes detectados por Kiro, sin corregir)
  - Si se agrega apuesta real online: rellenar el mismo Duel con lo apostado (demo: false).
  - deploy.sh borra los logs de partidas (logs/matches y LOG-PARTIDO.txt) en cada despliegue, justo antes de reiniciar;
    deploy.log se conserva. DEPLOY_KEEP_LOGS=1 para no borrarlos.
+ - 2.º LOG (6676 líneas): rival lejos de su estado real 1,2 % (antes 75 %); saltos 57 -> 30. placeForServe en red ancla
+   la interpolación en la posición de saque (antes volvía al punto anterior y saltaba). Log 'point' solo al aplicarse.
+ - LOG 'flu' (FLUIDEZ) cada 1 s por teléfono: fps, maxF (cuadro más largo), jank (> 50 ms), in / gap (estados del
+   rival recibidos y mayor hueco), out (enviados), starve % (suavizado sin estado nuevo), lag / lagMax, buf, rtt.
+   RemoteInterp.sample devuelve starved y expone size. MatchScene.fluTick (dentro de diagTick).
+[12-11-2026] KIRO: REGLA DE SPRITES para las dos IA (leer docs/COMO-TRABAJAR-SPRITES-MOVIMIENTOS.md, sección 0, antes de tocar sprites)
+ - Fuente única: los sprites salen SIEMPRE de las hojas de frontend/public/personajes/<Personaje>/ (rival en rival/).
+   Una imagen nueva se deja ahí primero (nombre exacto de la herramienta) y se pasa a assets/characters/ con
+   tools/build-nxo-v2.mjs / build-nxo-inferno.mjs. Nunca se copia directo a assets/characters/; tiras y JSON no se
+   editan a mano.
+ - Desde la próxima hoja procesada, las tiras van en WebP con transparencia (tools/convert-image.mjs al final del corte;
+   JSON apuntando a .webp). WebP baja el peso del APK, no la memoria del teléfono: celda justa por frame.
+ - Pendiente: la derrota de NXO rival (hoja 1, fila 8) está mal dibujada (sonríe agachado y se vuelve a parar). El
+   usuario rehará las hojas de NXO empezando por la hoja 1; se instala siguiendo docs/COMO-TRABAJAR-SPRITES-MOVIMIENTOS.md.
+ - RENOMBRADO (12-11-2026): docs/SPRITES.md ahora se llama docs/COMO-TRABAJAR-SPRITES-MOVIMIENTOS.md (mismo contenido).
+   Las notas anteriores de este archivo que dicen "docs/SPRITES.md" se refieren a él.
+ - DOCUMENTOS EN docs/ (12-11-2026): ECONOMIA.txt (raíz) ahora es docs/ECONOMIA.md (mismos datos, en Markdown).
+   MOVIMIENTOS-PERSONAJES.txt se borró (sigue en el historial de git); lo que seguía vigente (tabla de archivos que
+   mueven las animaciones y el tiempo del saque) está en docs/COMO-TRABAJAR-SPRITES-MOVIMIENTOS.md §2 y §5.
+   Las notas anteriores que dicen "ECONOMIA.txt" o "MOVIMIENTOS-PERSONAJES.txt" se refieren a esos archivos.
+ - 3.er LOG (fluidez): en peloteo ya NO hay saltos (1 en la ULTI). FPS 55-60. Los "cuadros" de 1 s / 1,7 s eran las
+   cinemáticas (ya no cuentan: flu.lastFrame = 0 en la rama cine de update). rtt = 0 porque la hora del ping llegaba
+   recortada (±100000 en guard): ping/pong usan performance.now() % 100000. starve solo cuenta con el rival moviéndose.
+   Saltos al empezar el punto: el AUTO sacador salía corriendo al instante; ahora espera 0,6 s (autoMoveVector).
+ - ESPECIAL armado: sin resplandor (powerPulse borrado; en red smash-armed solo guarda el poder). Alcance extra
+   SMASH_REACH 1,25 (config) para la pelota que viene: jugador (checkHits con smashArmed y sin serveLock) y BOT
+   (botSmashRoll: una decisión por pelota con brain.smashChance; si llega solo con el alcance extra, botHit(..., true) =
+   planShot forcePower). El rival en red lo tiene en su propio teléfono. El simulador de balance no lo modela.
+
+[12-11-2026] KIRO: DEFENSIVO (DASH) DEL RIVAL, ANIMACIÓN COMPLETA (solo animación, el juego no cambia)
+ - BOT: BotBrain devuelve `landed` con sprint 'end'. La animación del sprint termina al llegar a DASH_AI.landDist (30 px)
+   del punto y entonces la escena pone la frenada de la hoja (setSprint(false, dirX, true)), como tu DASH. La velocidad
+   extra sigue hasta DASH_AI.time (dashT), así que el movimiento es el mismo (sim: 87 % de los DASH acaban con frenada).
+ - BOT: botChargeTick no pone la pose de carga durante su DASH (Character.dashing = sprint o frenada en curso); antes la
+   carga cortaba el sprint en seco.
+ - NxoActor: tras un sprint la carrera no empieza caminando (skipWalk; antes 500 ms de WALK con el cuerpo lanzado). En la
+   frenada ('land'), si el cuerpo sigue moviéndose, se ve entera hasta landEnd (antes salía en landExit a correr).
+ - EN RED: 'sprint-start' / 'sprint-end' se aplican con netInterp.delayMs de retraso (su posición se dibuja en el pasado):
+   antes corría en el sitio ~170 ms y la frenada caía con el cuerpo aún lanzado. Si en ese retraso cambió lastHitter o
+   acabó el peloteo, el sprint-start se descarta (el golpe manda). MatchScene: bloque sprint del bot, botChargeTick y los
+   avisos sprint-start/end de netApplyAction.
+
+[12-11-2026] KIRO: RAQUETA PERDIDA (ULTI) MÁS VISIBLE (solo dibujo; dónde cae, pickR y reglas no cambian)
+ - MatchScene.loseRacket: más grande (RACKET_LOSS.sizeK 0,55 del alto del personaje; antes 0,42). Sale de la mano hacia
+   su lado a los launchMs 130 (frame 3 de inferno-hit, mano vacía), tiro parabólico (arcK 1,1) con 2 vueltas, estela y
+   sombra en el suelo que va hasta donde cae, bote con polvo y queda tumbada con su aro. flyMs 650 -> 700.
+ - Jugador: al caer, "¡VE POR TU RAQUETA!" y una flecha amarilla a sus pies que apunta a ella (drawRacketArrow, desde
+   racketPickup) hasta que la recoge. Al recogerla, la raqueta salta del suelo a su mano.
+ - Actor.racket lleva ahora `shadow` y `landed`. clearRacket / recoverRacket destruyen la sombra.
+
+[12-11-2026] KIRO: FÍSICA DE LA PELOTA EXACTA (stepBall, objects/Ball.ts) -> arregla "falta" con el saque dentro
+ - Causa: stepBall avanzaba z con la velocidad del principio del paso y daba el bote al FINAL del paso en que z < 0.
+   Con pasos de 5-17 ms (FPS bajos) el bote detectado quedaba hasta 25 u más allá del real, y la pelota volaba más de
+   lo que apuntó aimShot: en saques junto a la línea, 13 % mal juzgados a 60 fps y 32 % a 20 fps.
+ - Ahora: parábola exacta en cada paso (z += vz·dt − ½g·dt², y con ay igual) y el bote en el instante exacto en que
+   z llega a 0 (x, y y velocidad de ese instante). Rodando (ya en el suelo) no se retrocede. Bote = punto apuntado a
+   cualquier FPS; 1.er y 2.º bote iguales a 30 y 240 fps (antes hasta 20 / 56 u de diferencia).
+ - Vale igual para el jugador, el bot y la red (los dos teléfonos usan stepBall; el juez es quien recibe). Los dos
+   teléfonos tienen que llevar la misma versión. Pruebas: test-dash, test-wall, test-ranked, test-perfect-timing OK;
+   sim-balance dentro del margen de antes. El informe de test-wall ("se desplaza hasta … u") mide la física con pared.
+ - RULETA con premios pequeños (wheelConfig.ts, decisión del usuario): monedas 10/50/100/150, XP 10/25/50, ÉPICO 500 o
+   250 XP, repetido 300. Media ~45 monedas + ~5 XP por giro (antes 300 + 102). docs/ECONOMIA.md §2, §6 y §8 actualizados.
+   Simulador: el casual llega al nivel 10 el día ~38 (antes ~14) -> pendiente decidir compensar con XP de partida.
+ - XP de partida compensada: XP_WIN 60 -> 190, XP_LOSS 25 -> 80 (config.ts). Simulador: casual nivel 10 día 13 y 15 día 31
+   (como antes); regular 15 día 12 (antes 16); intenso 20 día 8 (antes 25). ECONOMIA.md §6 actualizado.
+ - FIN online: endMatch reafirma las poses (victory al ganador, defeat al perdedor si su estado ya no es "victory");
+   netBotTick en phase 'over' ya no toca setMoving/setCharging. Log 'end-pose' (al empezar el final y al abrir el
+   resultado) y el servidor acepta game:log 30 s después de cerrar la sala (logRoom en handlers/index.ts).
+[12-11-2026] KIRO: HOJAS RIVAL 1-3 (NXO de frente) instaladas
+ - Hojas nuevas pj-nxo-rival-1/2/3.png (fondo verde). Las anteriores en personajes/Nxo/rival/Old sprites/ (-antes-new;
+   la 2 como -antes-new-12-11-2026). Hoja 4 e INFERNO sin tocar.
+ - tools/build-nxo-v2.mjs: FLIP_SHEETS vacío; FLIP_ROWS rival = hoja 1 filas 1, 4, 8 (idle, victoria, derrota) + hoja 4
+   fila 1. Las carreras de la hoja 1 corren a la derecha con la raqueta en la mano izquierda: no se espejan (correrían
+   al revés), así que al correr el rival lleva la raqueta en la otra mano. blackToAlpha quitado. CUT_AT: cortes entre
+   filas a mano (hoja 3: '2/7' y = 284, '5/4' y '5/5' y = 668) porque esos frames tocan al de abajo.
+ - Frames clave del rival = los de espaldas (hold 1, holdForehand 1, holdPower/holdPowerForehand 3, impacto derecha 6,
+   revés y cargados 5, saques y remates 4, en 0-based). serveRacket rival: normal dx -10 z 148, efecto dx -19 z 146.
+ - Primer pack en WebP: nxo-front-v2/*.webp (32 tiras, 1,35 MB) y JSON nxo-front-*.json apuntando a .webp. Celda
+   250x206 -> 178x136. Los packs nxo-v2 y mai-v2 y sus JSON no cambian.
+ - Probado en Chrome headless contra el BOT (rival NXO): reposo, carrera, DASH, derecha/revés normal y cargado, saques,
+   remate, SMASH especial, estiradas y recuperación, aturdido, punto ganado/perdido, victoria y derrota en el partido,
+   en la tarjeta del resultado y en el duelo Ranked. Saque del bot: la pelota queda en el cordaje (salto 159-205,
+   corrimiento -43). Sin cambios en MatchScene, NxoActor ni red: el rival online usa el mismo pack.
+ - REMATE "SMASH!" (justo al cierre del aro): REMATE.speed.perfect 2,1 -> 1,85 (LobSmash.ts). Vale para jugador, BOT y red.
+ - ESPECIAL armado: la pelota ya NO se enciende al pulsar (ni al empezar el punto ni cuando el rival la devuelve):
+   activateSmash sin setIgnited/llamarada; placeForServe setIgnited(false); quitados los re-encendidos de botHit,
+   botRemateHit y netApplyHit. Toma el color del poder solo con el golpe (playerHit: setSmashFlight + setPower).
+ - ESPECIAL armado: halo leve del color del poder detrás del personaje (updateSmashGlow, sin preFX) mientras dure el
+   armado; en red también sobre el rival (netRivalArmed con 'smash-armed' / 'smash-disarmed' / su golpe de poder).
+   Si el punto termina sin usarlo: disarmUnusedSmash (en pointTo) lo desarma y AbilityButton.resetCooldown lo deja
+   listo otra vez (hay que volver a pulsarlo). Faltas y let no lo desarman (el punto sigue).
+[12-11-2026] KIRO: HOJAS MAI RIVAL (1, 2 e INFERNO) reemplazadas
+ - personajes/Mai/rival/: pj-mai-rival-1-new / -2-new / -inferno-new pasan a pj-mai-rival-1 / -2 / -inferno. Las
+   anteriores van a Mai/rival/Old sprites/ (-antes-new). Hojas 3 y 4 sin tocar (siguen las del 10-11-2026).
+ - Contrato: hoja 2 e INFERNO cumplen. Hoja 1: la fila 2 (run) corre a la izquierda de la imagen (pide derecha); derrota y
+   victoria bien. Anotado en docs/COMO-TRABAJAR-SPRITES-MOVIMIENTOS.md §6 para cuando se procese el pack.
+ - El juego solo lee la hoja 1 de Mai rival (poses de la tarjeta del resultado): regeneradas con
+   tools/build-end-poses.mjs, ahora en WebP (mai-front-end/{idle,victory,defeat}.webp, ~47 KB cada una; antes PNG de
+   ~330 KB). MatchEndScene carga .webp (MAI_END). tools/preview-char-colors.mjs lee los .webp (convierte a _tmp/).
+ - Verificado en Chrome headless: la tarjeta del resultado y el duelo Ranked cargan las 3 poses (200) y se ven bien
+   (victoria y derrota). No cambia nada del partido ni de la red: el pack de Mai rival en el partido sigue siendo el viejo.

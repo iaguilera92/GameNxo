@@ -1,9 +1,10 @@
 // Poses de la PANTALLA DE RESULTADO (MatchEndScene) para un personaje de frente cuya hoja nueva aún no está procesada:
 // corta de su hoja 1 (8 x 8 celdas, fondo verde) las filas de reposo (1), victoria (4) y derrota (8) en tiras de 8 frames
 // con fondo transparente. NO toca las hojas del partido. Hoy: MAI rival (public/personajes/Mai/rival/pj-mai-rival-1.png).
-//   node tools/build-end-poses.mjs   -> public/assets/characters/mai-front-end/{idle,victory,defeat}.png
+//   node tools/build-end-poses.mjs   -> public/assets/characters/mai-front-end/{idle,victory,defeat}.webp
 // La escena mide la silueta de cada tira al dibujarla (alto y pies), así que no hace falta JSON de ancla.
-import { mkdirSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { existsSync, mkdirSync, unlinkSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { decode, save } from './png-lite.mjs';
@@ -14,7 +15,7 @@ const SRC = join(ROOT, 'public', 'personajes', 'Mai', 'rival', 'pj-mai-rival-1.p
 const OUT = join(ROOT, 'public', 'assets', 'characters', 'mai-front-end');
 const COLS = 8;
 const ROWS = 8;
-const CLIPS = { idle: 1, victory: 4, defeat: 8 }; // fila (1-based, como en la hoja; docs/SPRITES.md §5)
+const CLIPS = { idle: 1, victory: 4, defeat: 8 }; // fila (1-based, como en la hoja; docs/COMO-TRABAJAR-SPRITES-MOVIMIENTOS.md §5)
 
 const s = decode(SRC);
 // croma: fuera el verde del fondo (y su borde verdoso), luego se recuperan los detalles verdes de la gorra de Mai
@@ -43,5 +44,9 @@ for (const [name, row] of Object.entries(CLIPS)) {
     for (let y = 0; y < ch; y++) out.copy(strip, (y * W + c * cw) * 4, ((y0 + y) * s.w + x0) * 4, ((y0 + y) * s.w + x0 + cw) * 4);
   }
   save(join(OUT, `${name}.png`), W, ch, strip);
-  console.log(`${name}.png ${W}x${ch} (celda ${cw}x${ch})`);
+  // WebP (docs/COMO-TRABAJAR-SPRITES-MOVIMIENTOS.md §0.4): se convierte con Chrome headless y se borra el PNG de public/
+  execFileSync(process.execPath, [join(ROOT, 'tools', 'convert-image.mjs'), join(OUT, `${name}.png`), join(OUT, `${name}.webp`), '0.92'], { stdio: 'ignore' });
+  if (!existsSync(join(OUT, `${name}.webp`))) throw new Error(`no se pudo convertir ${name}.png a webp`);
+  unlinkSync(join(OUT, `${name}.png`));
+  console.log(`${name}.webp ${W}x${ch} (celda ${cw}x${ch})`);
 }

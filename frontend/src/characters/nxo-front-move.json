@@ -2,14 +2,14 @@
   "source": "pj-nxo-rival-1.png (fila 5)",
   "view": "front",
   "cell": {
-    "w": 250,
-    "h": 206
+    "w": 178,
+    "h": 136
   },
   "origin": {
     "x": 0.5,
-    "y": 0.69903
+    "y": 0.93382
   },
-  "standHeight": 125,
+  "standHeight": 110,
   "turnExit": 5,
   "turnRate": 2.2,
   "landFrom": 1,
@@ -18,7 +18,7 @@
   "landRate": 2.6,
   "animations": {
     "brake-turn": {
-      "file": "brake-turn.png",
+      "file": "brake-turn.webp",
       "frames": 8,
       "fps": 14,
       "loop": false

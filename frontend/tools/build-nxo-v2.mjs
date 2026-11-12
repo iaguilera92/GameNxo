@@ -6,7 +6,8 @@
 // verde (a alfa, con despill en los bordes) y se copia cada fila a una tira de 8 frames (1536x128).
 // Salida: public/assets/characters/nxo-v2/<anim>.png y los JSON de src/characters/ (nxo-sprites, nxo-hits,
 // nxo-move, nxo-special, nxo-extra). El INFERNO (pj-nxo-sprite-inferno.png) va aparte: build-nxo-inferno.mjs.
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { existsSync, mkdirSync, unlinkSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { decode, save } from './png-lite.mjs';
@@ -24,10 +25,25 @@ const SRC_DIR = MAI ? join(ROOT, 'public', 'personajes', 'Mai') : join(ROOT, 'pu
 const SRC_NAME = (s) => (MAI ? `pj-mai-${s}.png` : FRONT ? `pj-nxo-rival-${s}.png` : `pj-nxo-sprites-${s}.png`);
 const DIR = MAI ? 'mai-v2' : FRONT ? 'nxo-front-v2' : 'nxo-v2';
 const PFX = MAI ? 'mai-' : FRONT ? 'nxo-front-' : 'nxo-';
-/** hojas del rival que vienen con la raqueta en la mano izquierda (se espejan para dejarla en la derecha, como el resto) */
-const FLIP_SHEETS = FRONT ? new Set([1]) : new Set();
-/** filas sueltas dibujadas con la raqueta en la mano izquierda: se espeja cada frame al copiarlo a su tira (hoja -> filas, 1-based) */
-const FLIP_ROWS = FRONT ? { 4: new Set([1]) } : {}; // rival hoja 4 (10-11-2026): el bote del saque viene espejado
+/** hojas que vienen enteras con la raqueta en la mano izquierda (se espejan para dejarla en la derecha). Hoy ninguna. */
+const FLIP_SHEETS = new Set();
+/**
+ * filas sueltas dibujadas con la raqueta en la mano izquierda: se espeja cada frame al copiarlo a su tira (hoja -> filas,
+ * 1-based). Rival hoja 1 (12-11-2026): reposo, victoria y derrota traen la raqueta a la derecha de la imagen; las
+ * carreras (filas 2, 3, 5, 6 y 7) ya corren hacia la derecha y no se espejan (espejadas correrían al revés).
+ * Rival hoja 4 (10-11-2026): el bote del saque viene espejado.
+ */
+const FLIP_ROWS = FRONT ? { 1: new Set([1, 4, 8]), 4: new Set([1]) } : {};
+/**
+ * cortes entre filas puestos a mano (hoja -> 'fila de arriba/frame', 1-based -> y en px de la hoja), para los frames
+ * que se tocan con el de abajo más allá de la ventana del corte automático. Rival hoja 3 (12-11-2026): la estirada
+ * izquierda (fila 2, frame 7) toca la cabeza de la recuperación de abajo, y los pies del aturdido (fila 5, frames 4 y 5)
+ * tocan el pelo del salto de punto ganado.
+ */
+const CUT_AT = FRONT ? { 3: { '2/7': 284, '5/4': 668, '5/5': 668 } } : {};
+/** tiras en WebP (docs/COMO-TRABAJAR-SPRITES-MOVIMIENTOS.md §0.4): los packs procesados desde el 12-11-2026 */
+const WEBP = FRONT;
+const EXT = WEBP ? '.webp' : '.png';
 const OUT = join(ROOT, 'public', 'assets', 'characters', DIR);
 const CW = 192;
 const CH = 128;
@@ -117,35 +133,6 @@ function whiteToAlpha(img) {
   for (let p = 0; p < w * h; p++) if (gone[p]) px[p * 4 + 3] = 0;
   for (const [p, a] of edge) px[p * 4 + 3] = Math.min(px[p * 4 + 3], a);
 }
-/**
- * fondo NEGRO -> transparente (hoja 2 del rival, 10-11-2026): relleno desde los bordes por los píxeles casi negros
- * (canal máximo <= 12; el fondo viene a 0-1). El pelo y la ropa de NXO son negros pero su contorno es algo más claro,
- * así que el relleno se para ahí; el negro encerrado (sombras del pelo) se conserva. Devuelve true si la hoja era así.
- */
-function blackToAlpha(img) {
-  const { w, h, px } = img;
-  const T = 12;
-  const mx = (p) => Math.max(px[p * 4], px[p * 4 + 1], px[p * 4 + 2]);
-  const bg = (p) => px[p * 4 + 3] === 255 && mx(p) <= T;
-  let n = 0, k = 0;
-  for (let x = 0; x < w; x += 4) { n += 2; k += bg(x) + bg((h - 1) * w + x); }
-  for (let y = 0; y < h; y += 4) { n += 2; k += bg(y * w) + bg(y * w + w - 1); }
-  if (k < n * 0.95) return false; // el borde no es negro opaco: no es una hoja de fondo negro
-  const gone = new Uint8Array(w * h);
-  const st = [];
-  const push = (p) => { if (!gone[p] && bg(p)) { gone[p] = 1; st.push(p); } };
-  for (let x = 0; x < w; x++) { push(x); push((h - 1) * w + x); }
-  for (let y = 0; y < h; y++) { push(y * w); push(y * w + w - 1); }
-  while (st.length) {
-    const p = st.pop(), x = p % w;
-    if (x > 0) push(p - 1);
-    if (x < w - 1) push(p + 1);
-    if (p >= w) push(p - w);
-    if (p < w * (h - 1)) push(p + w);
-  }
-  for (let p = 0; p < w * h; p++) if (gone[p]) px[p * 4 + 3] = 0;
-  return true;
-}
 // ------------------------------------------------------------------ chroma
 function chroma(px, i) {
   const r = px[i], g = px[i + 1], b = px[i + 2];
@@ -203,7 +190,6 @@ for (const sheet of [1, 2, 3, 4]) {
   const img = decode(join(SRC_DIR, SRC_NAME(sheet)));
   if (FLIP_SHEETS.has(sheet)) flipX(img);
   whiteToAlpha(img);
-  if (blackToAlpha(img)) console.log(`  hoja ${sheet}: fondo negro -> alfa`);
   const { w, h } = img;
   const NC = COLS[sheet];
   // celda REAL de esta hoja: cada hoja puede venir con otro tamaÃ±o (p. ej. 1330x1182); el corte usa la rejilla NC x N
@@ -235,7 +221,7 @@ for (const sheet of [1, 2, 3, 4]) {
         for (let x = Math.round(col * cw); x < Math.round((col + 1) * cw); x++) if (px[(y * w + x) * 4 + 3] > 24) n++;
         if (n < bv || (n === bv && Math.abs(y - b) < Math.abs(best - b))) { bv = n; best = y; } // empate: el mas cercano al limite nominal
       }
-      cutAt[col][r] = best;
+      cutAt[col][r] = CUT_AT[sheet]?.[`${r}/${col + 1}`] ?? best;
     }
   }
   const isCut = (x, y, ny) => {
@@ -464,6 +450,12 @@ for (const [name, list] of Object.entries(frames)) {
       }
   });
   save(join(OUT, `${name}.png`), OW * NF, OH, strip);
+  // WebP: se convierte la tira recién escrita (Chrome headless) y se borra el PNG de public/
+  if (WEBP) {
+    execFileSync(process.execPath, [join(ROOT, 'tools', 'convert-image.mjs'), join(OUT, `${name}.png`), join(OUT, `${name}.webp`), '0.92'], { stdio: 'ignore' });
+    if (!existsSync(join(OUT, `${name}.webp`))) throw new Error(`no se pudo convertir ${name}.png a webp`);
+    unlinkSync(join(OUT, `${name}.png`));
+  }
   metrics[name] = list.map((f) => Math.round((f.ground - f.y0) * f.sc));
   console.log(`${name.padEnd(15)} hoja ${list[0].sheet}  suelo ${list[0].ground}  alto ${metrics[name].join(',')}`);
 }
@@ -475,21 +467,22 @@ const cell = { w: OW, h: OH };
 const src = (s, r) => `${SRC_NAME(s)} (fila ${r})`;
 /** frames reales de cada animaciÃ³n (la hoja 2 tiene 9) */
 const nf = (file) => frames[file]?.length ?? N;
-const anim = (file, fps, loop, impact) => ({ file: `${file}.png`, frames: nf(file), fps, loop, ...(impact !== undefined ? { impact } : {}), scale: 1 });
-const hit = (file, fps, impact) => ({ file: `${file}.png`, frames: nf(file), fps, loop: false, impact });
+const anim = (file, fps, loop, impact) => ({ file: `${file}${EXT}`, frames: nf(file), fps, loop, ...(impact !== undefined ? { impact } : {}), scale: 1 });
+const hit = (file, fps, impact) => ({ file: `${file}${EXT}`, frames: nf(file), fps, loop: false, impact });
 const write = (name, obj) => writeFileSync(join(ROOT, 'src', 'characters', `${name}.json`), JSON.stringify(obj, null, 2) + '\n');
 
-// fotogramas clave (0-based) â€” ver MOVIMIENTOS-PERSONAJES.txt Â§10
+// fotogramas clave (0-based) â€” ver docs/COMO-TRABAJAR-SPRITES-MOVIMIENTOS.md Â§5
 // Hoja 2 (8 frames): 1 guardia, 2 preparaciÃ³n, 3 carga, 4 inicio, 5 aceleraciÃ³n, 6 IMPACTO (derecha/revÃ©s),
 // 7 seguimiento, 8 recuperaciÃ³n. Saques y remates: 3 trofeo/carga, 5 IMPACTO arriba, 6-7 seguimiento.
+// Desde la hoja 2 del rival del 12-11-2026, espaldas y rival usan los mismos frames clave.
 const K = {
-  hold: FRONT ? 2 : 1, // pose de espera y arranque del golpe NORMAL del reves (frame 2 en la hoja nueva de espaldas; frame 3 en el rival)
-  powerHoldFh: FRONT ? 2 : 3, // derecha CARGADA (fila 3, hoja nueva de espaldas): pose de carga = frame 4
-  powerHold: FRONT ? 2 : 3, // reves CARGADO (fila 4, hoja nueva de espaldas): pose de carga = frame 4 (el rival conserva la suya)
+  hold: 1, // pose de espera y arranque del golpe NORMAL del reves = frame 2
+  powerHoldFh: 3, // derecha CARGADA (fila 3): pose de carga = frame 4
+  powerHold: 3, // reves CARGADO (fila 4): pose de carga = frame 4
   serveWait: 2, // saque: postura de trofeo (raqueta atrÃ¡s) esperando la pelota
   smashStart: 2,
-  fhHold: FRONT ? 4 : 1, // derecha: pose de espera y arranque del golpe automatico = frame 2 (hoja nueva de espaldas) / frame 5 (rival). Se vera todo el swing; la carga tendra su propia fila (fila 3)
-  fhImpact: FRONT ? 7 : 6, // derecha: contacto en el frame 8 (rival) / frame 7 (hoja nueva de espaldas, fila 1)
+  fhHold: 1, // derecha: pose de espera y arranque del golpe automatico = frame 2. Se vera todo el swing; la carga tiene su propia fila (fila 3)
+  fhImpact: 6, // derecha: contacto en el frame 7 (fila 1)
   hitImpact: 5, // derecha / revÃ©s (normal y potente): el contacto se ve en el frame 6
   serveImpact: 4, // saque, saque con efecto, remate y smash potenciado: contacto en el frame 5
   smashImpact: 4,
@@ -497,12 +490,12 @@ const K = {
    * Centro del cordaje en el frame de impacto del saque (frame 5 de serve.png / serve-spin.png), MEDIDO sobre las
    * tiras: `z` = altura sobre los pies y `dx` = desplazamiento lateral (+ = derecha de la pantalla), en unidades del
    * personaje (alto 150). El juego pone ahí la pelota y calcula el salto del saque (MatchScene.serveJump). Si cambian
-   * las hojas del saque hay que volver a medirlo (ver docs/SPRITES.md).
+   * las hojas del saque hay que volver a medirlo (ver docs/COMO-TRABAJAR-SPRITES-MOVIMIENTOS.md).
    */
   serveRacket: MAI
     ? { normal: { dx: 12, z: 128 }, spin: { dx: 20, z: 146 } }
     : FRONT
-      ? { normal: { dx: 35, z: 143 }, spin: { dx: -4, z: 144 } }
+      ? { normal: { dx: -10, z: 148 }, spin: { dx: -19, z: 146 } } // hoja 2 del 12-11-2026 (raqueta a la izquierda de la imagen)
       : { normal: { dx: 5, z: 129 }, spin: { dx: 14, z: 145 } },
 };
 /**
@@ -566,7 +559,7 @@ write(PFX + 'move', {
   landExit: 3,
   landEnd: 4,
   landRate: 2.6,
-  animations: { 'brake-turn': { file: 'brake-turn.png', frames: nf('brake-turn'), fps: 14, loop: false } },
+  animations: { 'brake-turn': { file: `brake-turn${EXT}`, frames: nf('brake-turn'), fps: 14, loop: false } },
 });
 write(PFX + 'special', {
   source: src(2, 8),
@@ -575,9 +568,9 @@ write(PFX + 'special', {
   origin,
   standHeight: STAND_H,
   start: 2,
-  animations: { 'smash-power': { file: 'smash-power.png', frames: nf('smash-power'), fps: 14, loop: false, impact: K.smashImpact, scale: SMASH_POWER_SCALE } },
+  animations: { 'smash-power': { file: `smash-power${EXT}`, frames: nf('smash-power'), fps: 14, loop: false, impact: K.smashImpact, scale: SMASH_POWER_SCALE } },
 });
-const ex = (file, fps, loop = false, extra = {}) => ({ file: `${file}.png`, frames: nf(file), fps, loop, ...extra });
+const ex = (file, fps, loop = false, extra = {}) => ({ file: `${file}${EXT}`, frames: nf(file), fps, loop, ...extra });
 // solo las que tienen tira (MAI no trae bote ni lanzamiento del saque: el juego usa el reposo y el saque normal)
 const onlyBuilt = (anims) => {
   const gone = Object.keys(anims).filter((k) => !frames[k]);

@@ -35,8 +35,11 @@ export const POWER_IMPACT = {
  *  depth  variación en profundidad (±)
  *  pickR  distancia a la que se recoge
  *  flyMs  vuelo hasta el suelo
+ *  (solo dibujo) launchMs  espera hasta que sale volando (el clip inferno-hit deja la mano vacía en su frame 3)
+ *               sizeK     alto de la raqueta suelta respecto al del personaje
+ *               arcK      altura del vuelo respecto al alto del personaje
  */
-export const RACKET_LOSS = { side: [110, 170] as [number, number], depth: 40, pickR: 42, flyMs: 650 };
+export const RACKET_LOSS = { side: [110, 170] as [number, number], depth: 40, pickR: 42, flyMs: 700, launchMs: 130, sizeK: 0.55, arcK: 1.1 };
 
 /** Posición final del retroceso: hacia atrás (lejos de la red) sin salir de la zona del rival. */
 export function knockbackX(x: number, xMax: number, dist = POWER_IMPACT.knockback.dist) {

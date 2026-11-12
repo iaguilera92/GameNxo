@@ -48,7 +48,7 @@ export const SHOP_ITEMS: ShopItem[] = [
   { id: 'defensive:jump', kind: 'defensive', name: 'Supersalto', price: 50, clp: 1490, minLevel: 1, available: true },
 ];
 /*
- * REGLA DE PRECIOS EN CLP (ECONOMIA.txt): el precio directo de un ítem nunca es más caro que juntar su dinero con los
+ * REGLA DE PRECIOS EN CLP (docs/ECONOMIA.md): el precio directo de un ítem nunca es más caro que juntar su dinero con los
  * paquetes de abajo (ej. un ítem de 50 de dinero cuesta como mucho $1.490 = "Puñado"). tools/sim-economy.mjs lo revisa.
  */
 

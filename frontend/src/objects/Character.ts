@@ -403,6 +403,11 @@ export class Character extends Phaser.GameObjects.Container {
     else this.startBob(1100, 3);
   }
 
+  /** Sprint del DASH (o su frenada) en curso. */
+  get dashing(): boolean {
+    return this.sprinting || !!this.nxo?.dashing;
+  }
+
   /** Se soltó el joystick corriendo rápido (inercia): la parada lleva frenada. Solo con sprites. */
   skid() {
     this.nxo?.skid();

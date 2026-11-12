@@ -1,5 +1,5 @@
 // Procesa la hoja del INFERNO DRIVE (pj-nxo-sprite-inferno.png y equivalentes: 1 fila x 9 frames, fondo alfa o verde).
-// Contrato de la hoja (qué es cada frame): docs/SPRITES.md.
+// Contrato de la hoja (qué es cada frame): docs/COMO-TRABAJAR-SPRITES-MOVIMIENTOS.md.
 //   node tools/build-nxo-inferno.mjs [hoja.png] [salida]
 // Hace: separa los 9 frames (por columnas vacías; si dos se solapan sin tocarse, por piezas; si el fuego los une,
 // por la columna más vacía), escala TODO con un mismo factor (el guardia del frame 1 mide 140 px), alinea por los

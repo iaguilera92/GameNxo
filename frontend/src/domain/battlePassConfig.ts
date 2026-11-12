@@ -38,7 +38,7 @@ export const BP_SEASON = {
   month: '2026-11',
   /**
    * EXP por nivel del pase. Temporada 1: 100. DESDE LA TEMPORADA 2 (al cambiar `id` y `month`): 350 (economía aprobada,
-   * ECONOMIA.txt: el casual lo completa cerca del día 25 del mes, el regular en ~2 semanas). No cambiarlo en plena
+   * docs/ECONOMIA.md: el casual lo completa cerca del día 25 del mes, el regular en ~2 semanas). No cambiarlo en plena
    * temporada: bajaría el nivel del pase de quien ya avanzó (los niveles se calculan como EXP / xpPerTier).
    */
   xpPerTier: 100,

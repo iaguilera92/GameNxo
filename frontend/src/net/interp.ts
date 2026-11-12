@@ -23,6 +23,8 @@ export interface InterpSample {
   y: number;
   /** velocidad real (unidades de cancha por segundo) entre los dos estados que se están mostrando */
   speed: number;
+  /** "hambre": no hay un estado más nuevo que el instante mostrado (se queda en el último; con red lenta, se nota) */
+  starved: boolean;
   /** estado (banderas) del instante que se muestra */
   snap: RemoteSnap;
 }
@@ -68,6 +70,11 @@ export class RemoteInterp {
     this.buf = [{ ...s, t: now - this.delayMs, st: -Infinity }];
   }
 
+  /** estados guardados (diagnóstico) */
+  get size() {
+    return this.buf.length;
+  }
+
   clear() {
     this.buf = [];
     this.offset = null;
@@ -81,12 +88,12 @@ export class RemoteInterp {
     // quitar lo que ya quedó atrás (se conserva uno anterior al instante mostrado)
     while (b.length > 2 && b[1].t <= rt) b.shift();
     const a = b[0];
-    if (rt <= a.t || b.length === 1) return { x: a.x, y: a.y, speed: 0, snap: a };
+    if (rt <= a.t || b.length === 1) return { x: a.x, y: a.y, speed: 0, snap: a, starved: b.length === 1 && rt > a.t };
     const c = b[1];
-    if (rt >= c.t) return { x: c.x, y: c.y, speed: 0, snap: c }; // sin estados nuevos: se queda en el último
+    if (rt >= c.t) return { x: c.x, y: c.y, speed: 0, snap: c, starved: true }; // sin estados nuevos: se queda en el último
     const k = (rt - a.t) / (c.t - a.t);
     const dt = (c.t - a.t) / 1000;
     const speed = dt > 0 ? Math.hypot(c.x - a.x, c.y - a.y) / dt : 0;
-    return { x: a.x + (c.x - a.x) * k, y: a.y + (c.y - a.y) * k, speed, snap: a };
+    return { x: a.x + (c.x - a.x) * k, y: a.y + (c.y - a.y) * k, speed, snap: a, starved: false };
   }
 }

@@ -7,7 +7,8 @@ Juego de tenis 1 vs 1 vertical para móvil. Se juega contra un BOT o contra otro
 NxoGames/
 ├── frontend/   juego: Phaser 3 + TypeScript + Vite, Android con Capacitor 6
 ├── backend/    servidor: Node.js + TypeScript + Express + Socket.IO
-└── docs/       MULTIJUGADOR.md (LAN 1v1, eventos, pruebas) · RANKED.md (ligas) · SPRITES.md (hojas de sprites)
+└── docs/       MULTIJUGADOR.md (LAN 1v1, eventos, pruebas) · RANKED.md (ligas) · ECONOMIA.md (monedas, dinero, XP,
+                pase, tienda) · COMO-TRABAJAR-SPRITES-MOVIMIENTOS.md (hojas de sprites)
 ```
 
 > El juego estaba antes en la raíz del repositorio. Ahora todo lo del juego (`src/`, `public/`, `android/`,
@@ -56,14 +57,14 @@ npm run cap:release   # build de producción (anuncios reales, .env.release) + c
 - Teclado para probar en el PC: WASD o flechas = mover · Q/J = DEFENSIVO · E/K = ESPECIAL (al sacar: E/K saque normal,
   Q/J con efecto) · ESPACIO o L = golpe cargado.
 - Constantes ajustables (nombre, dificultad, juegos, recargas, XP): `frontend/src/config.ts`. Economía completa:
-  `ECONOMIA.txt`.
+  `docs/ECONOMIA.md`.
 
 ## Notas para la IA que continúe
 
 - Responder al usuario en español y de forma resumida. Trabajar por etapas y, tras cada cambio, compilar
   (`npx tsc --noEmit` y `npm run build`) y decir qué probar en el teléfono.
 - Coordinación entre IAs: `NOTAS-CLAUDE.txt` (lo que hizo cada una y avisos). Reglas de Kiro: `.kiro/steering/`.
-  Sprites: `docs/SPRITES.md` (leer antes de tocar hojas). Economía: `ECONOMIA.txt`.
+  Sprites: `docs/COMO-TRABAJAR-SPRITES-MOVIMIENTOS.md` (leer antes de tocar hojas). Economía: `docs/ECONOMIA.md`.
 - No cambiar el stack sin consultar (Phaser 3 + Capacitor 6 + JDK 17). Versiones fijadas en `package.json`.
 - Antes del APK siempre `npm run build && npx cap sync android` (lo hace `npm run apk`).
 - En `Character` no usar la propiedad `body` (choca con Phaser): es `torso`.
@@ -81,8 +82,13 @@ Las imágenes con las que se trabajan los sprites están siempre en `frontend/pu
 de 8 filas × 8 frames y una hoja del INFERNO DRIVE; más adelante habrá más hojas. `frontend/tools/build-nxo-v2.mjs`
 y `build-nxo-inferno.mjs` las cortan en las tiras que carga el juego (`public/assets/characters/`).
 
-Qué es cada hoja y cada fila, las reglas de dibujo y los comandos: [docs/SPRITES.md](docs/SPRITES.md). Léelo antes
-de cambiar o añadir una hoja.
+**Regla:** un sprite nuevo SIEMPRE entra como hoja en `personajes/` y se pasa a `assets/characters/` con la herramienta.
+Nunca se pone una imagen directo en `assets/characters/`. Desde la próxima hoja, las tiras van en WebP (detalles en
+`docs/COMO-TRABAJAR-SPRITES-MOVIMIENTOS.md`, sección 0).
+
+Qué es cada hoja y cada fila, las reglas de dibujo y los comandos:
+[docs/COMO-TRABAJAR-SPRITES-MOVIMIENTOS.md](docs/COMO-TRABAJAR-SPRITES-MOVIMIENTOS.md). Léelo antes de cambiar o añadir
+una hoja.
 
 ## Servidor (backend)
 
@@ -97,4 +103,4 @@ Para jugar en LAN, pon la IPv4 del PC (`ipconfig`) en el juego: Ajustes > **SERV
 [docs/MULTIJUGADOR.md](docs/MULTIJUGADOR.md).
 
 Economía del juego (monedas, dinero, XP, pase, Ranked, tienda, ruleta y premio diario), por qué es así y dónde se
-cambia cada número: `ECONOMIA.txt`. Simulador: `cd frontend && node tools/sim-economy.mjs --runs=20`.
+cambia cada número: [docs/ECONOMIA.md](docs/ECONOMIA.md). Simulador: `cd frontend && node tools/sim-economy.mjs --runs=20`.

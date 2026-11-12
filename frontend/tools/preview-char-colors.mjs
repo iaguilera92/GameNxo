@@ -2,6 +2,7 @@
 // primer frame del reposo de NXO y de MAI (de frente) y guarda una tira por personaje con todos los estilos.
 //   node tools/preview-char-colors.mjs  -> _tmp/char-colors-nxo.png, _tmp/char-colors-mai.png
 // Si se cambian CHAR_COLORS o SOURCE en CharColorFx.ts, copiar aquí los mismos valores.
+import { execFileSync } from 'node:child_process';
 import { mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -19,8 +20,8 @@ const COLORS = [
 ];
 const SOURCE = { nxo: { from: 0.9875, range: 0.045, minSat: 0.5 }, mai: { from: 0.925, range: 0.07, minSat: 0.45 } };
 const SHEETS = {
-  nxo: { file: 'public/assets/characters/nxo-front-v2/idle.png', cw: 250 },
-  mai: { file: 'public/assets/characters/mai-front-end/idle.png', cw: 192 },
+  nxo: { file: 'public/assets/characters/nxo-front-v2/idle.webp', cw: 178 },
+  mai: { file: 'public/assets/characters/mai-front-end/idle.webp', cw: 192 }, // webp: se convierte a PNG temporal (_tmp/) al leerla
 };
 // retrato de la vitrina (PERSONALIZACIÓN): webp, no se puede leer aquí sin dependencias; se prueba la hoja
 
@@ -40,7 +41,15 @@ function hsv2rgb(h, s, v) {
 mkdirSync(OUT, { recursive: true });
 for (const [skin, sh] of Object.entries(SHEETS)) {
   let img;
-  try { img = decode(join(ROOT, sh.file)); } catch { console.log('sin hoja', sh.file); continue; }
+  try {
+    let file = join(ROOT, sh.file);
+    if (file.endsWith('.webp')) {
+      const tmp = join(OUT, `src-${skin}.png`);
+      execFileSync(process.execPath, [join(ROOT, 'tools', 'convert-image.mjs'), file, tmp], { stdio: 'ignore' });
+      file = tmp;
+    }
+    img = decode(file);
+  } catch { console.log('sin hoja', sh.file); continue; }
   const cw = Math.min(sh.cw, img.w), ch = img.h;
   const src = SOURCE[skin];
   const W = cw * COLORS.length;

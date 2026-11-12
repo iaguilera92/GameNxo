@@ -25,11 +25,18 @@ export type BallEvent = 'bounce' | 'net' | null;
 /** Avanza la física de una pelota (también se usa para predicción). */
 export function stepBall(s: BallState, dt: number): BallEvent {
   const prevX = s.x;
+  const prevY = s.y;
+  const prevZ = s.z;
+  const vy0 = s.vy;
+  const vz0 = s.vz;
+  const ay = s.ay ?? 0;
+  // parábola exacta en cada paso: la pelota sigue la misma trayectoria a cualquier FPS (la que calcula aimShot). Antes
+  // (z con la velocidad del principio del paso) a FPS bajos volaba más y botaba más lejos de donde se apuntó.
   s.x += s.vx * dt;
-  s.y += s.vy * dt;
-  s.z += s.vz * dt;
+  s.y += vy0 * dt + 0.5 * ay * dt * dt;
+  s.z += vz0 * dt - 0.5 * GRAVITY * dt * dt;
   s.vz -= GRAVITY * dt;
-  if (s.ay) s.vy += s.ay * dt;
+  if (ay) s.vy += ay * dt;
 
   // ¿Cruza la red por debajo de su altura?
   const crossed = (prevX - NET_X) * (s.x - NET_X) < 0;
@@ -41,6 +48,16 @@ export function stepBall(s: BallState, dt: number): BallEvent {
   }
 
   if (s.z <= 0 && s.vz < 0) {
+    // el bote es donde z llegó a 0, no al final del paso: con pasos largos (FPS bajos) la pelota ya iba hasta 25
+    // unidades más allá y un saque que tocaba la línea se cantaba falta. Rodando (ya en el suelo) no se retrocede.
+    if (prevZ > 0) {
+      // instante exacto del bote dentro del paso: prevZ + vz0·t − ½·g·t² = 0
+      const t = Math.min(dt, (vz0 + Math.sqrt(vz0 * vz0 + 2 * GRAVITY * prevZ)) / GRAVITY);
+      s.x = prevX + s.vx * t;
+      s.y = prevY + vy0 * t + 0.5 * ay * t * t;
+      s.vz = vz0 - GRAVITY * t;
+      s.vy = vy0 + ay * t;
+    }
     s.z = 0;
     s.vz = -s.vz * (s.damp ?? BOUNCE_DAMP);
     if (s.ay) {

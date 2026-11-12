@@ -2,59 +2,68 @@
   "source": "pj-nxo-rival-2.png (fila 1-7)",
   "view": "front",
   "cell": {
-    "w": 250,
-    "h": 206
+    "w": 178,
+    "h": 136
   },
   "origin": {
     "x": 0.5,
-    "y": 0.69903
+    "y": 0.93382
   },
-  "standHeight": 125,
-  "hold": 2,
+  "standHeight": 110,
+  "hold": 1,
   "serveWait": 2,
   "smashStart": 2,
-  "serveRacket": { "normal": { "dx": 35, "z": 143 }, "spin": { "dx": -4, "z": 144 } },
-  "holdForehand": 4,
-  "holdPower": 2,
-  "holdPowerForehand": 2,
+  "serveRacket": {
+    "normal": {
+      "dx": -10,
+      "z": 148
+    },
+    "spin": {
+      "dx": -19,
+      "z": 146
+    }
+  },
+  "holdForehand": 1,
+  "holdPower": 3,
+  "holdPowerForehand": 3,
   "animations": {
     "forehand": {
-      "file": "forehand.png",
+      "file": "forehand.webp",
       "frames": 8,
       "fps": 15,
       "loop": false,
-      "impact": 7
+      "impact": 6
     },
     "backhand": {
-      "file": "backhand.png",
+      "file": "backhand.webp",
       "frames": 8,
       "fps": 15,
       "loop": false,
       "impact": 5
     },
     "forehand-power": {
-      "file": "forehand-power.png",
+      "file": "forehand-power.webp",
       "frames": 8,
       "fps": 15,
       "loop": false,
       "impact": 5
     },
     "backhand-power": {
-      "file": "backhand-power.png",
+      "file": "backhand-power.webp",
       "frames": 8,
       "fps": 15,
       "loop": false,
       "impact": 5
     },
     "serve": {
-      "file": "serve.png",
+      "file": "serve.webp",
       "frames": 8,
       "fps": 12,
       "loop": false,
       "impact": 4
     },
     "smash": {
-      "file": "smash.png",
+      "file": "smash.webp",
       "frames": 8,
       "fps": 14,
       "loop": false,

@@ -4,7 +4,32 @@ Contrato de las hojas de sprites. Léelo antes de tocar una imagen de `frontend/
 herramientas `frontend/tools/build-nxo-*.mjs` o las tiras de `frontend/public/assets/characters/`.
 Si cambias una hoja, una fila o una herramienta, actualiza este documento en el mismo cambio.
 
-Última actualización: 10-11-2026.
+Última actualización: 12-11-2026.
+
+## 0. Reglas para las IA (resumen; el detalle está en las secciones siguientes)
+
+1. **Fuente única.** Los sprites de un personaje salen SIEMPRE de sus hojas en `frontend/public/personajes/<Personaje>/`
+   (el rival, en `rival/`). Una imagen nueva (de Descargas, de un chat…) se deja primero ahí, con el nombre exacto que
+   lee la herramienta. Nunca se copia directo a `assets/characters/`.
+2. **Flujo.** Hoja fuente (`personajes/`) → herramienta (`tools/build-nxo-v2.mjs`, `build-nxo-inferno.mjs`) → tiras en
+   `frontend/public/assets/characters/<pack>/` y JSON en `frontend/src/characters/`. El juego solo carga las tiras.
+   Tiras y JSON son generados: no se editan a mano, se regeneran desde la hoja.
+3. **Contrato antes de instalar.** Comparar la hoja con las secciones 4 y 5 (rejilla 8 × 8, fondo liso, raqueta en la
+   mano derecha, sin pelota, frame 1 de pie, filas en su orden). Avisar al usuario de lo que no cumpla. Una hoja que no
+   sigue el contrato no se instala sin preguntar.
+4. **Tiras en WebP** (decidido el 12-11-2026). Desde la próxima hoja que se procese, las tiras de `assets/characters/`
+   van en `.webp` con transparencia: pesan unas 4 veces menos en el APK. El primer pack en WebP es el rival NXO
+   (`nxo-front-v2/`, 12-11-2026): `build-nxo-v2.mjs` escribe cada tira en PNG, la convierte con
+   `tools/convert-image.mjs` (calidad 0,92), borra el PNG y deja los JSON apuntando a `.webp` (constante `WEBP`; hoy
+   solo con `front`). Al pasar otro pack a WebP: activarlo en `WEBP`, regenerar y revisar de cerca los bordes. Si queda
+   un halo, subir la calidad. La conversión abre Chrome headless por tira: el corte tarda un par de minutos.
+5. **Tamaño del frame.** WebP no baja la memoria del teléfono: cada frame ocupa ancho × alto × 4 bytes en la GPU,
+   sea PNG o WebP. La celda tiene que ser la justa para lo que dibuja, sin aire de más. La del rival NXO bajó de
+   250 × 206 a 178 × 136 con las hojas 1-3 del 12-11-2026.
+6. **Al terminar.** Mover la hoja anterior a `Old sprites/`, regenerar, leer el log, mirar las tiras, correr
+   `npx tsc --noEmit` y `npm run build`, comprobar que los demás packs no cambian y actualizar este documento.
+7. **En el juego.** No poner preFX/postFX en los sprites del personaje: están dentro de un Container y en el APK se rompe
+   el dibujo. El estilo de color usa su propio pipeline de dibujo (`fx/CharColorFx.ts`).
 
 ## 1. Dónde están las imágenes
 
@@ -29,7 +54,8 @@ frontend/public/personajes/
     ├── pj-mai-inferno.png              INFERNO DRIVE, de espaldas
     ├── pj-mai-mirada.webp              franja de los ojos del INFERNO        (la carga el juego)
     ├── pj-mai.png                      referencia del diseño
-    └── rival/                          pj-mai-rival-1..4.png, pj-mai-rival-inferno.png (sin procesar todavía)
+    └── rival/                          pj-mai-rival-1..4.png, pj-mai-rival-inferno.png (solo la hoja 1 está en uso; ver §6)
+        └── Old sprites/                hojas 1, 2 e INFERNO anteriores (-antes-new)
 ```
 
 Reglas:
@@ -67,6 +93,18 @@ Por personaje y por vista (espaldas = jugador, frente = rival):
 Qué pack usa cada personaje: `src/characters/catalog.ts`. Carga de los packs: `PACKS` en
 `src/objects/NxoActor.ts`.
 
+Archivos del código que mueven las animaciones (rescatado de `MOVIMIENTOS-PERSONAJES.txt`, borrado el 12-11-2026):
+
+| Archivo | Qué hace |
+|---|---|
+| `src/characters/sheets.ts` | registro de las hojas antiguas (`SHEET_IDS`) y sus JSON |
+| `src/characters/catalog.ts` | qué pack usa cada personaje en cada vista |
+| `src/characters/*.json` | celda, ancla, alto de pie, fps, bucle y fotogramas clave de cada tira (generados) |
+| `src/objects/NxoActor.ts` | carga las tiras (`queueNxoSpriteLoads`, desde `BootScene`), registra las animaciones y es la máquina de estados que reproduce cada clip |
+| `src/objects/Character.ts` | puente entre `MatchScene` y `NxoActor` (`swing`, `serve`, `victory`, `defeat`…) |
+| `src/scenes/MatchScene.ts` | decide **cuándo** se llama cada animación |
+| `src/scenes/MatchEndScene.ts` | poses de la tarjeta del resultado (`endClips`, silueta medida, `defeatHoldKey`) |
+
 ## 3. Cómo se generan
 
 Desde `frontend/`:
@@ -89,14 +127,17 @@ como `pieza ancha` (una pieza más ancha que su celda): revisa el log y mira las
 
 `build-nxo-v2.mjs`, por hoja:
 
-1. Quita el fondo: verde de croma (con limpieza del reflejo verde en el borde), blanco o negro casi puro. El
-   blanco y el negro se quitan rellenando desde el borde de la imagen, así que lo encerrado en el dibujo
-   (camiseta, cordaje, sombras del pelo) se conserva.
+1. Quita el fondo: verde de croma (con limpieza del reflejo verde en el borde) o blanco casi puro. El blanco se
+   quita rellenando desde el borde de la imagen, así que lo blanco encerrado en el dibujo (camiseta, cordaje) se
+   conserva. El fondo negro ya no se admite (`blackToAlpha` se quitó el 12-11-2026, cuando la hoja 2 del rival
+   llegó en verde).
 2. Divide la hoja en 8 filas y N columnas iguales (N = 8; la hoja 4 de Mai, 9). La celda sale del tamaño real de
    la imagen: una hoja puede medir 1536×1024, 1254×1254 o 1330×1182.
 3. Separa las piezas conexas y asigna cada una a su celda por la posición de los pies. Entre filas corta por la
-   línea más vacía de cada columna. Las piezas sueltas (raqueta, estrellas, polvo) van con el cuerpo más cercano
-   de su columna, y un trozo que ese corte separó de un cuerpo vuelve a su cuerpo.
+   línea más vacía de cada columna, buscando entre 40 px por encima y 16 px por debajo del límite nominal. Si dos
+   frames se tocan más abajo, la línea se pone a mano en `CUT_AT` (hoja → `'fila de arriba/frame'` → y en px de la
+   hoja). Las piezas sueltas (raqueta, estrellas, polvo) van con el cuerpo más cercano de su columna, y un trozo
+   que ese corte separó de un cuerpo vuelve a su cuerpo.
 4. Apoya cada fila en su suelo (mediana de la base de sus frames) y la escala para que su **frame 1, de pie**,
    mida lo mismo que la guardia de referencia. Todas las hojas se igualan a la más pequeña (solo reduce, nunca
    amplía).
@@ -154,18 +195,23 @@ donde se indica.
 ### Hoja 2: golpes
 
 El golpe se reproduce desde su frame de espera (o el siguiente, si ya estaba esperando): los frames anteriores
-no se ven en el golpe. El rival (`nxo-front`) tiene otros frames de espera.
+no se ven en el golpe. Desde la hoja 2 del rival del 12-11-2026, espaldas y rival usan los mismos frames clave.
 
-| Fila | Clip | fps | Qué se dibuja | Frames clave (espaldas / rival) | Uso en el juego |
+| Fila | Clip | fps | Qué se dibuja | Frames clave | Uso en el juego |
 |---|---|---|---|---|---|
-| 1 | `forehand` | 15 | derecha: golpe por el lado de la raqueta | espera 2 / 5 · impacto 7 / 8 | golpe normal, pelota por la derecha |
-| 2 | `backhand` | 15 | revés | espera 2 / 3 · impacto 6 | golpe normal, pelota por la izquierda |
-| 3 | `forehand-power` | 15 | derecha cargada | carga 4 / 3 · impacto 6 | golpe cargado de derecha; el frame de carga es la pose mientras se carga |
-| 4 | `backhand-power` | 15 | revés cargado | carga 4 / 3 · impacto 6 | golpe cargado de revés |
+| 1 | `forehand` | 15 | derecha: golpe por el lado de la raqueta | espera 2 · impacto 7 | golpe normal, pelota por la derecha |
+| 2 | `backhand` | 15 | revés | espera 2 · impacto 6 | golpe normal, pelota por la izquierda |
+| 3 | `forehand-power` | 15 | derecha cargada | carga 4 · impacto 6 | golpe cargado de derecha; el frame de carga es la pose mientras se carga |
+| 4 | `backhand-power` | 15 | revés cargado | carga 4 · impacto 6 | golpe cargado de revés |
 | 5 | `serve` | 12 | saque normal | trofeo (espera la pelota) 3 · impacto 5 | saque normal: arranca en el trofeo, tras `serve-toss` |
 | 6 | `serve-spin` | 12 | saque con efecto | trofeo 3 · impacto 5 | saque con efecto; el juego le suma un salto por código en los frames 3-6 (`JUMP_ARC`) |
 | 7 | `smash` | 14 | remate | arranca en 3 · impacto 5 | pelota alta |
 | 8 | `smash-power` | 14 | remate del SMASH potenciado, con salto | arranca en 3 · impacto 5 | ataque especial SMASH |
+
+**Tiempo del saque.** El instante del contacto físico depende del clip: `NxoActor.serveContactDelay()` =
+(frame de impacto − frame de espera) / fps de `serve` o `serve-spin`, y `MatchScene.beginSwing` lo usa para el golpe y
+el salto (`serveJump`), junto con `SERVE` de `config.ts`. Cambiar los frames o los fps del saque mueve el contacto:
+retocar ambos juntos.
 
 **Dónde queda la raqueta en el impacto del saque (`serveRacket`).** En el frame de impacto de `serve` y de
 `serve-spin` (frame 5, índice 4) el juego pone la pelota en el centro del cordaje: la altura a la que salta el
@@ -175,7 +221,8 @@ unidades del personaje (alto 150): `z` = altura del centro del cordaje sobre los
 (+ = derecha de la pantalla). Lo escribe `tools/build-nxo-v2.mjs` (constante `K.serveRacket`). **Si se cambia la
 hoja 2 (filas 5 o 6) o la hoja del saque de un personaje hay que volver a medirlo**: abrir el frame 5 de la tira,
 anotar el centro del óvalo de la raqueta en píxeles (sobre los pies y respecto al centro de la celda) y multiplicar por
-`150 / standHeight`. Valores actuales: NXO espaldas 129 / 145 (z normal / efecto), NXO rival 143 / 144, MAI 128 / 146.
+`150 / standHeight`. Valores actuales: NXO espaldas 129 / 145 (z normal / efecto), NXO rival 148 / 146 (dx −10 / −19,
+raqueta a la izquierda de la imagen; medido el 12-11-2026), MAI 128 / 146.
 
 ### Hoja 3: estiradas y reacciones
 
@@ -191,8 +238,12 @@ anotar el centro del óvalo de la raqueta en píxeles (sobre los pies y respecto
 | 8 | `wait` | 10, bucle | espera activa (NXO: las marcas "( )" sueltas se quitan al cortar) | sin uso todavía |
 
 La estirada y la recuperación se encadenan: el último frame de `dive-*` debería enlazar con el primero de
-`recover-*` (en el suelo). En las hojas actuales el frame 8 de la estirada vuelve a estar de pie y se nota un
-salto al empezar la recuperación; en las hojas nuevas conviene terminar la estirada en el suelo.
+`recover-*` (en el suelo). La hoja 3 del rival NXO (12-11-2026) ya lo cumple: la estirada termina tumbada y la
+recuperación empieza tumbada. En las hojas de espaldas el frame 8 de la estirada vuelve a estar de pie y se nota
+un salto al empezar la recuperación; en las hojas nuevas conviene terminar la estirada en el suelo.
+
+El contacto de la estirada es fijo en el tiempo (`LUNGE_CONTACT_S` = 0,2 s a 18 fps → frame 4), así que el alcance
+máximo tiene que dibujarse en el frame 4 (o 4-5).
 
 ### Hoja 4: saque y extras
 
@@ -244,23 +295,48 @@ Las secciones 4 y 5 son el contrato. Estas son las excepciones que la herramient
 
 **NXO rival, de frente** (`front`):
 
-- Hoja 1: llega con la raqueta en la mano izquierda y se espeja entera, celda a celda (`FLIP_SHEETS`).
-- Hoja 2 (10-11-2026): fondo negro, que se quita con `blackToAlpha`.
+Hojas 1, 2 y 3 nuevas del 12-11-2026 (las anteriores están en `Nxo/rival/Old sprites/` con el sufijo
+`-antes-new`; la 2, `-antes-new-12-11-2026`). La hoja 4 y el INFERNO no cambiaron. Tiras en WebP (sección 0.4).
+
+- Hoja 1 (1536×1024, fondo verde): ya no se espeja entera (`FLIP_SHEETS` vacío). Se espejan solo las filas 1
+  `idle`, 4 `victory` y 8 `defeat` (`FLIP_ROWS`), que llegan con la raqueta a la derecha de la imagen. Las carreras
+  (filas 2, 3, 5, 6 y 7) corren hacia la derecha de la imagen, como pide el contrato, pero con la raqueta en la mano
+  izquierda; espejarlas las haría correr al revés. Por eso, al correr, el rival lleva la raqueta en la otra mano y
+  puede verse el cambio de mano al pasar de la frenada al reposo. Para arreglarlo hay que pedir esas filas otra vez
+  con la raqueta a la izquierda de la imagen.
+- La derrota (fila 8) ya termina de rodillas con la raqueta en el suelo, y la victoria (fila 4) acaba en una pose
+  fija: las dos salen bien en el partido y en la tarjeta del resultado.
+- Hoja 2 (1254×1254, celda 156,75, fondo verde): raqueta a la izquierda de la imagen, sin espejo. Frames clave
+  iguales a los de espaldas (sección 5). `serveRacket` medido de nuevo.
+- Hoja 3 (1536×1024, fondo verde): filas en el orden del contrato, sin espejo. En `dive-right` el alcance máximo
+  está solo en el frame 4 (en el 5 la raqueta ya queda detrás); en `dive-left`, en los frames 4-5. Coincide con
+  `LUNGE_CONTACT_S`. Dos frames tocan al de la fila de abajo y llevan corte a mano (`CUT_AT`): fila 2 frame 7
+  (y = 284) y fila 5 frames 4 y 5 (y = 668). En los frames 4 y 5 del aturdido queda una mancha de 1-2 px del pelo
+  del salto de abajo entre los pies.
 - Hoja 4, fila 1 (`serve-bounce`): llega espejada y se espeja solo esa fila (`FLIP_ROWS`). El pack va con
   `bounce: false`, así que hoy no se usa.
-- Frames de espera de la hoja 2: los de la columna "rival" de la tabla.
 - INFERNO: ya trae la raqueta en la mano derecha, se corta sin espejo con el argumento `front` (solo marca
   `view: front` en el JSON). Con `flip` se espejaría cada frame y cambiarían los frames clave: mejor pedir la hoja
   bien.
-- Hoja 3: sigue la del 08-11-2026 (pelo castaño). La nueva del 10-11-2026 no sigue el orden de filas de la hoja 3
-  ni la mano (raqueta en la izquierda) y no está instalada.
 
 **MAI rival**: usa todavía la hoja antigua (`mai-front-sprites/`, `tools/build-nxo-sprites.mjs`). Sus hojas nuevas
-están en `Mai/rival/` sin procesar.
+están en `Mai/rival/` sin procesar, salvo la hoja 1 (ver la excepción de abajo). `build-nxo-v2.mjs mai front` aún no
+existe: para procesar el pack hacen falta las 4 hojas y el INFERNO de Mai rival.
 
+- **Hojas nuevas del 12-11-2026** (hoja 1, hoja 2 e INFERNO; las anteriores en `Mai/rival/Old sprites/` con el sufijo
+  `-antes-new`). Hojas 3 y 4 siguen siendo las del 10-11-2026, de dibujo viejo.
+  - Hoja 1 (1536×1024, verde): derrota (fila 8) termina de rodillas con la raqueta en el suelo; victoria (fila 4)
+    estable. **Incumple el contrato en la fila 2 (`run`)**: corre hacia la izquierda de la imagen, igual que la fila 6
+    (`run-left`), y el contrato pide `run` hacia la derecha. Las filas 3 y 7 sí corren a la derecha. Cuando se procese
+    el pack hay que pedir la fila 2 otra vez o espejarla (con la raqueta quedaría en la otra mano, como en el rival NXO).
+  - Hoja 2 (1254×1254, verde): cumple. Raqueta a la izquierda de la imagen, filas en orden, destello de impacto
+    en los mismos frames que NXO.
+  - INFERNO (2172×724, verde): 9 frames en una fila, raqueta a la izquierda de la imagen, sin pelota. Cumple.
+  - Hoja 2 e INFERNO solo quedan guardados: el juego aún no los lee.
 - Excepción (11-11-2026): la **tarjeta del resultado** (`MatchEndScene`) usa ya la hoja nueva 1 de Mai rival para sus
   3 poses: filas 1 `idle`, 4 `victory` y 8 `defeat`. `node tools/build-end-poses.mjs` las corta (croma verde + gorra con
-  `keep-enclosed-green`) en `public/assets/characters/mai-front-end/{idle,victory,defeat}.png` (8 frames de 192 × 128).
+  `keep-enclosed-green`) en `public/assets/characters/mai-front-end/{idle,victory,defeat}.webp` (8 frames de 192 × 128;
+  WebP desde el 12-11-2026, el script convierte con `convert-image.mjs` y borra el PNG).
   La escena mide la silueta de cada tira para el alto y los pies (sin JSON). Cuando se procese el pack `mai-front`
   completo, se puede quitar esta excepción (`MAI_END` / `endPosesFor` en `MatchEndScene.ts`).
 

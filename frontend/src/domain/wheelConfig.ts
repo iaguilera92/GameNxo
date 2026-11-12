@@ -57,27 +57,32 @@ export const WHEEL = {
   resetMinute: 59,
   /** cosmético que ya se tiene (o catálogo agotado): compensación en monedas */
   duplicatePolicy: 'coins' as 'coins',
-  duplicateCoins: 1500,
+  duplicateCoins: 300,
   /** victorias recordadas por ciclo (ids de partida) para no contar dos veces la misma */
   maxMatchIds: 32,
-  /** 10 sectores, en el orden en que se dibujan (sentido horario desde arriba) */
+  /**
+   * 10 sectores, en el orden en que se dibujan (sentido horario desde arriba).
+   * Premios PEQUEÑOS (decisión del usuario, 12-11-2026: la ruleta daba demasiado y el anuncio x2 lo duplica):
+   * monedas 10 / 50 / 100 / 150, XP 10 / 25 / 50, ÉPICO 500 monedas o 250 XP, cosmético (repetido = 300 monedas).
+   * Media por giro ≈ 45 monedas + 5 XP (antes 300 + 102); con el x2, el doble.
+   */
   slots: [
-    { id: 'c100', label: '100', prize: { kind: 'coins', amount: 100 }, weight: 2500, rarity: 'common' },
-    { id: 'x100', label: '100', prize: { kind: 'xp', amount: 100 }, weight: 1200, rarity: 'common' },
-    { id: 'c250', label: '250', prize: { kind: 'coins', amount: 250 }, weight: 2000, rarity: 'common' },
+    { id: 'c10', label: '10', prize: { kind: 'coins', amount: 10 }, weight: 3000, rarity: 'common' },
+    { id: 'x10', label: '10', prize: { kind: 'xp', amount: 10 }, weight: 1000, rarity: 'common' },
+    { id: 'c50', label: '50', prize: { kind: 'coins', amount: 50 }, weight: 2500, rarity: 'common' },
     { id: 'cos1', label: 'ESPECIAL', prize: { kind: 'cosmetic' }, weight: 100, rarity: 'special' },
-    { id: 'x250', label: '250', prize: { kind: 'xp', amount: 250 }, weight: 1000, rarity: 'uncommon' },
-    { id: 'c500', label: '500', prize: { kind: 'coins', amount: 500 }, weight: 1500, rarity: 'uncommon' },
+    { id: 'x25', label: '25', prize: { kind: 'xp', amount: 25 }, weight: 600, rarity: 'uncommon' },
+    { id: 'c100', label: '100', prize: { kind: 'coins', amount: 100 }, weight: 1500, rarity: 'uncommon' },
     {
       id: 'epic',
       label: 'ÉPICO',
-      prize: { kind: 'epic', options: [{ kind: 'coins', amount: 5000, weight: 1 }, { kind: 'xp', amount: 2500, weight: 1 }] },
-      weight: 200,
+      prize: { kind: 'epic', options: [{ kind: 'coins', amount: 500, weight: 1 }, { kind: 'xp', amount: 250, weight: 1 }] },
+      weight: 100,
       rarity: 'epic',
     },
-    { id: 'c1000', label: '1.000', prize: { kind: 'coins', amount: 1000 }, weight: 1000, rarity: 'rare' },
+    { id: 'c150', label: '150', prize: { kind: 'coins', amount: 150 }, weight: 800, rarity: 'rare' },
     { id: 'cos2', label: 'ESPECIAL', prize: { kind: 'cosmetic' }, weight: 100, rarity: 'special' },
-    { id: 'x1000', label: '1.000', prize: { kind: 'xp', amount: 1000 }, weight: 400, rarity: 'rare' },
+    { id: 'x50', label: '50', prize: { kind: 'xp', amount: 50 }, weight: 300, rarity: 'rare' },
   ] as WheelSlot[],
 };
 

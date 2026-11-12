@@ -44,7 +44,7 @@ export const RANKED = {
   /** participantes visibles por liga (jugadores reales + rivales simulados) */
   tableSize: 100,
   leagues: {
-    // semanal de Bronce = 12 entradas (más que una semana de premio diario); Plata paga más que Bronce (ECONOMIA.txt)
+    // semanal de Bronce = 12 entradas (más que una semana de premio diario); Plata paga más que Bronce (docs/ECONOMIA.md)
     bronze: { entry: 500, target: 30_000, weekly: { coins: 6_000, cash: 0 }, demoteTo: 'bronze' },
     silver: { entry: 1_000, target: 60_000, weekly: { coins: 8_000, cash: 10 }, demoteTo: 'bronze' },
     gold: { entry: 2_000, target: 120_000, weekly: { coins: 9_000, cash: 20 }, demoteTo: 'silver' },

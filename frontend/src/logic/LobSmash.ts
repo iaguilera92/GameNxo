@@ -72,7 +72,8 @@ export const REMATE = {
   whiffRecover: 0.35,
   jump: 85,
   // más directo (plano y rápido hacia abajo)
-  speed: { perfect: 2.1, early: 1.45, late: 1.25 },
+  // SMASH! justo al cierre del aro: 2,1 -> 1,85 (12-11-2026: era demasiado; sigue algo por encima del ESPECIAL, 1,75)
+  speed: { perfect: 1.85, early: 1.45, late: 1.25 },
   /** margen sobre la red (bajo = más directo) */
   margin: 3,
 };

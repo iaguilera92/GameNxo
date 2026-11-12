@@ -289,6 +289,12 @@ export class AbilityButton extends Phaser.GameObjects.Container {
     }
   }
 
+  /** Deja la habilidad lista otra vez, sin recarga (p. ej. ESPECIAL armado que no llegó a usarse en el punto). */
+  resetCooldown() {
+    this.remaining = 0;
+    this.redraw();
+  }
+
   setArmed(a: boolean) {
     this.armed = a;
     this.scene.tweens.killTweensOf(this.glow);

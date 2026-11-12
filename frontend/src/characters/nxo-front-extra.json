@@ -2,134 +2,134 @@
   "source": "pj-nxo-rival-1.png..4 (tools/build-nxo-v2.mjs): animaciones nuevas",
   "view": "front",
   "cell": {
-    "w": 250,
-    "h": 206
+    "w": 178,
+    "h": 136
   },
   "origin": {
     "x": 0.5,
-    "y": 0.69903
+    "y": 0.93382
   },
-  "standHeight": 125,
+  "standHeight": 110,
   "animations": {
     "run-left": {
-      "file": "run-left.png",
+      "file": "run-left.webp",
       "frames": 8,
       "fps": 14,
       "loop": true
     },
     "dash": {
-      "file": "dash.png",
+      "file": "dash.webp",
       "frames": 8,
       "fps": 18,
       "loop": true
     },
     "defeat": {
-      "file": "defeat.png",
+      "file": "defeat.webp",
       "frames": 8,
       "fps": 10,
       "loop": false
     },
     "serve-spin": {
-      "file": "serve-spin.png",
+      "file": "serve-spin.webp",
       "frames": 8,
       "fps": 12,
       "loop": false,
       "impact": 4
     },
     "dive-right": {
-      "file": "dive-right.png",
+      "file": "dive-right.webp",
       "frames": 8,
       "fps": 18,
       "loop": false
     },
     "dive-left": {
-      "file": "dive-left.png",
+      "file": "dive-left.webp",
       "frames": 8,
       "fps": 18,
       "loop": false
     },
     "recover-right": {
-      "file": "recover-right.png",
+      "file": "recover-right.webp",
       "frames": 8,
       "fps": 14,
       "loop": false
     },
     "recover-left": {
-      "file": "recover-left.png",
+      "file": "recover-left.webp",
       "frames": 8,
       "fps": 14,
       "loop": false
     },
     "stunned": {
-      "file": "stunned.png",
+      "file": "stunned.webp",
       "frames": 8,
       "fps": 12,
       "loop": true
     },
     "point-won": {
-      "file": "point-won.png",
+      "file": "point-won.webp",
       "frames": 8,
       "fps": 12,
       "loop": false
     },
     "point-lost": {
-      "file": "point-lost.png",
+      "file": "point-lost.webp",
       "frames": 8,
       "fps": 10,
       "loop": false
     },
     "wait": {
-      "file": "wait.png",
+      "file": "wait.webp",
       "frames": 8,
       "fps": 10,
       "loop": true
     },
     "serve-bounce": {
-      "file": "serve-bounce.png",
+      "file": "serve-bounce.webp",
       "frames": 8,
       "fps": 12,
       "loop": true
     },
     "serve-toss": {
-      "file": "serve-toss.png",
+      "file": "serve-toss.webp",
       "frames": 8,
       "fps": 14,
       "loop": false
     },
     "walk": {
-      "file": "walk.png",
+      "file": "walk.webp",
       "frames": 8,
       "fps": 10,
       "loop": true
     },
     "inferno-hit": {
-      "file": "inferno-hit.png",
+      "file": "inferno-hit.webp",
       "frames": 8,
       "fps": 14,
       "loop": false
     },
     "volley": {
-      "file": "volley.png",
+      "file": "volley.webp",
       "frames": 8,
       "fps": 16,
       "loop": false,
       "impact": 4
     },
     "dropshot": {
-      "file": "dropshot.png",
+      "file": "dropshot.webp",
       "frames": 8,
       "fps": 14,
       "loop": false,
       "impact": 4
     },
     "intro": {
-      "file": "intro.png",
+      "file": "intro.webp",
       "frames": 8,
       "fps": 10,
       "loop": false
     },
     "greet": {
-      "file": "greet.png",
+      "file": "greet.webp",
       "frames": 8,
       "fps": 10,
       "loop": false

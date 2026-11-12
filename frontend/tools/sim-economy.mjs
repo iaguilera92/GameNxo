@@ -1,5 +1,5 @@
 // SIMULADOR DE ECONOMÍA: 4 perfiles de jugador durante N días con los módulos REALES de src/domain (sin copiar números).
-// Qué mide y por qué: ECONOMIA.txt (raíz del repo).
+// Qué mide y por qué: docs/ECONOMIA.md.
 //   node tools/sim-economy.mjs                  (60 días, semilla 1, los 4 perfiles)
 //   node tools/sim-economy.mjs --days=60 --seed=7 --profile=casual
 //   node tools/sim-economy.mjs --runs=20        (20 semillas: días de nivel / compras = mediana)

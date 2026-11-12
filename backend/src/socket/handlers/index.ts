@@ -53,6 +53,9 @@ export function registerSocketHandlers(io: Server) {
     },
   );
   const readyTimers = new Map<string, NodeJS.Timeout>();
+  /** LOG: sala y rol de cada conexión, también unos segundos DESPUÉS del fin (el juego manda el log del final tarde) */
+  const logRoom = new Map<string, { roomId: string; role: string; until: number }>();
+  const LOG_AFTER_MS = 30_000;
   /** RECONEXIÓN: jugador ausente (clave) -> temporizador que lo da por perdido */
   const awayTimers = new Map<string, NodeJS.Timeout>();
   /** duración máxima de cada partido en curso */
@@ -79,6 +82,7 @@ export function registerSocketHandlers(io: Server) {
       awayTimers.delete(p.token);
     }
     log(`sala ${short(room.id)} terminada: gana ${msg.winner} (${msg.reason}) ${msg.games.host}-${msg.games.guest}`);
+    room.players.forEach((p, i) => logRoom.set(p.id, { roomId: room.id, role: i === 0 ? 'host' : 'guest', until: Date.now() + LOG_AFTER_MS }));
     matchLog.write(room.id, 'srv', { ev: 'over', winner: msg.winner, reason: msg.reason, games: `${msg.games.host}-${msg.games.guest}` });
     rooms.finish(room.id);
     started.delete(room.id);
@@ -235,10 +239,17 @@ export function registerSocketHandlers(io: Server) {
       EV.LOG,
       guarded<unknown>('log', (raw) => {
         const entries = sanitizeLog(raw);
+        if (!entries) return;
         const room = rooms.roomOf(socket.id);
-        if (!entries || !room) return;
-        const src = rooms.roleOf(room, socket.id) ?? '?';
-        for (const e of entries) matchLog.write(room.id, src, e);
+        if (room) {
+          const src = rooms.roleOf(room, socket.id) ?? '?';
+          for (const e of entries) matchLog.write(room.id, src, e);
+          return;
+        }
+        // la sala ya terminó: lo que llega en los segundos siguientes (pantalla final) va igual a su log
+        const last = logRoom.get(socket.id);
+        if (!last || Date.now() > last.until) return;
+        for (const e of entries) matchLog.write(last.roomId, last.role, e);
       }),
     );
 
@@ -297,6 +308,8 @@ export function registerSocketHandlers(io: Server) {
     );
     socket.on('disconnect', (why: string) => {
       log(`desconectado ${short(socket.id)} (${why})`);
+      const lr = logRoom.get(socket.id);
+      if (lr && Date.now() > lr.until) logRoom.delete(socket.id);
       try {
         // en pleno partido: su sitio se guarda unos segundos por si reconecta (datos móviles, túnel, cambio de red)
         const room = rooms.roomOf(socket.id);

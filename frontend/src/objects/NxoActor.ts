@@ -525,6 +525,8 @@ export class NxoActor {
       return;
     }
     if (this.state !== 'sprint') return;
+    // tras el sprint ya va lanzado: si sigue moviéndose, corre (sin los WALK_MS caminando de un arranque desde quieto)
+    this.skipWalk = true;
     // la frenada de la hoja estÃ¡ dibujada corriendo hacia la derecha: con las hojas nuevas (sin volteo) solo se usa en ese sentido
     if (land && !!this.pk && this.moveOk()) {
       this.state = 'land';
@@ -1002,7 +1004,9 @@ export class NxoActor {
     const wantHold = (this.charging || this.ready) && !this.moving;
     if (this.moving && !this.charging) {
       if (this.state !== 'run') {
-        this.runStartAt = this.scene.time.now; // arranca caminando (WALK_MS) y luego corre
+        // arranca caminando (WALK_MS) y luego corre; viniendo del DASH, corre directamente
+        this.runStartAt = this.skipWalk ? this.scene.time.now - WALK_MS : this.scene.time.now;
+        this.skipWalk = false;
         this.enter('run');
         // pasar a la carrera al cumplirse el tiempo (setMoving no se llama en cada fotograma)
         this.walkTimer?.remove();
@@ -1028,6 +1032,7 @@ export class NxoActor {
     this.stopShake();
     this.stopLean();
     this.state = s;
+    if (s === 'idle') this.skipWalk = false; // ya paró: el próximo arranque vuelve a caminar
     this.sprite.anims.timeScale = 1;
     if (!this.legacyMove) {
       if (s === 'run') this.sprite.anims.timeScale = runAnimRate(this.speedK);
@@ -1044,6 +1049,13 @@ export class NxoActor {
   /** instante en que empezÃ³ a moverse (para caminar al principio) */
   private runStartAt = 0;
   private walkTimer?: Phaser.Time.TimerEvent;
+  /** acaba de terminar un sprint del DASH: la próxima carrera no empieza caminando */
+  private skipWalk = false;
+
+  /** Sprint del DASH o su frenada todavía en curso (la escena no le pone la pose de carga encima). */
+  get dashing() {
+    return this.state === 'sprint' || (this.state === 'land' && !this.landDone);
+  }
 
   /**
    * Clip de carrera. Hojas nuevas: los primeros WALK_MS de cada desplazamiento CAMINA (hoja 4, fila 3) y luego
@@ -1161,7 +1173,9 @@ export class NxoActor {
     // frenada del DASH: en guardia ya se puede mover; el Ãºltimo frame Ãºtil termina la frenada (el siguiente
     // del clip ya sale corriendo al otro lado y no se muestra)
     if (this.state === 'land') {
-      if (!this.landDone && frame >= this.P.move.landExit) {
+      // si el cuerpo aún desliza (el rival: su velocidad baja durante la frenada), la frenada se ve entera hasta landEnd
+      const exit = this.moving && !this.charging ? this.P.move.landEnd : this.P.move.landExit;
+      if (!this.landDone && frame >= exit) {
         this.landDone = true;
         this.refresh();
       }

@@ -10,7 +10,7 @@ Responsable: Claude. Kiro mantiene el partido (MatchScene): Ranked **no** modifi
 | **Dinero** (`PlayerState.gems`) | Tienda (estilos, habilidades) y Pase Premium | Pase de batalla, recompensas semanales de liga, premio diario |
 
 - La economía completa (monedas, dinero, XP, pase, tienda, ruleta, premio diario) y por qué se eligió cada número:
-  [`ECONOMIA.txt`](../ECONOMIA.txt). Simulador: `node tools/sim-economy.mjs --runs=20` (desde `frontend/`).
+  [`ECONOMIA.md`](ECONOMIA.md). Simulador: `node tools/sim-economy.mjs --runs=20` (desde `frontend/`).
 - La Tienda ahora cobra **dinero** (precios convertidos a razón de ~15 monedas = 1 de dinero).
 - La **clasificación** de la liga es el **saldo de monedas** (no hay un segundo sistema de puntos).
 - **Ascenso**: al **terminar una partida Ranked** con saldo ≥ objetivo de la liga (puede subir varias ligas).

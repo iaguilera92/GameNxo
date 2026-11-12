@@ -33,8 +33,8 @@ export const KNOCKBACK_DIST = 110; // en profundidad de cancha
 
 // Progresión
 export const MAX_LEVEL = 20;
-export const XP_WIN = 60;
-export const XP_LOSS = 25;
+export const XP_WIN = 190; // (12-11-2026) sube para compensar la ruleta con poca XP: mismo ritmo de niveles del casual
+export const XP_LOSS = 80;
 /** Monedas por partido: victoria / derrota (pocas). Rendirse no da monedas (evita farmear rindiéndose). */
 export const COINS_WIN = 50;
 export const COINS_LOSS = 10;
@@ -42,7 +42,7 @@ export const COINS_SURRENDER = 0;
 /**
  * XP necesaria para pasar del nivel `lvl` al siguiente. Los primeros niveles son rápidos (DEFENSIVO, ESPECIAL y ULTI en la
  * primera semana, domain/unlocks.ts) y cada nivel pide 120 más: 22.420 XP del 1 al 20 (antes 100 + 50 por nivel = 10.450).
- * Ver ECONOMIA.txt.
+ * Ver docs/ECONOMIA.md.
  */
 export const xpToNext = (lvl: number) => 100 + (lvl - 1) * 120;
 
@@ -79,6 +79,11 @@ export const LUNGE_RECOVER = 0.45;
 /** Estirada: momento (s) del contacto dentro del clip dive (frame 4-5 a 18 fps) y alcance lateral de la raqueta tendida. */
 export const LUNGE_CONTACT_S = 0.2;
 export const LUNGE_ARM = 90;
+/**
+ * ESPECIAL armado: alcance extra de la raqueta para golpear la pelota que viene cerca (×, sobre HIT_RANGE). Vale para el
+ * jugador, el BOT y el rival en red (el rival lo aplica en su propio teléfono, que es quien decide su golpe).
+ */
+export const SMASH_REACH = 1.25;
 /** Límites de movimiento lateral (más allá de las líneas laterales). */
 export const SIDE_MARGIN = 50;
 

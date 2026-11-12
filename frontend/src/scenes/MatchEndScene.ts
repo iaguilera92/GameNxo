@@ -212,7 +212,7 @@ export class MatchEndScene extends Phaser.Scene {
   preload() {
     for (const c of Object.keys(MAI_END.clips) as (keyof typeof MAI_END.clips)[]) {
       const key = maiEndKey(c);
-      if (!this.textures.exists(key)) this.load.spritesheet(key, `${MAI_END.dir}/${c}.png`, { frameWidth: MAI_END.cell.w, frameHeight: MAI_END.cell.h });
+      if (!this.textures.exists(key)) this.load.spritesheet(key, `${MAI_END.dir}/${c}.webp`, { frameWidth: MAI_END.cell.w, frameHeight: MAI_END.cell.h });
     }
   }
 

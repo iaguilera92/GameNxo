@@ -4636,7 +4636,7 @@ export class MatchScene extends Phaser.Scene {
     const i = this.netHit;
     this.netHit = {};
     this.net.sendHit({
-      t: this.time.now, // hora del golpe en su reloj (el mismo de game:state): el rival mide cuánto tardó en llegar
+      t: performance.now(), // hora del golpe en su reloj real (el mismo de game:state): el rival mide cuánto tardó
       kind: this.serving ? 'serve' : 'hit',
       ball: { x: s.x, y: s.y, z: s.z, vx: s.vx, vy: s.vy, vz: s.vz, damp: s.damp, fric: s.fric, ay: s.ay },
       x: this.player.x,
@@ -4672,7 +4672,7 @@ export class MatchScene extends Phaser.Scene {
     this.netStateAt = now;
     this.netPrev = { x: pl.x, y: pl.y };
     this.netLastState = st;
-    this.net.sendState({ t: now, ...st });
+    this.net.sendState({ t: performance.now(), ...st }); // reloj real: el del juego se frena en cámara lenta / pausa
   }
 
   /** El rival se mueve hacia su último estado conocido (suavizado). */
@@ -4723,6 +4723,13 @@ export class MatchScene extends Phaser.Scene {
       this.rivalChargeT = 0;
       this.rivalChargeFx(dt);
       return; // sin setMoving / setCharging: romperían la pose de remate (su teléfono lo mueve hacia la pelota)
+    }
+    // fin del punto / partido: su reacción (celebra / se lamenta, victoria / derrota) no se corta con la carrera
+    // (la interpolación aún lo mueve unos ms y eso la cancelaba: se veía otra animación)
+    if (r && (this.phase === 'pointover' || this.phase === 'over')) {
+      this.rivalChargeT = 0;
+      this.rivalChargeFx(dt);
+      return;
     }
     if (r) {
       // carrera al ritmo de su velocidad real (como la tuya: PlayerMotion.runAnimRate)

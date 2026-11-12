@@ -3,9 +3,10 @@
  * esos estados con su hora y se muestra al rival un poco en el pasado (`delayMs`), deslizándolo ENTRE dos posiciones
  * reales (sin tirones ni "patinar" hacia la última que llegó). También da su velocidad real para el ritmo de carrera.
  *
- * Hora de cada estado: la del emisor (`t`, su reloj) llevada al reloj local con el desfase MÍNIMO visto
- * (recibido − enviado): el mensaje que menos tardó marca la referencia, así el retraso variable de la red (jitter) no
- * mueve los estados de sitio. El desfase sube muy despacio por si los relojes derivan.
+ * Hora de cada estado: se reparte con la separación que dice el emisor (`t`, su reloj) pero SIEMPRE acotada a su
+ * llegada local (nunca en el futuro, nunca más de MAX_LAG ms antes de llegar). Así el retraso variable de la red
+ * (jitter) no lo hace ir a saltos, y un reloj del emisor raro (cámara lenta, pausa, otra escala) no puede congelarlo:
+ * en el peor caso se usa la hora de llegada. El desfase mínimo (recibido − enviado) se guarda aparte (minOffset).
  */
 export interface RemoteSnap {
   x: number;
@@ -26,7 +27,10 @@ export interface InterpSample {
   snap: RemoteSnap;
 }
 
-type Entry = RemoteSnap & { t: number };
+type Entry = RemoteSnap & { t: number; st: number };
+
+/** un estado se coloca como mucho esto antes de su llegada (ms) */
+const MAX_LAG = 150;
 
 export class RemoteInterp {
   private buf: Entry[] = [];
@@ -45,10 +49,13 @@ export class RemoteInterp {
     const off = recvT - senderT;
     if (this.offset === null || off < this.offset) this.offset = off;
     else this.offset += (off - this.offset) * 0.002;
-    const t = senderT + this.offset;
     const last = this.buf[this.buf.length - 1];
-    if (last && t <= last.t) return; // llegó desordenado o es más viejo que un ancla: se ignora
-    this.buf.push({ t, ...s });
+    if (last && senderT <= last.st && last.st !== -Infinity) return; // llegó desordenado: se ignora
+    // separación del emisor desde el anterior (acotada), pegada a la hora de llegada
+    const gap = last && last.st !== -Infinity ? Math.min(400, Math.max(0, senderT - last.st)) : 0;
+    const ideal = last ? last.t + gap : recvT;
+    const t = Math.min(recvT, Math.max(recvT - MAX_LAG, ideal, last ? last.t + 1 : -Infinity));
+    this.buf.push({ t, st: senderT, ...s });
     if (this.buf.length > 60) this.buf.shift();
   }
 
@@ -57,7 +64,7 @@ export class RemoteInterp {
    * siguientes continúan desde este punto.
    */
   reset(now: number, s: RemoteSnap) {
-    this.buf = [{ t: now - this.delayMs, ...s }];
+    this.buf = [{ t: now - this.delayMs, st: -Infinity, ...s }];
   }
 
   clear() {

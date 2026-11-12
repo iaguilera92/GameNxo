@@ -315,3 +315,10 @@ NOTAS PARA CLAUDE (pendientes detectados por Kiro, sin corregir)
    MatchScene: netHold ('RECONECTANDO…' / 'RIVAL RECONECTANDO…', partido en pausa), netResume = marcador oficial y
    SE REPITE EL PUNTO desde el saque en los dos teléfonos. Probado de punta a punta con un servidor local.
    Hay que DESPLEGAR el backend.
+ - ARREGLO rival quieto y luego "salto" al golpear: la hora de game:state era this.time.now (reloj del juego, se frena
+   en la cámara lenta del REMATE y se para en pausa) -> la interpolación lo dejaba congelado. Ahora el emisor manda
+   performance.now() (estado y golpe) y RemoteInterp coloca cada estado con la separación del emisor pero acotado a
+   su llegada (máx. 150 ms antes, nunca en el futuro): un reloj raro ya no puede congelarlo.
+ - Rival en red al acabar el punto: en pointover / over netBotTick ya no llama setMoving / setCharging (la
+   interpolación lo movía unos ms y cortaba pointEnd / defeat). Saque sin salto en red = backend sin desplegar
+   (serve-swing no llega).

@@ -8,7 +8,7 @@ import { VIEW } from '../view/projection';
  *   0,00 s  destello blanco, golpe de cámara y "JUEGO, SET Y PARTIDO"
  *   0,35 s  MARCADOR FINAL al centro: tus juegos y los del rival; la cifra del ganador sube (1 → 2) con salto y brillo,
  *           corona sobre el ganador
- *   1,00 s  sello grande ¡PARTIDO GANADO! (dorado, rayos que giran, confeti y fanfarria) o PARTIDO PERDIDO (rojo,
+ *   1,00 s  sello grande ¡PARTIDO GANADO! (dorado, confeti y fanfarria) o PARTIDO PERDIDO (rojo,
  *           pantalla oscura, ceniza que cae y notas que bajan). La pantalla de resultados (VICTORIA / DERROTA) no cambia.
  * Devuelve la duración (ms) para lanzar después el final de siempre (playMatchEnd). Solo visual.
  */
@@ -130,16 +130,7 @@ export function playMatchFinale(scene: Phaser.Scene, o: MatchFinaleOpts): number
 
   // 1,0 — sello gigante
   const sealY = cy + 120;
-  if (o.win) {
-    // rayos dorados que giran detrás del sello
-    const rays = add(scene.add.graphics({ x: cx, y: sealY }).setDepth(D + 1).setBlendMode(Phaser.BlendModes.ADD).setAlpha(0));
-    for (let i = 0; i < 16; i++) {
-      const a0 = (i / 16) * Math.PI * 2;
-      rays.fillStyle(GOLD, i % 2 ? 0.18 : 0.32).slice(0, 0, 420, a0, a0 + Math.PI / 22, false).fillPath();
-    }
-    scene.tweens.add({ targets: rays, alpha: 1, delay: 950, duration: 300 });
-    scene.tweens.add({ targets: rays, angle: 90, delay: 950, duration: 2600 });
-  }
+  // (sin rayos detrás del sello: decisión del usuario, 12-11-2026)
   // (la pantalla de resultados ya dice VICTORIA / DERROTA: aquí se anuncia el fin del partido)
   const seal = txt(cx, sealY, o.win ? '¡PARTIDO GANADO!' : 'PARTIDO PERDIDO', Math.min(68, Math.floor((W - 40) / 9.5)), o.win ? '#ffd23f' : '#ff6b78', o.win ? '#5a3a00' : '#2a0610');
   seal.setLetterSpacing(3).setAlpha(0).setScale(3);

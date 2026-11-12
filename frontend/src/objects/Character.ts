@@ -487,6 +487,11 @@ export class Character extends Phaser.GameObjects.Container {
     return this.nxo?.debugInfo() ?? null;
   }
 
+  /** Camina (en vez de correr) durante `ms`: entrada a la cancha al empezar el partido. */
+  walkFor(ms: number) {
+    this.nxo?.walkFor(ms);
+  }
+
   /** Suelta la pose del REMATE sin golpear (ver NxoActor.releaseRemate). */
   releaseRemate() {
     this.nxo?.releaseRemate();
@@ -505,6 +510,30 @@ export class Character extends Phaser.GameObjects.Container {
 
   impactStun(kind: 'smash' | 'inferno', ms: number, throwRacket = true): boolean {
     return this.nxo?.impactStun(kind, ms, throwRacket) ?? false;
+  }
+
+  /** Sin raqueta (ULTI recibida): reposo y carrera sin raqueta si la hoja los trae (ver NxoActor.setNoRacket). */
+  setNoRacket(on: boolean) {
+    this.nxo?.setNoRacket(on);
+  }
+
+  /** Recoge la raqueta con su animación; `onGrab` cuando la mano la toma. Devuelve la duración en ms (0 = sin clip). */
+  pickupRacket(onGrab?: () => void): number {
+    if (!this.nxo) {
+      onGrab?.();
+      return 0;
+    }
+    return this.nxo.pickupRacket(onGrab);
+  }
+
+  /** El aturdido en curso ya trae las estrellas dibujadas (no poner las de la escena). */
+  get stunStarsDrawn() {
+    return this.nxo?.stunStarsDrawn ?? false;
+  }
+
+  /** Recogiendo la raqueta (clip en curso). */
+  get pickingUp() {
+    return this.nxo?.pickingUp ?? false;
   }
 
   /** Reacción al acabar un punto. */

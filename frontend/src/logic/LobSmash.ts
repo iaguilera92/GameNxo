@@ -37,8 +37,7 @@ export const LOB_SMASH = {
   remateMult: 1.45, // sobre SHOT_SPEED (golpe normal = 1; SMASH = SMASH_SPEED_MULT)
   // --- cámara: zoom suave al jugador mientras está dentro del círculo (solo cuando él recibe)
   zoom: 1.18,
-  /** toma "especial": inclinación de cámara (rad, hacia el lado del golpe) y viñeta en los bordes (0..1) */
-  tilt: 0.045,
+  /** toma "especial": viñeta en los bordes (0..1). La cámara ya no se inclina (12-11-2026): solo zoom y encuadre */
   vignette: 0.6,
   /** encuadre: px sobre los pies del jugador que quedan en el centro (0 = pies al centro → toma más baja) */
   focusLift: 20,

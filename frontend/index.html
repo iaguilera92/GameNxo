@@ -17,6 +17,20 @@
     <style>
       html, body { margin: 0; padding: 0; width: 100%; height: 100%; background: #000; overflow: hidden; touch-action: none; user-select: none; -webkit-user-select: none; }
       #game { width: 100%; height: 100%; }
+      /* Celular web con pantalla "baja" (Safari de iPhone con sus barras: 390x664 ≈ 0,59): el juego está pensado
+         para 9:16 o más alto; si se ensancha, el menú se encima. Ahí se mantiene 9:16 centrado (franjas negras
+         mínimas a los lados). Pantallas 9:16 o más altas (APK, Android, iPhone a pantalla completa) no cambian. */
+      @media (orientation: portrait) and (min-aspect-ratio: 9/16) {
+        #game { margin: 0 auto; width: min(100%, 100vh * 9 / 16); }
+        @supports (height: 100dvh) {
+          #game { width: min(100%, (100dvh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)) * 9 / 16); }
+        }
+      }
+      /* Instalada en el iPhone (Añadir a inicio): la barra de estado es translúcida; el juego no queda bajo la
+         muesca ni bajo la barra de inicio. Solo en modo instalado (la APK y el navegador no lo usan). */
+      @media (display-mode: standalone) {
+        body { box-sizing: border-box; padding: env(safe-area-inset-top) 0 env(safe-area-inset-bottom); }
+      }
     </style>
   </head>
   <body>

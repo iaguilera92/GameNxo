@@ -218,7 +218,7 @@ export function showVersus(scene: Phaser.Scene, player: VersusSide, rival: Versu
  */
 function winsBadge(scene: Phaser.Scene, plate: Phaser.GameObjects.Container, ph: number, wins: number) {
   const label = wins === 1 ? 'VICTORIA' : 'VICTORIAS';
-  const b = scene.add.container(0, ph / 2 + 30).setScale(0);
+  const b = scene.add.container(0, ph / 2 + 48).setScale(0); // (12-11-2026: más abajo, separada de la placa del nombre)
   plate.add(b);
   const num = scene.add.text(0, 0, '0', { fontFamily: FONT, fontSize: '26px', color: '#3a2200' }).setOrigin(0, 0.5);
   const txt = scene.add.text(0, 1, label, { fontFamily: FONT, fontSize: '17px', color: '#5a3600' }).setOrigin(0, 0.5).setLetterSpacing(1);

@@ -1,13 +1,13 @@
 {
-  "source": "pj-nxo-rival-inferno.png (1 fila x 9: INFERNO DRIVE)",
+  "source": "pj-nxo-rival-ulti.png (6 filas x 9: ULTI completa)",
   "view": "front",
   "cell": {
-    "w": 180,
-    "h": 176
+    "w": 183,
+    "h": 180
   },
   "origin": {
-    "x": 0.5,
-    "y": 0.90909
+    "x": 0.49727,
+    "y": 0.94444
   },
   "standHeight": 140,
   "cols": 3,
@@ -15,13 +15,45 @@
   "preStrike": 5,
   "strikeFrom": 5,
   "impact": 6,
+  "racketFree": 2,
+  "pickupGrab": 3,
   "animations": {
     "inferno-swing": {
-      "file": "inferno-swing.png",
+      "file": "inferno-swing.webp",
       "frames": 9,
       "fps": 15,
       "loop": false,
       "impact": 6
+    },
+    "ulti-hit": {
+      "file": "ulti-hit.webp",
+      "frames": 9,
+      "fps": 14,
+      "loop": false
+    },
+    "ulti-stun": {
+      "file": "ulti-stun.webp",
+      "frames": 9,
+      "fps": 12,
+      "loop": true
+    },
+    "idle-nr": {
+      "file": "idle-nr.webp",
+      "frames": 9,
+      "fps": 8,
+      "loop": true
+    },
+    "run-nr": {
+      "file": "run-nr.webp",
+      "frames": 9,
+      "fps": 14,
+      "loop": true
+    },
+    "pickup": {
+      "file": "pickup.webp",
+      "frames": 9,
+      "fps": 14,
+      "loop": false
     }
   }
 }

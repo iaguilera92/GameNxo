@@ -101,7 +101,9 @@ export class MenuScene extends Phaser.Scene {
     const px = W / 2 + HERO_SHIFT_X;
     this.add.ellipse(px, feetY, 460, 90, 0x0a1a3a, 0.5);
     // retrato estático si la skin lo tiene; si no, el personaje animado de siempre
-    const portrait = addPortrait(this, p.skin as SkinId, px, feetY + 8, HERO_H);
+    // pantallas bajas (Safari de iPhone con sus barras): el retrato se achica para no meterse bajo el PASE;
+    // en pantallas altas (APK) el mínimo no aplica y queda como siempre
+    const portrait = addPortrait(this, p.skin as SkinId, px, feetY + 8, Math.min(HERO_H, feetY + 8 - 170));
     if (portrait) applyCharColor(portrait, p.color, p.skin); // tu ESTILO DE COLOR (PERSONALIZACIÓN)
     else {
       const hero = new Character(this, px - 10, feetY, playerLook(p.skin), 'front').setScale(4.8);
@@ -111,7 +113,10 @@ export class MenuScene extends Phaser.Scene {
 
     this.profileBar(W, p);    // botones laterales a media altura, sin chocar con el personaje
     // nunca encima del widget del PASE (termina en y≈242): si no, en pantallas bajas/anchas lo tapan
-    const sideY = Math.max(242 + 16 + 68, Math.min(H * 0.4, feetY - 300));
+    // tope de DIARIO/AMIGOS (sobre el panel de ruletas): en pantallas bajas PERSONAJE y TIENDA suben lo justo
+    // para que DIARIO no se monte sobre TIENDA (en pantallas altas este tope no aplica)
+    const dailyMaxY = playY - 124 - 52 - 30 - 84 / 2;
+    const sideY = Math.max(242 + 16 + 68, Math.min(H * 0.4, feetY - 300, dailyMaxY - 84 / 2 - 30 - 136 / 2 - 166));
     this.sideButton(128, sideY, 'PERSONAJE', 'user', false, () => go('Customize'));
     this.sideButton(128, sideY + 166, 'TIENDA', 'shop', false, () => go('Shop'));
     // premio diario: bajo TIENDA, mitad de su ancho (214/2); se marca en dorado pero NUNCA se abre solo

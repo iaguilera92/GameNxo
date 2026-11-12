@@ -52,6 +52,7 @@ export function migratePlayer(raw: unknown, starter: StarterSkin = 'nxo'): Playe
     s.login = sanitizeLogin(r.login);
   }
   if (version >= 7) s.zone = sanitizeZoneProgress(r.zone);
+  if (typeof r.giftDay === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(r.giftDay)) s.giftDay = r.giftDay; // regalo gratis de la Tienda
 
   s.name = str(r.name, s.name);
   s.level = Math.min(MAX_LEVEL, Math.max(1, Math.floor(num(r.level, 1))));

@@ -76,6 +76,8 @@ export interface PlayerState {
   login: LoginState;
   /** Rayos y atributos que mejoran al entrar en Zona. */
   zone: ZoneProgress;
+  /** REGALO GRATIS de la Tienda: ciclo (día) en que se recogió por última vez (domain/shopGift.ts) */
+  giftDay?: string;
 }
 
 export const itemId = {

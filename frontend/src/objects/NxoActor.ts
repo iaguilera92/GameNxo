@@ -1,4 +1,4 @@
-﻿import Phaser from 'phaser';
+import Phaser from 'phaser';
 import { SHEETS, SHEET_IDS, type SheetCfg, type SheetId } from '../characters/sheets';
 import { CHAR_UNITS_H, skinMode } from '../characters/skins';
 import nxoHits from '../characters/nxo-hits.json';
@@ -19,7 +19,7 @@ import maiInferno from '../characters/mai-inferno.json';
 import { runAnimRate } from '../logic/PlayerMotion';
 
 /**
- * Hojas NUEVAS de NXO de espaldas (public/personajes/Nxo/pj-nxo-sprites-1..4.png, cortadas con
+ * Hojas NUEVAS de NXO de espaldas (public/personajes/Nxo/pj-nxo-1..4.png, cortadas con
  * tools/build-nxo-v2.mjs): todas las tiras viven en assets/characters/nxo-v2/ con la misma celda y ancla.
  * Con ellas NO se voltea nada: correr a la izquierda, frenadas, etc. ya vienen dibujados.
  */
@@ -69,6 +69,20 @@ const BOUNCE = {
   yPerPx: 0.82,
 };
 
+/**
+ * Bote del rival (de frente, hoja 4 fila 1 de nxo-front, 178x136): bota con la mano de la raqueta, que queda a la
+ * IZQUIERDA de la imagen (altura de la cabeza de la raqueta sobre los pies, medida a ojo en la tira; revisar si cambia la fila).
+ */
+const BOUNCE_FRONT = {
+  frames: [52, 47, 42, 32, 22, 22, 42, 49],
+  palm: 6,
+  handX: -30,
+  release: 2.2,
+  ground: 4.3,
+  catch: 6.5,
+  zPerPx: 1.07,
+  yPerPx: 0.82,
+};
 /** salto por cÃ³digo (frames 3-6 = Ã­ndices 2-5) del saque con efecto */
 const JUMP_ARC = [0.45, 0.85, 1, 0.55];
 const JUMP_H = CHAR_UNITS_H * 0.22;
@@ -76,7 +90,7 @@ const JUMP_H = CHAR_UNITS_H * 0.22;
 /** al empezar a moverse camina este tiempo (ms) y luego corre (hojas nuevas) */
 const WALK_MS = 500;
 
-type State = 'idle' | 'run' | 'runstop' | 'hold' | 'swing' | 'serve' | 'victory' | 'turn' | 'sprint' | 'land' | 'inferno' | 'dive' | 'stun' | 'emote' | 'remate';
+type State = 'idle' | 'run' | 'runstop' | 'hold' | 'swing' | 'serve' | 'victory' | 'turn' | 'sprint' | 'land' | 'inferno' | 'dive' | 'stun' | 'emote' | 'remate' | 'pickup';
 
 export type SpriteCharId = SheetId;
 /** Clip (textura = animación) para dibujar fuera del partido: último frame, ancla y alto de pie de su hoja. */
@@ -148,8 +162,19 @@ type InfCfg = {
   preStrike: number;
   strikeFrom: number;
   impact: number;
-  animations: { 'inferno-swing': AnimInfo };
+  /** (hoja de 6 x 9) ulti-hit: frame (0-based) desde el que la mano queda vacía */
+  racketFree?: number;
+  /** (hoja de 6 x 9) pickup: frame (0-based) en que la mano toma la raqueta del suelo */
+  pickupGrab?: number;
+  animations: { 'inferno-swing': AnimInfo } & Partial<Record<UltiAnim, AnimInfo>>;
 };
+/**
+ * ULTI completa (hoja de 6 x 9 de NXO de espaldas, pj-nxo-sprite-inferno-v2): recibir el pelotazo, aturdido sin raqueta,
+ * reposo y carrera sin raqueta y recogerla. Packs sin estos clips (rival, Mai) usan inferno-hit / stunned y los de siempre.
+ */
+type UltiAnim = 'ulti-hit' | 'ulti-stun' | 'idle-nr' | 'run-nr' | 'pickup';
+const ULTI_ANIMS: UltiAnim[] = ['ulti-hit', 'ulti-stun', 'idle-nr', 'run-nr', 'pickup'];
+const ultiKey = (a: UltiAnim, pk = 'nxo') => `${pk}-u-${a}`;
 const INF = nxoInferno as InfCfg;
 const infernoKey = (pk = 'nxo') => `${pk}-inferno-swing`;
 const infernoReady = (scene: Phaser.Scene, pk = 'nxo') => scene.textures.exists(infernoKey(pk)) && scene.anims.exists(infernoKey(pk));
@@ -169,13 +194,13 @@ type Pack = {
   move: typeof MOVE;
   extra: ExtraCfg;
   /** el reposo del saque es el bote de la pelota (clip y alturas medidas solo en la hoja de espaldas) */
-  bounce: boolean;
+  bounce: typeof BOUNCE | null;
   /** INFERNO DRIVE (hoja de 9 frames) y su carpeta */
   inf: InfCfg;
   infDir: string;
 };
 const PACKS = {
-  nxo: { dir: V2_DIR, key: 'nxo', hits: HITS, special: SPECIAL, move: MOVE, extra: EXTRA, bounce: true, inf: INF, infDir: 'nxo-inferno' },
+  nxo: { dir: V2_DIR, key: 'nxo', hits: HITS, special: SPECIAL, move: MOVE, extra: EXTRA, bounce: BOUNCE, inf: INF, infDir: 'nxo-inferno' },
   'nxo-front': {
     dir: 'nxo-front-v2',
     key: 'nxof',
@@ -183,7 +208,7 @@ const PACKS = {
     special: nxoFSpecial as typeof SPECIAL,
     move: nxoFMove as typeof MOVE,
     extra: nxoFExtra as typeof EXTRA,
-    bounce: false,
+    bounce: BOUNCE_FRONT,
     inf: nxoFInferno as InfCfg,
     infDir: 'nxo-front-inferno',
   },
@@ -195,7 +220,7 @@ const PACKS = {
     special: maiSpecial as typeof SPECIAL,
     move: maiMove as typeof MOVE,
     extra: maiExtra as ExtraCfg,
-    bounce: false,
+    bounce: null,
     inf: maiInferno as InfCfg,
     infDir: 'mai-inferno',
   },
@@ -214,7 +239,14 @@ export function queueNxoSpriteLoads(load: Phaser.Loader.LoaderPlugin) {
     }
   }
   if (skinMode() !== 'off') {
-    for (const p of PACK_LIST) load.spritesheet(infernoKey(p.key), `assets/characters/${p.infDir}/${p.inf.animations['inferno-swing'].file}`, { frameWidth: p.inf.cell.w, frameHeight: p.inf.cell.h });
+    for (const p of PACK_LIST) {
+      load.spritesheet(infernoKey(p.key), `assets/characters/${p.infDir}/${p.inf.animations['inferno-swing'].file}`, { frameWidth: p.inf.cell.w, frameHeight: p.inf.cell.h });
+      // clips de la ULTI completa (solo los packs cuya hoja los trae)
+      for (const a of ULTI_ANIMS) {
+        const info = p.inf.animations[a];
+        if (info) load.spritesheet(ultiKey(a, p.key), `assets/characters/${p.infDir}/${info.file}`, { frameWidth: p.inf.cell.w, frameHeight: p.inf.cell.h });
+      }
+    }
   }
   queueBaseLoads(load);
 }
@@ -270,6 +302,10 @@ export function registerNxoAnims(scene: Phaser.Scene) {
     for (const [a, info] of extrasOf(p)) mk(extraKey(a, p.key), info, info.loop ? -1 : 0);
     for (const a of Object.keys(p.special.animations) as SpecialAnim[]) mk(specialKey(a, p.key), p.special.animations[a], 0);
     mk(infernoKey(p.key), p.inf.animations['inferno-swing'], 0);
+    for (const a of ULTI_ANIMS) {
+      const info = p.inf.animations[a];
+      if (info) mk(ultiKey(a, p.key), info, info.loop ? -1 : 0);
+    }
     if (hitsReady(scene, p)) for (const a of HIT_ANIMS) mk(hitKey(a, p.key), p.hits.animations[a], 0);
   }
   for (const id of IDS) {
@@ -368,6 +404,14 @@ export class NxoActor {
   private recovering = false;
   private looseRacket?: Phaser.GameObjects.Image;
   private looseAt = -1;
+  /** sin raqueta (ULTI recibida, raqueta en el suelo): reposo y carrera usan idle-nr / run-nr si la hoja los trae */
+  private noRacket = false;
+  /** recogiendo la raqueta (clip pickup): aviso al tomarla (frame pickupGrab) */
+  private onGrab?: () => void;
+  /** existe el clip de la ULTI completa `a` en este pack */
+  private ur(a: UltiAnim) {
+    return !!this.pk && !!this.P.inf.animations[a] && this.scene.anims.exists(ultiKey(a, this.P.key));
+  }
 
   /** juego de hojas v2 de este personaje (nxo de espaldas / nxo de frente); undefined = hojas antiguas */
   private readonly pk?: Pack;
@@ -424,7 +468,7 @@ export class NxoActor {
   }
   /** ancla y alto de pie de la hoja de un clip (las hojas tienen celdas y escalas distintas) */
   private geoOf(key: string): { origin: { x: number; y: number }; standHeight: number } {
-    if (key === infernoKey(this.P.key)) return this.P.inf;
+    if (key === infernoKey(this.P.key) || key.startsWith(`${this.P.key}-u-`)) return this.P.inf;
     if (key.startsWith(`${this.P.key}-special-`)) return this.P.special;
     if (key.startsWith(`${this.P.key}-hit-`)) return this.P.hits;
     if (key.startsWith(`${this.P.key}-move-`)) return this.P.move;
@@ -794,26 +838,27 @@ export class NxoActor {
    *   frames 1-2  en la mano (cintura) Â· 3 suelta Â· ~4,5 toca el suelo Â· 7 vuelve a la mano Â· 8 en la mano
    */
   serveBounceBall(): { z: number; dy: number } | null {
-    if (this.state !== 'idle' || this.sprite.anims.currentAnim?.key !== this.xk('serve-bounce')) return null;
-    const t = this.sprite.anims.getProgress() * BOUNCE.frames.length; // 0..8 en "frames"
+    const B = this.P.bounce;
+    if (!B || this.state !== 'idle' || this.sprite.anims.currentAnim?.key !== this.xk('serve-bounce')) return null;
+    const t = this.sprite.anims.getProgress() * B.frames.length; // 0..8 en "frames"
     const hand = (u: number) => {
-      const i = Math.max(0, Math.min(BOUNCE.frames.length - 1, Math.floor(u)));
-      const j = Math.min(BOUNCE.frames.length - 1, i + 1);
+      const i = Math.max(0, Math.min(B.frames.length - 1, Math.floor(u)));
+      const j = Math.min(B.frames.length - 1, i + 1);
       const f = Math.max(0, Math.min(1, u - i));
-      return BOUNCE.frames[i] + (BOUNCE.frames[j] - BOUNCE.frames[i]) * f; // px sobre los pies
+      return B.frames[i] + (B.frames[j] - B.frames[i]) * f; // px sobre los pies
     };
     let px: number;
-    if (t < BOUNCE.release) px = hand(t) - BOUNCE.palm;
-    else if (t < BOUNCE.ground) {
-      const h0 = hand(BOUNCE.release) - BOUNCE.palm;
-      const k = (t - BOUNCE.release) / (BOUNCE.ground - BOUNCE.release);
+    if (t < B.release) px = hand(t) - B.palm;
+    else if (t < B.ground) {
+      const h0 = hand(B.release) - B.palm;
+      const k = (t - B.release) / (B.ground - B.release);
       px = h0 * (1 - k * k); // cae acelerando
-    } else if (t < BOUNCE.catch) {
-      const h1 = hand(BOUNCE.catch) - BOUNCE.palm;
-      const k = (BOUNCE.catch - t) / (BOUNCE.catch - BOUNCE.ground);
+    } else if (t < B.catch) {
+      const h1 = hand(B.catch) - B.palm;
+      const k = (B.catch - t) / (B.catch - B.ground);
       px = h1 * (1 - k * k); // sube frenando hasta la mano
-    } else px = hand(t) - BOUNCE.palm;
-    return { z: Math.max(2, px * BOUNCE.zPerPx), dy: BOUNCE.handX * BOUNCE.yPerPx };
+    } else px = hand(t) - B.palm;
+    return { z: Math.max(2, px * B.zPerPx), dy: B.handX * B.yPerPx };
   }
 
   // ------------------------------------------------------------ hojas nuevas: estiradas, aturdido, emotes
@@ -843,7 +888,11 @@ export class NxoActor {
     this.sprite.setFlipX(false);
     this.state = 'stun';
     this.sprite.anims.timeScale = 1;
-    if (kind === 'inferno' && this.xr('inferno-hit')) {
+    if (kind === 'inferno' && this.ur('ulti-hit')) {
+      // hoja de la ULTI completa: recibe el pelotazo (ulti-hit) y encadena el aturdido sin raqueta (ulti-stun, en bucle)
+      this.looseAt = throwRacket ? (this.P.inf.racketFree ?? 2) : -1; // desde el frame 3 la mano queda vacía
+      this.playClip(ultiKey('ulti-hit', this.P.key));
+    } else if (kind === 'inferno' && this.xr('inferno-hit')) {
       this.looseAt = throwRacket ? 2 : -1; // desde el frame 3 la mano queda vacÃ­a: la raqueta sale volando
       this.playClip(this.xk('inferno-hit'));
     } else {
@@ -852,6 +901,53 @@ export class NxoActor {
     }
     this.scene.time.delayedCall(ms, () => this.endBusy('stun'));
     return true;
+  }
+
+  /**
+   * Sin raqueta (ULTI recibida): mientras dure, el reposo es idle-nr y la carrera run-nr (volteada hacia la izquierda).
+   * Golpes, saque y habilidades los bloquea MatchScene. Sin esos clips en la hoja (rival, Mai) no cambia nada.
+   * `off` sin animación (fin del punto / colocarse para sacar).
+   */
+  setNoRacket(on: boolean) {
+    if (on === this.noRacket) return;
+    this.noRacket = on;
+    if (!on && this.state === 'pickup') {
+      this.onGrab = undefined;
+      this.state = 'idle';
+    }
+    if (this.state === 'idle' || this.state === 'run' || this.state === 'runstop') this.enter(this.state === 'run' ? 'run' : 'idle');
+  }
+
+  /**
+   * Recoge la raqueta del suelo (clip pickup, una vez): en el frame `pickupGrab` la mano la toma (`onGrab`), al terminar
+   * vuelve a tener raqueta y pasa al reposo normal. Devuelve la duración en ms, o 0 sin clip (quita el modo sin raqueta).
+   */
+  pickupRacket(onGrab?: () => void): number {
+    if (!this.v2 || !this.ur('pickup') || this.state === 'victory') {
+      this.setNoRacket(false);
+      onGrab?.();
+      return 0;
+    }
+    const info = this.P.inf.animations.pickup!;
+    this.stopShake();
+    this.stopLean();
+    this.sprite.setFlipX(false);
+    this.state = 'pickup';
+    this.onGrab = onGrab;
+    this.sprite.anims.timeScale = 1;
+    this.playClip(ultiKey('pickup', this.P.key));
+    return Math.round((info.frames / info.fps) * 1000);
+  }
+
+  /** El aturdido en curso ya trae las estrellas dibujadas (clips de la ULTI completa): la escena no pone las suyas. */
+  get stunStarsDrawn() {
+    const k = this.sprite.anims.currentAnim?.key;
+    return this.state === 'stun' && (k === ultiKey('ulti-hit', this.P.key) || k === ultiKey('ulti-stun', this.P.key));
+  }
+
+  /** Recogiendo la raqueta (clip pickup en curso). */
+  get pickingUp() {
+    return this.state === 'pickup';
   }
 
   /** ReacciÃ³n al acabar un punto (ganado / perdido). Se corta sola al empezar el siguiente. */
@@ -974,6 +1070,8 @@ export class NxoActor {
     this.tossing = false;
     this.recovering = false;
     this.dropLooseRacket();
+    this.noRacket = false; // nuevo punto: la raqueta vuelve a la mano
+    this.onGrab = undefined;
     this.state = 'idle';
     this.sprite.anims.timeScale = 1;
     this.enter('idle');
@@ -987,6 +1085,7 @@ export class NxoActor {
     if (this.state === 'sprint') return true; // lo controla el DASH (setSprint)
     if (this.state === 'land') return !this.landDone;
     if (this.state === 'stun') return true; // lo suelta endBusy al acabar el aturdimiento
+    if (this.state === 'pickup') return true; // recogiendo la raqueta: lo suelta el final del clip
     if (this.state === 'remate') return true; // pose del REMATE: la suelta el golpe (swing)
     if (this.state === 'dive') return !this.recovering || !(this.moving || this.charging); // la recuperaciÃ³n se puede cortar
     if (this.state === 'emote') return !(this.moving || this.charging); // moverse corta la reacciÃ³n
@@ -1001,7 +1100,8 @@ export class NxoActor {
   /** Elige el estado "de reposo" que corresponde a las banderas actuales. */
   private refresh() {
     if (this.busy()) return;
-    const wantHold = (this.charging || this.ready) && !this.moving;
+    // sin raqueta no hay pose de golpe (las de la hoja la llevan en la mano)
+    const wantHold = (this.charging || this.ready) && !this.moving && !this.noRacketClips;
     if (this.moving && !this.charging) {
       if (this.state !== 'run') {
         // arranca caminando (WALK_MS) y luego corre; viniendo del DASH, corre directamente
@@ -1027,7 +1127,13 @@ export class NxoActor {
     // en la recuperaciÃ³n del golpe: si no hay nada que hacer, se deja terminar el clip
   }
 
+  /** sin raqueta y con los clips de la ULTI completa (reposo y carrera sin raqueta) */
+  private get noRacketClips() {
+    return this.noRacket && this.ur('idle-nr') && this.ur('run-nr');
+  }
+
   private enter(s: 'idle' | 'run' | 'runstop') {
+    if (this.noRacketClips && s === 'runstop') s = 'idle'; // la frenada de la hoja lleva raqueta: sin ella, al reposo
     if (this.state === 'hold') this.lastHoldAt = this.scene.time.now;
     this.stopShake();
     this.stopLean();
@@ -1042,6 +1148,7 @@ export class NxoActor {
     // solo la carrera (y su frenada) se voltea segÃºn la direcciÃ³n; el reposo mira siempre igual (hojas nuevas: nunca)
     this.flip((s === 'run' || s === 'runstop') && this.runDir < 0);
     if (s === 'run') this.playClip(this.runKey());
+    else if (s === 'idle' && this.noRacketClips) this.playClip(ultiKey('idle-nr', this.P.key));
     else if (s === 'idle' && this.serveIdle && this.v2 && this.P.bounce && this.xr('serve-bounce')) this.playClip(this.xk('serve-bounce'));
     else this.playClip(this.k(s));
   }
@@ -1061,8 +1168,19 @@ export class NxoActor {
    * Clip de carrera. Hojas nuevas: los primeros WALK_MS de cada desplazamiento CAMINA (hoja 4, fila 3) y luego
    * corre; setMoving cambia de clip solo al pasar el tiempo (compara con runKey en cada fotograma).
    */
+  /** Hasta cuándo (scene time) se camina en vez de correr: entrada al empezar el partido (walkFor). (Claude, 12-11-2026) */
+  private walkUntil = 0;
+
+  /** Camina (clip `walk`) en vez de correr durante `ms`, aunque se mueva más de WALK_MS: entrada a la cancha. */
+  walkFor(ms: number) {
+    this.walkUntil = this.scene.time.now + ms;
+  }
+
   private runKey() {
-    if (this.v2 && this.xr('walk') && this.scene.time.now - this.runStartAt < WALK_MS) return this.xk('walk');
+    // sin raqueta: carrera sin raqueta (dibujada hacia la derecha; enter / setMoving la voltean hacia la izquierda)
+    if (this.noRacketClips) return ultiKey('run-nr', this.P.key);
+    const now = this.scene.time.now;
+    if (this.v2 && this.xr('walk') && (now - this.runStartAt < WALK_MS || now < this.walkUntil)) return this.xk('walk');
     return this.k('run');
   }
 
@@ -1198,6 +1316,15 @@ export class NxoActor {
       }
       return;
     }
+    // recogiendo la raqueta: en el frame en que la mano la toma, la del suelo desaparece (la dibuja el clip)
+    if (this.state === 'pickup') {
+      if (this.onGrab && frame >= (this.P.inf.pickupGrab ?? 3)) {
+        const cb = this.onGrab;
+        this.onGrab = undefined;
+        cb();
+      }
+      return;
+    }
     // saque: parar con el brazo arriba hasta que la pelota estÃ© a punto de caer al golpeo
     if (this.state === 'serve') {
       if (this.tossing) return; // el lanzamiento (hoja nueva) termina solo en su Ãºltima pose
@@ -1240,7 +1367,22 @@ export class NxoActor {
   private onComplete(animKey: string) {
     if (this.state === 'victory') return; // se queda en la Ãºltima pose
     if (this.state === 'serve' && this.tossing) return; // lanzamiento: espera en la Ãºltima pose a serveRelease
-    if (this.state === 'stun') return; // aturdido: lo suelta endBusy
+    if (this.state === 'stun') {
+      // ULTI completa: tras recibir el pelotazo, aturdido sin raqueta en bucle hasta endBusy
+      if (animKey === ultiKey('ulti-hit', this.P.key) && this.ur('ulti-stun')) this.playClip(ultiKey('ulti-stun', this.P.key));
+      return; // aturdido: lo suelta endBusy
+    }
+    if (this.state === 'pickup') {
+      // ya con la raqueta en la mano: reposo normal (o carrera, si se mueve)
+      const cb = this.onGrab;
+      this.onGrab = undefined;
+      cb?.();
+      this.noRacket = false;
+      this.state = 'idle';
+      this.refresh();
+      if (this.state === 'idle') this.enter('idle');
+      return;
+    }
     if (this.state === 'dive') {
       if (!this.recovering) {
         // tras la estirada, se levanta (recuperaciÃ³n del mismo lado)

@@ -99,14 +99,21 @@ export function skinMode(): 'off' | 'auto' {
   return CHARACTER_SKINS;
 }
 
-/** Llamar desde un `preload()`: encola todas las piezas posibles; las que no existan se ignoran. */
+/**
+ * Piezas de imagen que EXISTEN hoy en public/assets/characters/ (`<id>_<vista>_<pieza>.png`). Este sistema antiguo
+ * (cuerpo + brazo) quedó reemplazado por las hojas de sprites (objects/NxoActor.ts) y sus imágenes ya no están: con la
+ * lista vacía no se pide nada al arrancar (antes salían 8 "Failed to process file: image skin-raw-…" en la consola).
+ * Si alguna vez se vuelve a usar una pieza, añadir aquí su nombre, p. ej. 'nxo_front_body'.
+ */
+const SKIN_FILES = new Set<string>([]);
+
+/** Llamar desde un `preload()`: encola las piezas que existen (SKIN_FILES); el resto usa el personaje vectorial. */
 export function queueSkinLoads(load: Phaser.Loader.LoaderPlugin) {
   if (skinMode() === 'off') return;
   for (const id of SKIN_IDS)
     for (const view of ['front', 'back'] as SkinView[])
       for (const part of ['body', 'arm'] as SkinPart[])
-        if (!load.textureManager.exists(bakedKey(id, view, part))) load.image(rawKey(id, view, part), fileUrl(id, view, part));
-  // una pieza que falta (404) no rompe nada: Phaser la descarta y esa vista usa el personaje vectorial
+        if (SKIN_FILES.has(`${id}_${view}_${part}`) && !load.textureManager.exists(bakedKey(id, view, part))) load.image(rawKey(id, view, part), fileUrl(id, view, part));
 }
 
 /**
@@ -217,16 +224,14 @@ let reported = false;
 function report(scene: Phaser.Scene) {
   if (reported) return;
   reported = true;
-  if (skinMode() === 'off') {
-    console.info('[skins] desactivadas (personajes vectoriales)');
-    return;
-  }
+  // sin piezas de skin (todo vectorial) no se informa nada: ensuciaba la consola en cada arranque
+  if (skinMode() === 'off' || !SKIN_FILES.size) return;
   const missing = REQUIRED.filter(([id, view, part]) => !has(scene, id, view, part)).map((r) => r.join('_') + '.png');
   const views = SKIN_IDS.flatMap((id) =>
     (['front', 'back'] as SkinView[]).map((v) => `/${v}: ${has(scene, id, v, 'body') && has(scene, id, v, 'arm') ? 'IMÁGENES' : 'vectorial'}`),
   );
   console.info('[skins]', views.join(' | '));
-  if (missing.length) console.info('[skins] faltan:', missing);
+  if (missing.length && SKIN_FILES.size) console.info('[skins] faltan:', missing);
 }
 
 

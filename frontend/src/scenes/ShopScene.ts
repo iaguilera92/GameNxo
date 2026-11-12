@@ -23,6 +23,8 @@ import { fitText } from '../ui/fitText';
 import { styleLook } from '../ui/styleLook';
 import { DASH_COOLDOWN, SMASH_COOLDOWN } from '../config';
 import { INFERNO } from '../logic/InfernoDrive';
+import { claimShopGift, shopGiftStatus } from '../logic/Ranked';
+import { drawCoinIcon, drawGiftIcon } from '../ui/wheelArt';
 
 /**
  * TIENDA: todo se compra con DINERO (billetes); la cabecera solo muestra ese saldo.
@@ -86,6 +88,10 @@ export class ShopScene extends Phaser.Scene {
   /** desplazamiento vertical del contenido (la tienda es más alta que la pantalla) */
   private scrollY = 0;
   private maxScroll = 0;
+  /** posición (en el contenido) de la sección REGALO GRATIS: destino de la flecha GRATIS */
+  private giftY = 0;
+  private freeArrow?: Phaser.GameObjects.Container;
+  private giftTimer?: Phaser.Time.TimerEvent;
   private dragMoved = false;
 
   constructor() {
@@ -124,6 +130,7 @@ export class ShopScene extends Phaser.Scene {
     this.body = this.add.container(0, 0);
     this.build();
     this.setupScroll();
+    this.makeFreeArrow();
     const off = onPlayerChange(() => this.refreshCash());
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => off());
   }
@@ -203,6 +210,15 @@ export class ShopScene extends Phaser.Scene {
     const packH = Math.round(packW * 0.92);
     CASH_PACKS.forEach((p, i) => this.cashPackCard(30 + (i % packCols) * (packW + gap), y + Math.floor(i / packCols) * (packH + gap), packW, packH, p, i));
     y += Math.ceil(CASH_PACKS.length / packCols) * (packH + gap) - gap;
+    y += 52;
+
+    // ---------------------------------------------------------------- regalo gratis (al final; la flecha GRATIS lleva aquí)
+    this.giftY = y - 30;
+    this.sectionTitle(W, y, 'REGALO GRATIS');
+    y += titleGap;
+    const giftH = 190;
+    this.giftCard(30, y, W - 60, giftH);
+    y += giftH;
     this.maxScroll = Math.max(0, y + 36 - this.scale.height);
     this.scrollY = Math.min(this.scrollY, this.maxScroll);
     this.body.y = -this.scrollY;
@@ -217,6 +233,125 @@ export class ShopScene extends Phaser.Scene {
     };
   }
 
+  /** Desplaza el contenido a `v` (acotado). */
+  private setScroll(v: number) {
+    this.scrollY = Phaser.Math.Clamp(v, 0, this.maxScroll);
+    this.body.y = -this.scrollY;
+    // la flecha GRATIS se esconde al llegar abajo (ya se ve el regalo)
+    if (this.freeArrow) this.freeArrow.setVisible(this.scrollY < Math.min(this.maxScroll, this.giftY - 200));
+  }
+
+  /**
+   * REGALO GRATIS: una vez al día unas monedas gratis (5, a veces 10 o 15; domain/shopGift.ts). Disponible: botón
+   * RECOGER que late. Ya recogido: cuenta atrás hasta el próximo (reinicio 23:59 hora de Chile).
+   */
+  private giftCard(x: number, y: number, w: number, h: number) {
+    const st = shopGiftStatus();
+    const c = this.add.container(0, 0);
+    this.body.add(c);
+    // como una celda del PASE DE BATALLA, sin brillo ni dorado: card verde, regalo al centro y toda la card es táctil
+    const GIFT = 0x35c85a;
+    c.add(this.card(x, y, w, h, { line: st.available ? GIFT : NEON, glow: st.available ? 0.3 : 0.18 }));
+    if (st.available) {
+      const tint = this.add.graphics();
+      tint.fillStyle(GIFT, 0.14).fillRoundedRect(x, y, w, h, 20);
+      c.add(tint);
+    }
+    const cx = x + w / 2;
+    const ic = this.add.graphics({ x: cx, y: y + h * 0.47 }).setScale(1.25);
+    drawGiftIcon(ic, 40);
+    c.add(ic);
+    if (st.available) this.tweens.add({ targets: ic, angle: { from: -6, to: 6 }, duration: 380, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
+    // monedas que trae, bajo el regalo
+    const sub = this.add.text(0, y + h - 30, '5 a 15 monedas gratis', { fontFamily: FONT, fontSize: '20px', color: '#ffe680' }).setOrigin(0, 0.5);
+    const coin = this.add.graphics();
+    const subW = 30 + sub.width;
+    drawCoinIcon(coin, 12, cx - subW / 2 + 12, y + h - 30);
+    sub.setX(cx - subW / 2 + 30);
+    c.add([coin, sub]);
+    this.giftTimer?.remove();
+    this.giftTimer = undefined;
+    if (st.available) {
+      // "¡RECLAMAR!" arriba (como el pase) y la card entera recoge el regalo
+      const pill = this.add.container(cx, y + 30);
+      const pg = this.add.graphics();
+      pg.fillStyle(0x0a3a18, 1).fillRoundedRect(-66, -16, 132, 32, 16);
+      pg.fillStyle(GIFT, 1).fillRoundedRect(-63, -14, 126, 28, 14);
+      pill.add([pg, this.add.text(0, 0, '¡RECLAMAR!', { fontFamily: FONT, fontSize: '17px', color: '#ffffff', stroke: '#0a3a18', strokeThickness: 4 }).setOrigin(0.5)]);
+      c.add(pill);
+      this.tweens.add({ targets: pill, scale: { from: 1, to: 1.08 }, duration: 600, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
+      const hit = this.add.zone(cx, y + h / 2, w, h).setInteractive({ useHandCursor: true });
+      hit.on('pointerup', this.tap(() => this.claimGift()));
+      c.add(hit);
+    } else {
+      // ya recogido: atenuada y con la cuenta atrás arriba
+      c.add(this.add.rectangle(cx, y + h / 2, w, h, 0x02060f, 0.35));
+      const left = this.add.text(cx, y + 30, '', { fontFamily: FONT, fontSize: '20px', color: '#9fb2da' }).setOrigin(0.5);
+      c.add(left);
+      const paint = () => {
+        const ms = shopGiftStatus().nextMs;
+        if (ms <= 0) {
+          this.build(); // ya hay regalo nuevo
+          return;
+        }
+        const hh = Math.floor(ms / 3600_000);
+        const mm = Math.floor((ms % 3600_000) / 60_000);
+        if (left.active) left.setText('Recogido · el próximo en ' + hh + ' h ' + mm + ' min');
+      };
+      paint();
+      this.giftTimer = this.time.addEvent({ delay: 30_000, loop: true, callback: paint });
+    }
+  }
+
+  /** Recoge el regalo: monedas que saltan, "+N MONEDAS" y la tarjeta pasa a la cuenta atrás. */
+  private claimGift() {
+    const res = claimShopGift();
+    if (!res.ok) return;
+    const amount = (res as unknown as { amount: number }).amount;
+    const W = this.scale.width;
+    const H = this.scale.height;
+    const t = this.add.text(W / 2, H * 0.45, '+' + amount + ' MONEDAS', textStyle(44, '#ffd23f')).setOrigin(0.5).setDepth(9000).setScale(0.4);
+    this.tweens.add({ targets: t, scale: 1, duration: 320, ease: 'Back.easeOut' });
+    this.tweens.add({ targets: t, alpha: 0, y: t.y - 40, delay: 1100, duration: 300, onComplete: () => t.destroy() });
+    for (let i = 0; i < 12; i++) {
+      const g = this.add.graphics({ x: W / 2, y: H * 0.45 + 40 }).setDepth(8999);
+      drawCoinIcon(g, 12);
+      const a = Phaser.Math.FloatBetween(-Math.PI, 0);
+      const d = Phaser.Math.FloatBetween(90, 220);
+      this.tweens.add({ targets: g, x: W / 2 + Math.cos(a) * d, y: H * 0.45 + 40 + Math.sin(a) * d, alpha: 0, duration: Phaser.Math.Between(600, 900), ease: 'Cubic.easeOut', onComplete: () => g.destroy() });
+    }
+    this.celebrate();
+    this.build();
+    this.freeArrow?.destroy();
+    this.makeFreeArrow();
+  }
+
+  /** Flecha GRATIS (fija, abajo a la derecha): baja deslizando hasta el REGALO GRATIS del final. */
+  private makeFreeArrow() {
+    const W = this.scale.width;
+    const H = this.scale.height;
+    const c = this.add.container(W - 92, H - 70).setDepth(5000);
+    const g = this.add.graphics();
+    g.fillStyle(0x000000, 0.35).fillRoundedRect(-72 + 3, -30 + 5, 144, 60, 30);
+    g.fillStyle(0x1f8a3a, 1).fillRoundedRect(-72, -30, 144, 60, 30);
+    g.fillStyle(0x3ccf5a, 1).fillRoundedRect(-72, -32, 144, 56, 28);
+    g.fillStyle(0xffffff, 0.25).fillRoundedRect(-62, -28, 124, 18, 9);
+    g.lineStyle(5, 0xffffff, 1).beginPath().moveTo(40, -10).lineTo(50, 2).lineTo(60, -10).strokePath();
+    c.add(g);
+    c.add(this.add.text(-14, -4, 'GRATIS', { fontFamily: FONT, fontSize: '22px', color: '#ffffff', stroke: '#0a3a18', strokeThickness: 5 }).setOrigin(0.5));
+    // punto rojo: hay regalo por recoger
+    if (shopGiftStatus().available) c.add(this.add.circle(64, -28, 9, 0xff4f5e).setStrokeStyle(3, 0xffffff));
+    c.setSize(150, 66).setInteractive({ useHandCursor: true });
+    this.tweens.add({ targets: c, y: c.y - 8, duration: 520, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
+    c.on('pointerdown', () => {
+      if (this.modal.length) return;
+      const from = { v: this.scrollY };
+      this.tweens.add({ targets: from, v: this.maxScroll, duration: 650, ease: 'Cubic.easeInOut', onUpdate: () => this.setScroll(from.v) });
+    });
+    this.freeArrow = c;
+    this.setScroll(this.scrollY);
+  }
+
   /** Arrastrar o usar la rueda desplaza el contenido; la cabecera (volver, saldos) queda fija. */
   private setupScroll() {
     const W = this.scale.width;
@@ -227,10 +362,7 @@ export class ShopScene extends Phaser.Scene {
     let down = false;
     let startY = 0;
     let startScroll = 0;
-    const set = (v: number) => {
-      this.scrollY = Phaser.Math.Clamp(v, 0, this.maxScroll);
-      this.body.y = -this.scrollY;
-    };
+    const set = (v: number) => this.setScroll(v);
     this.input.on('pointerdown', (p: Phaser.Input.Pointer) => {
       this.dragMoved = false;
       down = p.y >= HEADER_H && !this.modal.length;

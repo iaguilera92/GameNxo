@@ -1,60 +1,69 @@
 {
-  "source": "pj-nxo-sprites-2.png (fila 1-7)",
+  "source": "pj-nxo-2.png (fila 1-7)",
   "view": "back",
   "cell": {
     "w": 222,
-    "h": 154
+    "h": 142
   },
   "origin": {
     "x": 0.5,
-    "y": 0.94156
+    "y": 0.94366
   },
   "standHeight": 115,
   "hold": 1,
   "serveWait": 2,
   "smashStart": 2,
-  "serveRacket": { "normal": { "dx": 5, "z": 129 }, "spin": { "dx": 14, "z": 145 } },
+  "serveRacket": {
+    "normal": {
+      "dx": -25,
+      "z": 147
+    },
+    "spin": {
+      "dx": -33,
+      "z": 143
+    }
+  },
   "holdForehand": 1,
   "holdPower": 3,
   "holdPowerForehand": 3,
   "animations": {
     "forehand": {
-      "file": "forehand.png",
+      "file": "forehand.webp",
       "frames": 8,
       "fps": 15,
       "loop": false,
       "impact": 6
     },
     "backhand": {
-      "file": "backhand.png",
+      "file": "backhand.webp",
       "frames": 8,
       "fps": 15,
       "loop": false,
       "impact": 5
     },
     "forehand-power": {
-      "file": "forehand-power.png",
+      "file": "forehand-power.webp",
       "frames": 8,
       "fps": 15,
       "loop": false,
       "impact": 5
     },
     "backhand-power": {
-      "file": "backhand-power.png",
+      "file": "backhand-power.webp",
       "frames": 8,
       "fps": 15,
       "loop": false,
       "impact": 5
     },
     "serve": {
-      "file": "serve.png",
+      "file": "serve.webp",
       "frames": 8,
       "fps": 12,
       "loop": false,
       "impact": 4
     },
     "smash": {
-      "file": "smash.png",
+      "file": "smash.webp",
       "frames": 8,
       "fps": 14,
       "loop": false,

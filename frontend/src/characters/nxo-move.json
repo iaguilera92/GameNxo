@@ -1,13 +1,13 @@
 {
-  "source": "pj-nxo-sprites-1.png (fila 5)",
+  "source": "pj-nxo-1.png (fila 5)",
   "view": "back",
   "cell": {
     "w": 222,
-    "h": 154
+    "h": 142
   },
   "origin": {
     "x": 0.5,
-    "y": 0.94156
+    "y": 0.94366
   },
   "standHeight": 115,
   "turnExit": 5,
@@ -18,7 +18,7 @@
   "landRate": 2.6,
   "animations": {
     "brake-turn": {
-      "file": "brake-turn.png",
+      "file": "brake-turn.webp",
       "frames": 8,
       "fps": 14,
       "loop": false

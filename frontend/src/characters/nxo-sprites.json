@@ -1,13 +1,13 @@
 {
-  "source": "pj-nxo-sprites-1.png / pj-nxo-sprites-2.png (tools/build-nxo-v2.mjs)",
+  "source": "pj-nxo-1.png / pj-nxo-2.png (tools/build-nxo-v2.mjs)",
   "view": "back",
   "cell": {
     "w": 222,
-    "h": 154
+    "h": 142
   },
   "origin": {
     "x": 0.5,
-    "y": 0.94156
+    "y": 0.94366
   },
   "standHeight": 115,
   "hold": 1,
@@ -15,28 +15,28 @@
   "smashStart": 2,
   "animations": {
     "idle": {
-      "file": "idle.png",
+      "file": "idle.webp",
       "frames": 8,
       "fps": 8,
       "loop": true,
       "scale": 1
     },
     "run": {
-      "file": "run.png",
+      "file": "run.webp",
       "frames": 8,
       "fps": 14,
       "loop": true,
       "scale": 1
     },
     "runstop": {
-      "file": "runstop.png",
+      "file": "runstop.webp",
       "frames": 8,
       "fps": 14,
       "loop": false,
       "scale": 1
     },
     "forehand": {
-      "file": "forehand.png",
+      "file": "forehand.webp",
       "frames": 8,
       "fps": 15,
       "loop": false,
@@ -44,7 +44,7 @@
       "scale": 1
     },
     "backhand": {
-      "file": "backhand.png",
+      "file": "backhand.webp",
       "frames": 8,
       "fps": 15,
       "loop": false,
@@ -52,7 +52,7 @@
       "scale": 1
     },
     "serve": {
-      "file": "serve.png",
+      "file": "serve.webp",
       "frames": 8,
       "fps": 12,
       "loop": false,
@@ -60,7 +60,7 @@
       "scale": 1
     },
     "smash": {
-      "file": "smash.png",
+      "file": "smash.webp",
       "frames": 8,
       "fps": 14,
       "loop": false,
@@ -68,7 +68,7 @@
       "scale": 1
     },
     "victory": {
-      "file": "victory.png",
+      "file": "victory.webp",
       "frames": 8,
       "fps": 10,
       "loop": false,

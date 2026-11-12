@@ -1,4 +1,4 @@
-// Corta las hojas NUEVAS de NXO de espaldas (public/personajes/Nxo/pj-nxo-sprites-1..4.png) y genera
+// Corta las hojas NUEVAS de NXO de espaldas (public/personajes/Nxo/pj-nxo-1..4.png) y genera
 // las tiras de animaciÃ³n que carga el juego + sus JSON.
 //   node tools/build-nxo-v2.mjs
 // Hojas: celda 192x128, 8 filas, fondo verde chroma. Columnas por hoja en COLS (las 4 tienen 8; el tamaño de celda se deduce de cada hoja, y el fondo puede ser verde o transparente). Ya vienen normalizadas
@@ -22,7 +22,7 @@ const MAI = ARGS.includes('mai');
 if (MAI && FRONT) throw new Error('mai front: aún no hay hojas del rival de Mai');
 const VIEW = FRONT ? 'front' : 'back';
 const SRC_DIR = MAI ? join(ROOT, 'public', 'personajes', 'Mai') : join(ROOT, 'public', 'personajes', 'Nxo', ...(FRONT ? ['rival'] : []));
-const SRC_NAME = (s) => (MAI ? `pj-mai-${s}.png` : FRONT ? `pj-nxo-rival-${s}.png` : `pj-nxo-sprites-${s}.png`);
+const SRC_NAME = (s) => (MAI ? `pj-mai-${s}.png` : FRONT ? `pj-nxo-rival-${s}.png` : `pj-nxo-${s}.png`);
 const DIR = MAI ? 'mai-v2' : FRONT ? 'nxo-front-v2' : 'nxo-v2';
 const PFX = MAI ? 'mai-' : FRONT ? 'nxo-front-' : 'nxo-';
 /** hojas que vienen enteras con la raqueta en la mano izquierda (se espejan para dejarla en la derecha). Hoy ninguna. */
@@ -42,7 +42,7 @@ const FLIP_ROWS = FRONT ? { 1: new Set([1, 4, 8]), 4: new Set([1]) } : {};
  */
 const CUT_AT = FRONT ? { 3: { '2/7': 284, '5/4': 668, '5/5': 668 } } : {};
 /** tiras en WebP (docs/COMO-TRABAJAR-SPRITES-MOVIMIENTOS.md §0.4): los packs procesados desde el 12-11-2026 */
-const WEBP = FRONT;
+const WEBP = FRONT || !MAI; // NXO rival y NXO de espaldas (desde la hoja 2 nueva, 12-11-2026); Mai aún en PNG
 const EXT = WEBP ? '.webp' : '.png';
 const OUT = join(ROOT, 'public', 'assets', 'characters', DIR);
 const CW = 192;
@@ -496,7 +496,7 @@ const K = {
     ? { normal: { dx: 12, z: 128 }, spin: { dx: 20, z: 146 } }
     : FRONT
       ? { normal: { dx: -10, z: 148 }, spin: { dx: -19, z: 146 } } // hoja 2 del 12-11-2026 (raqueta a la izquierda de la imagen)
-      : { normal: { dx: 5, z: 129 }, spin: { dx: 14, z: 145 } },
+      : { normal: { dx: -25, z: 147 }, spin: { dx: -33, z: 143 } }, // hoja 2 del 12-11-2026 (raqueta arriba a la izquierda en el impacto)
 };
 /**
  * Smash potenciado (hoja 2, fila 8): viene dibujado mÃ¡s chico (~80 px). La escala POR FILA de arriba ya lo

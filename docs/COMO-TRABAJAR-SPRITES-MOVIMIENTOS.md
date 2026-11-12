@@ -21,7 +21,8 @@ Si cambias una hoja, una fila o una herramienta, actualiza este documento en el 
    van en `.webp` con transparencia: pesan unas 4 veces menos en el APK. El primer pack en WebP es el rival NXO
    (`nxo-front-v2/`, 12-11-2026): `build-nxo-v2.mjs` escribe cada tira en PNG, la convierte con
    `tools/convert-image.mjs` (calidad 0,92), borra el PNG y deja los JSON apuntando a `.webp` (constante `WEBP`; hoy
-   solo con `front`). Al pasar otro pack a WebP: activarlo en `WEBP`, regenerar y revisar de cerca los bordes. Si queda
+   solo con `front`). NXO de espaldas (`nxo-v2/`, `WEBP = FRONT || !MAI`) también, desde la hoja 2 del 12-11-2026; Mai sigue en PNG. La ULTI completa de NXO (`nxo-inferno/`, `nxo-front-inferno/`) también va en WebP (`build-nxo-inferno.mjs`,
+   modo de 6 × 9). Al pasar otro pack a WebP: activarlo en `WEBP`, regenerar y revisar de cerca los bordes. Si queda
    un halo, subir la calidad. La conversión abre Chrome headless por tira: el corte tarda un par de minutos.
 5. **Tamaño del frame.** WebP no baja la memoria del teléfono: cada frame ocupa ancho × alto × 4 bytes en la GPU,
    sea PNG o WebP. La celda tiene que ser la justa para lo que dibuja, sin aire de más. La del rival NXO bajó de
@@ -39,22 +40,24 @@ una carpeta por personaje, y la vista de frente (rival) en su subcarpeta `rival/
 ```
 frontend/public/personajes/
 ├── Nxo/
-│   ├── pj-nxo-sprites-1.png … -4.png   hojas de movimientos, de espaldas (jugador)
-│   ├── pj-nxo-sprite-inferno.png       INFERNO DRIVE, de espaldas
+│   ├── pj-nxo-1.png … -4.png   hojas de movimientos, de espaldas (jugador)
+│   ├── pj-nxo-ulti.png                 ULTI completa, de espaldas (6 filas × 9; la que se usa desde el 12-11-2026)
+│   ├── pj-nxo-sprite-inferno.png       INFERNO DRIVE antiguo de 1 fila (respaldo, ya no se procesa)
 │   ├── pj-nxo-mirada.webp              franja de los ojos del INFERNO        (la carga el juego)
 │   ├── pj-nxo.webp                     retrato: menú, PERSONAJE y VS         (la carga el juego)
 │   ├── emojis/                         nxo-risa, nxo-pensando, nxo-enojado   (fuentes: el juego usa assets/emotes/)
 │   ├── Old sprites/                    versiones anteriores
 │   └── rival/
 │       ├── pj-nxo-rival-1.png … -4.png hojas de movimientos, de frente (rival)
-│       ├── pj-nxo-rival-inferno.png    INFERNO DRIVE, de frente
+│       ├── pj-nxo-rival-ulti.png       ULTI completa, de frente (6 filas × 9; la que se usa desde el 12-11-2026)
+│       ├── pj-nxo-rival-inferno.png    INFERNO DRIVE antiguo de 1 fila (respaldo, ya no se procesa)
 │       └── Old sprites/
 └── Mai/
     ├── pj-mai-1.png … -4.png           hojas de movimientos, de espaldas
-    ├── pj-mai-inferno.png              INFERNO DRIVE, de espaldas
+    ├── pj-mai-ulti.png                 ULTI completa (6 × 9), de espaldas
     ├── pj-mai-mirada.webp              franja de los ojos del INFERNO        (la carga el juego)
     ├── pj-mai.png                      referencia del diseño
-    └── rival/                          pj-mai-rival-1..4.png, pj-mai-rival-inferno.png (solo la hoja 1 está en uso; ver §6)
+    └── rival/                          pj-mai-rival-1..4.png, pj-mai-rival-ulti.png (solo la hoja 1 y la ULTI en uso; ver §6)
         └── Old sprites/                hojas 1, 2 e INFERNO anteriores (-antes-new)
 ```
 
@@ -70,7 +73,7 @@ Reglas:
   el juego (`public/assets/emotes/`). No van al APK (12-11-2026).
 - Para cambiar una hoja: mover la anterior a `Old sprites/` con un sufijo (`pj-nxo-rival-2-antes-new.png`),
   dejar la nueva con el nombre exacto que lee la herramienta (sin `-new`) y regenerar (sección 3).
-- Los nombres de Nxo de espaldas son históricos (`pj-nxo-sprites-N`, `pj-nxo-sprite-inferno`). Un personaje
+- Los nombres de Nxo de espaldas son históricos (`pj-nxo-N`, `pj-nxo-sprite-inferno`). Un personaje
   nuevo sigue el patrón de Mai: `pj-<id>-1..4.png`, `pj-<id>-inferno.png`, `pj-<id>-mirada.webp` y, en
   `rival/`, `pj-<id>-rival-1..4.png` y `pj-<id>-rival-inferno.png`.
 
@@ -80,15 +83,16 @@ Por personaje y por vista (espaldas = jugador, frente = rival):
 
 - **4 hojas de movimientos** (hojas 1 a 4) de 8 filas cada una. Más adelante habrá más hojas (5, 6…): ver la
   sección 7.
-- **1 hoja del INFERNO DRIVE**: 1 fila de 9 frames.
+- **1 hoja del INFERNO DRIVE**: 1 fila de 9 frames. NXO (de espaldas y de frente) ya usa la **hoja de la ULTI completa**
+  (6 filas × 9: golpe, recibir el pelotazo, aturdido, reposo y carrera sin raqueta y recogerla; sección 5).
 - Imágenes sueltas: mirada (`-mirada.webp`), retrato y emojis.
 
 | Pack | Vista | Hojas 1-4 | INFERNO | Tiras que carga el juego | JSON (`src/characters/`) |
 |---|---|---|---|---|---|
-| `nxo` | espaldas | `Nxo/pj-nxo-sprites-1..4.png` | `Nxo/pj-nxo-sprite-inferno.png` | `nxo-v2/`, `nxo-inferno/` | `nxo-{sprites,hits,move,special,extra,inferno}.json` |
-| `nxo-front` | frente | `Nxo/rival/pj-nxo-rival-1..4.png` | `Nxo/rival/pj-nxo-rival-inferno.png` | `nxo-front-v2/`, `nxo-front-inferno/` | `nxo-front-*.json` |
-| `mai` | espaldas | `Mai/pj-mai-1..4.png` | `Mai/pj-mai-inferno.png` | `mai-v2/`, `mai-inferno/` | `mai-*.json` |
-| `mai-front` | frente | `Mai/rival/pj-mai-rival-1..4.png` (sin procesar) | `Mai/rival/pj-mai-rival-inferno.png` (sin procesar) | hoy la hoja antigua `mai-front-sprites/` | `mai-front-sprites.json` |
+| `nxo` | espaldas | `Nxo/pj-nxo-1..4.png` | `Nxo/pj-nxo-ulti.png` (6 × 9, tiras WebP) | `nxo-v2/`, `nxo-inferno/` | `nxo-{sprites,hits,move,special,extra,inferno}.json` |
+| `nxo-front` | frente | `Nxo/rival/pj-nxo-rival-1..4.png` | `Nxo/rival/pj-nxo-rival-ulti.png` (6 × 9, tiras WebP) | `nxo-front-v2/`, `nxo-front-inferno/` | `nxo-front-*.json` |
+| `mai` | espaldas | `Mai/pj-mai-1..4.png` | `Mai/pj-mai-ulti.png` (6 × 9, tiras WebP) | `mai-v2/`, `mai-inferno/` | `mai-*.json` |
+| `mai-front` | frente | `Mai/rival/pj-mai-rival-1..4.png` (sin procesar) | `Mai/rival/pj-mai-rival-ulti.png` (6 × 9, tiras WebP) | movimientos: hoja antigua `mai-front-sprites/`; ULTI: `mai-front-inferno/` | `mai-front-sprites.json`, `mai-front-inferno.json` |
 
 Qué pack usa cada personaje: `src/characters/catalog.ts`. Carga de los packs: `PACKS` en
 `src/objects/NxoActor.ts`.
@@ -114,9 +118,9 @@ node tools/build-nxo-v2.mjs          # NXO de espaldas: hojas 1-4 -> nxo-v2/ + n
 node tools/build-nxo-v2.mjs front    # NXO rival:       hojas 1-4 -> nxo-front-v2/ + nxo-front-*.json
 node tools/build-nxo-v2.mjs mai      # MAI de espaldas: hojas 1-4 -> mai-v2/ + mai-*.json
 
-node tools/build-nxo-inferno.mjs     # INFERNO de NXO de espaldas -> nxo-inferno/ + nxo-inferno.json
-node tools/build-nxo-inferno.mjs public/personajes/Nxo/rival/pj-nxo-rival-inferno.png public/assets/characters/nxo-front-inferno nxo-front-inferno.json front
-node tools/build-nxo-inferno.mjs public/personajes/Mai/pj-mai-inferno.png public/assets/characters/mai-inferno mai-inferno.json
+node tools/build-nxo-inferno.mjs public/personajes/Nxo/pj-nxo-ulti.png   # ULTI completa de NXO de espaldas (6 × 9) -> nxo-inferno/*.webp + nxo-inferno.json
+node tools/build-nxo-inferno.mjs public/personajes/Nxo/rival/pj-nxo-rival-ulti.png public/assets/characters/nxo-front-inferno nxo-front-inferno.json front   # ULTI completa del rival (6 × 9)
+node tools/build-nxo-inferno.mjs public/personajes/Mai/pj-mai-ulti.png public/assets/characters/mai-inferno mai-inferno.json`n# rival de Mai: ... Mai/rival/pj-mai-rival-ulti.png public/assets/characters/mai-front-inferno mai-front-inferno.json front
 
 npx tsc --noEmit
 npm run build
@@ -148,6 +152,14 @@ como `pieza ancha` (una pieza más ancha que su celda): revisa el log y mira las
 `build-nxo-inferno.mjs` hace lo mismo con la hoja del INFERNO: fondo verde o transparente, separa los 9 frames
 por columnas vacías (o por piezas si dos se solapan sin tocarse), escala con el frame 1 de pie a 140 px y
 empaqueta los 9 en una textura de 3 columnas.
+
+Con una hoja cuadrada (alto / ancho > 0,8: la ULTI completa de 6 × 9) cambia de modo: corta por la **rejilla fija**
+(celda = ancho/9 × alto/6), no por columnas vacías. Cada pieza va entera a la celda donde cae su centro (un efecto
+que roza el borde de la celda no se corta) y las manchas de menos de 30 px se ignoran. Una sola escala para todas
+las filas (el frame 1 de la fila 1, de pie, mide 140 px), cada fila apoyada en la mediana de sus suelos y el ancla
+en el centro del cuerpo (píxeles oscuros: las estrellas y destellos no lo mueven). Escribe una textura de 3 × 3 por
+clip, todas con la misma celda, en WebP (con `png` como 6.º argumento las deja en PNG para probar). Las hojas de 1
+fila (rival y Mai) siguen igual.
 
 ## 4. Reglas de dibujo (valen para todas las hojas)
 
@@ -221,7 +233,7 @@ unidades del personaje (alto 150): `z` = altura del centro del cordaje sobre los
 (+ = derecha de la pantalla). Lo escribe `tools/build-nxo-v2.mjs` (constante `K.serveRacket`). **Si se cambia la
 hoja 2 (filas 5 o 6) o la hoja del saque de un personaje hay que volver a medirlo**: abrir el frame 5 de la tira,
 anotar el centro del óvalo de la raqueta en píxeles (sobre los pies y respecto al centro de la celda) y multiplicar por
-`150 / standHeight`. Valores actuales: NXO espaldas 129 / 145 (z normal / efecto), NXO rival 148 / 146 (dx −10 / −19,
+`150 / standHeight`. Valores actuales: NXO espaldas 147 / 143 (z normal / efecto; dx −25 / −33, hoja 2 del 12-11-2026), NXO rival 148 / 146 (dx −10 / −19,
 raqueta a la izquierda de la imagen; medido el 12-11-2026), MAI 128 / 146.
 
 ### Hoja 3: estiradas y reacciones
@@ -249,7 +261,7 @@ máximo tiene que dibujarse en el frame 4 (o 4-5).
 
 | Fila | Clip | fps | Qué se dibuja | Uso en el juego |
 |---|---|---|---|---|
-| 1 | `serve-bounce` | 12, bucle | bota la pelota antes de sacar (sin pelota dibujada) | sacador quieto antes de lanzar. Solo en los packs con `bounce: true` (hoy NXO de espaldas): la pelota sigue la mano con las alturas de `BOUNCE` en `NxoActor.ts`, que hay que volver a medir si cambia esta fila |
+| 1 | `serve-bounce` | 12, bucle | bota la pelota antes de sacar (sin pelota dibujada) | sacador quieto antes de lanzar. Solo en los packs con `bounce` (NXO de espaldas: `BOUNCE`; NXO rival de frente: `BOUNCE_FRONT`, medido a ojo con la raqueta): la pelota sigue la mano con esas alturas en `NxoActor.ts`, que hay que volver a medir si cambia esta fila |
 | 2 | `serve-toss` | 14 | lanza la pelota y arma el brazo; la última pose se mantiene | al pulsar sacar, hasta el golpe (`serve` / `serve-spin` desde el trofeo) |
 | 3 | `walk` | 10, bucle | caminar hacia la derecha | los primeros 500 ms al empezar a moverse (`WALK_MS`), luego `run` |
 | 4 | `inferno-hit` | 14 | recibe el INFERNO y la raqueta sale despedida | recibe un INFERNO. Desde el frame 3 la mano queda vacía: la raqueta que vuela la dibuja el juego |
@@ -272,6 +284,28 @@ haber columnas vacías; si dos se solapan (la raqueta de uno por encima del otro
 | 7 | impacto | contacto con la pelota (`impact`) |
 | 8-9 | seguimiento y final | final del golpe |
 
+### Hoja de la ULTI completa (6 filas × 9)
+
+NXO de espaldas (`Nxo/pj-nxo-ulti.png`) y NXO rival de frente (`Nxo/rival/pj-nxo-rival-ulti.png`, argumento `front`, sin espejo), del 12-11-2026; las hojas de 1 fila quedan de respaldo. Mai de espaldas y de frente (`Mai/pj-mai-ulti.png`, `Mai/rival/pj-mai-rival-ulti.png`) también, del 12-11-2026. Llegaron de 1254×1254 (celda 139×209): la herramienta corta por ancho/9 × alto/6, así que vale cualquier tamaño.
+Rejilla fija de 9 columnas × 6 filas, celdas iguales, fondo verde croma liso. Los efectos dibujados (estela,
+estallido, sudor, estrellas, polvo, brillos) van en blanco o amarillo, nunca en verde, y son parte del frame. El
+frame 1 de la fila 1 de pie, como en las otras hojas. Sin pelota.
+
+| Fila | Clip | Frames | fps | Bucle | Qué se dibuja | Uso en el juego |
+|---|---|---|---|---|---|---|
+| 1 | `inferno-swing` | 9 | 15 | no | golpe de la ULTI con estela; poses como la tabla de arriba | ULTI propia: `hold` 5, `preStrike` / `strikeFrom` 6 (el destello: el golpe arranca ahí al contacto), `impact` 7 (0-based 4 / 5 / 6, igual de frente sin espejo) |
+| 2 | `ulti-hit` | 9 | 14 | no | recibe el pelotazo: la raqueta se suelta en el frame 2; desde el 3, mano vacía | ULTI recibida. La raqueta que vuela la dibuja `MatchScene.loseRacket` a los `RACKET_LOSS.launchMs` (143 ms = 2 frames a 14 fps) |
+| 3 | `ulti-stun` | 9 | 12 | sí | aturdido sin raqueta, con las estrellas dibujadas | tras `ulti-hit`, en bucle hasta que acaba el aturdido. La escena no pone sus estrellas encima |
+| 4 | `idle-nr` | 9 | 8 | sí | reposo sin raqueta | parado mientras la raqueta está en el suelo |
+| 5 | `run-nr` | 9 | 14 | sí | corre hacia la derecha sin raqueta | correr sin raqueta (volteado hacia la izquierda); sin `walk` ni frenada |
+| 6 | `pickup` | 9 | 14 | no | se agacha, toma la raqueta del suelo (la mano la toma en el frame 4) y termina en guardia con ella | al pasar por encima de la raqueta: quieto mientras dura; en el frame 4 (`pickupGrab`, 0-based 3) se va la raqueta del suelo |
+
+En el juego (`NxoActor`): `impactStun('inferno')` reproduce `ulti-hit` y encadena `ulti-stun`; `setNoRacket(true)`
+(desde `MatchScene.loseRacket`) cambia el reposo y la carrera a `idle-nr` / `run-nr`; `pickupRacket()` reproduce
+`pickup` y devuelve su duración. Al terminar el punto (`clearRacket`, `resetPose`) vuelve a tener raqueta sin
+animación. Los packs sin estos clips (ninguno hoy) siguen con `inferno-hit` / `stunned` y sus clips con
+raqueta. En red, el rival muestra lo mismo cuando llega la acción `racket` (perdida o recogida).
+
 La mirada (`pj-<id>-mirada.webp`) es una franja ancha con los ojos del personaje que cruza la pantalla al empezar
 el INFERNO. `GAZE_ARTS` en `src/fx/infernoGaze.ts` guarda la altura de la franja (`eyeFy`) y la posición de las
 pupilas (`eyes`), de donde salen los rayos: si cambia la imagen, hay que volver a medirlas.
@@ -293,6 +327,14 @@ Las secciones 4 y 5 son el contrato. Estas son las excepciones que la herramient
   con `bounce: false` y el saque (filas 5 y 6 de la hoja 2) arranca en su frame 1 y se pausa en el trofeo.
 - Las hojas verdes de la flor de la gorra se recuperan después del croma (`keep-enclosed-green.mjs`, solo Mai).
 
+**NXO de espaldas** (sin argumento):
+
+- Hoja 2 nueva del 12-11-2026 (1254×1254, fondo verde; la anterior en `Nxo/Old sprites/pj-nxo-sprites-2-antes-new.png`).
+  Instalada a pedido aunque no cumple la mano: en las filas 2-8 el frame 1 lleva la raqueta a la **izquierda** de la
+  imagen (mano izquierda) y en varias filas cambia de lado entre frames. El golpe arranca en su frame de espera, así que
+  el frame 1 no se ve, pero puede notarse el cambio de mano desde el reposo. `serveRacket` medido de nuevo.
+- Tiras en WebP desde esta hoja (celda 222×142).
+
 **NXO rival, de frente** (`front`):
 
 Hojas 1, 2 y 3 nuevas del 12-11-2026 (las anteriores están en `Nxo/rival/Old sprites/` con el sufijo
@@ -313,9 +355,12 @@ Hojas 1, 2 y 3 nuevas del 12-11-2026 (las anteriores están en `Nxo/rival/Old sp
   `LUNGE_CONTACT_S`. Dos frames tocan al de la fila de abajo y llevan corte a mano (`CUT_AT`): fila 2 frame 7
   (y = 284) y fila 5 frames 4 y 5 (y = 668). En los frames 4 y 5 del aturdido queda una mancha de 1-2 px del pelo
   del salto de abajo entre los pies.
-- Hoja 4, fila 1 (`serve-bounce`): llega espejada y se espeja solo esa fila (`FLIP_ROWS`). El pack va con
-  `bounce: false`, así que hoy no se usa.
-- INFERNO: ya trae la raqueta en la mano derecha, se corta sin espejo con el argumento `front` (solo marca
+- Hoja 4, fila 1 (`serve-bounce`): llega espejada y se espeja solo esa fila (`FLIP_ROWS`). El pack usa
+  `BOUNCE_FRONT` (bota con la raqueta, a la izquierda de la imagen).
+- ULTI completa (`pj-nxo-rival-ulti.png`, 12-11-2026): fila 6 (`pickup`) no cumple la mano: en los frames 3-8 la
+  raqueta queda a la **derecha** de la imagen (mano izquierda) y en el 9 vuelve a la izquierda, así que al terminar
+  de recogerla se ve un cambio de mano. El resto de filas cumple. Para arreglarlo hay que pedir esa fila otra vez.
+- INFERNO antiguo (respaldo): ya trae la raqueta en la mano derecha, se corta sin espejo con el argumento `front` (solo marca
   `view: front` en el JSON). Con `flip` se espejaría cada frame y cambiarían los frames clave: mejor pedir la hoja
   bien.
 
@@ -424,3 +469,4 @@ Añadir una hoja (5, 6…):
 Personaje nuevo: las mismas 4 hojas, INFERNO y mirada, con este contrato. En la herramienta necesita su registro
 de filas y sus nombres (`SRC_DIR`, `SRC_NAME`, `DIR`, `PFX`); en el juego, una entrada en `PACKS` (`NxoActor.ts`)
 y en `catalog.ts`.
+

@@ -2,6 +2,7 @@ import { commit, getPlayer } from '../domain/playerStore';
 import { gameClock } from '../domain/timeSource';
 import * as ranked from '../domain/ranked';
 import * as login from '../domain/dailyLogin';
+import * as shopGift from '../domain/shopGift';
 import { playerRank } from '../domain/ranks';
 import type { RankedOutcome } from '../domain/rankedState';
 
@@ -77,6 +78,14 @@ export function markRankedSeen() {
 // ---------------------------------------------------------------- premio diario
 
 export const loginStatus = () => login.loginStatus(getPlayer() as never, now());
+/** REGALO GRATIS de la Tienda (domain/shopGift.ts). */
+export function claimShopGift() {
+  return commit((s) => shopGift.claimGift(s, now()));
+}
+export function shopGiftStatus() {
+  return shopGift.giftStatus(getPlayer(), now());
+}
+
 export function claimLogin() {
   return commit((s) => login.claimLogin(s, now()));
 }

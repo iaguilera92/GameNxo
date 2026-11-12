@@ -539,20 +539,34 @@ export class MatchEndScene extends Phaser.Scene {
   /** Un cuadro de recompensa: fondo, etiqueta arriba, icono al medio, cifra y subtítulo abajo. */
   private card(parent: Phaser.GameObjects.Container, x: number, y: number, w: number, label: string, accent: number, tint: number) {
     const cont = this.add.container(x, y);
+    // halo del color del premio alrededor del cuadro (late suave): se nota más sobre el fondo
+    const halo = this.add.graphics();
+    halo.lineStyle(14, accent, 0.22).strokeRoundedRect(-w / 2 - 2, -2, w + 4, CARD_H + 4, 20);
+    halo.lineStyle(7, accent, 0.35).strokeRoundedRect(-w / 2 - 1, -1, w + 2, CARD_H + 2, 19);
+    cont.add(halo);
+    this.tweens.add({ targets: halo, alpha: { from: 1, to: 0.45 }, duration: 900, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
     const g = this.add.graphics();
     g.fillStyle(0x000000, 0.35).fillRoundedRect(-w / 2 + 3, 5, w, CARD_H, 18);
     g.fillStyle(0x0a1638, 1).fillRoundedRect(-w / 2 - 3, -3, w + 6, CARD_H + 6, 20);
     g.fillStyle(tint, 1).fillRoundedRect(-w / 2, 0, w, CARD_H, 18);
-    g.fillStyle(0xffffff, 0.06).fillRoundedRect(-w / 2 + 4, 4, w - 8, CARD_H * 0.42, { tl: 15, tr: 15, bl: 6, br: 6 });
-    g.lineStyle(3, accent, 1).strokeRoundedRect(-w / 2, 0, w, CARD_H, 18);
+    // degradado más vivo: banda clara arriba y luz del color al centro (detrás del icono)
+    g.fillStyle(0xffffff, 0.1).fillRoundedRect(-w / 2 + 4, 4, w - 8, CARD_H * 0.42, { tl: 15, tr: 15, bl: 6, br: 6 });
+    g.fillStyle(accent, 0.16).fillEllipse(0, 84, w * 0.8, 92);
+    g.lineStyle(4, accent, 1).strokeRoundedRect(-w / 2, 0, w, CARD_H, 18);
     // etiqueta en una franja
     g.fillStyle(accent, 1).fillRoundedRect(-w / 2 + 10, 10, w - 20, 26, 13);
     cont.add(g);
     cont.add(this.add.text(0, 23, label, { fontFamily: FONT, fontSize: '16px', color: '#0a1638' }).setOrigin(0.5).setLetterSpacing(1));
-    const icon = this.add.graphics({ x: 0, y: 84 });
-    const value = this.add.text(0, 140, '', { fontFamily: FONT, fontSize: '30px', color: '#ffffff', stroke: '#0a1638', strokeThickness: 6 }).setOrigin(0.5);
+    const icon = this.add.graphics({ x: 0, y: 84 }).setScale(1.15);
+    const value = this.add.text(0, 140, '', { fontFamily: FONT, fontSize: '34px', color: '#ffffff', stroke: '#0a1638', strokeThickness: 6 }).setOrigin(0.5);
     const sub = this.add.text(0, CARD_H - 22, '', { fontFamily: FONT, fontSize: '14px', color: '#c9d6f2' }).setOrigin(0.5).setLetterSpacing(1);
     cont.add([icon, value, sub]);
+    // destello del borde al entrar (lo lanza pop)
+    const flash = this.add.graphics();
+    flash.lineStyle(5, 0xffffff, 1).strokeRoundedRect(-w / 2, 0, w, CARD_H, 18);
+    flash.setAlpha(0).setBlendMode(Phaser.BlendModes.ADD);
+    cont.add(flash);
+    cont.setData('flash', flash);
     parent.add(cont);
     cont.setScale(0).setAlpha(0);
     return { cont, icon, value, sub };
@@ -568,7 +582,11 @@ export class MatchEndScene extends Phaser.Scene {
       duration: 360,
       ease: 'Back.easeOut',
       easeParams: [2.2],
-      onComplete: () => then?.(),
+      onComplete: () => {
+        const flash = o.getData('flash') as Phaser.GameObjects.Graphics | undefined;
+        if (flash?.active) this.tweens.add({ targets: flash, alpha: { from: 1, to: 0 }, duration: 520, ease: 'Quad.easeOut' });
+        then?.();
+      },
     });
   }
 
@@ -656,6 +674,9 @@ export class MatchEndScene extends Phaser.Scene {
     /** fondo + borde del cuadro (sin separador entre sus dos columnas) */
     const paintBox = (g: Phaser.GameObjects.Graphics, fill: number, line: number, lw: number) => {
       g.clear();
+      // halo del color del cuadro (azul tú, rojo rival; verde / rojo al decidirse): se distinguen del fondo
+      g.lineStyle(lw + 10, line, 0.2).strokeRoundedRect(-bw / 2 - 2, -bh / 2 - 2, bw + 4, bh + 4, 18);
+      g.lineStyle(lw + 4, line, 0.35).strokeRoundedRect(-bw / 2 - 1, -bh / 2 - 1, bw + 2, bh + 2, 17);
       g.fillStyle(fill, 1).fillRoundedRect(-bw / 2, -bh / 2, bw, bh, 16);
       g.fillStyle(0xffffff, 0.04).fillRoundedRect(-bw / 2 + 3, -bh / 2 + 3, bw - 6, bh * 0.4, { tl: 13, tr: 13, bl: 4, br: 4 });
       g.lineStyle(lw, line, 1).strokeRoundedRect(-bw / 2, -bh / 2, bw, bh, 16);
@@ -674,8 +695,9 @@ export class MatchEndScene extends Phaser.Scene {
       const useDefault = !useClip && !hasPose && this.textures.exists('portrait-nxo');
       const bc = this.add.container(x, by);
       const g = this.add.graphics();
-      paintBox(g, 0x0a1638, color, 3);
+      paintBox(g, 0x11224d, color, 4);
       bc.add(g);
+      // sin círculo de luz ni sombra bajo los pies: en las cards no gustaron
       let sp: Phaser.GameObjects.Sprite | undefined;
       if (useClip && clips) {
         // de frente, parado y animado (reposo en bucle); al decidirse la apuesta, victoria o derrota

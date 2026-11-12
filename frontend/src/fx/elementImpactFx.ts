@@ -416,3 +416,106 @@ export function ultiStunFx(scene: Phaser.Scene, el: InfernoElement, at: () => Fx
   scene.events.on('update', tick);
   scene.events.once('shutdown', () => scene.events.off('update', tick));
 }
+
+// ---------------------------------------------------------------- ULTI de RAYO: desplazamiento (en vez de las sombras)
+/**
+ * Cuerpo CARGADO de electricidad durante el desplazamiento de la ULTI de rayo: halo blanco-amarillo intenso detrás,
+ * un velo brillante encima (el personaje se ve luminoso) y rayos que le recorren el cuerpo, ~16 veces por segundo.
+ * Sin preFX (no se puede en los sprites dentro de un Container). Dura `ms`.
+ */
+export function lightningBodyFx(scene: Phaser.Scene, at: () => FxAnchor | null, ms: number) {
+  const back = scene.add.graphics().setBlendMode(Phaser.BlendModes.ADD);
+  const front = scene.add.graphics().setBlendMode(Phaser.BlendModes.ADD);
+  // reloj REAL: la cinemática de la ULTI pausa el del partido (scene.time) y esto tiene que animarse durante ella
+  const t0 = performance.now();
+  let next = 0;
+  const tick = () => {
+    const now = performance.now();
+    const p = (now - t0) / ms;
+    const a = at();
+    if (p >= 1 || !a || !back.active) {
+      scene.events.off('update', tick);
+      if (back.active) back.destroy();
+      if (front.active) front.destroy();
+      return;
+    }
+    if (now < next) return;
+    next = now + 60;
+    const fade = p > 0.85 ? (1 - p) / 0.15 : Math.min(1, p * 6);
+    const H = Math.max(30, a.y - a.headY);
+    const cy = a.y - H * 0.5;
+    back.clear().setDepth(a.y - 0.5);
+    front.clear().setDepth(a.y + 6);
+    // halo detrás: blanco-amarillo potente que parpadea
+    const fl = 0.75 + Math.random() * 0.25;
+    back.fillStyle(0x5aa8ff, 0.28 * fade * fl).fillEllipse(a.x, cy, H * 1.5, H * 1.7);
+    back.fillStyle(0xfff36b, 0.35 * fade * fl).fillEllipse(a.x, cy, H * 1.05, H * 1.3);
+    back.fillStyle(0xffffff, 0.45 * fade * fl).fillEllipse(a.x, cy, H * 0.6, H * 0.95);
+    // velo luminoso sobre el cuerpo: el personaje se ve brillante
+    front.fillStyle(0xffffff, 0.22 * fade * fl).fillEllipse(a.x, cy, H * 0.55, H * 0.95);
+    // rayos por el cuerpo y saliendo de él
+    for (let i = 0; i < 5; i++) {
+      const y0 = a.y - H * FB(0.05, 0.98);
+      const x0 = a.x + FB(-0.25, 0.25) * H;
+      const ang = Math.random() * Math.PI * 2;
+      const L = H * FB(0.35, 0.75);
+      zap(front, x0, y0, x0 + Math.cos(ang) * L, y0 + Math.sin(ang) * L * 0.75, H * 0.07, Math.max(1.4, H * 0.018), 1, fade);
+    }
+    for (let i = 0; i < 6; i++) front.fillStyle(pick(ELEC.spark), fade).fillCircle(a.x + FB(-0.45, 0.45) * H, a.y - Math.random() * H, FB(1.5, 3.5));
+  };
+  scene.events.on('update', tick);
+  scene.events.once('shutdown', () => scene.events.off('update', tick));
+}
+
+/**
+ * Salto-RAYO de la ULTI: un rayo gordo une el punto de salida con el de llegada (el personaje viaja como un destello),
+ * con fogonazo blanco en los dos extremos y un trueno corto. (ax, ay) / (bx, by) = pies en pantalla, `k` = escala.
+ */
+export function lightningDashFlash(scene: Phaser.Scene, ax: number, ay: number, bx: number, by: number, k: number, headUp: number) {
+  const s = Math.max(0.7, k);
+  thunderSound(scene);
+  scene.cameras.main.flash(70, 200, 220, 255);
+  const ya = ay - headUp * 0.5;
+  const yb = by - headUp * 0.5;
+  const depth = Math.max(ay, by) + 8;
+  // todo cuadro a cuadro con reloj REAL: durante la cinemática de la ULTI están en pausa scene.time y los tweens
+  const bolt = scene.add.graphics().setDepth(depth).setBlendMode(Phaser.BlendModes.ADD);
+  const fx = scene.add.graphics().setDepth(depth + 1).setBlendMode(Phaser.BlendModes.ADD);
+  const sparks = Array.from({ length: 12 }, () => ({ a: FB(0, Math.PI * 2), d: FB(50, 120) * s, c: pick(ELEC.spark) }));
+  const MS = 320;
+  const t0 = performance.now();
+  let nextBolt = 0;
+  const step = () => {
+    const now = performance.now();
+    const p = (now - t0) / MS;
+    if (p >= 1 || !bolt.active) {
+      scene.events.off('update', step);
+      if (bolt.active) bolt.destroy();
+      if (fx.active) fx.destroy();
+      return;
+    }
+    if (now >= nextBolt) {
+      nextBolt = now + 45;
+      bolt.clear();
+      zap(bolt, ax, ya, bx, yb, 26 * s, 7 * s, 3, 1 - p * 0.8);
+      zap(bolt, ax, ya, bx, yb, 16 * s, 3 * s, 0, 1 - p * 0.6);
+    }
+    fx.clear();
+    // fogonazo en la salida y (un poco después) en la llegada, con su aro en el suelo
+    for (const [x, y, d] of [
+      [ax, ya, 0],
+      [bx, yb, 0.18],
+    ] as const) {
+      const q = Math.min(1, Math.max(0, (p - d) / (1 - d)));
+      if (q <= 0) continue;
+      fx.fillStyle(0xffffff, 0.95 * (1 - q)).fillCircle(x, y, 26 * s * (0.6 + 2.2 * q));
+      fx.lineStyle(3 * s, ELEC.mid, 1 - q).strokeEllipse(x, y + headUp * 0.5, 50 * s * (1 + 2.4 * q), 16 * s * (1 + 2.4 * q));
+    }
+    // chispas que salen de la llegada
+    const q2 = Math.min(1, Math.max(0, (p - 0.18) / 0.82));
+    if (q2 > 0) for (const sp of sparks) fx.fillStyle(sp.c, 1 - q2).fillCircle(bx + Math.cos(sp.a) * sp.d * q2, yb + Math.sin(sp.a) * sp.d * q2 * 0.7, 3 * s * (1 - q2 * 0.6));
+  };
+  step();
+  scene.events.on('update', step);
+  scene.events.once('shutdown', () => scene.events.off('update', step));
+}

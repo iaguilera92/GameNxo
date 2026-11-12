@@ -1,19 +1,19 @@
 {
-  "source": "pj-nxo-sprites-2.png (fila 8)",
+  "source": "pj-nxo-2.png (fila 8)",
   "view": "back",
   "cell": {
     "w": 222,
-    "h": 154
+    "h": 142
   },
   "origin": {
     "x": 0.5,
-    "y": 0.94156
+    "y": 0.94366
   },
   "standHeight": 115,
   "start": 2,
   "animations": {
     "smash-power": {
-      "file": "smash-power.png",
+      "file": "smash-power.webp",
       "frames": 8,
       "fps": 14,
       "loop": false,

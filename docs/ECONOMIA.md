@@ -27,6 +27,7 @@ salen del código (`frontend/`). Si cambias uno, corre el simulador (sección 14
 | Saldo inicial | 5.000 (10 entradas de Bronce) |
 | Partida | +50 victoria · +10 derrota · 0 rendición |
 | Ruleta diaria | ~45 de media por giro (sección 8) |
+| Regalo gratis de la Tienda | 5 (60 %), 10 (30 %) o 15 (10 %) monedas, 1 vez al día (`domain/shopGift.ts`) |
 | Premio diario | 6.350 por semana (sección 9) |
 | Semanal Ranked | 6.000 (Bronce) a 20.000 (Challenger) + premio por posición (sección 3) |
 | Cosmético repetido (ruleta) | 300 |

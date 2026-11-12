@@ -478,3 +478,71 @@ NOTAS PARA CLAUDE (pendientes detectados por Kiro, sin corregir)
    ~330 KB). MatchEndScene carga .webp (MAI_END). tools/preview-char-colors.mjs lee los .webp (convierte a _tmp/).
  - Verificado en Chrome headless: la tarjeta del resultado y el duelo Ranked cargan las 3 poses (200) y se ven bien
    (victoria y derrota). No cambia nada del partido ni de la red: el pack de Mai rival en el partido sigue siendo el viejo.
+ - REGALO GRATIS en la Tienda (decisión del usuario: monedas, 1 vez al día): domain/shopGift.ts (5/10/15 monedas,
+   pesos 60/30/10; ciclo de la ruleta, 23:59 Chile), PlayerState.giftDay (opcional; migrate lo conserva),
+   logic/Ranked claimShopGift / shopGiftStatus. ShopScene: sección REGALO GRATIS al final (giftCard, RECOGER o cuenta
+   atrás) y flecha fija GRATIS (makeFreeArrow) que desliza hasta abajo; punto rojo si hay regalo. ECONOMIA.md §2.
+ - Consola al arrancar: skins.ts ya no pide las piezas antiguas cuerpo+brazo (no existen) -> fuera los 8 "Failed to
+   process file: image skin-raw-…". SKIN_FILES (vacío) lista las que existan si se vuelven a usar.
+ - ENTRADA al empezar el partido (MatchScene.entranceWalk, junto a playMatchIntro en BOT y en red): el jugador entra
+   caminando desde la derecha (Y_MAX) y el rival desde la izquierda (Y_MIN) hasta su posición de saque (350 ms + 1,7 s).
+   this.entering salta setMoving del update y el cerebro del BOT. NxoActor/Character.walkFor(ms) fuerza el clip walk.
+   En red el rival real hace su propia entrada (llega por sus estados); aquí solo walkFor.
+ - CARGANDO GOLPE: el primer ~1 s (charge >= 0,9) se ve la carga CLÁSICA (aro + brillo) y luego cambia a la elegida
+   con sprites (chargeSpriteOn en renderCharge; rival: rivalSpriteOn en rivalChargeFx con rivalChargeT >= 1).
+ - CORTITA cargada: sin BIEN / PERFECTO (ni el aviso timing en red); solo el texto CORTITA.
+ - RESULTADO (MatchEndScene) más visible: cuadros de recompensa con halo de su color que late, borde 4 px, luz detrás
+   del icono, icono ×1,15, cifra 34 px y destello del borde al entrar (pop). Cuadros del duelo: halo de su color
+   (paintBox), fondo algo más claro, foco de luz detrás del personaje y sombra bajo sus pies.
+ - ESPECIAL: siempre el golpe FUERTE de derecha / revés, sin el remate con salto (startSmashCine, playerHit,
+   cinemática y golpe del BOT; la ULTI conserva su regla de remate por arriba).
+ - ULTI de RAYO: sin sombras. infernoDashStep(..., el): con lightning el cuerpo se carga (lightningBodyFx: halo,
+   velo brillante y rayos) en su sitio y a mitad salta como destello-rayo hasta la pelota (lightningDashFlash) con la
+   pose de la ULTI. Ambos con reloj REAL y dibujo cuadro a cuadro: la cinemática pausa scene.time y los tweens.
+ - FIN del partido: quitados los rayos que giraban detrás de ¡PARTIDO GANADO! (matchFinale.ts).
+ - (Kiro, 12-11-2026) ULTI COMPLETA de NXO de espaldas: hoja nueva Nxo/pj-nxo-sprite-inferno-v2.png (copiada de
+   pj-nxo-ulti.png, 1254x1254, 6 filas x 9; la vieja pj-nxo-sprite-inferno.png queda de respaldo). Clips:
+   inferno-swing, ulti-hit, ulti-stun, idle-nr, run-nr, pickup -> assets/characters/nxo-inferno/*.webp (celda común
+   185x188) + src/characters/nxo-inferno.json (racketFree 2, pickupGrab 2; hold/preStrike/impact 4/5/6 sin cambios).
+ - tools/build-nxo-inferno.mjs: modo rejilla fija si alto/ancho >= 0,5 (pieza entera a la celda de su centro, manchas
+   < 30 px fuera, una escala, suelo = mediana por fila, ancla = centro de los píxeles oscuros, WebP). El modo de 1 fila
+   da el mismo resultado byte a byte (probado con la hoja del rival).
+ - NxoActor: impactStun('inferno') -> ulti-hit y luego ulti-stun en bucle; setNoRacket (idle-nr / run-nr, sin pose de
+   golpe ni frenada); pickupRacket(onGrab) -> duración en ms; stunStarsDrawn / pickingUp. Packs sin estos clips (rival,
+   Mai) igual que antes. RACKET_LOSS.launchMs 130 -> 143 (2 frames a 14 fps).
+ - MatchScene: loseRacket -> setNoRacket(true); clearRacket -> setNoRacket(false); recoverRacket -> pickup con stun
+   corto (no al rival en red) y la raqueta del suelo se va en el frame 3; estrellas de la escena ocultas si el clip las
+   trae o recogiendo. En red el rival lo refleja por la acción 'racket'.
+
+[Claude] Responsive celular web (iPhone 13 en Safari, 390x664 con barras):
+- index.html: en vertical con pantalla más "baja" que 9:16 el juego se mantiene 9:16 centrado (franjas negras mínimas); pantallas 9:16 o más altas (APK) sin cambio. Modo instalado (display-mode standalone): padding safe-area arriba/abajo (no queda bajo la muesca).
+- MenuScene: en pantallas bajas PERSONAJE/TIENDA suben lo justo para que DIARIO/AMIGOS no se monte sobre TIENDA, y el retrato se achica para no meterse bajo el PASE. En pantallas altas los topes no aplican (igual que antes).
+
+[Claude] MatchEndScene: quitado el círculo de luz detrás de los personajes en las cards de victoria/derrota (queda solo la sombra bajo los pies).
+
+[Claude] Consola: (1) 'Frame 4..8 not found in nxo-inferno-swing': inferno-swing.webp era de otra generación (549x540) y no calzaba con la celda 185x188 del JSON; regenerada con build-nxo-inferno.mjs (todas las tiras 555x564). Si la conversión a webp falla, borrar el .webp viejo antes de regenerar. (2) skins.ts: sin piezas de skin no se imprime el log [skins] ... vectorial.
+
+[Claude] Tiempo de saque: cuenta 5..1 en la píldora (SACA EN n) y la card TÚ del marcador avisa: 5-4 borde naranja, 3-2 borde rojo fuerte, 1 toda roja (ScoreBoard.setServeAlert; MatchScene.tickServeClock).
+
+[Claude] MatchEndScene: quitada también la sombra bajo los pies de los personajes en las cards de victoria/derrota.
+
+[Claude] Inicio del partido: durante la presentación y la entrada caminando (phase 'intro' / entering) la pelota está oculta y nadie la bota; aparece al tener el control (MatchScene, ballHidden).
+
+[Claude] Tienda · REGALO GRATIS: sin botón RECOGER; card verde (como celda del pase, sin brillo ni dorado) con el regalo al centro, píldora ¡RECLAMAR! arriba y toda la card táctil. Recogido: atenuada con la cuenta atrás arriba.
+ - (Kiro, 12-11-2026, 2.ª parte) ULTI completa también DE FRENTE: Nxo/rival/pj-nxo-rival-ulti.png (front, sin espejo)
+   -> nxo-front-inferno/*.webp (celda 183x180) + nxo-front-inferno.json. La de espaldas se procesa ya desde
+   Nxo/pj-nxo-ulti.png (borrada mi copia pj-nxo-sprite-inferno-v2.png). Hojas de 1 fila de NXO quedan de respaldo.
+ - build-nxo-inferno.mjs: rejilla 6x9 si h/w > 0,8; pickupGrab = 3 (la mano toma la raqueta en el frame 4).
+   hold/preStrike/impact 4/5/6 en las dos vistas (el destello es el frame 6 = preStrike/strikeFrom). Mai: misma
+   salida byte a byte. Con la hoja del rival el bot y el rival en red usan ya ulti-hit / ulti-stun / idle-nr / run-nr /
+   pickup (makeDizzy oculto con estrellas dibujadas).
+ - Rival, fila 6 (pickup): en los frames 3-8 la raqueta está en la mano izquierda (derecha de la imagen); el frame 9
+   vuelve a la derecha. Pendiente pedir esa fila otra vez (anotado en docs §6).
+ - Cerrados 2 procesos colgados de build-nxo-v2.mjs front (17:40 y 17:48, de la prueba del saque) que esperaban a
+   Chrome en convert-image; nxo-front-v2/ quedó igual que en git.
+ - (Kiro, 12-11-2026) Hoja 2 nueva de NXO de espaldas: pj-nxo-sprites-2-new.png -> pj-nxo-sprites-2.png (la anterior en
+   Nxo/Old sprites/pj-nxo-sprites-2-antes-new.png). Instalada a pedido del usuario aunque las filas 2-8 empiezan con la
+   raqueta en la mano izquierda (docs §6). Pack nxo-v2 regenerado y pasado a WebP (build-nxo-v2: WEBP = FRONT || !MAI),
+   celda 222x142. serveRacket de espaldas medido otra vez: normal dx -25 z 147, efecto dx -33 z 143.
+
+(Kiro, 12-11-2026) Hojas de NXO de espaldas renombradas: pj-nxo-sprites-N.png -> pj-nxo-N.png (build-nxo-v2.mjs, docs y JSON al d�a). Los respaldos en Old sprites conservan su nombre.

@@ -171,12 +171,13 @@ export class Emotes {
   private makeBubble(kind: EmoteKind) {
     const c = this.scene.add.container(0, 0).setDepth(4100);
     const g = this.scene.add.graphics();
-    const W = 78, H = 70;
-    g.fillStyle(C.outline).fillRoundedRect(-W / 2 - 4, -H - 4, W + 8, H + 8, 20);
-    g.fillStyle(C.outline).fillTriangle(-14, -2, 14, -2, 0, 18);
-    g.fillStyle(0xffffff).fillRoundedRect(-W / 2, -H, W, H, 17);
-    g.fillStyle(0xffffff).fillTriangle(-10, -4, 10, -4, 0, 12);
-    const face = this.scene.add.image(0, -H / 2, EMOTE_TEXTURE[kind]).setDisplaySize(58, 58);
+    // (11-11-2026) 1,5× más grande: en el partido apenas se veía
+    const W = 116, H = 104;
+    g.fillStyle(C.outline).fillRoundedRect(-W / 2 - 5, -H - 5, W + 10, H + 10, 28);
+    g.fillStyle(C.outline).fillTriangle(-20, -2, 20, -2, 0, 26);
+    g.fillStyle(0xffffff).fillRoundedRect(-W / 2, -H, W, H, 24);
+    g.fillStyle(0xffffff).fillTriangle(-14, -5, 14, -5, 0, 18);
+    const face = this.scene.add.image(0, -H / 2, EMOTE_TEXTURE[kind]).setDisplaySize(88, 88);
     c.add([g, face]);
     return c;
   }

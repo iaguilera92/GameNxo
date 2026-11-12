@@ -109,7 +109,8 @@ modo BOT no cambia.
     SMASH; desplazamiento con sombras del INFERNO). El golpe real sigue llegando con `game:hit`: si llega mientras
     dura la cinemática, se aplica al terminar, una sola vez.
   - **Aturdido:** al alcanzar una bola de fuego, el emisor avisa (`stunned` con `ms`) y el rival ve la explosión,
-    el aturdido y las estrellas durante esos ms.
+    el aturdido y las estrellas durante esos ms. Con la ULTI la raqueta sale volando: el emisor dice dónde cae
+    (`racket` con `lost` y `x, y`) y avisa cuando la recoge (`racket` con `lost: false`).
   - **DASH:** el rival ve el sprint (`game:action`).
   - **Emotes:** el emote elegido sale también sobre la cabeza del rival (`emote`).
 - **Movimiento:** cada teléfono envía la posición de su jugador unas 20 veces por segundo (`game:state`). El
@@ -206,6 +207,8 @@ Están definidos en `backend/src/socket/events/protocol.ts`, con una copia idén
 | `toss` / `catch` | `kind` (normal\|spin) / — | lanzamiento del saque / lo atrapa |
 | `sprint-start` / `sprint-end` | `dirX` / — | DASH |
 | `stunned` | `ms` (duración del aturdido) | explosión, aturdido y estrellas |
+| `racket` | `lost: true` + `x, y` (dónde cae) / `lost: false` | su raqueta cae en la cancha y queda en el suelo / la recogió |
+| `remate-start` / `remate-end` | `slow` (cámara lenta), `t` (s de juego hasta el contacto) / — | la misma cámara lenta mientras apunta su remate y su salto (sin acercar la cámara); termina con `remate-end` o con su golpe |
 | `emote` | `kind` (happy\|cool\|wow) | globo con la carita sobre su cabeza |
 | `smash-armed` / `smash-disarmed` | — | aura del SMASH armado |
 | `smash-cine` | `x, y` (posición del emisor), `overhead`, `ms` (parte congelada del emisor) | partido congelado el mismo tiempo (`ms` es informativo: los dos teléfonos usan el mismo perfil de `SMASH_CINE`) y pose del remate (con salto) |

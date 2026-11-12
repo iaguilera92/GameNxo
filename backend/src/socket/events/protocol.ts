@@ -147,8 +147,13 @@ export interface HitMsg {
  *  smash-cine                   empieza la cinemática del SMASH del emisor (data: x, y, overhead, ms)
  *  inferno-cine                 empieza la cinemática del INFERNO del emisor (data: x, y, tx, ty, ms, power)
  *  defensive                    SOMBRA / SUPERSALTO del emisor (data: kind = shadow | jump, x, y, tx, ty, ms)
+ *  racket                       raqueta del emisor tras recibir la ULTI (data: lost = true + x, y donde cae · lost = false: la recogió)
+ *  remate-start / remate-end    el emisor empieza a rematar un globo (data: slow = cámara lenta, t = s de juego hasta el contacto) / golpea
  */
 export type ActionKind =
+  | 'racket'
+  | 'remate-start'
+  | 'remate-end'
   | 'toss'
   | 'catch'
   | 'sprint-start'

@@ -32,7 +32,7 @@ export interface GameSettings {
 const KEY = 'nxo.settings';
 /** clave antigua que lee INFERNO DRIVE (logic/InfernoDrive.shakeLevel): se mantiene sincronizada */
 const LEGACY_SHAKE = 'nxo.shake';
-const DEFAULTS: GameSettings = { sound: true, vibration: true, shake: 1, rival: 'auto', timingGuide: true };
+const DEFAULTS: GameSettings = { sound: true, vibration: true, shake: 1, rival: 'auto', timingGuide: false };
 
 let current: GameSettings = load();
 const listeners = new Set<(s: GameSettings) => void>();
@@ -43,7 +43,7 @@ function load(): GameSettings {
     if (!raw || typeof raw !== 'object') return { ...DEFAULTS };
     const shake = raw.shake === 0 || raw.shake === 0.5 || raw.shake === 1 ? raw.shake : DEFAULTS.shake;
     const rival = RIVAL_OPTIONS.some((o) => o.v === raw.rival) ? (raw.rival as RivalSetting) : DEFAULTS.rival;
-    return { sound: raw.sound !== false, vibration: raw.vibration !== false, shake, rival, timingGuide: raw.timingGuide !== false };
+    return { sound: raw.sound !== false, vibration: raw.vibration !== false, shake, rival, timingGuide: raw.timingGuide === true };
   } catch {
     return { ...DEFAULTS };
   }

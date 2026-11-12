@@ -33,7 +33,7 @@ const extrasOf = (p: { extra: ExtraCfg }) => Object.entries(p.extra.animations) 
 const extraKey = (a: ExtraAnim, pk = 'nxo') => `${pk}-x-${a}`;
 
 /** Raqueta suelta (sale volando al recibir el INFERNO): imagen generada por cÃ³digo. */
-const LOOSE_RACKET = 'nxo-loose-racket';
+export const LOOSE_RACKET = 'nxo-loose-racket';
 
 /**
  * NXO de espaldas con animaciones por sprites (hoja procesada con tools/build-nxo-sprites.mjs).
@@ -76,7 +76,7 @@ const JUMP_H = CHAR_UNITS_H * 0.22;
 /** al empezar a moverse camina este tiempo (ms) y luego corre (hojas nuevas) */
 const WALK_MS = 500;
 
-type State = 'idle' | 'run' | 'runstop' | 'hold' | 'swing' | 'serve' | 'victory' | 'turn' | 'sprint' | 'land' | 'inferno' | 'dive' | 'stun' | 'emote';
+type State = 'idle' | 'run' | 'runstop' | 'hold' | 'swing' | 'serve' | 'victory' | 'turn' | 'sprint' | 'land' | 'inferno' | 'dive' | 'stun' | 'emote' | 'remate';
 
 export type SpriteCharId = SheetId;
 /** Clip (textura = animación) para dibujar fuera del partido: último frame, ancla y alto de pie de su hoja. */
@@ -237,7 +237,7 @@ function queueBaseLoads(load: Phaser.Loader.LoaderPlugin) {
   }
 }
 /** Raqueta suelta (misma paleta que la del sprite: aro rojo, cordaje claro, mango negro). */
-function ensureLooseRacket(scene: Phaser.Scene) {
+export function ensureLooseRacket(scene: Phaser.Scene) {
   if (scene.textures.exists(LOOSE_RACKET)) return;
   const g = scene.make.graphics({}, false);
   // dibujada en vertical: cabeza arriba, mango abajo (32x64)
@@ -677,6 +677,24 @@ export class NxoActor {
     return Math.min(SWING.maxImpactMs, ((impact - start) / (info.fps * accel)) * 1000);
   }
 
+  /**
+   * REMATE del globo (cámara lenta): pose de preparación del remate con salto (clip smash-power en su frame de arranque,
+   * raqueta arriba) congelada hasta el golpe; swing(…, special) sigue desde ese mismo frame. false = sin hoja.
+   */
+  remateHold(): boolean {
+    if (this.state === 'victory') return false;
+    const useSpecial = !!this.pk && this.specialOk();
+    if (!useSpecial && !this.v2) return false;
+    this.stopShake();
+    this.stopLean();
+    this.sprite.setFlipX(false);
+    this.state = 'remate';
+    this.sprite.anims.timeScale = 1;
+    this.playClip(useSpecial ? this.sk('smash-power') : this.clip('smash').key, useSpecial ? this.P.special.start : this.geo.smashStart);
+    this.sprite.anims.pause();
+    return true;
+  }
+
   /** Inicio del toque del saque (la pelota acaba de salir). El golpe llega con serveRelease(). */
   serve(kind: 'normal' | 'spin' = 'normal') {
     if (this.state === 'victory') return;
@@ -795,7 +813,8 @@ export class NxoActor {
    * Golpe de un ataque especial recibido: aturdido (`stunned`) o, con el INFERNO, recibir el impacto con la
    * raqueta saliendo volando (vuelve a la mano al acabar). Dura `ms`. false = sin hoja.
    */
-  impactStun(kind: 'smash' | 'inferno', ms: number): boolean {
+  /** `throwRacket` = false: la mano queda vacía pero la raqueta suelta la dibuja MatchScene (cae en la cancha). */
+  impactStun(kind: 'smash' | 'inferno', ms: number, throwRacket = true): boolean {
     if (!this.v2 || this.state === 'victory') return false;
     this.stopShake();
     this.stopLean();
@@ -803,7 +822,7 @@ export class NxoActor {
     this.state = 'stun';
     this.sprite.anims.timeScale = 1;
     if (kind === 'inferno' && this.xr('inferno-hit')) {
-      this.looseAt = 2; // desde el frame 3 la mano queda vacÃ­a: la raqueta sale volando
+      this.looseAt = throwRacket ? 2 : -1; // desde el frame 3 la mano queda vacÃ­a: la raqueta sale volando
       this.playClip(this.xk('inferno-hit'));
     } else {
       this.looseAt = -1;
@@ -946,6 +965,7 @@ export class NxoActor {
     if (this.state === 'sprint') return true; // lo controla el DASH (setSprint)
     if (this.state === 'land') return !this.landDone;
     if (this.state === 'stun') return true; // lo suelta endBusy al acabar el aturdimiento
+    if (this.state === 'remate') return true; // pose del REMATE: la suelta el golpe (swing)
     if (this.state === 'dive') return !this.recovering || !(this.moving || this.charging); // la recuperaciÃ³n se puede cortar
     if (this.state === 'emote') return !(this.moving || this.charging); // moverse corta la reacciÃ³n
     if (this.state === 'inferno') {

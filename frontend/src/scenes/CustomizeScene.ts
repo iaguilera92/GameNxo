@@ -15,7 +15,7 @@ import { bakeImage } from '../ui/bakeImage';
 import { drawAbilityIcon, drawDefensiveIcon, drawDisc } from '../ui/icons';
 import { DEFENSIVE_POWERS, defensiveOwned, defensivePowerDef, defensivePowerOf } from '../domain/defensivePowers';
 import { roundedPoly } from '../ui/shapes';
-import { playButton } from '../ui/modeButtons';
+import { arcadeButton } from '../ui/modeButtons';
 import { hyperTexture } from '../ui/AbilityButton';
 import { commit, getPlayer } from '../domain/playerStore';
 import { equipStyle, upgradeZoneStat } from '../domain/operations';
@@ -29,9 +29,10 @@ import { addBallPreview, ensureBallAnims, queueInfernoArt } from '../fx/InfernoF
 import { type PowerSlot, openPowerDialog } from '../ui/PowerDialog';
 import { SMASH_POWERS, type SmashPower, smashOwned, smashPowerDef, smashPowerOf } from '../domain/smashPowers';
 import { elementTexture } from '../ui/AbilityButton';
-import { CHARGE_FX, type ChargeFxId, chargeFxDef, chargeFxOf, chargeFxOwned } from '../domain/chargeFx';
+import { CHARGE_FX, type ChargeFxId, chargeFxOf, chargeFxOwned } from '../domain/chargeFx';
 import { chargePreview, queueChargeFxArt } from '../fx/chargeFx';
 import { INFERNO } from '../logic/InfernoDrive';
+import { ZONE } from '../logic/Zone';
 
 /** Arte de los botones de habilidad. `box` = círculo visible en px de la imagen (sin margen transparente). */
 const ABILITY_ART: Partial<Record<AbilityId, { key: string; file: string; w: number; h: number; box: { x0: number; y0: number; x1: number; y1: number } }>> = {
@@ -48,10 +49,39 @@ const GRID_GAP = 12;
 /** nombre de cada EFECTO PELOTA (estela; ui/styleLook.ts) */
 const STYLE_NAME: Record<string, string> = { classic: 'CLÁSICO', red: 'ROJO', pink: 'ROSADO', green: 'VERDE', gold: 'ORO' };
 
-/** Huella de mascota (icono de MASCOTAS), centrada en (0,0) con radio aprox. `r`. */
-function drawPaw(g: Phaser.GameObjects.Graphics, r: number, col: number) {
-  g.fillStyle(col, 1).fillEllipse(0, r * 0.28, r * 0.95, r * 0.75);
-  for (const [dx, dy] of [[-0.5, -0.25], [-0.18, -0.55], [0.18, -0.55], [0.5, -0.25]]) g.fillEllipse(dx * r, dy * r, r * 0.34, r * 0.42);
+/**
+ * Frame 'trim' de una imagen: solo su contenido (sin el margen transparente). Se mide una vez y queda en la textura;
+ * si no se puede medir, el frame completo.
+ */
+function trimFrame(scene: Phaser.Scene, key: string): string | undefined {
+  const tex = scene.textures.get(key);
+  if (tex.has('trim')) return 'trim';
+  try {
+    const src = tex.getSourceImage() as CanvasImageSource & { width: number; height: number };
+    const cv = document.createElement('canvas');
+    cv.width = src.width;
+    cv.height = src.height;
+    const ctx = cv.getContext('2d', { willReadFrequently: true });
+    if (!ctx) return undefined;
+    ctx.drawImage(src, 0, 0);
+    const px = ctx.getImageData(0, 0, cv.width, cv.height).data;
+    let x0 = cv.width, x1 = -1, y0 = cv.height, y1 = -1;
+    for (let y = 0; y < cv.height; y++) {
+      for (let x = 0; x < cv.width; x++) {
+        if (px[(y * cv.width + x) * 4 + 3] > 40) {
+          if (x < x0) x0 = x;
+          if (x > x1) x1 = x;
+          if (y < y0) y0 = y;
+          if (y > y1) y1 = y;
+        }
+      }
+    }
+    if (x1 < 0) return undefined;
+    tex.add('trim', 0, x0, y0, x1 + 1 - x0, y1 + 1 - y0);
+    return 'trim';
+  } catch {
+    return undefined;
+  }
 }
 
 const gridCol = (W: number, col: 0 | 1) => {
@@ -130,6 +160,7 @@ export class CustomizeScene extends Phaser.Scene {
 
   preload() {
     if (!this.textures.exists('menu-bg')) this.load.image('menu-bg', 'assets/menu-bg.webp');
+    for (const k of ['estilos', 'efecto', 'cargando', 'mascotas']) if (!this.textures.exists(`personalizar-${k}`)) this.load.image(`personalizar-${k}`, `assets/personalizar-${k}.webp`);
     for (const art of Object.values(ABILITY_ART)) if (art && !this.textures.exists(art.key)) this.load.image(art.key, art.file);
     queueInfernoArt(this.load); // bolas de los poderes del INFERNO (vista previa del selector)
     queueChargeFxArt(this.load, ['fire', 'energy', 'tulip']); // aros de carga (vista previa del diálogo CARGANDO GOLPE)
@@ -168,7 +199,7 @@ export class CustomizeScene extends Phaser.Scene {
     // fila 2 las dos habilidades equipadas (DASH | SMASH), fila 3 INFERNO | ZONA
     // (11-11-2026) arriba una fila de 4 cosméticos (ESTILOS · EFECTO PELOTA · CARGANDO GOLPE · MASCOTAS) y debajo el título
     // HABILIDADES con DEFENSIVO | ESPECIAL y ULTI | ZONA
-    const L = { gapHero: 14, level: 78, gapA: 22, cosmetic: 118, cosToTitle: 30, titleToCard: 28, ability: 104, abilityGap: GRID_GAP, gapFeatures: GRID_GAP, features: 270, gapC: 18, play: 92, bottom: 24 };
+    const L = { gapHero: 14, level: 78, gapA: 22, cosmetic: 136, cosToTitle: 30, titleToCard: 28, ability: 104, abilityGap: GRID_GAP, gapFeatures: GRID_GAP, features: 270, gapC: 18, play: 92, bottom: 52 };
     // NIVEL MÁXIMO: sin tarjeta de nivel en la lista (sale como pastilla pequeña sobre el nombre, en la vitrina) y todo su
     // alto se reparte entre las dos filas de tarjetas de habilidades (el resto del reparto no cambia)
     const maxed = p.level >= MAX_LEVEL;
@@ -213,10 +244,10 @@ export class CustomizeScene extends Phaser.Scene {
     y += L.cosmetic + L.cosToTitle;
     this.sectionTitle(W, y, 'HABILIDADES');
     const row2 = y + L.titleToCard;
-    p.abilities.forEach((id, i) => this.abilityCard(W, row2, L.ability, i as 0 | 1, ABILITIES[id], i + 1));
+    p.abilities.forEach((id, i) => this.abilityCard(W, row2, L.ability, i as 0 | 1, ABILITIES[id]));
     y += L.titleToCard + L.ability + L.gapFeatures;
     this.featureCards(W, y, L.features);
-    // bloqueos por nivel (domain/unlocks.ts): CARGANDO 12 · DEFENSIVO 2 · ESPECIAL 3 · ULTI 5 · ZONA 10
+    // bloqueos por nivel (domain/unlocks.ts): DEFENSIVO 2 · ESPECIAL 4 · ULTI 6 · ESTILOS 8 · EFECTO PELOTA 10 · CARGANDO 12 · ZONA 15
     // (el saque con efecto sigue bloqueado hasta el 15 en el partido; ya no tiene tarjeta)
     {
       const c0 = gridCol(W, 0);
@@ -233,10 +264,11 @@ export class CustomizeScene extends Phaser.Scene {
     // ---------------------------------------------------------------- JUGAR
     const playH = L.play;
     const playY = y + playH / 2;
-    playButton(this, W / 2, playY, Math.min(520, W - 120), playH, () => {
+    // sin latido (quieto), con la flecha de siempre
+    arcadeButton(this, W / 2, playY, Math.min(520, W - 120), playH, 'JUGAR', () => {
       this.cameras.main.fadeOut(180, 0, 0, 0);
       this.cameras.main.once('camerafadeoutcomplete', () => this.scene.start('Matchmaking'));
-    });
+    }, { palette: 'yellow', chevron: true, pulse: false });
   }
 
   // ================================================================ piezas
@@ -245,11 +277,11 @@ export class CustomizeScene extends Phaser.Scene {
    * Tarjeta de una habilidad aún BLOQUEADA por nivel (domain/unlocks.ts): velo oscuro, candado y "NIVEL n". Tocarla solo
    * avisa (no abre su diálogo). No hace nada si ya está desbloqueada.
    */
-  private lockCard(x: number, y: number, w: number, h: number, key: UnlockKey) {
+  private lockCard(x: number, y: number, w: number, h: number, key: UnlockKey, r = 18) {
     if (isUnlocked(key, getPlayer().level)) return;
     const g = this.add.graphics().setDepth(5);
-    g.fillStyle(0x02060f, 0.72).fillRoundedRect(x, y, w, h, 18);
-    g.lineStyle(2, 0x3a4666, 1).strokeRoundedRect(x, y, w, h, 18);
+    g.fillStyle(0x02060f, 0.72).fillRoundedRect(x, y, w, h, r);
+    g.lineStyle(2, 0x3a4666, 1).strokeRoundedRect(x, y, w, h, r);
     const cx = x + w / 2;
     const cy = y + h / 2;
     const lk = this.add.graphics({ x: cx, y: cy - 12 }).setDepth(6);
@@ -257,7 +289,14 @@ export class CustomizeScene extends Phaser.Scene {
     lk.lineBetween(-9, -6, -9, 1).lineBetween(9, -6, 9, 1);
     lk.fillStyle(0xc8d2ea, 1).fillRoundedRect(-13, 0, 26, 19, 5);
     lk.fillStyle(0x02060f, 1).fillCircle(0, 8, 3);
-    this.add.text(cx, cy + 26, unlockLabel(key), { fontFamily: FONT, fontSize: '18px', color: '#ffd23f', stroke: '#0a1638', strokeThickness: 4 }).setOrigin(0.5).setLetterSpacing(1).setDepth(6);
+    // "DESBLOQUEA" + "NIVEL n" (dos líneas: cabe también en las tarjetas pequeñas de los cosméticos)
+    const t = this.add
+      .text(cx, cy + 30, `DESBLOQUEA
+${unlockLabel(key)}`, { fontFamily: FONT, fontSize: '16px', color: '#ffd23f', stroke: '#0a1638', strokeThickness: 4, align: 'center' })
+      .setOrigin(0.5)
+      .setLineSpacing(-2)
+      .setDepth(6);
+    if (t.width > w - 10) t.setScale((w - 10) / t.width);
     const hit = this.add.zone(cx, cy, w, h).setInteractive({ useHandCursor: true }).setDepth(7);
     hit.on('pointerup', () => this.toast(`Se desbloquea en el ${unlockLabel(key)}`));
   }
@@ -351,55 +390,38 @@ export class CustomizeScene extends Phaser.Scene {
 
   /**
    * Fila de 4 cosméticos: ESTILOS (color del personaje) · EFECTO PELOTA (estela) · CARGANDO GOLPE · MASCOTAS (bloqueada
-   * hasta la LIGA ORO). Cada tarjeta: icono arriba, nombre y lo que usas abajo; tocarla abre su selector.
+   * hasta la LIGA ORO). Cada tarjeta es solo su imagen (public/assets/personalizar-*.webp, ya trae el título); tocarla
+   * abre su selector.
    */
   private cosmeticRow(W: number, y: number, h: number, skin: SkinId) {
-    const pl = getPlayer();
-    const colorInfo = charColorInfo(getProfile().color);
-    const style = (pl.equipped.style ?? 'classic') as StyleId;
-    const look = styleLook(style);
-    // ESTILOS: paleta con el color en uso
-    this.miniCard(this.cosCol(W, 0), y, h, 0xff8fc4, 'ESTILOS', colorInfo.name, (g, r) => {
-      const cols = [colorInfo.color, 0x2f7bff, 0x2fd46a];
-      cols.forEach((c, i) => {
-        const a = -Math.PI / 2 + (i * Math.PI * 2) / 3;
-        g.fillStyle(0x0a1638, 1).fillCircle(Math.cos(a) * r * 0.38, Math.sin(a) * r * 0.38, r * 0.42);
-        g.fillStyle(c, 1).fillCircle(Math.cos(a) * r * 0.38, Math.sin(a) * r * 0.38, r * 0.34);
-      });
-      g.fillStyle(0x0a1638, 1).fillCircle(0, 0, r * 0.26);
-      g.fillStyle(colorInfo.color, 1).fillCircle(0, 0, r * 0.2);
-    }, () => this.openColorDialog(skin));
-    // EFECTO PELOTA: pelota con la estela del estilo en uso
-    this.miniCard(this.cosCol(W, 1), y, h, look.color, 'EFECTO PELOTA', STYLE_NAME[style] ?? style.toUpperCase(), (g, r) => {
-      for (let i = 0; i < 3; i++) g.lineStyle(r * (0.24 - i * 0.06), look.trail, 0.9 - i * 0.25).lineBetween(-r * 0.95, r * (0.45 - i * 0.05), -r * 0.1, r * 0.05);
-      g.fillStyle(0x0a1638).fillCircle(r * 0.15, -r * 0.05, r * 0.44);
-      g.fillStyle(0xd7f53a).fillCircle(r * 0.15, -r * 0.05, r * 0.36);
-      g.lineStyle(r * 0.07, 0xffffff, 0.95).beginPath().arc(r * 0.15 - r * 0.4, -r * 0.05, r * 0.34, -0.85, 0.85).strokePath();
-    }, () => this.openStyleDialog());
+    // ESTILOS y EFECTO PELOTA (bloqueadas hasta su nivel, como las habilidades)
+    const sc = this.cosCol(W, 0);
+    // su dibujo es más alto y estrecho que el de las otras: se achica para que se vea del mismo tamaño
+    this.miniCard(sc, y, h, 0xff8fc4, 'personalizar-estilos', () => this.openColorDialog(skin), 0.72);
+    this.lockCard(sc.x, y, sc.w, h, 'styles', 16);
+    const ec = this.cosCol(W, 1);
+    this.miniCard(ec, y, h, styleLook((getPlayer().equipped.style ?? 'classic') as StyleId).color, 'personalizar-efecto', () => this.openStyleDialog());
+    this.lockCard(ec.x, y, ec.w, h, 'trail', 16);
     // CARGANDO GOLPE (bloqueada hasta su nivel, como la habilidad)
-    const chargeName = chargeFxDef(chargeFxOf(pl.equipped.charge, pl.equipped.skin)).name;
     const cc = this.cosCol(W, 2);
-    this.miniCard(cc, y, h, PASSIVES.charge.color, 'CARGANDO GOLPE', chargeName, (g, r) => PASSIVES.charge.draw?.(g, r), () => this.openChargeDialog());
-    this.lockCard(cc.x, y, cc.w, h, 'charge');
+    this.miniCard(cc, y, h, PASSIVES.charge.color, 'personalizar-cargando', () => this.openChargeDialog());
+    this.lockCard(cc.x, y, cc.w, h, 'charge', 16);
     // MASCOTAS: aún no existen; se abrirán al llegar a la LIGA ORO
     const mc = this.cosCol(W, 3);
-    this.miniCard(mc, y, h, 0xffc42e, 'MASCOTAS', 'LIGA ORO', (g, r) => drawPaw(g, r, 0xc8d2ea), () => this.toast('Mascotas: se desbloquean al llegar a la LIGA ORO'));
+    this.miniCard(mc, y, h, 0xffc42e, 'personalizar-mascotas', () => this.toast('Mascotas: se desbloquean al llegar a la LIGA ORO'), 0.9);
     const goldReached = LEAGUE_ORDER.indexOf(rankedState().league) >= LEAGUE_ORDER.indexOf('gold');
     if (!goldReached) this.lockOverlay(mc.x, y, mc.w, h, 'LIGA ORO', 'Mascotas: se desbloquean al llegar a la LIGA ORO');
   }
 
-  /** Tarjeta pequeña (1/4 de ancho): icono dibujado arriba, nombre y valor abajo, centrados. */
-  private miniCard(col: { x: number; w: number }, y: number, h: number, color: number, name: string, value: string, draw: (g: Phaser.GameObjects.Graphics, r: number) => void, onTap: () => void) {
+  /** Tarjeta pequeña (1/4 de ancho): solo su imagen, centrada y ajustada al cuadro. */
+  private miniCard(col: { x: number; w: number }, y: number, h: number, color: number, key: string, onTap: () => void, size = 1) {
     const { x, w } = col;
     this.card(x, y, w, h, { line: color, glow: 0.2, r: 16 });
-    const r = Math.min(26, h * 0.24);
-    const icon = this.add.graphics({ x: x + w / 2, y: y + h * 0.36 });
-    drawDisc(icon, r, color, 0x1b2d5c);
-    draw(icon, r * 0.9);
-    const t = this.add.text(x + w / 2, y + h * 0.68, name, { fontFamily: FONT, fontSize: '14px', color: '#ffffff' }).setOrigin(0.5).setLetterSpacing(0.5);
-    if (t.width > w - 12) t.setScale((w - 12) / t.width);
-    const v = this.add.text(x + w / 2, y + h * 0.68 + 19, `${value} ›`, { fontFamily: FONT, fontSize: '11px', color: '#8fb4ff' }).setOrigin(0.5);
-    if (v.width > w - 12) v.setScale((w - 12) / v.width);
+    if (this.textures.exists(key)) {
+      // sin el margen transparente de cada archivo (traen márgenes distintos): así las 4 se ven del mismo tamaño
+      const img = this.add.image(x + w / 2, y + h / 2, key, trimFrame(this, key));
+      img.setScale(Math.min((w - 6) / img.width, (h - 6) / img.height) * size);
+    }
     const hit = this.add.zone(x + w / 2, y + h / 2, w, h).setInteractive({ useHandCursor: true });
     hit.on('pointerup', onTap);
   }
@@ -622,7 +644,7 @@ export class CustomizeScene extends Phaser.Scene {
     const right = gridCol(W, 1);
     const w = left.w;
     this.infernoCard(left.x, top, w, h);
-    const item = { x: right.x, title: 'ZONA', subtitle: 'ESTADO DE REMONTADA', color: 0x45d9ff };
+    const item = { x: right.x, title: 'ZONA', color: 0x45d9ff };
     {
       this.card(item.x, top, w, h, { line: item.color, glow: 0.24, r: 16 });
       const icon = this.add.graphics({ x: item.x + 34, y: top + 35 });
@@ -631,13 +653,27 @@ export class CustomizeScene extends Phaser.Scene {
       icon.fillStyle(0xffffff, 1).fillCircle(0, 0, 7);
       const tx = item.x + 66;
       const tw = w - 76;
-      const title = this.add.text(tx, top + 18, item.title, { fontFamily: FONT, fontSize: '20px', color: '#75e7ff', stroke: '#061431', strokeThickness: 3 }).setOrigin(0, 0);
-      title.setScale(Math.min(1, tw / title.width));
-      const subtitle = this.add.text(tx, top + 43, item.subtitle, { fontFamily: FONT, fontSize: '12px', color: '#d4e5ff', letterSpacing: 0.5 }).setOrigin(0, 0);
-      subtitle.setScale(Math.min(1, tw / subtitle.width));
+      // solo el título: lo que es la Zona y cómo funcionan los Rayos va en el (i)
+      const title = this.add.text(tx, top + 35, item.title, { fontFamily: FONT, fontSize: '24px', color: '#75e7ff', stroke: '#061431', strokeThickness: 3 }).setOrigin(0, 0.5);
+      title.setScale(Math.min(1, (tw - 44) / title.width));
+      this.infoButton(item.x + w - 26, top + 35, () => this.zoneInfoDialog());
       {
         const zone = getPlayer().zone;
-        this.add.text(item.x + w / 2, top + 76, `RAYOS ${zone.rays}  ·  1 RAYO = +1%`, { fontFamily: FONT, fontSize: '13px', color: '#91eaff' }).setOrigin(0.5);
+        // Rayos sin gastar: aviso dorado que late para que se usen (sin Rayos no se muestra nada)
+        if (zone.rays > 0) {
+          const pill = this.add.container(item.x + w / 2, top + 78);
+          const pw = Math.min(w - 24, 210);
+          const pg = this.add.graphics();
+          pg.fillStyle(0x3a2400, 1).fillRoundedRect(-pw / 2 - 2, -16, pw + 4, 32, 16);
+          pg.fillStyle(0xffc42e, 1).fillRoundedRect(-pw / 2, -14, pw, 28, 14);
+          pg.fillStyle(0xffffff, 0.3).fillRoundedRect(-pw / 2 + 6, -12, pw - 12, 9, 5);
+          const bolt = [{ x: 3, y: -11 }, { x: -6, y: 1 }, { x: 0, y: 1 }, { x: -3, y: 11 }, { x: 7, y: -2 }, { x: 1, y: -2 }];
+          pg.fillStyle(0x3a2400, 1).fillPoints(bolt.map((q) => ({ x: q.x - pw / 2 + 20, y: q.y })), true);
+          const pt = this.add.text(10, 0, `${zone.rays} ${zone.rays === 1 ? 'RAYO' : 'RAYOS'} PARA USAR`, { fontFamily: FONT, fontSize: '14px', color: '#3a2400' }).setOrigin(0.5);
+          if (pt.width > pw - 44) pt.setScale((pw - 44) / pt.width);
+          pill.add([pg, pt]);
+          this.tweens.add({ targets: pill, scale: { from: 1, to: 1.07 }, duration: 650, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
+        }
         const labels: Record<ZoneStatKey, string> = { strength: 'FUERZA', speed: 'VELOCIDAD', precision: 'PRECISIÓN', agility: 'AGILIDAD', resistance: 'RESISTENCIA' };
         ZONE_STAT_KEYS.forEach((key, index) => {
           const level = zone.stats[key];
@@ -661,6 +697,8 @@ export class CustomizeScene extends Phaser.Scene {
           const plus = this.add.graphics({ x: plusX, y: cy }).setAlpha(enabled ? 1 : 0.42);
           plus.fillStyle(enabled ? item.color : 0x54637d, 1).fillCircle(0, 0, 13);
           plus.lineStyle(3, 0xffffff, 0.95).lineBetween(-6, 0, 6, 0).lineBetween(0, -6, 0, 6);
+          // con Rayos para gastar, los + laten (invitan a mejorar)
+          if (enabled) this.tweens.add({ targets: plus, scale: { from: 1, to: 1.18 }, duration: 600, delay: index * 90, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
           const hit = this.add.zone(plusX, cy, 40, 32).setInteractive({ useHandCursor: true });
           hit.on('pointerup', () => {
             const result = commit((state) => upgradeZoneStat(state, key));
@@ -672,9 +710,63 @@ export class CustomizeScene extends Phaser.Scene {
     }
   }
 
+  /** Botón (i) redondo que abre una explicación. */
+  private infoButton(x: number, y: number, onTap: () => void) {
+    const c = this.add.container(x, y);
+    const g = this.add.graphics();
+    g.fillStyle(0x000000, 0.3).fillCircle(1, 3, 15);
+    g.fillStyle(0x10224d, 1).fillCircle(0, 0, 15);
+    g.lineStyle(2, 0xffffff, 0.9).strokeCircle(0, 0, 15);
+    c.add([g, this.add.text(0, 1, 'i', { fontFamily: FONT, fontSize: '20px', color: '#ffffff' }).setOrigin(0.5)]);
+    c.setSize(46, 46).setInteractive({ useHandCursor: true });
+    c.on('pointerup', () => {
+      this.tweens.add({ targets: c, scale: { from: 0.85, to: 1 }, duration: 180, ease: 'Back.easeOut' });
+      onTap();
+    });
+    return c;
+  }
+
+  /** ZONA (i): qué es la Zona (estado de remontada), cuándo se activa y cómo se usan los Rayos. */
+  private zoneInfoDialog() {
+    const W = this.scale.width;
+    const H = this.scale.height;
+    const objs: Phaser.GameObjects.GameObject[] = [];
+    const close = () => objs.forEach((o) => o.destroy());
+    const shade = this.add.rectangle(0, 0, W, H, 0x02060f, 0.75).setOrigin(0).setDepth(8000).setInteractive();
+    shade.on('pointerup', close);
+    objs.push(shade);
+    const pw = Math.min(600, W - 60);
+    const text = [
+      'La ZONA es tu estado de REMONTADA.',
+      '',
+      `Se activa una vez por partido cuando vas perdiendo por ${ZONE.lead} puntos (con al menos ${ZONE.minPoints} ganados) o vas 0-40 en un juego. Dura ${ZONE.durationPoints} puntos.`,
+      '',
+      'En Zona eres más rápido, golpeas más fuerte, llegas más lejos y resistes el ESPECIAL rival.',
+      '',
+      'RAYOS: los ganas jugando (Pase de Batalla y recompensas semanales de Ranked). Cada Rayo sube un atributo un 1 % mientras estás en Zona, hasta un 20 %. ¡Úsalos con los botones +!',
+    ].join('\n');
+    const body = this.add.text(0, 0, text, { fontFamily: FONT, fontSize: '19px', color: '#dbe5ff', align: 'center', lineSpacing: 4, wordWrap: { width: pw - 60 } }).setOrigin(0.5, 0);
+    const ph = 100 + body.height + 120;
+    const panel = this.add.container(W / 2, H / 2).setDepth(8001);
+    objs.push(panel);
+    panel.add(this.add.rectangle(0, 0, pw, ph, 0x000000, 0.001).setInteractive()); // tocar el panel no cierra
+    const g = this.add.graphics();
+    g.fillStyle(0x000000, 0.4).fillRoundedRect(-pw / 2 + 4, -ph / 2 + 8, pw, ph, 24);
+    g.fillStyle(0x0b1a3d, 1).fillRoundedRect(-pw / 2, -ph / 2, pw, ph, 24);
+    g.lineStyle(3, 0x45d9ff, 1).strokeRoundedRect(-pw / 2, -ph / 2, pw, ph, 24);
+    panel.add(g);
+    panel.add(this.add.text(0, -ph / 2 + 48, 'ZONA', { fontFamily: FONT, fontSize: '34px', color: '#75e7ff', stroke: '#061431', strokeThickness: 6 }).setOrigin(0.5).setLetterSpacing(2));
+    body.setPosition(0, -ph / 2 + 90);
+    panel.add(body);
+    panel.add(arcadeButton(this, 0, ph / 2 - 58, Math.min(300, pw - 80), 74, 'ENTENDIDO', close, { palette: 'yellow' }));
+    panel.setScale(0.85).setAlpha(0);
+    this.tweens.add({ targets: panel, scale: 1, alpha: 1, duration: 220, ease: 'Back.easeOut' });
+  }
+
   /**
-   * INFERNO: el poder elegido (bola animada, nombre y descripción) y debajo el selector con los cuatro poderes
-   * (domain/infernoPowers.ts). Tocar uno lo equipa al momento y la tarjeta se redibuja (sin reiniciar la escena).
+   * ULTI: tarjeta especial con el poder EQUIPADO (bola animada en grande, con rayos de luz girando detrás, resplandor y
+   * destellos), su nombre y descripción. Tocarla abre el diálogo de PODERES (openUltiDialog): ahí caben todas las ULTIs
+   * (domain/infernoPowers.ts), también las que vengan después.
    */
   private infernoCard(x: number, top: number, w: number, h: number) {
     this.infernoBox?.destroy();
@@ -682,7 +774,57 @@ export class CustomizeScene extends Phaser.Scene {
     this.infernoBox = box;
     const power = getProfile().inferno;
     const def = infernoPowerDef(power);
-    box.add(this.card(x, top, w, h, { line: def.color, glow: 0.24, r: 16 }));
+    box.add(this.card(x, top, w, h, { line: def.color, glow: 0.32, r: 16 }));
+    // fondo morado de la ULTI (más claro arriba)
+    const bg = this.add.graphics();
+    bg.fillStyle(0x2a0c63, 0.85).fillRoundedRect(x + 3, top + 3, w - 6, h - 6, 14);
+    bg.fillStyle(0x5a22b8, 0.55).fillRoundedRect(x + 3, top + 3, w - 6, h * 0.5, { tl: 14, tr: 14, bl: 6, br: 6 });
+    bg.lineStyle(3, def.color, 1).strokeRoundedRect(x, top, w, h, 16);
+    box.add(bg);
+
+    // la bola equipada en grande, envuelta en un aura de energía: halo suave fijo + chispas de su color que brotan
+    // del borde y suben desvaneciéndose (emisor de partículas: sin crear objetos por fotograma)
+    const bx = x + w / 2;
+    const by = top + 124;
+    if (!this.textures.exists('ulti-aura-dot')) {
+      const S = 32;
+      const tex = this.textures.createCanvas('ulti-aura-dot', S, S);
+      if (tex) {
+        const ctx = tex.getContext();
+        const grd = ctx.createRadialGradient(S / 2, S / 2, 0, S / 2, S / 2, S / 2);
+        grd.addColorStop(0, 'rgba(255,255,255,1)');
+        grd.addColorStop(0.4, 'rgba(255,255,255,0.6)');
+        grd.addColorStop(1, 'rgba(255,255,255,0)');
+        ctx.fillStyle = grd;
+        ctx.fillRect(0, 0, S, S);
+        tex.refresh();
+      }
+    }
+    const halo = this.add.graphics({ x: bx, y: by }).setBlendMode(Phaser.BlendModes.ADD);
+    for (const [r, a] of [[64, 0.08], [52, 0.12], [42, 0.16]] as const) halo.fillStyle(def.color, a).fillCircle(0, 0, r);
+    box.add(halo);
+    const edge = new Phaser.Geom.Circle(0, 0, 40);
+    const aura = this.add.particles(bx, by, 'ulti-aura-dot', {
+      lifespan: { min: 600, max: 1100 },
+      speed: { min: 14, max: 40 },
+      speedY: { min: -60, max: -25 },
+      scale: { start: 0.55, end: 0 },
+      alpha: { start: 0.9, end: 0 },
+      tint: [def.color, def.color, 0xffffff],
+      blendMode: Phaser.BlendModes.ADD,
+      frequency: 45,
+      emitZone: { type: 'edge', source: edge, quantity: 24 },
+    });
+    box.add(aura);
+    box.add(this.ballIcon(power, bx, by, 92, true));
+    const spark: [number, number, number][] = [[0.14, 0.32, 7], [0.86, 0.3, 6], [0.8, 0.62, 7], [0.18, 0.66, 5]];
+    spark.forEach(([fx, fy, r], i) => {
+      const st = this.add.star(x + w * fx, top + h * fy, 4, r * 0.35, r, 0xffffff).setBlendMode(Phaser.BlendModes.ADD);
+      box.add(st);
+      this.tweens.add({ targets: st, alpha: { from: 0.1, to: 1 }, scale: { from: 0.5, to: 1.2 }, angle: 45, duration: 700 + i * 150, delay: i * 200, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
+    });
+
+    // cabecera: icono, ULTI y el nombre de la bola
     box.add(this.purpleRacketIcon(x + 34, top + 35, 52));
     const tx = x + 66;
     const tw = w - 76;
@@ -690,43 +832,45 @@ export class CustomizeScene extends Phaser.Scene {
     title.setScale(Math.min(1, tw / title.width));
     const name = this.add.text(tx, top + 43, def.ball, { fontFamily: FONT, fontSize: '14px', color: '#ffffff' }).setOrigin(0, 0).setLetterSpacing(1);
     name.setScale(Math.min(1, tw / name.width));
-    const desc = this.add.text(x + w / 2, top + 70, def.desc, { fontFamily: FONT, fontSize: '13px', color: '#c3d4f2', align: 'center', wordWrap: { width: w - 24 } }).setOrigin(0.5, 0);
+    const desc = this.add.text(x + w / 2, top + 184, def.desc, { fontFamily: FONT, fontSize: '13px', color: '#e2d4ff', align: 'center', wordWrap: { width: w - 24 } }).setOrigin(0.5, 0);
     const rule = this.add
-      .text(x + w / 2, top + h - 14, `Se activa tras ${INFERNO.pointsToCharge} golpes ganadores`, { fontFamily: FONT, fontSize: '12px', color: '#ffe9a8' })
+      .text(x + w / 2, top + h - 34, `Se activa tras ${INFERNO.pointsToCharge} golpes ganadores`, { fontFamily: FONT, fontSize: '12px', color: '#ffe9a8' })
       .setOrigin(0.5, 1);
     if (rule.width > w - 16) rule.setScale((w - 16) / rule.width);
-    box.add([title, name, desc, rule]);
+    const more = this.add.text(x + w - 14, top + h - 12, `${def.name} · PODERES ›`, { fontFamily: FONT, fontSize: '12px', color: '#c9a4ff' }).setOrigin(1, 1);
+    if (more.width > w - 20) more.setScale((w - 20) / more.width);
+    box.add([title, name, desc, rule, more]);
 
-    // selector: los cuatro poderes en fila; el elegido con aro de su color, animado y con su nombre resaltado
-    const slotW = (w - 16) / INFERNO_POWERS.length;
-    const cy = top + Math.round(h * 0.6);
-    INFERNO_POWERS.forEach((p, i) => {
-      const cx = x + 8 + slotW * (i + 0.5);
-      const on = p.id === power;
-      const ring = this.add.graphics();
-      if (on) ring.lineStyle(8, p.color, 0.25).strokeCircle(cx, cy, 27);
-      ring.fillStyle(0x05112c, 0.9).fillCircle(cx, cy, 25);
-      ring.lineStyle(on ? 3 : 2, on ? p.color : 0x2a4a8a, 1).strokeCircle(cx, cy, 25);
-      const has = infernoOwned(getPlayer().owned, p.id, getPlayer().equipped.skin);
-      const ball = this.ballIcon(p.id, cx, cy, 46, on).setAlpha(on ? 1 : has ? 0.55 : 0.22);
-      const label = this.add.text(cx, cy + 33, p.name, { fontFamily: FONT, fontSize: '11px', color: on ? p.css : '#8ea3ce' }).setOrigin(0.5, 0);
-      if (label.width > slotW - 4) label.setScale((slotW - 4) / label.width);
-      if (!has) {
-        // sin comprar: candado sobre la bola y aviso al tocar
-        const lk = this.add.graphics({ x: cx, y: cy });
-        lk.fillStyle(0xaebfe6, 1).fillRoundedRect(-8, -2, 16, 12, 3);
-        lk.lineStyle(3, 0xaebfe6, 1).beginPath().arc(0, -2, 5, Math.PI, 0).strokePath();
-        box.add(lk);
-      }
-      const hit = this.add.zone(cx, cy + 8, slotW, 72).setInteractive({ useHandCursor: true });
-      hit.on('pointerup', () => {
-        if (on) return;
-        if (!has) return this.toast(`${p.ball} se compra en la TIENDA`);
-        setInferno(p.id);
-        // se redibuja en el siguiente fotograma (no se destruye la zona tocada dentro de su propio evento)
-        this.time.delayedCall(0, () => this.infernoCard(x, top, w, h));
-      });
-      box.add([ring, ball, label, hit]);
+    const hit = this.add.zone(x + w / 2, top + h / 2, w, h).setInteractive({ useHandCursor: true });
+    hit.on('pointerup', () => this.openUltiDialog());
+    box.add(hit);
+  }
+
+  /** ULTI › PODERES: televisión con el poder elegido y todos los de la ULTI (los que no se tienen, con candado). */
+  private openUltiDialog() {
+    const p = getPlayer();
+    const cur = getProfile().inferno;
+    const slots: PowerSlot[] = INFERNO_POWERS.map((d) => ({
+      name: d.name,
+      desc: `${d.ball}. ${d.desc}`,
+      owned: infernoOwned(p.owned, d.id, p.equipped.skin),
+      equipped: d.id === cur,
+      preview: (ix, iy, size) => this.ballIcon(d.id, ix, iy, size, true),
+      thumb: (ix, iy, size) => this.ballIcon(d.id, ix, iy, size, false),
+      onEquip: () => setInferno(d.id),
+    }));
+    openPowerDialog(this, {
+      title: 'PODERES · ULTI',
+      color: infernoPowerDef(cur).color,
+      slots,
+      special: true,
+      onShop: () => {
+        this.cameras.main.fadeOut(180, 0, 0, 0);
+        this.cameras.main.once('camerafadeoutcomplete', () => this.scene.start('Shop'));
+      },
+      onClose: ({ changed }) => {
+        if (changed) this.scene.restart(); // al instante: la tarjeta ya muestra la ULTI equipada
+      },
     });
   }
 
@@ -777,8 +921,8 @@ export class CustomizeScene extends Phaser.Scene {
     return tx;
   }
 
-  /** Tarjeta de habilidad equipada: número de ranura, icono, nombre, recarga y descripción. */
-  private abilityCard(W: number, y: number, h: number, col: 0 | 1, a: AbilityDef, slot: number) {
+  /** Tarjeta de habilidad equipada: icono, nombre, recarga y descripción. */
+  private abilityCard(W: number, y: number, h: number, col: 0 | 1, a: AbilityDef) {
     const { x, w } = gridCol(W, col);
     // el PODER equipado de la habilidad (DEFENSIVO: dash / destello; ESPECIAL: fuego / hielo / viento / rayo): su
     // descripción, su icono y su nombre en la tarjeta, para ver lo que se equipó en el diálogo
@@ -791,10 +935,6 @@ export class CustomizeScene extends Phaser.Scene {
     // con el poder de siempre (dash / fuego) se deja la descripción de la habilidad (dice también la duración del aturdido)
     const isDefault = !power || power.id === 'dash' || power.id === 'fire';
     this.gridCard(x, y, w, h, a.color, a.name, isDefault ? a.desc : power.desc, 78);
-    // número de ranura
-    const sb = this.add.graphics();
-    sb.fillStyle(a.color, 1).fillRoundedRect(x + 14, y - 12, 34, 26, 8);
-    this.add.text(x + 31, y + 1, String(slot), { fontFamily: FONT, fontSize: '18px', color: '#ffffff' }).setOrigin(0.5);
     // botón de la habilidad: imagen (assets/btn-<id>.png) si existe; si no, el icono dibujado
     // el SMASH con el color de su poder; el DEFENSIVO con el icono de su poder (el DASH, la imagen de siempre)
     if (defPower && defPower.id !== 'dash') {

@@ -25,12 +25,16 @@ export const PLAYER_SCHEMA_VERSION = 7;
 export interface LoginState {
   /** último día reclamado (AAAA-MM-DD del ciclo diario) */
   last: string;
-  /** día de la racha ya reclamado (1..7; 0 = nunca) */
+  /** días reclamados en la semana en curso (antes: día de la racha; 0 = ninguno) */
   streak: number;
   /** día del último bonus por anuncio para evitar reclamarlo más de una vez */
   adBonusDay?: string;
+  /** semana en curso: su lunes (AAAA-MM-DD) */
+  week?: string;
+  /** días reclamados de esa semana (0 = lunes … 6 = domingo) */
+  days?: number[];
 }
-export const newLoginState = (): LoginState => ({ last: '', streak: 0, adBonusDay: '' });
+export const newLoginState = (): LoginState => ({ last: '', streak: 0, adBonusDay: '', week: '', days: [] });
 
 export type StyleId = 'classic' | 'red' | 'green' | 'gold' | 'pink';
 export type ItemKind = 'ability' | 'skin' | 'style' | 'inferno' | 'charge' | 'defensive' | 'smash' | 'emote' | 'color';
@@ -118,5 +122,5 @@ export function owns(s: PlayerState, id: ItemId) {
 
 /** Copia profunda (las operaciones nunca mutan el estado recibido). */
 export function clonePlayer(s: PlayerState): PlayerState {
-  return { ...s, owned: [...s.owned], equipped: { ...s.equipped, abilities: [...s.equipped.abilities] }, wheel: cloneWheel(s.wheel), bp: cloneBattlePass(s.bp), ranked: cloneRanked(s.ranked), login: { ...s.login }, zone: cloneZoneProgress(s.zone) };
+  return { ...s, owned: [...s.owned], equipped: { ...s.equipped, abilities: [...s.equipped.abilities] }, wheel: cloneWheel(s.wheel), bp: cloneBattlePass(s.bp), ranked: cloneRanked(s.ranked), login: { ...s.login, days: [...(s.login.days ?? [])] }, zone: cloneZoneProgress(s.zone) };
 }

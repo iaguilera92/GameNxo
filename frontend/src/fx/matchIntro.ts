@@ -71,7 +71,6 @@ export function playMatchIntro(scene: Phaser.Scene, onDone: () => void) {
   // texto INICIO
   const cy = H * 0.4;
   const c = scene.add.container(W / 2, cy).setScrollFactor(0).setDepth(8001).setAlpha(0);
-  const streak = scene.add.rectangle(0, 6, W * 0.9, 8, 0x8fd8ff, 0.9).setBlendMode(Phaser.BlendModes.ADD).setScale(0, 1);
   const title = scene.add
     .text(0, -8, 'INICIO', { fontFamily: FONT, fontSize: '104px', color: '#ffffff', stroke: '#0a1638', strokeThickness: 12 })
     .setOrigin(0.5)
@@ -83,11 +82,17 @@ export function playMatchIntro(scene: Phaser.Scene, onDone: () => void) {
   grad.addColorStop(0.95, '#4fa6ff');
   title.setFill(grad);
   if (title.width > W - 60) title.setScale((W - 60) / title.width);
+  // rayas a los LADOS del texto ( — INICIO — ), sin atravesarlo; crecen hacia fuera
+  const gap = 22;
+  const half = title.displayWidth / 2 + gap;
+  const lineW = Math.max(30, W * 0.45 - half);
+  const lineL = scene.add.rectangle(-half, -8, lineW, 8, 0x8fd8ff, 0.9).setOrigin(1, 0.5).setBlendMode(Phaser.BlendModes.ADD).setScale(0, 1);
+  const lineR = scene.add.rectangle(half, -8, lineW, 8, 0x8fd8ff, 0.9).setOrigin(0, 0.5).setBlendMode(Phaser.BlendModes.ADD).setScale(0, 1);
   const sub = scene.add
     .text(0, 66, '¡COMIENZA EL PARTIDO!', { fontFamily: FONT, fontSize: '28px', color: '#ffd23f', stroke: '#0a1638', strokeThickness: 6 })
     .setOrigin(0.5)
     .setLetterSpacing(2);
-  c.add([streak, title, sub]);
+  c.add([lineL, lineR, title, sub]);
   const titleScale = title.scale;
 
   scene.time.delayedCall(INTRO.textAt, () => {
@@ -95,7 +100,7 @@ export function playMatchIntro(scene: Phaser.Scene, onDone: () => void) {
     title.setScale(titleScale * 1.8).setAlpha(0);
     sub.setAlpha(0).setY(86);
     scene.tweens.add({ targets: title, scale: titleScale, alpha: 1, duration: 260, ease: 'Back.easeOut' });
-    scene.tweens.add({ targets: streak, scaleX: 1, duration: 300, ease: 'Cubic.easeOut' });
+    scene.tweens.add({ targets: [lineL, lineR], scaleX: 1, duration: 300, ease: 'Cubic.easeOut' });
     scene.tweens.add({ targets: sub, alpha: 1, y: 66, duration: 240, delay: 120, ease: 'Quad.easeOut' });
     cam.flash(120, 120, 180, 255);
   });

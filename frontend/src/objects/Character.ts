@@ -483,8 +483,13 @@ export class Character extends Phaser.GameObjects.Container {
   }
 
   /** Recibe un ataque especial (aturdido / impacto del INFERNO). false = sin hoja: el llamador usa el giro de siempre. */
-  impactStun(kind: 'smash' | 'inferno', ms: number): boolean {
-    return this.nxo?.impactStun(kind, ms) ?? false;
+  /** REMATE del globo: pose de preparación del remate con salto congelada hasta el golpe (false = sin hoja). */
+  remateHold(): boolean {
+    return this.nxo?.remateHold() ?? false;
+  }
+
+  impactStun(kind: 'smash' | 'inferno', ms: number, throwRacket = true): boolean {
+    return this.nxo?.impactStun(kind, ms, throwRacket) ?? false;
   }
 
   /** Reacción al acabar un punto. */

@@ -54,11 +54,17 @@ export interface CashPack {
   name: string;
   cash: number;
   clp: number;
+  /** cinta de la tarjeta en la Tienda */
+  tag?: 'popular' | 'best';
 }
+/** Paquetes de DINERO (se compran con CLP): cuanto más grande, más dinero por peso. */
 export const CASH_PACKS: CashPack[] = [
   { id: 'cash-s', name: 'Puñado', cash: 50, clp: 1490 },
-  { id: 'cash-m', name: 'Maletín', cash: 130, clp: 2990 },
-  { id: 'cash-l', name: 'Caja fuerte', cash: 350, clp: 6990 },
+  { id: 'cash-m', name: 'Fajo', cash: 130, clp: 2990 },
+  { id: 'cash-l', name: 'Maletín', cash: 350, clp: 6990, tag: 'popular' },
+  { id: 'cash-xl', name: 'Bolsa', cash: 750, clp: 13990 },
+  { id: 'cash-xxl', name: 'Cofre', cash: 2000, clp: 34990 },
+  { id: 'cash-max', name: 'Caja fuerte', cash: 4500, clp: 69990, tag: 'best' },
 ];
 
 /** "$1.490 CLP" */

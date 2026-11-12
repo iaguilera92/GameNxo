@@ -119,6 +119,12 @@ export class AbilityButton extends Phaser.GameObjects.Container {
     if (!this.infernoMode) this.subText.setText(text);
   }
 
+  /** Sin etiqueta ni subtítulo (jugadores en nivel máximo: ya conocen los botones). */
+  hideTexts() {
+    this.labelText.setVisible(false);
+    this.subText.setVisible(false);
+  }
+
   /** `sub` = nombre del poder de la ULTI mientras el botón está en ese modo. */
   setInferno(on: boolean, sub = '') {
     if (on === this.infernoMode) {

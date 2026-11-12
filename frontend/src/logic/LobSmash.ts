@@ -46,6 +46,37 @@ export const LOB_SMASH = {
   zoomOut: 5, // velocidad de salida (1/s)
 };
 
+/**
+ * REMATE del globo (jugador): al entrar en el círculo con la pelota bajando, salto + cámara lenta. Con el joystick se
+ * apunta a uno de los 4 cuadros del rival y un aro se cierra sobre la pelota: tocar justo al cerrarse = SMASH! (más
+ * fuerte); antes o después, el remate va donde se apuntó a velocidad normal. Sin tocar, golpea solo al pasarse el aro.
+ *  startZ   altura de la pelota (bajando) a la que empieza
+ *  contactZ altura a la que se cierra el aro (contacto ideal)
+ *  realS    duración REAL de la cámara lenta hasta el cierre (s); minSlow = cámara lenta máxima
+ *  perfect  margen del cierre (fracción del recorrido del aro) que cuenta como SMASH!
+ *  lateMax  cuánto puede pasarse el aro antes del golpe automático (fracción)
+ *  jump     altura del salto (unidades z)
+ *  speed    velocidad del golpe sobre SHOT_SPEED según el momento
+ */
+export const REMATE = {
+  // (11-11-2026) contacto alto: la pelota queda sobre la raqueta levantada (a 120 / 190 quedaba a la altura del pecho).
+  // Si el globo no sube hasta startZ, empieza justo al empezar a bajar (s.vz < 0).
+  startZ: 370,
+  contactZ: 290,
+  realS: 1.1,
+  minSlow: 0.18,
+  perfect: 0.09,
+  lateMax: 0.35,
+  /** tocar ANTES de esta fracción del aro = golpe al aire: no le pega, el juego sigue y se recupera en `whiffRecover` s */
+  whiff: 0.6,
+  whiffRecover: 0.35,
+  jump: 85,
+  // más directo (plano y rápido hacia abajo)
+  speed: { perfect: 2.1, early: 1.45, late: 1.25 },
+  /** margen sobre la red (bajo = más directo) */
+  margin: 3,
+};
+
 export type Side = 'player' | 'bot';
 
 export interface LobState {

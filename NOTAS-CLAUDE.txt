@@ -230,3 +230,13 @@ NOTAS PARA CLAUDE (pendientes detectados por Kiro, sin corregir)
    GUÍA DE TIMING (Settings.timingGuide). Notas: ¡PERFECTO! / BIEN (tic) / PRONTO-TARDE (golpe grave), gradeSound. RACHA:
    desde 3 PERFECTO seguidos (TIMING.streak) cada uno adelanta 1 s la recarga del ESPECIAL y del DEFENSIVO
    (AbilityButton.reduceCooldown) + texto RACHA ×N y arpegio (playStreakFx).
+
+[11-11-2026] Claude: ATURDIDO y RAQUETA PERDIDA
+ - Aturdido: ESPECIAL (SMASH) 2 s, ULTI 1,5 s (logic/PowerImpact.ts stunMsBy).
+ - La ULTI recibida hace volar la raqueta (RACKET_LOSS): cae a la izquierda o a la derecha de quien la recibe, en su
+   campo, y queda en el suelo con un aro. Sin raqueta (Actor.racket) no hay golpes (checkHits), carga ni habilidades
+   (activateDash / activateSmash / armInferno / syncAbilityLock; el bot: noAbilities). Se recoge pasando por encima
+   (racketPickup); el bot corre a buscarla (botFetchRacket). Vuelve a la mano en placeForServe.
+ - NxoActor.impactStun(kind, ms, throwRacket): con false la mano queda vacía pero la raqueta suelta la dibuja MatchScene.
+ - Red: acción nueva game:action 'racket' (lost + x, y / lost false), añadida a guard.ts y a los dos protocol.ts. Hay
+   que DESPLEGAR el backend.

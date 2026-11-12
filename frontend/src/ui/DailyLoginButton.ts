@@ -54,7 +54,7 @@ export function dailyLoginButton(scene: Phaser.Scene, x: number, y: number, onTo
   return c;
 }
 
-/** Panel diario de siete días, con premios destacados y progreso de racha. */
+/** Panel diario: los siete días de la semana en curso (lunes a domingo), con su fecha y su premio. */
 export function openDailyLogin(scene: Phaser.Scene, onChange: () => void, onToast: (m: string) => void) {
   const W = scene.scale.width;
   const H = scene.scale.height;
@@ -86,7 +86,7 @@ export function openDailyLogin(scene: Phaser.Scene, onChange: () => void, onToas
   subtitleLine.lineStyle(3, 0x08caff, 0.95).lineBetween(-pw / 2 + 42, subtitleY, -184, subtitleY);
   subtitleLine.lineBetween(184, subtitleY, pw / 2 - 42, subtitleY);
   p.add(subtitleLine);
-  p.add(scene.add.text(0, subtitleY, 'Entra cada día: la racha sube el premio', { fontFamily: FONT, fontSize: '16px', color: '#e1ecff', stroke: '#061431', strokeThickness: 3 }).setOrigin(0.5));
+  p.add(scene.add.text(0, subtitleY, 'Un premio por cada día de la semana', { fontFamily: FONT, fontSize: '16px', color: '#e1ecff', stroke: '#061431', strokeThickness: 3 }).setOrigin(0.5));
   const closeBtn = scene.add.container(pw / 2 - 42, -ph / 2 + 42);
   const closeG = scene.add.graphics();
   closeG.fillStyle(0x590f27, 1).fillRoundedRect(-28, -25, 56, 50, 13);
@@ -97,70 +97,98 @@ export function openDailyLogin(scene: Phaser.Scene, onChange: () => void, onToas
   closeBtn.setSize(58, 58).setInteractive({ useHandCursor: true }).on('pointerup', close);
   p.add(closeBtn);
 
-  // Siete premios reales; el octavo es una tarjeta de prueba visible solo en desarrollo.
+  // Los 7 días de la semana en curso (lunes a domingo) en dos filas (4 + 3), al estilo Brawl Stars: cabecera con el día y
+  // su fecha, el premio grande al centro y el estado (HOY, reclamado, perdido o por venir). El domingo es el premio mayor.
   const n = LOGIN.rewards.length;
-  const showTestDay = import.meta.env.DEV;
-  const cw = (pw - 52 - 3 * 10) / 4;
-  const chh = 106;
+  const showTestDay = import.meta.env.DEV; // 8.ª tarjeta de prueba, solo en desarrollo
+  const WD = ['LUN', 'MAR', 'MIÉ', 'JUE', 'VIE', 'SÁB', 'DOM'];
+  const loops: Phaser.Tweens.Tween[] = [];
+  const cw = (pw - 52 - 3 * 12) / 4;
+  const chh = 156;
+  const rowY = (row: number) => -ph / 2 + 160 + chh / 2 + row * (chh + 16);
   LOGIN.rewards.forEach((r, i) => {
     const row = i < 4 ? 0 : 1;
     const col = row ? i - 4 : i;
     const cols = row ? (showTestDay ? 4 : 3) : 4;
-    const cx = (col - (cols - 1) / 2) * (cw + 10);
-    const cy = -ph / 2 + 238 + row * (chh + 15);
-    const day = i + 1;
-    const done = st.claimed ? day <= st.day : day < st.day;
-    const today = day === st.day;
-    const special = day === n;
-    const box = scene.add.graphics();
-    if (today) box.lineStyle(12, GOLD, 0.3).strokeRoundedRect(cx - cw / 2, cy - chh / 2, cw, chh, 18);
-    box.fillStyle(done ? 0x0b3e2b : today ? 0x805208 : special ? 0x4b168b : 0x0b2867, 1).fillRoundedRect(cx - cw / 2, cy - chh / 2, cw, chh, 18);
-    box.fillStyle(0xffffff, today ? 0.12 : 0.07).fillRoundedRect(cx - cw / 2 + 3, cy - chh / 2 + 3, cw - 6, 31, { tl: 15, tr: 15, bl: 4, br: 4 });
-    box.lineStyle(today || special ? 4 : 3, today ? 0xffe451 : special ? 0xe58dff : done ? 0x39ea68 : 0x188fff, 1).strokeRoundedRect(cx - cw / 2, cy - chh / 2, cw, chh, 18);
-    box.fillStyle(today ? GOLD : special ? 0x9e32ef : done ? 0x087448 : 0x123b82, 0.8).fillRoundedRect(cx - cw / 2 + 2, cy - chh / 2 + 2, cw - 4, 30, { tl: 15, tr: 15, bl: 5, br: 5 });
-    p.add(box);
-    const dayLabel = today ? `HOY · DÍA ${day}` : special ? '★  DÍA 7  ★' : `DÍA ${day}`;
-    const dayTitle = scene.add.text(cx, cy - chh / 2 + 16, dayLabel, { fontFamily: FONT, fontSize: '18px', color: today || special ? '#fff4c4' : '#e0ebff' }).setOrigin(0.5).setLetterSpacing(1);
-    if (dayTitle.width > cw - 12) dayTitle.setScale((cw - 12) / dayTitle.width);
-    p.add(dayTitle);
-    const coinY = r.cash ? cy + 1 : cy + 10;
-    const ic = scene.add.graphics({ x: cx - 28, y: coinY });
-    drawCoinIcon(ic, 13);
-    p.add(ic);
-    p.add(scene.add.text(cx - 9, coinY, r.coins.toLocaleString('es-CL'), { fontFamily: FONT, fontSize: '23px', color: '#ffe45c', stroke: '#392000', strokeThickness: 3 }).setOrigin(0, 0.5));
-    if (r.cash) {
-      const ci = scene.add.graphics({ x: cx - 24, y: cy + 34 });
-      drawCashIcon(ci, 0.68);
-      p.add(ci);
-      p.add(scene.add.text(cx - 6, cy + 34, `${r.cash}`, { fontFamily: FONT, fontSize: '20px', color: '#9fffb5', stroke: '#064321', strokeThickness: 3 }).setOrigin(0, 0.5));
+    const cx = (col - (cols - 1) / 2) * (cw + 12);
+    const cy = rowY(row);
+    const date = st.week.days[i].date;
+    const done = st.claimedDays.includes(i);
+    const today = i === st.week.index;
+    const missed = !done && i < st.week.index;
+    const special = i === n - 1;
+    const top = cy - chh / 2;
+    // colores: hoy dorado, domingo morado, el resto azul
+    const [fillTop, fillBot, line] = today ? [0xffc23a, 0xe0820c, 0xfff1a8] : special ? [0xb156ff, 0x6a1fc4, 0xe9b8ff] : [0x4aa3ff, 0x1d5fd0, 0x9fd2ff];
+    if (today && !done) {
+      const glow = scene.add.graphics();
+      glow.lineStyle(14, GOLD, 0.45).strokeRoundedRect(cx - cw / 2, top, cw, chh, 16);
+      p.add(glow);
+      loops.push(scene.tweens.add({ targets: glow, alpha: { from: 0.35, to: 1 }, duration: 700, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' }));
     }
+    const box = scene.add.graphics();
+    box.fillStyle(0x000000, 0.35).fillRoundedRect(cx - cw / 2 + 3, top + 5, cw, chh, 16);
+    box.fillStyle(0x0a1638, 1).fillRoundedRect(cx - cw / 2 - 3, top - 3, cw + 6, chh + 6, 18);
+    box.fillStyle(fillBot, 1).fillRoundedRect(cx - cw / 2, top, cw, chh, 16);
+    box.fillStyle(fillTop, 1).fillRoundedRect(cx - cw / 2, top, cw, chh * 0.6, { tl: 16, tr: 16, bl: 8, br: 8 });
+    box.fillStyle(0xffffff, 0.18).fillRoundedRect(cx - cw / 2 + 4, top + 4, cw - 8, chh * 0.22, { tl: 13, tr: 13, bl: 6, br: 6 });
+    box.lineStyle(2, line, 0.9).strokeRoundedRect(cx - cw / 2, top, cw, chh, 16);
+    // cabecera: día y fecha del mes
+    box.fillStyle(0x0a1638, 0.55).fillRoundedRect(cx - cw / 2 + 6, top + 6, cw - 12, 30, 10);
+    p.add(box);
+    const head = scene.add.text(cx, top + 21, today ? `HOY · ${date}` : `${WD[i]} ${date}`, { fontFamily: FONT, fontSize: '18px', color: '#ffffff', stroke: '#0a1638', strokeThickness: 4 }).setOrigin(0.5).setLetterSpacing(1);
+    if (head.width > cw - 18) head.setScale((cw - 18) / head.width);
+    p.add(head);
+    if (special) p.add(scene.add.text(cx + cw / 2 - 14, top + 50, '★', { fontFamily: FONT, fontSize: '22px', color: '#fff1a8', stroke: '#3a0a6a', strokeThickness: 4 }).setOrigin(0.5));
+
+    // premio: moneda grande + cantidad; con dinero, una segunda línea con los billetes
+    const iy = r.cash ? cy - 12 : cy;
+    const coin = scene.add.graphics({ x: cx, y: iy });
+    drawCoinIcon(coin, 24);
+    p.add(coin);
+    const amt = scene.add.text(cx, cy + (r.cash ? 30 : 38), r.coins.toLocaleString('es-CL'), { fontFamily: FONT, fontSize: '28px', color: '#ffffff', stroke: '#0a1638', strokeThickness: 6 }).setOrigin(0.5);
+    if (amt.width > cw - 14) amt.setScale((cw - 14) / amt.width);
+    p.add(amt);
+    if (r.cash) {
+      const ci = scene.add.graphics({ x: cx - 16, y: cy + 56 });
+      drawCashIcon(ci, 0.62);
+      p.add(ci);
+      p.add(scene.add.text(cx + 2, cy + 56, `+${r.cash}`, { fontFamily: FONT, fontSize: '20px', color: '#b6ffc8', stroke: '#0a3a18', strokeThickness: 4 }).setOrigin(0, 0.5));
+    }
+
     if (done) {
-      const check = scene.add.graphics({ x: cx + cw / 2 - 17, y: cy - chh / 2 + 16 });
-      check.fillStyle(0x061f18, 1).fillCircle(0, 0, 12).fillStyle(0x4bea6c, 1).fillCircle(0, 0, 9);
-      check.lineStyle(2.5, 0xffffff, 1).beginPath().moveTo(-4, 0).lineTo(-1, 3).lineTo(5, -4).strokePath();
+      // reclamado: velo y un check grande
+      p.add(scene.add.rectangle(cx, cy, cw, chh, 0x02060f, 0.45));
+      const check = scene.add.graphics({ x: cx, y: cy + 6 });
+      check.fillStyle(0x0a3a18, 1).fillCircle(0, 0, 30).fillStyle(0x35c85a, 1).fillCircle(0, 0, 25);
+      check.lineStyle(6, 0xffffff, 1).beginPath().moveTo(-11, 0).lineTo(-3, 9).lineTo(12, -9).strokePath();
       p.add(check);
+    } else if (missed) {
+      // día pasado sin reclamar: perdido
+      p.add(scene.add.rectangle(cx, cy, cw, chh, 0x10131c, 0.68));
+      const lost = scene.add.text(cx, cy + 6, 'PERDIDO', { fontFamily: FONT, fontSize: '18px', color: '#9aa6c2', stroke: '#0a1638', strokeThickness: 4 }).setOrigin(0.5).setAngle(-12);
+      if (lost.width > cw - 16) lost.setScale((cw - 16) / lost.width);
+      p.add(lost);
+    } else if (today) {
+      loops.push(scene.tweens.add({ targets: coin, scale: { from: 1, to: 1.12 }, duration: 600, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' }));
     }
   });
+  // las animaciones de las tarjetas se paran al cerrar
+  objs.push({ destroy: () => loops.forEach((t) => t.remove()) } as unknown as Phaser.GameObjects.GameObject);
 
   if (showTestDay) {
     const testReward: LoginReward = { coins: 250, cash: 5 };
-    const cx = 1.5 * (cw + 10);
-    const cy = -ph / 2 + 238 + (chh + 15);
+    const cx = 1.5 * (cw + 12);
+    const cy = rowY(1);
     const box = scene.add.graphics();
-    box.fillStyle(0x073e59, 1).fillRoundedRect(cx - cw / 2, cy - chh / 2, cw, chh, 18);
-    box.fillStyle(0xffffff, 0.12).fillRoundedRect(cx - cw / 2 + 3, cy - chh / 2 + 3, cw - 6, 31, { tl: 15, tr: 15, bl: 4, br: 4 });
-    box.lineStyle(4, 0x45e7ff, 1).strokeRoundedRect(cx - cw / 2, cy - chh / 2, cw, chh, 18);
-    box.fillStyle(0x087c9b, 0.9).fillRoundedRect(cx - cw / 2 + 2, cy - chh / 2 + 2, cw - 4, 30, { tl: 15, tr: 15, bl: 5, br: 5 });
+    box.fillStyle(0x073e59, 1).fillRoundedRect(cx - cw / 2, cy - chh / 2, cw, chh, 16);
+    box.lineStyle(4, 0x45e7ff, 1).strokeRoundedRect(cx - cw / 2, cy - chh / 2, cw, chh, 16);
     p.add(box);
-    p.add(scene.add.text(cx, cy - chh / 2 + 16, 'DÍA TEST', { fontFamily: FONT, fontSize: '18px', color: '#d8fbff' }).setOrigin(0.5).setLetterSpacing(1));
-    const testCoin = scene.add.graphics({ x: cx - 25, y: cy + 5 });
-    drawCoinIcon(testCoin, 12);
+    p.add(scene.add.text(cx, cy - chh / 2 + 21, 'DÍA TEST', { fontFamily: FONT, fontSize: '18px', color: '#d8fbff' }).setOrigin(0.5).setLetterSpacing(1));
+    const testCoin = scene.add.graphics({ x: cx, y: cy - 8 });
+    drawCoinIcon(testCoin, 22);
     p.add(testCoin);
-    p.add(scene.add.text(cx - 7, cy + 5, `${testReward.coins}`, { fontFamily: FONT, fontSize: '21px', color: '#ffe45c', stroke: '#053044', strokeThickness: 3 }).setOrigin(0, 0.5));
-    const testCash = scene.add.graphics({ x: cx - 22, y: cy + 34 });
-    drawCashIcon(testCash, 0.58);
-    p.add(testCash);
-    p.add(scene.add.text(cx - 5, cy + 34, `${testReward.cash}`, { fontFamily: FONT, fontSize: '18px', color: '#9fffb5', stroke: '#053044', strokeThickness: 3 }).setOrigin(0, 0.5));
+    p.add(scene.add.text(cx, cy + 40, `${testReward.coins}`, { fontFamily: FONT, fontSize: '26px', color: '#ffe45c', stroke: '#053044', strokeThickness: 5 }).setOrigin(0.5));
     const hit = scene.add.rectangle(cx, cy, cw, chh, 0xffffff, 0.001).setInteractive({ useHandCursor: true });
     hit.on('pointerup', (_pointer: Phaser.Input.Pointer, _lx: number, _ly: number, event: Phaser.Types.Input.EventData) => {
       event.stopPropagation();
@@ -175,36 +203,10 @@ export function openDailyLogin(scene: Phaser.Scene, onChange: () => void, onToas
     p.add(hit);
   }
 
-  // Progreso visual de la racha.
-  const barY = ph / 2 - 168;
-  const streak = st.claimed ? st.day : Math.max(0, st.day - 1);
-  const track = scene.add.graphics();
-  track.fillStyle(0x061431, 0.98).fillRoundedRect(-pw / 2 + 28, barY - 38, pw - 56, 76, 28);
-  track.lineStyle(3, 0x087fff, 1).strokeRoundedRect(-pw / 2 + 28, barY - 38, pw - 56, 76, 28);
-  p.add(track);
-  const badgeX = -pw / 2 + 88;
-  const badge = scene.add.graphics({ x: badgeX, y: barY });
-  badge.fillStyle(0x171d36, 1).fillRoundedRect(-54, -29, 108, 58, 17);
-  badge.lineStyle(2, GOLD, 1).strokeRoundedRect(-54, -29, 108, 58, 17);
-  badge.fillStyle(0xff4b1f, 1).fillPoints([{ x: -38, y: 17 }, { x: -43, y: -3 }, { x: -31, y: 4 }, { x: -25, y: -20 }, { x: -12, y: 1 }, { x: -8, y: -13 }, { x: 1, y: 17 }], true);
-  badge.fillStyle(0xffdc36, 1).fillPoints([{ x: -33, y: 16 }, { x: -35, y: 1 }, { x: -26, y: 7 }, { x: -22, y: -9 }, { x: -14, y: 5 }, { x: -12, y: 16 }], true);
-  p.add(badge);
-  p.add(scene.add.text(badgeX + 28, barY - 11, 'RACHA', { fontFamily: FONT, fontSize: '15px', color: '#ffd23f' }).setOrigin(0.5));
-  p.add(scene.add.text(badgeX + 28, barY + 11, `${streak} ${streak === 1 ? 'DÍA' : 'DÍAS'}`, { fontFamily: FONT, fontSize: '19px', color: '#ffffff' }).setOrigin(0.5));
-  const firstX = -pw / 2 + 186;
-  const lastX = pw / 2 - 48;
-  const step = (lastX - firstX) / 6;
-  track.lineStyle(8, 0x536c9c, 1).beginPath().moveTo(firstX, barY - 2).lineTo(lastX, barY - 2).strokePath();
-  if (streak > 0) track.lineStyle(8, 0x48df74, 1).beginPath().moveTo(firstX, barY - 2).lineTo(firstX + Math.min(streak - 1, 6) * step, barY - 2).strokePath();
-  for (let i = 0; i < n; i++) {
-    const x = firstX + i * step;
-    const completed = i < streak;
-    const current = !st.claimed && i === st.day - 1;
-    track.fillStyle(completed ? 0x31cf65 : current ? GOLD : 0x263b62, 1).fillCircle(x, barY - 2, current ? 13 : 11);
-    track.lineStyle(3, completed || current ? 0xffffff : 0x7288b2, 1).strokeCircle(x, barY - 2, current ? 13 : 11);
-    p.add(scene.add.text(x, barY + 23, `D${i + 1}`, { fontFamily: FONT, fontSize: '12px', color: current ? '#ffd23f' : completed ? '#b9ffd0' : '#8ea3ce' }).setOrigin(0.5));
-    if (completed) p.add(scene.add.text(x, barY - 3, '✓', { fontFamily: FONT, fontSize: '15px', color: '#ffffff' }).setOrigin(0.5));
-  }
+  // semana: cuántos días se reclamaron y cuándo se reinicia
+  const infoY = ph / 2 - 142;
+  const got = st.claimedDays.length;
+  p.add(scene.add.text(0, infoY, `${got}/${n} DÍAS RECLAMADOS  ·  NUEVA SEMANA EL LUNES`, { fontFamily: FONT, fontSize: '16px', color: '#cfe0ff', stroke: '#061431', strokeThickness: 3 }).setOrigin(0.5).setLetterSpacing(1));
 
   const by = ph / 2 - 67;
   if (st.claimed) {

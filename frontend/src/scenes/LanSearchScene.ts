@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
-import { FONT, restartOnResize, textStyle } from '../ui/theme';
+import { FONT, restartOnResize } from '../ui/theme';
+import { searchSpinner } from '../ui/searchSpinner';
 import { UI, flatButton, stadiumBg } from '../ui/ui';
 import { showConfirm } from '../ui/ConfirmDialog';
 import { totalWins } from '../logic/Stats';
@@ -55,37 +56,22 @@ export class LanSearchScene extends Phaser.Scene {
       if (!this.toMatch) stopMatchMusic(this); // búsqueda cancelada / sin rival: la música no sigue sonando
     });
 
-    const c = this.add.container(W / 2, H * 0.42);
-    const ringR = 92;
-    const ring = this.add.graphics();
-    const pulse = this.add.circle(0, 0, ringR, UI.electric, 0.12);
-    c.add([pulse, ring]);
-    this.tweens.add({ targets: pulse, scale: 1.4, alpha: 0, duration: 1400, repeat: -1, ease: 'Quad.easeOut' });
-    let t = 0;
-    this.time.addEvent({
-      delay: 16,
-      loop: true,
-      callback: () => {
-        t += 0.05;
-        ring.clear();
-        ring.lineStyle(4, UI.cyan, 1).beginPath().arc(0, 0, ringR, t, t + 2.2).strokePath();
-        ring.lineStyle(3, UI.electric, 1).beginPath().arc(0, 0, ringR - 14, -t * 1.3, -t * 1.3 + 1.6).strokePath();
-      },
-    });
-    const count = this.add.text(0, 0, '', { fontFamily: FONT, fontSize: '56px', color: '#37e0ff', stroke: '#0a1638', strokeThickness: 6 }).setOrigin(0.5);
-    const title = this.add.text(0, 150, 'BUSCANDO RIVAL', { fontFamily: FONT, fontSize: '40px', color: UI.text }).setOrigin(0.5).setLetterSpacing(2);
-    const sub = this.add.text(0, 196, 'Conectando con el servidor…', textStyle(22, UI.textDim)).setOrigin(0.5);
-    c.add([count, title, sub]);
+    // mismo aspecto que la búsqueda contra el BOT (MatchmakingScene): anillo con la pelota, reloj encima del título
+    const c = this.add.container(W / 2, H * 0.44);
+    searchSpinner(this, c, W, H);
+    const title = this.add.text(0, 196, 'BUSCANDO RIVAL', { fontFamily: FONT, fontSize: '40px', color: UI.text }).setOrigin(0.5).setLetterSpacing(2);
+    const count = this.add.text(0, 148, '0:00', { fontFamily: FONT, fontSize: '30px', color: '#37e0ff' }).setOrigin(0.5);
+    c.add([title, count]);
     const cancel = flatButton(this, W / 2, H * 0.84, 240, 72, 'CANCELAR', () => this.cancelSearch(), { fontSize: 28 });
 
     connect()
       .then((tr) => {
         if (this.done || !this.scene.isActive()) return;
         const onSearching = (m: SearchingMsg) => {
-          sub.setText('Jugadores en la sala 1/2 · LAN');
+          title.setText('BUSCANDO RIVAL 1/2'); // jugadores en la sala
           // cuenta atrás visual; el tiempo real lo controla el servidor (mm:timeout)
           const end = this.time.now + m.timeoutMs;
-          const tick = () => count.setText(String(Math.max(0, Math.ceil((end - this.time.now) / 1000))));
+          const tick = () => count.setText(`0:${String(Math.max(0, Math.ceil((end - this.time.now) / 1000))).padStart(2, '0')}`);
           tick();
           this.time.addEvent({ delay: 100, repeat: Math.ceil(m.timeoutMs / 100), callback: tick });
         };

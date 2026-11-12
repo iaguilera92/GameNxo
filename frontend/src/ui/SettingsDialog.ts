@@ -3,7 +3,7 @@ import { FONT } from './theme';
 import { arcadeButton } from './modeButtons';
 import { ONLINE_URL, getOnlineMode, setOnlineMode } from '../net/config';
 import { disconnect } from '../net/NetClient';
-import { DEV_LEVEL, isDevMode } from '../domain/devMode';
+import { DEV_COINS, DEV_LEVEL, isDevMode } from '../domain/devMode';
 import { writeDevMode } from '../domain/devMode';
 import { RIVAL_OPTIONS, type RivalSetting, type ShakeLevel, getSettings, setSettings } from '../logic/Settings';
 import { adsPrivacyAvailable, openAdsPrivacy } from '../ads/ads';
@@ -121,9 +121,10 @@ export function showSettings(scene: Phaser.Scene, o: { depth?: number; onClose?:
     ),
   );
 
-  // MODO DESARROLLO: ON = perfil de pruebas aparte (nivel 20, todo desbloqueado); OFF = tu perfil (nivel 1 y solo lo inicial si es nuevo).
+  // MODO DESARROLLO: ON = perfil de pruebas aparte (nivel máximo, todo desbloqueado, 5.000 monedas); OFF = perfil normal, que al
+  // pasar a OFF se borra y empieza de cero (nivel 1, nada desbloqueado).
   // La app arranca en ON. Al cambiarlo se guarda y la app se REINICIA, para que arranque entera con el perfil que corresponde.
-  const devSub = (on: boolean) => (on ? `Nivel ${DEV_LEVEL} · todo desbloqueado` : 'Tu perfil · lo inicial desbloqueado');
+  const devSub = (on: boolean) => (on ? `Nivel ${DEV_LEVEL} · todo desbloqueado · ${DEV_COINS.toLocaleString('es-CL')} monedas` : 'Empieza de cero: nivel 1, nada desbloqueado');
   const subDev = label(5, 'MODO DESARROLLO', devSub(isDevMode()), devIcon);
   panel.add(
     toggle(

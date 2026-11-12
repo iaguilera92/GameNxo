@@ -11,9 +11,12 @@ export type PowerKind = 'smash' | 'inferno';
 
 export const POWER_IMPACT = {
   /** aturdimiento total (reacción + recuperación) del SMASH, ajustable según el balance */
-  stunMs: 650,
-  /** aturdimiento por tipo: la ULTI (INFERNO) deja 1,5 s al que la alcanza (jugador o rival) */
-  stunMsBy: { smash: 650, inferno: 1500 } as Record<PowerKind, number>,
+  stunMs: 2000,
+  /**
+   * aturdimiento por tipo: el ESPECIAL (SMASH) deja 2 s y la ULTI (INFERNO) 1,5 s al que la alcanza (jugador o rival);
+   * la ULTI además le hace volar la raqueta (RACKET_LOSS)
+   */
+  stunMsBy: { smash: 2000, inferno: 1500 } as Record<PowerKind, number>,
   /** retroceso: distancia en profundidad de cancha y duración (rápido al principio, frena al final) */
   knockback: { dist: 110, ms: 280 },
   /** reacción del cuerpo (inclinación inicial, grados) */
@@ -25,6 +28,16 @@ export const POWER_IMPACT = {
   },
 };
 
+/**
+ * RAQUETA PERDIDA (ULTI recibida): cae a la izquierda o a la derecha de quien la recibe y queda en el suelo. Sin ella no
+ * se devuelve ninguna pelota ni se usan habilidades; se recupera al pasar por encima. Vuelve sola al empezar otro punto.
+ *  side   distancia lateral (unidades de cancha) a la que cae: entre [min, max]
+ *  depth  variación en profundidad (±)
+ *  pickR  distancia a la que se recoge
+ *  flyMs  vuelo hasta el suelo
+ */
+export const RACKET_LOSS = { side: [110, 170] as [number, number], depth: 40, pickR: 42, flyMs: 650 };
+
 /** Posición final del retroceso: hacia atrás (lejos de la red) sin salir de la zona del rival. */
 export function knockbackX(x: number, xMax: number, dist = POWER_IMPACT.knockback.dist) {
   return Math.max(x, Math.min(xMax, x + dist));
@@ -35,7 +48,7 @@ export function stunSeconds(kind: PowerKind = 'smash') {
   return stunMsFor(kind) / 1000;
 }
 
-/** Milisegundos de aturdimiento según el ataque recibido (SMASH 0,65 s · INFERNO 1,5 s). */
+/** Milisegundos de aturdimiento según el ataque recibido (SMASH 2 s · INFERNO 1,5 s). */
 export function stunMsFor(kind: PowerKind) {
   return POWER_IMPACT.stunMsBy[kind] ?? POWER_IMPACT.stunMs;
 }

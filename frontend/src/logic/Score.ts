@@ -65,7 +65,7 @@ export class Score {
     const p = this.points;
     if (p[0] >= 3 && p[1] >= 3) {
       if (p[0] === p[1]) return GOLDEN_POINT ? '¡Punto de oro!' : 'Iguales';
-      return p[0] > p[1] ? 'Ventaja TÚ' : 'Ventaja BOT';
+      return 'Ventaja';
     }
     return null;
   }

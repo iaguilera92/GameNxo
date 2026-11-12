@@ -45,6 +45,11 @@ export interface PowerDialogOpts {
    * personaje: se ve cómo queda). `preview` recibe entonces como `size` el alto disponible en la pantalla.
    */
   previewOnly?: boolean;
+  /**
+   * Diseño especial (la ULTI): rayos de luz que giran detrás del dibujo en la pantalla y destellos que titilan en el
+   * marco del diálogo, del color `color`.
+   */
+  special?: boolean;
 }
 
 const NAVY = 0x0b1733;
@@ -66,7 +71,7 @@ function drawLock(g: Phaser.GameObjects.Graphics, s: number, color: number) {
  * Tocar un hueco lo muestra en la televisión. Se cierra con la X, tocando fuera o al EQUIPAR (al instante: se equipa y se cierra).
  */
 export function openPowerDialog(scene: Phaser.Scene, opts: PowerDialogOpts) {
-  const { title: titleText, color, slots, layout = 'center', onShop, onClose, shopLabel = 'IR A LA TIENDA', lockedNote = 'Se compra en la TIENDA.', previewOnly = false } = opts;
+  const { title: titleText, color, slots, layout = 'center', onShop, onClose, shopLabel = 'IR A LA TIENDA', lockedNote = 'Se compra en la TIENDA.', previewOnly = false, special = false } = opts;
   const W = scene.scale.width;
   const H = scene.scale.height;
   const root = scene.add.container(0, 0).setDepth(8000);
@@ -105,12 +110,18 @@ export function openPowerDialog(scene: Phaser.Scene, opts: PowerDialogOpts) {
   panel.add(title);
 
   let pulse: Phaser.Tweens.Tween | null = null;
+  /** rayos girando detrás del dibujo (diseño especial) y destellos del marco */
+  let raysSpin: Phaser.Tweens.Tween | null = null;
+  const sparkTweens: Phaser.Tweens.Tween[] = [];
   const close = () => {
     if (closed) return;
     closed = true;
     for (const t of timers) t.remove(false);
     pulse?.remove();
     pulse = null;
+    raysSpin?.remove();
+    raysSpin = null;
+    for (const t of sparkTweens) t.remove();
     actionPulse?.remove();
     actionPulse = null;
     dim.disableInteractive();
@@ -248,6 +259,8 @@ export function openPowerDialog(scene: Phaser.Scene, opts: PowerDialogOpts) {
     stopNoise();
     pulse?.remove(); // antes de destruir sus objetos
     pulse = null;
+    raysSpin?.remove();
+    raysSpin = null;
     screen.removeAll(true);
     clearAction();
     const s = slots[i];
@@ -264,6 +277,19 @@ export function openPowerDialog(scene: Phaser.Scene, opts: PowerDialogOpts) {
     const origin = side ? 0 : 0.5;
     const align = side ? 'left' : 'center';
     if (s && s.owned) {
+      if (special && !side) {
+        // rayos de luz que giran despacio detrás del dibujo
+        const rays = scene.add.graphics({ x: ix, y: iy });
+        const n = 14;
+        const R = Math.max(sw, sh);
+        for (let k = 0; k < n; k++) {
+          const a0 = (k / n) * Math.PI * 2;
+          const a1 = a0 + (Math.PI / n) * 0.8;
+          rays.fillStyle(color, 0.13).fillTriangle(0, 0, Math.cos(a0) * R, Math.sin(a0) * R, Math.cos(a1) * R, Math.sin(a1) * R);
+        }
+        screen.add(rays);
+        raysSpin = scene.tweens.add({ targets: rays, angle: 360, duration: 14000, repeat: -1 });
+      }
       const glow = scene.add.graphics({ x: ix, y: iy });
       if (!side) glow.fillStyle(color, 0.1).fillCircle(0, 0, glowR).fillStyle(color, 0.14).fillCircle(0, 0, glowR * 0.7);
       screen.add(glow);
@@ -354,6 +380,21 @@ export function openPowerDialog(scene: Phaser.Scene, opts: PowerDialogOpts) {
   }
   paint();
   show(selected);
+
+  if (special) {
+    // destellos que titilan en el marco del diálogo
+    const spots: [number, number, number][] = [[0.04, 0.02, 11], [0.3, 0.0, 7], [0.96, 0.05, 10], [0.0, 0.42, 8], [1.0, 0.36, 9], [0.03, 0.97, 9], [0.62, 1.0, 7], [0.97, 0.94, 11]];
+    spots.forEach(([fx, fy, r], k) => {
+      const st = scene.add.star(px + pw * fx, py + ph * fy, 4, r * 0.35, r, 0xffffff).setBlendMode(Phaser.BlendModes.ADD);
+      panel.add(st);
+      sparkTweens.push(scene.tweens.add({ targets: st, alpha: { from: 0.1, to: 1 }, scale: { from: 0.5, to: 1.25 }, angle: 45, duration: 650 + k * 120, delay: k * 150, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' }));
+    });
+    // halo del borde que late
+    const halo = scene.add.graphics();
+    halo.lineStyle(10, color, 0.35).strokeRoundedRect(px - 2, py - 2, pw + 4, ph + 4, 26);
+    panel.addAt(halo, 1);
+    sparkTweens.push(scene.tweens.add({ targets: halo, alpha: { from: 0.3, to: 1 }, duration: 900, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' }));
+  }
 
   // entrada suave
   panel.setAlpha(0).setScale(0.96);

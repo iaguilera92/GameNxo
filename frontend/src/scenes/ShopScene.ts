@@ -94,6 +94,8 @@ export class ShopScene extends Phaser.Scene {
   preload() {
     if (!this.textures.exists('menu-bg')) this.load.image('menu-bg', 'assets/menu-bg.webp');
     if (!this.textures.exists('shop-title')) this.load.image('shop-title', 'assets/tienda-titulo.png');
+    // retrato de Mai (premio mayor del Pase, en OFERTAS): ya lo carga BootScene; solo se descarga si falta
+    if (!this.textures.exists('portrait-mai')) this.load.image('portrait-mai', 'assets/characters/mai_portrait.png');
     queueInfernoArt(this.load); // bolas de los poderes (vista previa)
     queueChargeFxArt(this.load, ['fire', 'energy', 'tulip']); // aros de carga (vista previa)
     queueButtonArt(this.load); // botón SMASH (vista previa de sus poderes)
@@ -133,13 +135,20 @@ export class ShopScene extends Phaser.Scene {
     // cada título lleva su línea; los de estilos y poderes, además, un (i) que abre su explicación (INFO)
     const titleGap = 44; // del título a sus tarjetas
 
+    const ch = 300;
+    // ---------------------------------------------------------------- ofertas: el Pase de Batalla, primero y en grande
+    // (una sola tarjeta del alto y el ancho de la fila de EFECTO PELOTA)
+    this.sectionTitle(W, y, 'OFERTAS');
+    y += titleGap;
+    this.passOffer(30, y, W - 60, ch, syncSeason(getPlayer() as PlayerState).bp.premium);
+    y += ch + 52;
+
     // ---------------------------------------------------------------- efecto pelota (estela de los golpes)
     this.sectionTitle(W, y, 'EFECTO PELOTA', INFO.style);
     y += titleGap;
     const styles = SHOP_ITEMS.filter((i) => i.kind === 'style');
     const gap = 14;
     const cw = (W - 60 - gap * (styles.length - 1)) / styles.length;
-    const ch = 300;
     styles.forEach((it, i) => this.styleCard(30 + i * (cw + gap), y, cw, ch, it));
     y += ch + 52;
     // ---------------------------------------------------------------- cargando golpe (aro al cargar)
@@ -180,21 +189,17 @@ export class ShopScene extends Phaser.Scene {
       else this.soonCard(dx, y, dw, dh);
     }
     y += dh + 52;
-    const oh = 104;
 
     // ---------------------------------------------------------------- dinero (se compra con CLP)
     this.sectionTitle(W, y, 'DINERO');
     y += titleGap;
-    const packW = (W - 60 - gap * (CASH_PACKS.length - 1)) / CASH_PACKS.length;
-    CASH_PACKS.forEach((p, i) => this.cashPackCard(30 + i * (packW + gap), y, packW, 168, p));
-    y += 168 + 52;
-
-    // ---------------------------------------------------------------- pase premium (solo dinero real)
-    this.sectionTitle(W, y, 'PASE PREMIUM');
-    y += titleGap;
-    const premium = syncSeason(getPlayer() as PlayerState).bp.premium;
-    this.realOffer(30, y, W - 60, oh, premium);
-    this.maxScroll = Math.max(0, y + oh + 36 - this.scale.height);
+    // cuadrícula de 3 columnas (como la tienda de gemas de Brawl Stars)
+    const packCols = 3;
+    const packW = (W - 60 - gap * (packCols - 1)) / packCols;
+    const packH = Math.round(packW * 0.92);
+    CASH_PACKS.forEach((p, i) => this.cashPackCard(30 + (i % packCols) * (packW + gap), y + Math.floor(i / packCols) * (packH + gap), packW, packH, p, i));
+    y += Math.ceil(CASH_PACKS.length / packCols) * (packH + gap) - gap;
+    this.maxScroll = Math.max(0, y + 36 - this.scale.height);
     this.scrollY = Math.min(this.scrollY, this.maxScroll);
     this.body.y = -this.scrollY;
   }
@@ -238,32 +243,90 @@ export class ShopScene extends Phaser.Scene {
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => mg.destroy());
   }
 
-  /** Pase Premium: se muestra sin ofrecer cobros hasta que exista integración de pagos. */
-  private realOffer(x: number, y: number, w: number, h: number, active: boolean) {
+  /**
+   * OFERTAS: el Pase de Batalla en una tarjeta dorada brillante (borde que late, franjas de luz y destellos), con el premio
+   * mayor (MAI, personaje nuevo) a la izquierda y el precio del Pase Premium (dinero real) a la derecha. Tocarla abre el
+   * Pase. Con el Premium ya comprado, ACTIVO en vez del precio.
+   */
+  private passOffer(x: number, y: number, w: number, h: number, active: boolean) {
     const c = this.add.container(0, 0);
     this.body.add(c);
-    c.add(this.card(x, y, w, h, { line: GOLD, glow: active ? 0 : 0.3 }));
-    const ic = this.add.graphics({ x: x + 58, y: y + h / 2 });
-    ic.fillStyle(0x0a1638, 1).fillCircle(0, 0, 34);
-    ic.fillStyle(GOLD, 1).fillCircle(0, 0, 30);
-    ic.fillStyle(0x0a1638, 1).fillPoints([{ x: -18, y: 10 }, { x: -20, y: -10 }, { x: -9, y: -1 }, { x: 0, y: -15 }, { x: 9, y: -1 }, { x: 20, y: -10 }, { x: 18, y: 10 }], true);
-    c.add(ic);
-    c.add(this.add.text(x + 112, y + h / 2 - 16, 'PASE PREMIUM', { fontFamily: FONT, fontSize: '26px', color: '#ffd23f' }).setOrigin(0, 0.5));
-    const sub = this.add.text(x + 113, y + h / 2 + 18, `${BP_SEASON.name} · premios dorados`, { fontFamily: FONT, fontSize: '15px', color: '#c9b98a' }).setOrigin(0, 0.5);
-    fitText(sub, w - 300);
-    c.add(sub);
-    const bx = x + w - 92;
-    if (active) {
-      c.add(this.pill(bx, y + h / 2, 150, 'ACTIVO', 0x1f6b35, '#9fe8a0'));
-      return;
+    const r = 22;
+    // halo dorado que late alrededor
+    const halo = this.add.graphics();
+    halo.lineStyle(12, 0xffd23f, 0.35).strokeRoundedRect(x - 2, y - 2, w + 4, h + 4, r + 2);
+    c.add(halo);
+    this.tweens.add({ targets: halo, alpha: { from: 0.35, to: 1 }, duration: 900, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
+    // cuerpo dorado por capas (oscuro abajo, claro arriba) y franjas de brillo en diagonal
+    const g = this.add.graphics();
+    g.fillStyle(0x000000, 0.35).fillRoundedRect(x + 3, y + 6, w, h, r);
+    g.fillStyle(0x8a5a00, 1).fillRoundedRect(x, y, w, h, r);
+    g.fillStyle(0xd99a12, 1).fillRoundedRect(x + 4, y + 4, w - 8, h - 8, r - 3);
+    g.fillStyle(0xffc42e, 1).fillRoundedRect(x + 4, y + 4, w - 8, h * 0.62, { tl: r - 3, tr: r - 3, bl: 10, br: 10 });
+    g.fillStyle(0xffe27a, 1).fillRoundedRect(x + 4, y + 4, w - 8, h * 0.26, { tl: r - 3, tr: r - 3, bl: 8, br: 8 });
+    g.fillStyle(0xffffff, 0.12);
+    for (const fx of [0.32, 0.5, 0.82]) {
+      const sx = x + w * fx;
+      g.fillPoints([{ x: sx, y: y + 4 }, { x: sx + 46, y: y + 4 }, { x: sx - 34, y: y + h - 4 }, { x: sx - 80, y: y + h - 4 }], true);
     }
-    const price = this.add.container(bx, y + h / 2);
-    const priceBg = this.add.graphics();
-    priceBg.fillStyle(0x0a1638).fillRoundedRect(-78, -27, 156, 54, 16);
-    priceBg.fillStyle(0xf29a0c).fillRoundedRect(-74, -23, 148, 46, 14);
-    priceBg.fillStyle(0xffcc1f).fillRoundedRect(-74, -23, 148, 26, { tl: 14, tr: 14, bl: 6, br: 6 });
-    price.add([priceBg, this.add.text(0, 0, BP_SEASON.premiumRealPrice, { fontFamily: FONT, fontSize: '21px', color: '#0a1638' }).setOrigin(0.5)]);
-    c.add(price);
+    g.lineStyle(4, 0xfff1b8, 1).strokeRoundedRect(x, y, w, h, r);
+    c.add(g);
+
+    // premio mayor: MAI a la izquierda, de pie sobre el borde de abajo, con resplandor detrás
+    const box = { x0: 118, y0: 4, x1: 1070, y1: 1356 }; // caja visible de mai_portrait.png (1130 × 1392), como en BattlePassScene
+    const vh = h - 22;
+    const vw = ((box.x1 - box.x0) / (box.y1 - box.y0)) * vh;
+    const px = x + 16 + vw / 2;
+    const glow = this.add.graphics().setBlendMode(Phaser.BlendModes.ADD);
+    glow.fillStyle(0xfff1b8, 0.3).fillEllipse(px, y + h * 0.5, vw * 1.25, vh * 0.95);
+    c.add(glow);
+    this.tweens.add({ targets: glow, alpha: { from: 0.5, to: 1 }, duration: 1300, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
+    if (this.textures.exists('portrait-mai')) {
+      const img = this.add.image(px, y + h - 6, 'portrait-mai');
+      img.setOrigin((box.x0 + box.x1) / 2 / img.width, box.y1 / img.height);
+      img.setScale(vh / (box.y1 - box.y0));
+      c.add(img);
+    }
+
+    // textos y precio, centrados en la columna derecha
+    const tx = (px + vw / 2 + 10 + x + w - 16) / 2;
+    const colW = x + w - 16 - (px + vw / 2 + 10);
+    const dark = '#5a3200';
+    const title = this.add.text(tx, y + 50, 'PASE DE BATALLA', { fontFamily: FONT, fontSize: '34px', color: '#ffffff', stroke: dark, strokeThickness: 7 }).setOrigin(0.5);
+    fitText(title, colW);
+    const season = this.add.text(tx, y + 88, BP_SEASON.name, { fontFamily: FONT, fontSize: '18px', color: dark }).setOrigin(0.5).setLetterSpacing(2);
+    const prize = this.add.text(tx, y + 128, 'PREMIO MAYOR', { fontFamily: FONT, fontSize: '16px', color: '#fff6d8', stroke: dark, strokeThickness: 4 }).setOrigin(0.5).setLetterSpacing(1);
+    const who = this.add.text(tx, y + 160, 'NUEVO PERSONAJE: MAI', { fontFamily: FONT, fontSize: '22px', color: '#ffffff', stroke: dark, strokeThickness: 6 }).setOrigin(0.5);
+    fitText(who, colW);
+    c.add([title, season, prize, who]);
+    const by = y + h - 62;
+    if (active) c.add(this.pill(tx, by, 170, 'ACTIVO', 0x1f6b35, '#9fe8a0'));
+    else {
+      const price = this.add.container(tx, by);
+      const pb = this.add.graphics();
+      pb.fillStyle(0x0a1638).fillRoundedRect(-104, -31, 208, 62, 18);
+      pb.fillStyle(0x2fae4f).fillRoundedRect(-100, -27, 200, 54, 16);
+      pb.fillStyle(0x5fe07a).fillRoundedRect(-100, -27, 200, 28, { tl: 16, tr: 16, bl: 6, br: 6 });
+      price.add([pb, this.add.text(0, 0, BP_SEASON.premiumRealPrice, { fontFamily: FONT, fontSize: '24px', color: '#ffffff', stroke: '#0a1638', strokeThickness: 5 }).setOrigin(0.5)]);
+      c.add(price);
+      this.tweens.add({ targets: price, scale: { from: 1, to: 1.06 }, duration: 700, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
+    }
+
+    // destellos que titilan
+    const spark: [number, number, number][] = [[0.06, 0.12, 9], [0.36, 0.2, 7], [0.95, 0.12, 8], [0.6, 0.86, 6], [0.97, 0.7, 7], [0.4, 0.62, 5]];
+    spark.forEach(([fx, fy, sr], i) => {
+      const st = this.add.star(x + w * fx, y + h * fy, 4, sr * 0.35, sr, 0xffffff).setBlendMode(Phaser.BlendModes.ADD);
+      c.add(st);
+      this.tweens.add({ targets: st, alpha: { from: 0.1, to: 1 }, scale: { from: 0.5, to: 1.2 }, angle: 45, duration: 700 + i * 130, delay: i * 170, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
+    });
+
+    // toda la tarjeta abre el Pase de Batalla
+    const hit = this.add.zone(x + w / 2, y + h / 2, w, h).setInteractive({ useHandCursor: true });
+    hit.on('pointerup', this.tap(() => {
+      this.cameras.main.fadeOut(180, 0, 0, 0);
+      this.cameras.main.once('camerafadeoutcomplete', () => this.scene.start('BattlePass'));
+    }));
+    c.add(hit);
   }
 
   /** Tarjeta de estilo: muestra de color, nombre y botón (precio / nivel / USAR / EN USO). */
@@ -447,19 +510,61 @@ export class ShopScene extends Phaser.Scene {
     return c;
   }
 
-  /** Paquete de DINERO virtual que se compra con CLP (pendiente de la pasarela de pago). */
-  private cashPackCard(x: number, y: number, w: number, h: number, p: CashPack) {
+  /**
+   * Paquete de DINERO virtual que se compra con CLP (pendiente de la pasarela de pago), al estilo de la tienda de gemas de
+   * Brawl Stars: tarjeta verde con un montón de billetes que crece con el paquete (`i` = 0 el más chico), la cantidad
+   * arriba a la derecha, el precio abajo y, si tiene, la cinta POPULAR / MEJOR VALOR.
+   */
+  private cashPackCard(x: number, y: number, w: number, h: number, p: CashPack, i: number) {
     const c = this.add.container(0, 0);
     this.body.add(c);
-    c.add(this.card(x, y, w, h, { line: 0x3fae5a, glow: 0.18, r: 16 }));
-    const ic = this.add.graphics({ x: x + w / 2, y: y + 38 });
-    drawCashIcon(ic, 1.1);
-    c.add(ic);
-    c.add(this.add.text(x + w / 2, y + 80, `${p.cash}`, { fontFamily: FONT, fontSize: '30px', color: '#ffffff', stroke: '#0a1638', strokeThickness: 5 }).setOrigin(0.5));
-    const nm = this.add.text(x + w / 2, y + 108, p.name.toUpperCase(), { fontFamily: FONT, fontSize: '13px', color: '#9fb4e0' }).setOrigin(0.5);
-    fitText(nm, w - 10);
-    c.add(nm);
-    c.add(this.clpTag(x + w / 2, y + h - 24, w - 20, p.clp));
+    const r = 14;
+    const barH = Math.round(h * 0.22);
+    const g = this.add.graphics();
+    g.fillStyle(0x000000, 0.35).fillRoundedRect(x + 3, y + 5, w, h, r);
+    g.fillStyle(0x0a1638, 1).fillRoundedRect(x - 3, y - 3, w + 6, h + 6, r + 2);
+    g.fillStyle(0x3fae2a, 1).fillRoundedRect(x, y, w, h, r);
+    g.fillStyle(0x6ad13a, 1).fillRoundedRect(x, y, w, h - barH, { tl: r, tr: r, bl: 0, br: 0 });
+    g.fillStyle(0x92e85e, 1).fillRoundedRect(x + 4, y + 4, w - 8, (h - barH) * 0.4, { tl: r - 3, tr: r - 3, bl: 6, br: 6 });
+    // barra del precio
+    g.fillStyle(0x26335e, 1).fillRoundedRect(x, y + h - barH, w, barH, { tl: 0, tr: 0, bl: r, br: r });
+    g.fillStyle(0x34457a, 1).fillRect(x, y + h - barH, w, barH * 0.4);
+    c.add(g);
+
+    // montón de billetes: más billetes y más grande en cada paquete
+    // filas de abajo hacia arriba (pirámide)
+    const layers = [[1], [2], [2, 1], [3, 2], [4, 3], [4, 3, 2]][Math.min(i, 5)];
+    const k = 1 + Math.min(i, 5) * 0.12;
+    const midX = x + w * 0.44;
+    const baseY = y + (h - barH) * 0.72;
+    const pile = this.add.graphics();
+    layers.forEach((n, row) => {
+      for (let j = 0; j < n; j++) drawCashIcon(pile, k, midX + (j - (n - 1) / 2) * 26 * k, baseY - row * 15 * k + (j % 2) * 3);
+    });
+    c.add(pile);
+
+    // cantidad arriba a la derecha
+    const amount = this.add.text(x + w - 10, y + 8, p.cash.toLocaleString('es-CL'), { fontFamily: FONT, fontSize: '30px', color: '#ffffff', stroke: '#0a1638', strokeThickness: 6 }).setOrigin(1, 0);
+    fitText(amount, w * 0.6);
+    c.add(amount);
+    // precio
+    const price = this.add.text(x + w / 2, y + h - barH / 2, clpLabel(p.clp), { fontFamily: FONT, fontSize: '20px', color: '#ffffff', stroke: '#0a1638', strokeThickness: 4 }).setOrigin(0.5);
+    fitText(price, w - 14);
+    c.add(price);
+    // cinta POPULAR / MEJOR VALOR sobre la barra del precio
+    if (p.tag) {
+      const ry = y + h - barH - 13;
+      const rb = this.add.graphics();
+      rb.fillStyle(0x8a1020, 1).fillRect(x, ry - 12, w, 24);
+      rb.fillStyle(0xe8323f, 1).fillRect(x, ry - 12, w, 20);
+      c.add(rb);
+      const rt = this.add.text(x + w / 2, ry - 2, p.tag === 'best' ? 'MEJOR VALOR' : 'POPULAR', { fontFamily: FONT, fontSize: '14px', color: '#ffffff', stroke: '#5a0a12', strokeThickness: 3 }).setOrigin(0.5).setLetterSpacing(1);
+      fitText(rt, w - 10);
+      c.add(rt);
+    }
+    const hit = this.add.zone(x + w / 2, y + h / 2, w, h).setInteractive({ useHandCursor: true });
+    hit.on('pointerup', this.tap(() => this.toast('El pago con dinero real (CLP) llega pronto')));
+    c.add(hit);
   }
 
   /** Pelota que cruza la tarjeta dejando la estela del estilo (chispas en Oro). Se repite sola. */

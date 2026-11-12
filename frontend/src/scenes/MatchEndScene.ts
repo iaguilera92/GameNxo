@@ -631,19 +631,20 @@ export class MatchEndScene extends Phaser.Scene {
     const sprites: { me?: Phaser.GameObjects.Sprite; rival?: Phaser.GameObjects.Sprite } = {};
     // ancla y escala por la SILUETA real del primer frame (pies y alto dibujados), no por el ancla de la hoja: así ningún
     // personaje queda hundido ni más grande que el otro aunque sus hojas tengan celdas y márgenes distintos
-    /** fondo + borde del cuadro y el separador suave entre sus dos columnas */
+    /** fondo + borde del cuadro (sin separador entre sus dos columnas) */
     const paintBox = (g: Phaser.GameObjects.Graphics, fill: number, line: number, lw: number) => {
       g.clear();
       g.fillStyle(fill, 1).fillRoundedRect(-bw / 2, -bh / 2, bw, bh, 16);
       g.fillStyle(0xffffff, 0.04).fillRoundedRect(-bw / 2 + 3, -bh / 2 + 3, bw - 6, bh * 0.4, { tl: 13, tr: 13, bl: 4, br: 4 });
       g.lineStyle(lw, line, 1).strokeRoundedRect(-bw / 2, -bh / 2, bw, bh, 16);
-      g.lineStyle(2, 0x24365f, 0.8).lineBetween(0, -bh / 2 + 22, 0, bh / 2 - 22);
     };
     const place = (sp: Phaser.GameObjects.Sprite, key: string) => {
       const b = silhouette(this, key);
       if (!b) return;
       // el MISMO alto para los dos personajes, salvo que su silueta (con la raqueta) no quepa a lo ancho en su columna
-      sp.setOrigin(b.cx / b.fw, b.bottom / b.fh).setScale(Math.min(bodyPx / b.h, maxW / (b.w * 1.12)));
+      const s = Math.min(bodyPx / b.h, maxW / (b.w * 1.12));
+      // centrado en alto dentro del cuadro (si el ancho lo achica, no queda pegado al borde de abajo)
+      sp.setOrigin(b.cx / b.fw, b.bottom / b.fh).setScale(s).setY(Math.min(feetY, (b.h * s) / 2 + 6));
     };
     const box = (x: number, color: number, amount: number, clips?: DuelClips, pose?: { key: string; frame: number }) => {
       const useClip = !!clips && this.textures.exists(clips.idle.key) && this.anims.exists(clips.idle.key);

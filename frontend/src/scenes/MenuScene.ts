@@ -9,6 +9,7 @@ import { roundedPoly } from '../ui/shapes';
 import { RankBadge, preloadRankBadges } from '../ui/RankBadge';
 import { showRankList } from '../ui/RankListDialog';
 import { arcadeButton, lockedModeButton } from '../ui/modeButtons';
+import { isDevMode } from '../domain/devMode';
 import { fitText } from '../ui/fitText';
 import { myLeague, myPosition, rankedState, syncRanked } from '../logic/Ranked';
 import { dailyLoginButton } from '../ui/DailyLoginButton';
@@ -214,7 +215,9 @@ export class MenuScene extends Phaser.Scene {
     const avail = W - margin * 2 - gap;
     const jw = Math.round(avail * 0.7);
     const vw = avail - jw;
-    rankedPlayButton(this, margin + jw / 2, y, jw, h, onPlay);
+    // MODO DESARROLLO apagado: solo JUGAR, sin entrada (partida amistosa, no cuesta monedas)
+    if (isDevMode()) rankedPlayButton(this, margin + jw / 2, y, jw, h, onPlay);
+    else arcadeButton(this, margin + jw / 2, y, jw, h, 'JUGAR', () => onPlay(null), { palette: 'yellow' });
     lockedModeButton(this, margin + jw + gap + vw / 2, y, vw, h, '2v2');
   }
 

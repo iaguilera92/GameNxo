@@ -2,7 +2,7 @@ import Phaser from 'phaser';
 
 /**
  * Efecto visual de la ZONA sobre un personaje:
- *  - aura eléctrica (halo azul-blanco que late + anillo en los pies + chispas que suben)
+ *  - aura eléctrica que irradia (rayitos y chispas que suben; sin halo ni anillo)
  *  - "rayo en los ojos": estela de luz que sale de la cabeza y se arrastra con el movimiento (se dibuja con las
  *    posiciones recientes de la cabeza, así que al correr deja un trazo largo).
  * Solo visual. `update()` cada fotograma con la cabeza y los pies en pantalla.
@@ -45,13 +45,7 @@ export class ZoneFx {
     if (!this.active) return;
     this.t += dt;
     const a = this.aura.clear().setDepth(depth - 0.05);
-    const pulse = 1 + Math.sin(this.t * 10) * 0.08;
     const h = (feet.y - head.y) * 1.15;
-    // halo alargado alrededor del cuerpo
-    a.fillStyle(COL, 0.12).fillEllipse(feet.x, feet.y - h * 0.45, 120 * k * pulse, h * 1.05 * pulse);
-    a.fillStyle(HOT, 0.08).fillEllipse(feet.x, feet.y - h * 0.45, 80 * k * pulse, h * 0.85 * pulse);
-    // anillo en el suelo
-    a.lineStyle(4 * k, COL, 0.75).strokeEllipse(feet.x, feet.y, 110 * k * pulse, 36 * k * pulse);
     // rayitos verticales que suben por el aura
     for (let i = 0; i < 5; i++) {
       const ph = (this.t * 1.6 + i / 5) % 1;

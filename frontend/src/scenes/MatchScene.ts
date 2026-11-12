@@ -23,6 +23,7 @@ import {
   SIDE_MARGIN,
   SMASH_COOLDOWN,
   SMASH_SPEED_MULT,
+  MAX_LEVEL,
 } from '../config';
 import { Ball, type BallState, type ShotKind, aimShot, isInCourt, stepBall } from '../objects/Ball';
 import { Character, PLAYER_LOOK, lookForSkin, playerLook, rivalLook } from '../objects/Character';
@@ -53,18 +54,18 @@ import { C, FONT, textStyle } from '../ui/theme';
 import { VIEW, project } from '../view/projection';
 import { drawCourtView } from '../view/CourtView';
 import { playMatchMusic, stopMatchMusic, takePickedAmbiente } from '../fx/matchMusic';
-import { LOB_SMASH, LobTracker } from '../logic/LobSmash';
+import { LOB_SMASH, LobTracker, REMATE } from '../logic/LobSmash';
 import { LobMarker, superSmashFx } from '../fx/LobMarker';
 import { SmokeTrail } from '../fx/SmokeTrail';
 import { SMASH_CINE, SmashCinematic, type CineFocus, smashCineEnabled, spritesIn } from '../fx/SmashCinematic';
 import { SMASH_LOOK, smashCine } from '../fx/smashFx';
-import { type SmashPower, isSmashPower, smashPowerDef } from '../domain/smashPowers';
-import { defensivePowerDef } from '../domain/defensivePowers';
+import { type SmashPower, isSmashPower } from '../domain/smashPowers';
 import { elementTexture } from '../ui/AbilityButton';
 import { INFERNO, INFERNO_CINE, InfernoDrive, planInfernoContact } from '../logic/InfernoDrive';
 import { GhostTrail, INFERNO_LOOK, InfernoFire, infernoCine, infernoElementFor, infernoImpactFx, infernoShake, infernoSound, queueInfernoArt, type InfernoElement } from '../fx/InfernoFx';
-import { infernoPowerDef, isInfernoPower } from '../domain/infernoPowers';
-import { POWER_IMPACT, type PowerKind, knockbackX, stunMsFor, stunSeconds } from '../logic/PowerImpact';
+import { isInfernoPower } from '../domain/infernoPowers';
+import { POWER_IMPACT, type PowerKind, RACKET_LOSS, knockbackX, stunMsFor, stunSeconds } from '../logic/PowerImpact';
+import { LOOSE_RACKET, ensureLooseRacket } from '../objects/NxoActor';
 import { type BotKit, botKitFor } from '../ai/botKit';
 import { NetView } from '../fx/NetView';
 import { applyCharColor, devCharColor } from '../fx/CharColorFx';
@@ -129,6 +130,8 @@ interface Actor {
   vanished: boolean;
   /** altura extra del dibujo (SUPERSALTO), en unidades z; la sombra/profundidad siguen en el suelo */
   lift?: number;
+  /** raqueta en el suelo tras recibir la ULTI (RACKET_LOSS): sin ella no golpea ni usa habilidades */
+  racket?: { x: number; y: number; img: Phaser.GameObjects.Image; mark: Phaser.GameObjects.Ellipse } | null;
 }
 
 /**
@@ -263,6 +266,8 @@ export class MatchScene extends Phaser.Scene {
   private netRemote: StateMsg | null = null;
   /** DASH del rival en curso (para sus sombras) */
   private netBotDash: { t: number; ghosts: number } | null = null;
+  /** DASH del BOT en curso: sus 3 sombras mientras corre (los mismos efectos que el tuyo) */
+  private botDashFx: { t: number; ghosts: number } | null = null;
   /** SOMBRA / SUPERSALTO del rival en curso (aviso 'defensive'): manda sobre su posición hasta terminar */
   private netBotFly: { kind: 'shadow' | 'jump'; from: { x: number; y: number }; to: { x: number; y: number }; t: number; dur: number; ghosts: number; clone?: Character } | null = null;
   /** lanzamiento del rival que llegó antes de que aquí empezara el punto */
@@ -279,6 +284,22 @@ export class MatchScene extends Phaser.Scene {
   private smashArmed = false;
   /** globo en vuelo: caída prevista y reglas del SMASH potenciado (src/logic/LobSmash.ts) */
   private lob = new LobTracker();
+  /** REMATE del globo en curso: cámara lenta, apuntado a 4 cuadros y aro que se cierra (REMATE en logic/LobSmash.ts) */
+  private remateCine: { t: number; T: number; aim: { col: -1 | 1; row: 'short' | 'deep' }; g: Phaser.GameObjects.Graphics; ring: Phaser.GameObjects.Graphics; label?: Phaser.GameObjects.Text } | null = null;
+  /** golpe del remate ya decidido (lo usa playerHit): destino, velocidad y si fue SMASH! */
+  private remateShot: { tx: number; ty: number; speed: number; perfect: boolean } | null = null;
+  /** cámara lenta del partido (1 = normal) */
+  private slowMo = 1;
+  /** remate fallado (golpe al aire) en este globo: no vuelve a empezar hasta otro globo */
+  private remateWhiffed = false;
+  /** s que quedan de la recuperación tras el golpe al aire (sin moverse ni golpear) */
+  private remateRecover = 0;
+  /** REMATE del BOT en curso: cuándo golpea (fracción del cierre: 1 = SMASH!) y a qué cuadro de tu campo */
+  private botRemate: { t: number; T: number; hitAt: number; col: -1 | 1; row: 'short' | 'deep'; label?: Phaser.GameObjects.Text } | null = null;
+  /** texto REMATE del rival en red (se quita cuando golpea) */
+  private netRemateLabel: Phaser.GameObjects.Text | null = null;
+  /** si el BOT intenta rematar el globo en curso (se decide una vez por globo; null = aún no) */
+  private botRemateRoll: boolean | null = null;
   private lobMarker!: LobMarker;
   /** el SMASH se armó dentro de la ventana del globo (si al golpear se cumple todo, sale potenciado) */
   private superArmed = false;
@@ -500,7 +521,7 @@ export class MatchScene extends Phaser.Scene {
     // en red, el rival con SU estilo de color (llega en opponent.color; uno desconocido se ignora)
     const rivalColor = this.net ? charColorOf(this.net.opponent.color) : 'classic';
     if (rivalColor !== 'classic') applyCharColor(this.bot.ch, rivalColor, this.net?.opponent.skin ?? 'nxo');
-    this.aura = new HyperAura(this, this.player.ch);
+    this.aura = new HyperAura(this, this.player.ch, 'ice');
     this.chargeRing = this.add
       .ellipse(0, 0, 120, 40, 0x6ec1ff, 0.25)
       .setStrokeStyle(5, 0xd6f0ff, 0.9)
@@ -548,9 +569,12 @@ export class MatchScene extends Phaser.Scene {
     const d = ABILITIES.dash;
     const s = ABILITIES.smash;
     this.dashBtn = new AbilityButton(this, 0, 0, 54, DASH_COOLDOWN, d.color, d.colorDark, d.icon, 'DEFENSIVO', () => this.activateDash());
-    this.dashBtn.setSubLabel(defensivePowerDef(getProfile().defensive).name);
     this.smashBtn = new AbilityButton(this, 0, 0, 64, SMASH_COOLDOWN, s.color, s.colorDark, s.icon, 'ESPECIAL', () => (this.smashBtn.inferno ? this.armInferno() : this.activateSmash()));
-    this.smashBtn.setSubLabel(smashPowerDef(getProfile().smash).name);
+    // solo DEFENSIVO / ESPECIAL (sin el nombre del poder); en nivel máximo, sin textos
+    if (getProfile().level >= MAX_LEVEL) {
+      this.dashBtn.hideTexts();
+      this.smashBtn.hideTexts();
+    }
     this.dashBtn.setArt(BUTTON_ART.dash.key);
     this.smashEl = getProfile().smash;
     this.smashFlightEl = 'fire';
@@ -567,7 +591,7 @@ export class MatchScene extends Phaser.Scene {
     this.netRemoteCine = false;
     this.netDeferred = [];
     // aura de llamas del rival: en estado ZONA (zoneRender), también contra el BOT
-    this.botAura = new HyperAura(this, this.bot.ch);
+    this.botAura = new HyperAura(this, this.bot.ch, 'ice');
     if (this.net) {
       this.emotes.onSend = (k) => this.net?.sendAction('emote', { kind: k });
     }
@@ -1054,6 +1078,7 @@ export class MatchScene extends Phaser.Scene {
     const t = this.add.text(x, y, text, textStyle(size, color)).setOrigin(0.5).setDepth(4000).setScale(0.3);
     this.tweens.add({ targets: t, scale: 1, y: y - 50, duration: 350, ease: 'Back.easeOut' });
     this.tweens.add({ targets: t, alpha: 0, delay: 650, duration: 250, onComplete: () => t.destroy() });
+    return t;
   }
 
   private headPos(a: Actor) {
@@ -1065,6 +1090,7 @@ export class MatchScene extends Phaser.Scene {
   /** DASH: desaparece y reaparece donde llegará la pelota. */
   private activateDash(): boolean {
     if (this.paused || this.cine.active || !this.unlocked('defensive')) return false;
+    if (this.player.racket) return this.noRacketHint();
     if (this.serveLock) return this.serveLockHint();
     if (this.phase !== 'rally' || this.lastHitter !== 'bot' || this.player.vanished) {
       this.popText(this.headPos(this.player).x, this.headPos(this.player).y, 'Espera la pelota', '#cfe0ff', 24);
@@ -1092,6 +1118,8 @@ export class MatchScene extends Phaser.Scene {
 
     const pl = this.player;
     this.stopCharge();
+    const h0 = this.headPos(pl);
+    this.popText(h0.x, h0.y - 10, 'DEFENSIVO', '#c9a4ff', 26);
     pl.vanished = true;
     this.dashHit = { t: plan.t, elapsed: 0, x: tx, y: ty };
     this.portalFx(pl.x, pl.y);
@@ -1150,7 +1178,7 @@ export class MatchScene extends Phaser.Scene {
     const p = project(pl.x, pl.y);
     this.dashFx.burst(p.sx, p.sy, p.s * VIEW.CHAR_K, pl.ch.depth);
     const h = this.headPos(pl);
-    this.popText(h.x, h.y - 10, 'SOMBRA', '#d4bfff', 26);
+    this.popText(h.x, h.y - 10, 'DEFENSIVO', '#c9a4ff', 26);
     // el rival ve el mismo clon corriendo y el cambio de lugar (netRemoteDefensive)
     this.net?.sendAction('defensive', { kind: 'shadow', x: pl.x, y: pl.y, tx, ty, ms: dur * 1000 });
     this.updateShadowRun(0);
@@ -1215,7 +1243,7 @@ export class MatchScene extends Phaser.Scene {
     // despegue: polvo e impulso
     this.dustFx(pl.x, pl.y);
     const h0 = this.headPos(pl);
-    this.popText(h0.x, h0.y - 10, 'SUPERSALTO', '#ffd0a0', 26);
+    this.popText(h0.x, h0.y - 10, 'DEFENSIVO', '#c9a4ff', 26);
     navigator.vibrate?.(25);
     // el rival ve el mismo salto en parábola y la caída (netRemoteDefensive)
     this.net?.sendAction('defensive', { kind: 'jump', x: from.x, y: from.y, tx, ty, ms: dur * 1000 });
@@ -1302,7 +1330,7 @@ export class MatchScene extends Phaser.Scene {
     this.dashFx.streak(a.sx, a.sy - 70 * k, b.sx, b.sy - 70 * k, k, pl.ch.depth);
     this.portalFx(from.x, from.y, 0x45d9ff, 0xd9f7ff);
     const h = this.headPos(pl);
-    this.popText(h.x, h.y - 10, 'DESTELLO', '#9fecff', 26);
+    this.popText(h.x, h.y - 10, 'DEFENSIVO', '#c9a4ff', 26);
 
     this.tweens.add({
       targets: pl,
@@ -1430,6 +1458,8 @@ export class MatchScene extends Phaser.Scene {
     this.net?.sendAction('sprint-start', { dirX: this.dashRun.dirX });
     const p = project(pl.x, pl.y);
     this.dashFx.burst(p.sx, p.sy, p.s * VIEW.CHAR_K, pl.ch.depth);
+    const h = this.headPos(pl);
+    this.popText(h.x, h.y - 10, 'DEFENSIVO', '#c9a4ff', 26);
     return true;
   }
 
@@ -1498,6 +1528,7 @@ export class MatchScene extends Phaser.Scene {
   /** SMASH: la pelota se prende fuego; el siguiente golpe es una bola de fuego. */
   private activateSmash(): boolean {
     if (this.paused || this.cine.active ||this.phase === 'over' || this.phase === 'intro' || this.smashArmed || !this.unlocked('special')) return false;
+    if (this.player.racket) return this.noRacketHint();
     if (this.serveLock) return this.serveLockHint();
     this.smashArmed = true;
     // sonido de CARGANDO, el mismo del golpe cargado (se apaga al golpear)
@@ -1536,7 +1567,7 @@ export class MatchScene extends Phaser.Scene {
     const nowReady = this.inferno.onPointWon();
     this.smashBtn.setMeter(this.inferno.charge, INFERNO.pointsToCharge);
     if (nowReady) {
-      this.smashBtn.setInferno(true, infernoPowerDef(getProfile().inferno).name);
+      this.smashBtn.setInferno(true);
       this.smashBtn.pulseMeter();
     }
   }
@@ -1544,6 +1575,7 @@ export class MatchScene extends Phaser.Scene {
   /** Botón en modo INFERNO: arma la técnica (no consume la carga). */
   private armInferno(): boolean {
     if (this.paused || this.cine.busy || this.phase !== 'rally' || this.smashArmed || this.player.vanished || !this.unlocked('ulti')) return false;
+    if (this.player.racket) return this.noRacketHint();
     if (this.serveLock) return this.serveLockHint();
     if (!this.inferno.arm()) return false;
     this.smashBtn.setArmed(true);
@@ -1591,7 +1623,6 @@ export class MatchScene extends Phaser.Scene {
     // franja con la mirada del personaje (NXO, MAI) apenas empieza el INFERNO (toda la cinemática, ~2 s)
     showInfernoGaze(this, INFERNO_CINE.hitAtMs - GAZE_END_BEFORE_HIT_MS, this.gazeY(), getProfile().skin, el);
     this.ghosts.setLook(INFERNO_LOOK[el].ghostTint, INFERNO_LOOK[el].ghostRamp);
-    this.aura.setRingHidden(true); // sin anillos alrededor de los pies durante la cinemática
     this.cine.start({
       profile: infernoCine(el),
       freeze: [...sprites, ...spritesIn(this.bot.ch)],
@@ -1602,7 +1633,6 @@ export class MatchScene extends Phaser.Scene {
         pl.ch.infernoRelease();
         pl.ch.setCharging(false);
         this.ghosts.clear();
-        this.aura.setRingHidden(false);
         this.inferno.abort();
       },
       onFrame: (e) => {
@@ -1677,7 +1707,6 @@ export class MatchScene extends Phaser.Scene {
     pl.y = c.y;
     pl.ch.setCharging(false); // suelta la pose de espera: el golpe sigue desde la raqueta atrás
     this.ghosts.end();
-    this.aura.setRingHidden(false);
     if (this.phase !== 'rally' || this.lastHitter === 'player') {
       pl.ch.infernoRelease();
       this.inferno.abort();
@@ -1738,16 +1767,13 @@ export class MatchScene extends Phaser.Scene {
     this.stopCharge(); // antes de la pose (al soltar la carga el personaje no debe cambiar de animación)
     const overhead = this.powerOverhead(this.ball.s);
     const lead = pl.ch.swing(true, overhead, overhead);
-    this.aura.setRingHidden(true); // sin anillos alrededor de los pies durante la cinemática
     this.cine.start({
       profile: smashCine(this.smashEl), // fuego = el de siempre; hielo / viento / rayo = mismos tiempos con su aura, rayos y destello
-      onCancel: () => this.aura.setRingHidden(false),
       freeze: [...spritesIn(pl.ch), ...spritesIn(this.bot.ch)],
       executor: spritesIn(pl.ch),
       leadMs: Math.min(lead, 150),
       focus: () => this.cineFocus(pl),
       onHit: () => {
-        this.aura.setRingHidden(false);
         // golpe pendiente: se consume una vez (playerHit desarma el SMASH)
         if (this.phase === 'rally' && this.smashArmed && this.lastHitter !== 'player') this.playerHit();
       },
@@ -1795,12 +1821,15 @@ export class MatchScene extends Phaser.Scene {
     this.tweens.killTweensOf(b);
     this.tweens.add({ targets: b, x: knockbackX(b.x, B_X[1], KNOCKBACK_DIST), duration: kb.ms, ease: 'Cubic.easeOut' });
     // con hoja (NXO de espaldas): aturdido / impacto del INFERNO dibujados; si no, el giro de siempre
-    if (!b.ch.impactStun(kind === 'inferno' ? 'inferno' : 'smash', stunMs)) {
+    if (!b.ch.impactStun(kind === 'inferno' ? 'inferno' : 'smash', stunMs, kind !== 'inferno')) {
       this.tweens.add({ targets: b.ch.rig, angle: { from: -POWER_IMPACT.recoilDeg * b.ch.facing, to: 0 }, duration: stunMs, ease: 'Elastic.easeOut' });
     }
     const h = this.headPos(b);
     this.popText(h.x, h.y - 10, '¡ATURDIDO!', '#ffd23f', 30);
-    if (kind === 'inferno') this.ultiStunOn(b, stunMs);
+    if (kind === 'inferno') {
+      this.ultiStunOn(b, stunMs);
+      this.loseRacket(b); // la ULTI le hace volar la raqueta
+    }
   }
 
   /** ULTI de RAYO / VIENTO: el aturdido lleva encima su efecto (electrocutado / remolino) mientras dura. */
@@ -1852,14 +1881,17 @@ export class MatchScene extends Phaser.Scene {
     const kb = POWER_IMPACT.knockback;
     this.tweens.killTweensOf(pl);
     this.tweens.add({ targets: pl, x: clamp(pl.x - KNOCKBACK_DIST, P_X[0], P_X[1]), duration: kb.ms, ease: 'Cubic.easeOut' });
-    if (!pl.ch.impactStun(kind, stunMs)) {
+    if (!pl.ch.impactStun(kind, stunMs, kind !== 'inferno')) {
       // sin hoja: giro de siempre y las estrellas del juego (con hoja, el aturdido ya trae sus estrellas y humo dibujados)
       this.playerDizzy = true;
       pl.ch.swing();
       this.tweens.add({ targets: pl.ch.rig, angle: { from: -POWER_IMPACT.recoilDeg * pl.ch.facing, to: 0 }, duration: stunMs, ease: 'Elastic.easeOut' });
     }
     navigator.vibrate?.(kind === 'inferno' ? [60, 40, 140] : [40, 30, 80]);
-    if (kind === 'inferno') this.ultiStunOn(pl, stunMs);
+    if (kind === 'inferno') {
+      this.ultiStunOn(pl, stunMs);
+      this.loseRacket(pl); // la ULTI te hace volar la raqueta: hay que ir a buscarla
+    }
     this.popText(head.x, head.y - 10, '¡ATURDIDO!', '#ff9aa3', 30);
   }
 
@@ -1875,10 +1907,17 @@ export class MatchScene extends Phaser.Scene {
 
   // ---------------------------------------------------------------- puntos
   private placeForServe() {
+    this.endRemate();
+    this.remateWhiffed = false;
+    this.remateRecover = 0;
+    this.endBotRemate();
+    this.botRemateRoll = null;
+    this.netRemoteRemate(false);
     this.server = this.score.server === 0 ? 'player' : 'bot';
     const side = (this.score.points[0] + this.score.points[1]) % 2 === 0 ? 1 : -1;
     this.endShadowRun(); // un clon de SOMBRA a medio camino no pasa al punto siguiente
     for (const a of [this.player, this.bot]) {
+      this.clearRacket(a); // la raqueta perdida vuelve a la mano en el punto siguiente
       a.stun = 0;
       a.warp = 1;
       a.vanished = false;
@@ -2117,21 +2156,41 @@ export class MatchScene extends Phaser.Scene {
     j.a.ch.rig.x = j.dx * f;
   }
 
-  /** Destino (en el cuadro de saque) para un punto de apuntado y un error de ejecución. */
-  private serveSpot(who: Who, kind: ServeKind, aimT: number, errLat = 0, errDepth = 0) {
+  /**
+   * Destino (en el cuadro de saque) para un punto de apuntado y un error de ejecución. `depthF` = profundidad elegida
+   * (0 = red, 1 = línea de saque); por defecto la del tipo de saque.
+   */
+  private serveSpot(who: Who, kind: ServeKind, aimT: number, errLat = 0, errDepth = 0, depthF = kind === 'spin' ? SERVE.depth.spin : SERVE.depth.normal) {
     const b = this.serveBox;
     const inset = 14;
-    const f = clamp((kind === 'spin' ? SERVE.depth.spin : SERVE.depth.normal) + errDepth, 0.12, 1.4);
+    const f = clamp(depthF + errDepth, 0.12, 1.4);
     const tx = who === 'player' ? b.x0 + (b.x1 - b.x0) * f : b.x1 - (b.x1 - b.x0) * f;
     const ty = b.y0 + inset + (b.y1 - b.y0 - inset * 2) * clamp(aimT + errLat, -0.6, 1.6);
     return { tx, ty };
   }
 
-  /** Apuntado del jugador: izquierda / centro / derecha del cuadro según el joystick. */
-  private playerAimT() {
+  /**
+   * Zona del saque del jugador (1 de 6) según el joystick mientras la pelota está en el aire: columna -1 izquierda /
+   * 0 centro / 1 derecha (|x| ≥ DIAG_X); fila 'short' (abajo, cerca de la red) con el joystick abajo, si no 'deep'
+   * (arriba, junto a la línea de saque). Sin joystick: centro arriba.
+   */
+  private playerServeZone(): { col: -1 | 0 | 1; row: 'deep' | 'short' } {
     const d = this.shotDir();
-    const x = Math.abs(d.x) < 0.2 ? 0 : clamp(d.x, -1, 1);
-    return 0.5 + 0.45 * x;
+    return { col: this.shotSide(d), row: d.y >= DIAG_X ? 'short' : 'deep' };
+  }
+
+  /** Apuntado del jugador: punto lateral (aimT) y profundidad de su zona. */
+  private playerServeAim(_kind: ServeKind) {
+    const z = this.playerServeZone();
+    // centro de la columna (1/6, 1/2 o 5/6 del ancho) pasado al apuntado de serveSpot, que deja un margen de 14 a cada lado
+    const b = this.serveBox;
+    const h = b.y1 - b.y0;
+    const inset = 14;
+    return {
+      aimT: ((h * (z.col + 1.5)) / 3 - inset) / (h - inset * 2),
+      depthF: z.row === 'short' ? SERVE.zones.short : SERVE.zones.deep,
+      zone: z,
+    };
   }
 
   /** Contacto de la raqueta con la pelota: calidad según el momento y salida de la pelota con la física normal. */
@@ -2179,12 +2238,14 @@ export class MatchScene extends Phaser.Scene {
     }
     const g = () => (Math.random() + Math.random() + Math.random() - 1.5) * 2; // ~ N(0,1)
     const [eLat, eDep] = SERVE.error[quality];
-    const aimT = who === 'player' ? this.playerAimT() : this.botPlan.aimT;
+    const pAim = who === 'player' ? this.playerServeAim(kind) : null;
+    const aimT = pAim ? pAim.aimT : this.botPlan.aimT;
     // saque DIRECTO: botón verde + golpe en el punto máximo
     const direct = who === 'player' && kind === 'normal' && this.serveDirect && quality === 'perfect';
     this.serveDirect = false;
-    const extraDepth = direct ? SERVE.direct.depth - SERVE.depth.normal : 0;
-    const { tx, ty } = this.serveSpot(who, kind, aimT, g() * eLat, g() * eDep + extraDepth);
+    // el DIRECTO es más rápido y plano; el destino es el centro de la zona elegida (sin ir más al fondo)
+    const extraDepth = direct && !pAim ? SERVE.direct.depth - SERVE.depth.normal : 0;
+    const { tx, ty } = this.serveSpot(who, kind, aimT, g() * eLat, g() * eDep + extraDepth, pAim?.depthF);
     const speed = SERVE_SPEED * SERVE.speed[quality][second] * (kind === 'spin' ? SERVE.spinSpeedMult : 1) * (direct ? SERVE.direct.speedMult : 1);
     const margin = direct ? SERVE.direct.margin : quality === 'perfect' ? 22 : quality === 'normal' ? rand(8, 20) : rand(-4, 10);
 
@@ -2326,7 +2387,10 @@ export class MatchScene extends Phaser.Scene {
     this.time.delayedCall(1000, () => this.startPoint(this.faults > 0));
   }
 
-  /** Indicador discreto del destino mientras se apunta (solo el jugador). */
+  /**
+   * Destino mientras se apunta (solo el jugador que saca): el cuadro de saque dividido en sus 6 zonas, la elegida
+   * resaltada, y el punto de bote.
+   */
   private renderServeAim() {
     const g = this.serveAim;
     const ctl = this.serveCtl;
@@ -2334,10 +2398,18 @@ export class MatchScene extends Phaser.Scene {
     g.clear();
     g.setVisible(on);
     if (!on || !ctl.kind) return;
-    const { tx, ty } = this.serveSpot('player', ctl.kind, this.playerAimT());
-    const p = project(tx, ty);
-    g.lineStyle(4 * p.s, 0xffffff, 0.9).strokeEllipse(p.sx, p.sy, 54 * p.s, 24 * p.s);
-    g.fillStyle(0xffd23f, 0.9).fillEllipse(p.sx, p.sy, 16 * p.s, 7 * p.s);
+    const aim = this.playerServeAim(ctl.kind);
+    const b = this.serveBox;
+    // el cuadro del jugador va de la red (x0) a la línea de saque (x1); columnas en y (izquierda = y0)
+    const xm = (b.x0 + b.x1) / 2;
+    const y3 = (b.y1 - b.y0) / 3;
+    const cx0 = aim.zone.row === 'short' ? b.x0 : xm;
+    const cy0 = b.y0 + y3 * (aim.zone.col + 1);
+    g.fillStyle(0xffd23f, 0.35).fillPoints([this.P(cx0, cy0), this.P(cx0, cy0 + y3), this.P(cx0 + (xm - b.x0), cy0 + y3), this.P(cx0 + (xm - b.x0), cy0)], true);
+    g.lineStyle(2, 0xffffff, 0.45);
+    g.lineBetween(this.P(xm, b.y0).x, this.P(xm, b.y0).y, this.P(xm, b.y1).x, this.P(xm, b.y1).y);
+    for (const yy of [b.y0 + y3, b.y0 + y3 * 2]) g.lineBetween(this.P(b.x0, yy).x, this.P(b.x0, yy).y, this.P(b.x1, yy).x, this.P(b.x1, yy).y);
+    // (sin el aro del punto de bote: basta el cuadro resaltado)
   }
 
   /** ¿Pared del fondo activa? (WALL.enabled y sin localStorage 'dev.backWall' = '0') */
@@ -2475,6 +2547,13 @@ export class MatchScene extends Phaser.Scene {
   }
 
   /** Aviso al pulsar una habilidad durante el saque o su resto. Devuelve false (no se usó). */
+  /** Sin raqueta (ULTI recibida): ni habilidades ni golpes hasta recogerla. */
+  private noRacketHint(): false {
+    const h = this.headPos(this.player);
+    this.popText(h.x, h.y, '¡Recoge tu raqueta!', '#ffd23f', 22);
+    return false;
+  }
+
   private serveLockHint(): false {
     const h = this.headPos(this.player);
     this.popText(h.x, h.y, 'Después del resto', '#cfe0ff', 22);
@@ -2487,7 +2566,7 @@ export class MatchScene extends Phaser.Scene {
    */
   private syncAbilityLock() {
     if (this.serveUiOn()) return;
-    const lock = this.serveLock;
+    const lock = this.serveLock || !!this.player.racket; // sin raqueta tampoco hay habilidades
     const want = (btn: AbilityButton, key: UnlockKey) => {
       const on = !lock && this.unlocked(key);
       if (btn.enabled !== on) btn.setEnabled(on);
@@ -2504,7 +2583,7 @@ export class MatchScene extends Phaser.Scene {
 
   // ---------------------------------------------------------------- tiro cargado
   private canCharge() {
-    if (this.player.vanished) return false;
+    if (this.player.vanished || this.player.racket) return false;
     if (this.phase === 'rally') return true;
     // mientras saca el rival también se puede preparar el resto
     return (this.phase === 'serve' || this.phase === 'toss') && this.server === 'bot';
@@ -2512,6 +2591,11 @@ export class MatchScene extends Phaser.Scene {
 
   /** 1er toque: empieza a cargar (quieto). 2º toque: cancela y vuelve a moverse. */
   private toggleCharge(eventMs?: number) {
+    // REMATE en curso: el toque es el golpe
+    if (this.remateCine && !this.paused) {
+      this.remateHit();
+      return;
+    }
     if (this.paused || this.cine.active) return;
     // DASH sprint en curso: no se carga (frenaría en seco), pero el gesto cuenta para Perfect Timing
     if (this.dashRun) {
@@ -2866,7 +2950,21 @@ export class MatchScene extends Phaser.Scene {
   private checkHits() {
     const s = this.ball.s;
     if (this.serving) return;
+    // REMATE del BOT: el golpe lo da tickBotRemate
+    if (this.botRemate) return;
+    if (this.canBotStartRemate(s)) {
+      this.startBotRemate();
+      return;
+    }
     if (this.lastHitter !== 'player' && s.x < NET_X && s.vx < 0) {
+      // sin raqueta (ULTI recibida) no se devuelve nada: la pelota pasa
+      if (this.player.racket) return;
+      // REMATE del globo: el golpe lo da el toque o el aro (tickRemate); tras un golpe al aire, un instante sin golpear
+      if (this.remateCine || this.remateRecover > 0) return;
+      if (this.canStartRemate(s)) {
+        this.startRemate();
+        return;
+      }
       // ULTI del rival: si la tocas te aturde SIEMPRE (aunque estés en ZONA o tengas tu ULTI armada)
       if (this.ball.power && this.lastHitter === 'bot' && this.infernoFlight) {
         if (this.inReach(this.player)) this.playerImpact();
@@ -2897,7 +2995,7 @@ export class MatchScene extends Phaser.Scene {
         const c = this.lungeContact();
         if (c) this.playerLunge(c);
       }
-    } else if (!this.net && this.lastHitter !== 'bot' && s.x > NET_X && s.vx > 0 && this.bot.stun <= 0 && this.inReach(this.bot)) {
+    } else if (!this.net && this.lastHitter !== 'bot' && s.x > NET_X && s.vx > 0 && this.bot.stun <= 0 && !this.bot.racket && this.inReach(this.bot)) {
       // en ZONA el rival resiste el ESPECIAL, pero la ULTI aturde siempre
       if (this.ball.power && (this.infernoFlight || !this.zone.active('bot'))) this.fireImpact();
       else if (!this.botUlti(s)) this.botHit();
@@ -3043,7 +3141,10 @@ export class MatchScene extends Phaser.Scene {
     // (antes, dentro del círculo del globo el remate la anulaba y la pelota salía fuerte al fondo)
     const chargedDrop = charged && this.shotFromJoystick() === 'drop';
     // REMATE: globo recibido dentro del círculo sin SMASH (o pelota alta en la red) → golpe fuerte y directo automático
-    const remate = !power && (lobOk || netSmash) && !chargedDrop;
+    const remate = (!power && (lobOk || netSmash) && !chargedDrop) || !!this.remateShot;
+    /** remate del globo (con salto): el automático de siempre o el del REMATE con cámara lenta */
+    const lobRemate = lobOk || !!this.remateShot;
+    const rs = this.remateShot;
     this.superArmed = false;
     this.stopCharge();
     if (power) {
@@ -3058,9 +3159,9 @@ export class MatchScene extends Phaser.Scene {
     // llega en globo; el SMASH contra una pelota normal usa el golpe fuerte (derecha / revés potente)
     // ms hasta que la raqueta llega visualmente a la pelota (el golpe físico es AHORA; solo el destello espera)
     const overhead = remate || (power ? this.powerOverhead(s) : s.z > OVERHEAD_Z);
-    const fxDelay = this.player.ch.swing(power || charged || remate, overhead, (power && overhead) || (remate && lobOk), netVolley && !overhead);
+    const fxDelay = this.player.ch.swing(power || charged || remate, overhead, (power && overhead) || (remate && lobRemate), netVolley && !overhead);
     // en red: los datos REALES de este golpe (el rival repite exactamente la misma animación); `charged` = carga o remate
-    if (this.net) this.netHit = { charged: charged || remate, overhead, volley: netVolley && !overhead, special: (power && overhead) || (remate && lobOk), shock: charged && !power && c >= 0.995 };
+    if (this.net) this.netHit = { charged: charged || remate, overhead, volley: netVolley && !overhead, special: (power && overhead) || (remate && lobRemate), shock: charged && !power && c >= 0.995 };
 
     const depth = (a: number, b: number) => NET_X + (COURT.right - NET_X) * rand(a, b);
     const lat = (k: number) => LAT_C + clamp(k, -1, 1) * (HALF_W - 30);
@@ -3079,13 +3180,19 @@ export class MatchScene extends Phaser.Scene {
       tx = depth(0.72, 0.9);
       ty = this.bot.y > LAT_C ? COURT.top + rand(25, 60) : COURT.bottom - rand(25, 60);
       if (inferno) {
-        // INFERNO DRIVE respeta la dirección elegida con el joystick (si no hay, lejos del rival)
+        // ULTI (INFERNO DRIVE): sin joystick, al MEDIO; derecha / izquierda, a ese lado
         const d = this.shotDir();
-        if (Math.abs(d.x) > 0.3) ty = LAT_C + Math.sign(d.x) * rand(0.7, 0.92) * (HALF_W - 30);
+        ty = Math.abs(d.x) > 0.3 ? LAT_C + Math.sign(d.x) * rand(0.7, 0.92) * (HALF_W - 30) : LAT_C + rand(-0.08, 0.08) * HALF_W;
       }
       // multiplicadores una sola vez (el potenciado del globo solo existe armando el SMASH normal)
       speed = SHOT_SPEED * SMASH_SPEED_MULT * (inferno ? INFERNO.speedMult : superHit ? LOB_SMASH.powerMult : 1);
       margin = 6;
+    } else if (remate && rs) {
+      // REMATE con cámara lenta: al cuadro elegido; SMASH! = más fuerte
+      tx = rs.tx;
+      ty = rs.ty;
+      speed = rs.speed;
+      margin = REMATE.margin;
     } else if (remate) {
       // fuerte, plano y profundo; el joystick elige el lado (si no, lejos del rival)
       const d = this.shotDir();
@@ -3107,14 +3214,17 @@ export class MatchScene extends Phaser.Scene {
         margin = 6;
         kind = Math.abs(d.x) > 0.3 ? 'side' : 'normal';
       } else if (shot === 'drop') {
-        // cortita muerta: casi no bota (en diagonal, a ese lado)
-        tx = depth(0.08, 0.2);
+        // cortita cargada (en diagonal, a ese lado). Solo AL MÁXIMO es la muerta (pegada a la red y casi sin bote); con
+        // menos carga cae algo más lejos y bota como una dejada normal (antes, a media carga ni botaba)
+        const full = c >= 0.995;
+        const short = 1 - c; // 0 al máximo
+        tx = full ? depth(0.08, 0.2) : depth(0.12 + 0.1 * short, 0.24 + 0.1 * short);
         ty = lat(this.diagLat(d));
         speed = SHOT_SPEED * (0.85 + 0.15 * c);
         chargePart = SHOT_SPEED * 0.15 * c;
-        margin = 5;
+        margin = full ? 5 : 8;
         dead = true;
-        deadHard = true; // cargada: casi no levanta al botar
+        deadHard = full; // solo al máximo casi no levanta al botar
         kind = 'drop';
         // aviso sobre el jugador: es un golpe que suele dar punto (se ve en el instante del golpe)
         this.time.delayedCall(fxDelay, () => {
@@ -3243,8 +3353,14 @@ export class MatchScene extends Phaser.Scene {
     if (remate) {
       this.time.delayedCall(fxDelay, () => {
         this.ball.setImpactTrail(0.9, 0xffffff);
-        this.cameras.main.shake(lobOk ? 190 : 110, lobOk ? 0.013 : 0.007);
-        if (lobOk) {
+        this.cameras.main.shake(rs?.perfect ? 260 : lobRemate ? 190 : 110, rs?.perfect ? 0.02 : lobRemate ? 0.013 : 0.007);
+        if (rs?.perfect) {
+          // SMASH!: el destello del remate potenciado y estela dorada
+          const pp = project(s.x, s.y, s.z);
+          superSmashFx(this, pp.sx, pp.sy);
+          this.ball.setImpactTrail(1, 0xffd23f);
+        }
+        if (lobRemate) {
           // onda expansiva del remate: dos anillos aplastados (perspectiva) que se abren desde el impacto
           const p1 = project(s.x, s.y, s.z);
           for (const [d, col] of [[0, 0xffffff], [90, 0xffd23f]] as const) {
@@ -3301,6 +3417,29 @@ export class MatchScene extends Phaser.Scene {
     // a dónde y cómo devuelve: lo decide el cerebro; la física del golpe se aplica aquí como siempre
     // sin ESPECIAL en el resto del saque (serveLock: este golpe sería el 2º del punto)
     const shot = this.brain.planShot(s, { playerX: this.player.x, playerY: this.player.y, botX: this.bot.x, botY: this.bot.y }, ulti, this.serveLock);
+    // ESPECIAL del BOT: la misma cinemática que el tuyo (pantalla oscura y foco en él, partido congelado); el golpe sale
+    // al terminar, una sola vez. Su clip arranca ya en la preparación (la segunda llamada a swing no lo reinicia).
+    if (shot.power && !ulti && !this.net && smashCineEnabled() && !this.cine.active && this.phase === 'rally') {
+      const over = s.z > OVERHEAD_Z;
+      const lead = this.bot.ch.swing(true, over, over);
+      this.cine.start({
+        profile: smashCine(this.botKit.smash),
+        freeze: [...spritesIn(this.bot.ch), ...spritesIn(this.player.ch)],
+        executor: spritesIn(this.bot.ch),
+        leadMs: Math.min(lead, 150),
+        focus: () => this.cineFocus(this.bot),
+        onHit: () => {
+          if (this.phase === 'rally' && this.lastHitter !== 'bot') this.applyBotShot(shot, ulti, el);
+        },
+      });
+      return;
+    }
+    this.applyBotShot(shot, ulti, el);
+  }
+
+  /** Aplica el golpe del BOT ya decidido (física, poder, efectos y textos). */
+  private applyBotShot(shot: ReturnType<BotBrain['planShot']>, ulti: boolean, el: InfernoElement) {
+    const s = this.ball.s;
     const power = !!shot.power;
     // SMASH del rival: golpe fuerte (remate si la pelota viene alta) y bola de fuego
     const botOver = s.z > OVERHEAD_Z;
@@ -3329,7 +3468,7 @@ export class MatchScene extends Phaser.Scene {
       infernoShake(this);
       infernoSound.impact(this);
       this.ball.quietFx = true;
-      this.popText(h.x, h.y - 10, 'ULTI', '#ff7ad9', 30);
+      // (sin texto: la ULTI ya se anuncia con la mirada)
     } else if (power) this.popText(h.x, h.y - 10, 'ESPECIAL', '#ffb347', 28);
   }
 
@@ -3467,7 +3606,7 @@ export class MatchScene extends Phaser.Scene {
     this.dashFx.streak(a.sx, a.sy - 70 * k, b.sx, b.sy - 70 * k, k, bt.ch.depth);
     this.portalFx(from.x, from.y, 0x45d9ff, 0xd9f7ff);
     const h = this.headPos(bt);
-    this.popText(h.x, h.y - 10, 'DESTELLO', '#9fecff', 26);
+    this.popText(h.x, h.y - 10, 'DEFENSIVO', '#c9a4ff', 26); // el rival: solo el tipo de habilidad
     bt.vanished = true;
     this.tweens.add({
       targets: bt,
@@ -3529,7 +3668,7 @@ export class MatchScene extends Phaser.Scene {
       this.cine.update();
       return;
     }
-    const dt = Math.min(deltaMs / 1000, 0.05);
+    const dt = Math.min(deltaMs / 1000, 0.05) * this.slowMo; // cámara lenta del REMATE
     this.netView.update(); // la red solo se redibuja mientras ondula / vibra
     this.syncAbilityLock(); // sin habilidades durante el saque y su resto
     this.dashBtn.update(dt);
@@ -3541,6 +3680,8 @@ export class MatchScene extends Phaser.Scene {
     this.updateShadowRun(dt); // SOMBRA: el clon corre al punto y al llegar cambias tu lugar con él
     const frozen =
       this.charging ||
+      this.remateCine !== null || // REMATE: lo coloca bajo la pelota tickRemate
+      this.remateRecover > 0 || // cae tras el golpe al aire del remate
       pl.stun > 0 ||
       pl.vanished ||
       (this.dashHit !== null && !this.dashHit.sprint) || // DASH de teletransporte: se queda en el punto hasta devolver
@@ -3552,6 +3693,7 @@ export class MatchScene extends Phaser.Scene {
     // al sacar (antes de lanzar) solo hay desplazamiento lateral dentro de la mitad de la línea de fondo
     const positioning = this.server === 'player' && this.phase === 'serve' && this.serveCtl.state === 'POSITIONING';
     if (pl.stun > 0) pl.stun -= dt;
+    if (this.remateRecover > 0) this.remateRecover -= dt;
     const raw = this.inputVector();
     const v = frozen ? new Phaser.Math.Vector2() : positioning ? new Phaser.Math.Vector2(raw.x, 0) : raw;
     // la dirección para apuntar se lee aunque el jugador esté quieto cargando
@@ -3606,14 +3748,18 @@ export class MatchScene extends Phaser.Scene {
     // ZONA del rival: más rápido mientras dure (se restaura tras el paso)
     const aiSpeed = this.ai.speed;
     if (this.zone.active('bot')) this.ai.speed = aiSpeed * ZONE.speedMult * this.zoneStatMultiplier('bot', 'speed');
-    const mv = this.brain.tick(bt, {
+    // sin raqueta (ULTI recibida): pasado el aturdido corre a buscarla en vez de ir a por la pelota
+    const fetch = bt.racket && bt.stun <= 0 && !bt.vanished ? this.botFetchRacket(dt) : null;
+    // REMATE del BOT: salta y se coloca bajo la pelota (sin el cerebro)
+    const rem = this.botRemate ? this.botRemateMove(dt) : null;
+    const mv = rem ?? fetch ?? this.brain.tick(bt, {
       dt,
       phase: this.phase,
       botServes: this.server === 'bot',
       servePositioning: this.serveCtl.state === 'POSITIONING',
       serveY: this.botServeY,
       ball: this.ball.s,
-      noAbilities: this.serveLock, // sin DASH durante el saque y su resto (igual que tú)
+      noAbilities: this.serveLock || !!bt.racket, // sin DASH durante el saque y su resto (igual que tú), ni sin raqueta
     });
     this.ai.speed = aiSpeed;
     // DASH del rival: sprint hacia el punto previsto (la animación de siempre del sprint)
@@ -3625,13 +3771,32 @@ export class MatchScene extends Phaser.Scene {
         const h = this.headPos(bt);
         this.popText(h.x, h.y - 10, 'DEFENSIVO', '#c9a4ff', 26);
         this.dustFx(bt.x, bt.y);
+        // destello de arranque y sombras al correr: los mismos efectos que tu DASH
+        const p = project(bt.x, bt.y);
+        this.dashFx.burst(p.sx, p.sy, p.s * VIEW.CHAR_K, bt.ch.depth);
+        this.botDashFx = { t: 0, ghosts: 0 };
       }
-    } else if (mv.sprint === 'end' && this.botKit.defensive !== 'blink') bt.ch.setSprint(false, mv.dirX);
+    } else if (mv.sprint === 'end' && this.botKit.defensive !== 'blink') {
+      bt.ch.setSprint(false, mv.dirX);
+      this.botDashFx = null;
+    }
+    if (this.botDashFx) {
+      const d = this.botDashFx;
+      d.t += dt;
+      if (d.ghosts < 3 && d.t >= 0.09 * (d.ghosts + 1)) {
+        this.renderActors();
+        this.dashFx.ghost(bt.ch, d.ghosts, bt.ch.depth);
+        d.ghosts++;
+      }
+      if (d.ghosts >= 3 || d.t > 1.4) this.botDashFx = null;
+    }
     bt.ch.setMoving(mv.moving && !bt.vanished, mv.dirX);
     if (mv.readyToToss) this.beginToss(this.botPlan.kind);
     this.updateFacing(bt);
     this.botChargeTick(dt, mv.moving);
     }
+
+    this.racketPickup();
 
     // --- tiempo para sacar (solo el jugador): si se agota, falta
     this.tickServeClock(dt);
@@ -3705,12 +3870,14 @@ export class MatchScene extends Phaser.Scene {
 
     // globo: caída prevista, círculo en el suelo y aviso del SMASH potenciado (solo presentación + reglas)
     const lob = this.lob.update(dt, this.ball.s, this.lastHitter, this.ball.shotKind, this.phase, this.bounces);
+    if (!lob.active) this.remateWhiffed = false; // otro globo: el remate vuelve a estar disponible
     const insideLob = lob.receiver === 'player' && this.lob.contains(pl.x, pl.y);
     const canSuper = this.lob.windowOpenFor('player', pl.x, pl.y);
     if (!lob.active) this.superArmed = false;
     // el botón SMASH brilla en dorado cuando pulsarlo AHORA daría un remate potenciado (o ya se armó así)
     this.smashBtn.setHint((canSuper && this.smashBtn.ready && !this.smashArmed) || (this.superArmed && canSuper));
-    this.lobMarker.render(dt, lob, insideLob, canSuper);
+    // en el REMATE (tuyo o del rival en red) ya se está en el aire: fuera el círculo del suelo
+    this.lobMarker.render(dt, this.remateCine || this.netRemateOn || this.botRemate ? { ...lob, active: false } : lob, insideLob, canSuper);
 
     this.ball.render(dt);
     // humo del SMASH en vuelo (fuerte si es el potenciado)
@@ -3721,6 +3888,8 @@ export class MatchScene extends Phaser.Scene {
     if (!this.ball.power) this.infernoFlight = false;
     this.ball.quietFx = this.infernoFlight;
     this.fire.update(this.ball.s, this.infernoFlight, this.ball.sprite.visible);
+    this.tickRemate(dt); // REMATE del globo: salto, apuntado, aro
+    this.tickBotRemate(dt); // REMATE del BOT
     this.tickServeJump(dt); // salto del saque (visual)
     this.renderActors();
     this.updateTimingRing();
@@ -3760,6 +3929,403 @@ export class MatchScene extends Phaser.Scene {
     this.simRealAt = performance.now();
     this.netFlushHit();
     this.netSendState();
+  }
+
+  // ================================================================ REMATE del globo (cámara lenta + apuntado + aro)
+  /**
+   * ¿Empieza el REMATE? Globo del rival que cae dentro de la cancha, tú dentro de su círculo, la pelota ya bajando y a
+   * la altura de inicio (REMATE.startZ). No con el ESPECIAL / la ULTI armados (esos tienen su propio remate).
+   */
+  private canStartRemate(s: BallState) {
+    const st = this.lob.state;
+    const pl = this.player;
+    return (
+      !this.ball.power &&
+      !this.smashArmed &&
+      !this.inferno.armed &&
+      st.active &&
+      st.receiver === 'player' &&
+      st.inCourt &&
+      this.lob.contains(pl.x, pl.y) &&
+      !this.remateWhiffed &&
+      s.vz < 0 &&
+      s.z <= REMATE.startZ &&
+      s.z > REMATE.contactZ &&
+      pl.stun <= 0 &&
+      !pl.vanished &&
+      !this.dashRun &&
+      !this.cine.active
+    );
+  }
+
+  /**
+   * Empieza el REMATE: el personaje salta, el partido va en cámara lenta y un aro se cierra sobre la pelota hasta la
+   * altura de contacto. Con el joystick se elige uno de los 4 cuadros del rival (izquierda / derecha × cuadro de saque /
+   * fondo). Tocar golpea: justo al cerrarse el aro = SMASH! (más fuerte); si no, va donde apuntaste. Si no tocas, golpea
+   * solo al pasarse el aro.
+   */
+  private startRemate() {
+    const s = this.ball.s;
+    this.stopCharge();
+    // tiempo de juego hasta que la pelota baja a la altura de contacto: z + vz·t − g·t²/2 = contactZ
+    const dz = Math.max(0, s.z - REMATE.contactZ);
+    const T = clamp((s.vz + Math.sqrt(s.vz * s.vz + 2 * GRAVITY * dz)) / GRAVITY, 0.12, 0.8);
+    // en red el rival ve la misma cámara lenta (acción 'remate-start'), sin acercamiento de cámara
+    const slow = clamp(T / REMATE.realS, REMATE.minSlow, 1);
+    this.setSlowMo(slow);
+    // la velocidad de las animaciones es global (todas las escenas): si se sale del partido a mitad, se restaura
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.setSlowMo(1));
+    this.remateCine = {
+      t: 0,
+      T,
+      aim: { col: this.bot.y > LAT_C ? -1 : 1, row: 'deep' },
+      g: this.add.graphics().setDepth(0.8),
+      ring: this.add.graphics().setDepth(4000),
+    };
+    this.net?.sendAction('remate-start', { slow, t: T });
+    this.player.ch.remateHold(); // raqueta arriba, congelada hasta el golpe
+    const h = this.headPos(this.player);
+    // (en cámara lenta su animación también va lenta: se quita al golpear para no taparse con SMASH!)
+    this.remateCine.label = this.popText(h.x, h.y - 10, 'REMATE', '#ffd23f', 30);
+    navigator.vibrate?.(30);
+  }
+
+  /** Cámara lenta del partido (física, animaciones, tweens y temporizadores). 1 = normal. */
+  private setSlowMo(k: number) {
+    this.slowMo = k;
+    this.tweens.timeScale = k;
+    this.anims.globalTimeScale = k;
+    this.time.timeScale = k;
+  }
+
+  /** Cada fotograma del REMATE: salto, colocarse bajo la pelota, apuntado, aro y golpe automático si se pasa. */
+  private tickRemate(dt: number) {
+    const r = this.remateCine;
+    if (!r) return;
+    r.t += dt;
+    const p = r.t / r.T;
+    const pl = this.player;
+    const s = this.ball.s;
+    pl.lift = REMATE.jump * Math.sin((Math.min(1, p) * Math.PI) / 2);
+    const k = Math.min(1, dt * 10);
+    pl.x += (clamp(s.x - 16, P_X[0], P_X[1]) - pl.x) * k;
+    pl.y += (clamp(s.y, Y_MIN, Y_MAX) - pl.y) * k;
+    // apuntado (se queda con la última dirección): lado con izquierda / derecha, fondo con arriba, saque con abajo
+    const d = this.inputVector();
+    if (Math.abs(d.x) > 0.3) r.aim.col = d.x < 0 ? -1 : 1;
+    if (Math.abs(d.y) > 0.35) r.aim.row = d.y > 0 ? 'short' : 'deep';
+    this.drawRemateAim(r);
+    this.drawRemateRing(r.ring, p);
+    if (p >= 1 + REMATE.lateMax) this.remateHit();
+  }
+
+  /** Centro del cuadro elegido en el campo rival. */
+  private remateTarget(aim: { col: -1 | 1; row: 'short' | 'deep' }) {
+    const sl = (COURT.right - NET_X) * 0.538; // fondo de los cuadros de saque (como computeServeBox)
+    const x = aim.row === 'short' ? NET_X + sl / 2 : NET_X + sl + (COURT.right - NET_X - sl) / 2;
+    const y = aim.col < 0 ? (COURT.top + LAT_C) / 2 : (LAT_C + COURT.bottom) / 2;
+    return { x, y };
+  }
+
+  /** Los 4 cuadros del rival (los de saque y los del fondo) con el elegido resaltado y su punto de bote. */
+  private drawRemateAim(r: NonNullable<typeof this.remateCine>) {
+    const g = r.g.clear();
+    const sl = (COURT.right - NET_X) * 0.538;
+    const xs = { short: [NET_X, NET_X + sl], deep: [NET_X + sl, COURT.right] } as const;
+    const ys = { [-1]: [COURT.top, LAT_C], [1]: [LAT_C, COURT.bottom] } as Record<-1 | 1, [number, number]>;
+    const quad = (row: 'short' | 'deep', col: -1 | 1) => {
+      const [x0, x1] = xs[row];
+      const [y0, y1] = ys[col];
+      return [this.P(x0, y0), this.P(x0, y1), this.P(x1, y1), this.P(x1, y0)];
+    };
+    for (const row of ['short', 'deep'] as const) {
+      for (const col of [-1, 1] as const) {
+        const on = row === r.aim.row && col === r.aim.col;
+        const pts = quad(row, col);
+        if (on) g.fillStyle(0xffd23f, 0.35).fillPoints(pts, true);
+        g.lineStyle(on ? 4 : 2, on ? 0xffd23f : 0xffffff, on ? 0.95 : 0.4).strokePoints(pts, true);
+      }
+    }
+    // (sin el aro del punto de bote: basta el cuadro resaltado, como en el saque)
+  }
+
+  /** Aro que se cierra sobre la pelota (p = 1: cerrado, el momento del SMASH!); pasado, se encoge y se apaga. */
+  private drawRemateRing(g: Phaser.GameObjects.Graphics, p: number) {
+    const s = this.ball.s;
+    const bp = project(s.x, s.y, s.z);
+    const rb = 18 * bp.s;
+    const R0 = 130 * bp.s;
+    const perfect = Math.abs(p - 1) <= REMATE.perfect;
+    const late = p > 1 + REMATE.perfect;
+    const rad = p <= 1 ? rb + (R0 - rb) * (1 - p) : rb * Math.max(0, 1 - (p - 1) / REMATE.lateMax);
+    g.clear();
+    g.lineStyle(Math.max(2, 3 * bp.s), 0xffffff, 0.45).strokeCircle(bp.sx, bp.sy, rb);
+    g.lineStyle(Math.max(3, (perfect ? 8 : 5) * bp.s), perfect ? 0xffd23f : late ? 0xff7a85 : 0xffffff, late ? 0.6 : 1).strokeCircle(bp.sx, bp.sy, rad);
+    if (perfect) g.fillStyle(0xffd23f, 0.25).fillCircle(bp.sx, bp.sy, rb * 1.4);
+  }
+
+  /** Golpe del REMATE (toque o automático): SMASH! si el aro está cerrado, si no al cuadro elegido. */
+  private remateHit() {
+    const r = this.remateCine;
+    if (!r) return;
+    const p = r.t / r.T;
+    const grade: 'perfect' | 'early' | 'late' = Math.abs(p - 1) <= REMATE.perfect ? 'perfect' : p < 1 ? 'early' : 'late';
+    const target = this.remateTarget(r.aim);
+    this.endRemate();
+    this.net?.sendAction('remate-end'); // antes del golpe: el rival vuelve a velocidad normal y luego recibe el golpe
+    if (p < REMATE.whiff) {
+      // demasiado pronto: golpe AL AIRE. Hace el gesto pero no le pega; la pelota sigue en juego a velocidad normal y
+      // el jugador cae y se recupera un instante (poco margen para responderla)
+      this.remateWhiffed = true;
+      this.remateRecover = REMATE.whiffRecover;
+      this.player.ch.swing(true, true, true);
+      this.tweens.add({ targets: this.player, lift: 0, duration: 260, ease: 'Quad.easeIn' });
+      const h = this.headPos(this.player);
+      this.popText(h.x, h.y - 20, '¡AL AIRE!', '#ff9aa3', 32);
+      return;
+    }
+    // fuera del punto exacto: cuanto más lejos del cierre, más suave (hasta un 25 % menos que su velocidad base)
+    const miss = Math.max(0, Math.abs(p - 1) - REMATE.perfect);
+    const soften = grade === 'perfect' ? 1 : clamp(1 - miss * 0.8, 0.75, 1);
+    // dónde se ve la pelota al golpear (para el aro que se abre)
+    const b0 = project(this.ball.s.x, this.ball.s.y, this.ball.s.z);
+    this.remateShot = { tx: target.x, ty: target.y, speed: SHOT_SPEED * REMATE.speed[grade] * soften, perfect: grade === 'perfect' };
+    this.playerHit(true);
+    this.remateShot = null;
+    this.tweens.add({ targets: this.player, lift: 0, duration: 320, ease: 'Quad.easeIn' });
+    if (grade === 'perfect') {
+      const h = this.headPos(this.player);
+      this.popText(h.x, h.y - 30, 'SMASH!', '#ffd23f', 44);
+      navigator.vibrate?.([30, 30, 80]);
+    } else {
+      // no acertó el cierre: el aro se abre y se apaga (no hubo SMASH!)
+      const open = this.add.circle(b0.sx, b0.sy, 26 * b0.s, 0x000000, 0).setStrokeStyle(Math.max(3, 5 * b0.s), p < 1 ? 0xffffff : 0xff7a85, 0.9).setDepth(4000);
+      this.tweens.add({ targets: open, scale: 2.6, alpha: 0, duration: 380, ease: 'Cubic.easeOut', onComplete: () => open.destroy() });
+    }
+  }
+
+  /** Termina la cámara lenta y quita el apuntado y el aro (golpe, fin del punto). */
+  private endRemate() {
+    const r = this.remateCine;
+    if (!r) return;
+    this.remateCine = null;
+    r.g.destroy();
+    r.ring.destroy();
+    if (r.label?.active) {
+      this.tweens.killTweensOf(r.label);
+      r.label.destroy();
+    }
+    this.setSlowMo(1);
+  }
+
+  // ---------------------------------------------------------------- REMATE del BOT (sin red)
+  /**
+   * ¿El BOT empieza su REMATE? Tu globo cae dentro de su campo, él está cerca de donde cae (el bot se coloca para
+   * interceptar: tolerancia mayor que el círculo), la pelota baja y está a la altura de inicio. Si lo intenta se decide
+   * una vez por globo según su nivel (55 % … 100 %).
+   */
+  private canBotStartRemate(s: BallState) {
+    const st = this.lob.state;
+    if (!st.active || st.receiver !== 'bot') {
+      this.botRemateRoll = null;
+      return false;
+    }
+    const bt = this.bot;
+    if (this.net || !st.inCourt || this.ball.power || s.vz >= 0 || s.z > REMATE.startZ || s.z <= REMATE.contactZ) return false;
+    if (bt.stun > 0 || bt.vanished || bt.racket) return false;
+    if (Math.hypot(bt.x - st.x, (bt.y - st.y) * 1.25) > LOB_SMASH.radius * 1.8) return false;
+    if (this.botRemateRoll === null) this.botRemateRoll = Math.random() < 0.55 + 0.45 * this.ai.d;
+    return this.botRemateRoll;
+  }
+
+  /** El BOT salta con la raqueta arriba y el partido va en cámara lenta mientras "piensa" a dónde rematar. */
+  private startBotRemate() {
+    const s = this.ball.s;
+    const dz = Math.max(0, s.z - REMATE.contactZ);
+    const T = clamp((s.vz + Math.sqrt(s.vz * s.vz + 2 * GRAVITY * dz)) / GRAVITY, 0.12, 0.8);
+    // cuándo golpea (fracción del cierre del aro): más nivel = más SMASH! (justo al cerrarse)
+    const d = this.ai.d;
+    const roll = Math.random();
+    const hitAt = roll < 0.25 + 0.5 * d ? 1 : roll < 0.6 + 0.3 * d ? rand(0.78, 0.88) : rand(1.12, 1.25);
+    // a dónde: lejos de ti (lado contrario) y casi siempre al fondo
+    const col: -1 | 1 = this.player.y > LAT_C ? -1 : 1;
+    const row: 'short' | 'deep' = Math.random() < 0.7 ? 'deep' : 'short';
+    this.botRemate = { t: 0, T, hitAt, col, row };
+    this.setSlowMo(clamp(T / REMATE.realS, REMATE.minSlow, 1));
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.setSlowMo(1));
+    this.bot.ch.remateHold();
+    const h = this.headPos(this.bot);
+    this.botRemate.label = this.popText(h.x, h.y - 10, 'REMATE', '#ffd23f', 30);
+  }
+
+  /** Movimiento del BOT durante su remate: salta y se coloca bajo la pelota (con la forma del movimiento del cerebro). */
+  private botRemateMove(dt: number): ReturnType<BotBrain['tick']> {
+    const r = this.botRemate!;
+    const bt = this.bot;
+    const s = this.ball.s;
+    bt.lift = REMATE.jump * Math.sin((Math.min(1, r.t / r.T) * Math.PI) / 2);
+    const k = Math.min(1, dt * 10);
+    bt.x += (clamp(s.x + 16, B_X[0], B_X[1]) - bt.x) * k;
+    bt.y += (clamp(s.y, Y_MIN, Y_MAX) - bt.y) * k;
+    return { moving: false, dirX: 0, sprint: null, readyToToss: false };
+  }
+
+  private tickBotRemate(dt: number) {
+    const r = this.botRemate;
+    if (!r) return;
+    r.t += dt;
+    if (r.t / r.T >= r.hitAt) this.botRemateHit();
+  }
+
+  /** Golpe del remate del BOT al cuadro elegido de tu campo: SMASH! si fue justo al cierre (más fuerte). */
+  private botRemateHit() {
+    const r = this.botRemate;
+    if (!r) return;
+    this.endBotRemate();
+    const s = this.ball.s;
+    const grade: 'perfect' | 'early' | 'late' = r.hitAt === 1 ? 'perfect' : r.hitAt < 1 ? 'early' : 'late';
+    // cuadros de tu campo: los de saque junto a la red y los del fondo (espejo de remateTarget)
+    const sl = (NET_X - COURT.left) * 0.538;
+    const tx = r.row === 'short' ? NET_X - sl / 2 : NET_X - sl - (NET_X - sl - COURT.left) / 2;
+    const ty = r.col < 0 ? (COURT.top + LAT_C) / 2 : (LAT_C + COURT.bottom) / 2;
+    const fxDelay = this.bot.ch.swing(true, true, true); // remate con salto (smash-power), desde la pose congelada
+    s.z = Math.max(s.z, 22);
+    let speed = SHOT_SPEED * REMATE.speed[grade];
+    if (this.zone.active('bot')) speed *= ZONE.shotMult * this.zoneStatMultiplier('bot', 'strength');
+    if (this.zone.active('player')) speed *= 1 - zoneStatPercent(this.zoneLevels.player.resistance);
+    aimShot(s, tx, ty, speed, REMATE.margin);
+    this.ball.setPower(false);
+    if (this.smashArmed) this.ball.setIgnited(true); // tu ESPECIAL sigue armado
+    this.ball.setKind('normal', true);
+    this.lastHitter = 'bot';
+    this.bounces = 0;
+    this.ai.onBotHit();
+    this.hitFxAt(fxDelay, s.x, s.y, s.z, false, 1);
+    this.tweens.add({ targets: this.bot, lift: 0, duration: 320, ease: 'Quad.easeIn' });
+    const p = project(s.x, s.y, s.z);
+    this.time.delayedCall(fxDelay, () => {
+      this.cameras.main.shake(grade === 'perfect' ? 240 : 150, grade === 'perfect' ? 0.017 : 0.01);
+      if (grade === 'perfect') {
+        superSmashFx(this, p.sx, p.sy);
+        this.ball.setImpactTrail(1, 0xffd23f);
+      } else this.ball.setImpactTrail(0.9, 0xffffff);
+    });
+    if (grade === 'perfect') {
+      const h = this.headPos(this.bot);
+      this.popText(h.x, h.y - 30, 'SMASH!', '#ff9aa3', 44);
+    }
+  }
+
+  private endBotRemate() {
+    const r = this.botRemate;
+    if (!r) return;
+    this.botRemate = null;
+    if (r.label?.active) {
+      this.tweens.killTweensOf(r.label);
+      r.label.destroy();
+    }
+    this.setSlowMo(1);
+  }
+
+  // ================================================================ RAQUETA PERDIDA (ULTI recibida)
+  /**
+   * La ULTI recibida hace volar la raqueta: cae a la izquierda o a la derecha de quien la recibe (dentro de su campo) y
+   * queda en el suelo, marcada con un aro. Sin ella no se devuelve ninguna pelota ni se usan habilidades; se recupera
+   * pasando por encima (RACKET_LOSS.pickR) y vuelve sola al empezar el punto siguiente. `at` = dónde cae (red: lo
+   * decide el teléfono del que la pierde).
+   */
+  private loseRacket(a: Actor, at?: { x: number; y: number }) {
+    this.clearRacket(a);
+    const R = RACKET_LOSS;
+    let pos = at;
+    if (!pos) {
+      const half = a === this.player ? P_X : B_X;
+      const room = (sd: number) => (sd > 0 ? COURT.bottom - 12 - a.y : a.y - COURT.top - 12);
+      let side = Math.random() < 0.5 ? -1 : 1;
+      if (room(side) < R.side[0]) side = -side; // pegado a una banda: cae hacia el otro lado
+      pos = {
+        x: clamp(a.x + rand(-R.depth, R.depth), half[0], half[1]),
+        y: clamp(a.y + side * rand(R.side[0], R.side[1]), COURT.top + 12, COURT.bottom - 12),
+      };
+    }
+    const to = pos;
+    ensureLooseRacket(this);
+    const from = this.headPos(a);
+    const feet = project(a.x, a.y);
+    const p = project(to.x, to.y);
+    const hPx = Math.max(24, (feet.sy - from.y) * 0.42); // ~42 % del alto del personaje
+    const col = a === this.player ? 0xffd23f : 0xff6b78;
+    const mark = this.add.ellipse(p.sx, p.sy, hPx * 1.3, hPx * 0.45).setStrokeStyle(3, col, 0.9).setFillStyle(col, 0.15).setDepth(p.sy - 0.5).setAlpha(0);
+    const img = this.add.image(from.x, from.y, LOOSE_RACKET).setDepth(p.sy + 0.5);
+    img.setScale(hPx / img.height);
+    // vuelo en arco girando y queda tumbada en el suelo
+    const t = { k: 0 };
+    const x0 = from.x;
+    const y0 = from.y;
+    const y1 = p.sy - hPx * 0.2;
+    this.tweens.add({
+      targets: t,
+      k: 1,
+      duration: R.flyMs,
+      ease: 'Sine.easeOut',
+      onUpdate: () => img.setPosition(x0 + (p.sx - x0) * t.k, y0 + (y1 - y0) * t.k - Math.sin(t.k * Math.PI) * hPx * 1.6),
+    });
+    this.tweens.add({ targets: img, angle: (to.y > a.y ? 1 : -1) * (720 + 80), duration: R.flyMs, ease: 'Quad.easeOut' });
+    this.time.delayedCall(R.flyMs, () => {
+      if (!mark.active) return;
+      mark.setAlpha(1);
+      this.tweens.add({ targets: mark, scale: { from: 0.85, to: 1.15 }, alpha: { from: 1, to: 0.5 }, duration: 500, yoyo: true, repeat: -1 });
+      this.dustFx(to.x, to.y);
+    });
+    a.racket = { x: to.x, y: to.y, img, mark };
+    if (a === this.player) this.net?.sendAction('racket', { lost: true, x: to.x, y: to.y });
+  }
+
+  /** Quita la raqueta del suelo (sin aviso). */
+  private clearRacket(a: Actor) {
+    const r = a.racket;
+    if (!r) return;
+    a.racket = null;
+    this.tweens.killTweensOf(r.img);
+    this.tweens.killTweensOf(r.mark);
+    r.img.destroy();
+    r.mark.destroy();
+  }
+
+  /** La recoge: vuelve a golpear y a tener habilidades. */
+  private recoverRacket(a: Actor) {
+    if (!a.racket) return;
+    this.clearRacket(a);
+    const h = this.headPos(a);
+    this.popText(h.x, h.y - 10, '¡RAQUETA!', a === this.player ? '#7ff0ff' : '#ff9aa3', 26);
+    if (a === this.player) {
+      navigator.vibrate?.(30);
+      this.net?.sendAction('racket', { lost: false });
+    }
+  }
+
+  /** Cada fotograma: quien pasa por encima de su raqueta (ya sin aturdido) la recupera. El rival en red avisa él. */
+  private racketPickup() {
+    for (const a of [this.player, this.bot]) {
+      const r = a.racket;
+      if (!r || a.stun > 0 || a.vanished || (a === this.bot && this.net)) continue;
+      if (Math.hypot(a.x - r.x, a.y - r.y) <= RACKET_LOSS.pickR) this.recoverRacket(a);
+    }
+  }
+
+  /** El BOT sin raqueta corre hacia ella (a su velocidad); devuelve el movimiento con la forma del del cerebro. */
+  private botFetchRacket(dt: number): ReturnType<BotBrain['tick']> {
+    const bt = this.bot;
+    const r = bt.racket!;
+    const dx = r.x - bt.x;
+    const dy = r.y - bt.y;
+    const d = Math.hypot(dx, dy);
+    const step = Math.min(d, this.ai.speed * dt);
+    if (d > 0.5) {
+      bt.x += (dx / d) * step;
+      bt.y += (dy / d) * step;
+    }
+    return { moving: d > 0.5, dirX: Math.sign(dy), sprint: null, readyToToss: false };
   }
 
   // ================================================================ ZONA (remontada)
@@ -3997,6 +4563,7 @@ export class MatchScene extends Phaser.Scene {
   /** Golpe / saque del rival: se aplica como un golpe del bot (pelota, animación y efectos de siempre). */
   private netApplyHit(h: HitMsg) {
     if (this.phase === 'over') return;
+    this.netRemoteRemate(false); // por si no llegó 'remate-end': su golpe termina la cámara lenta
     this.netEndBotFly(true); // su golpe llegó: la SOMBRA / SUPERSALTO ya terminó en su teléfono
     // el rival está en su cinemática (aquí congelada el mismo tiempo): su golpe se aplica al terminar, una sola vez
     if (this.netRemoteCine) {
@@ -4104,12 +4671,17 @@ export class MatchScene extends Phaser.Scene {
       const p = project(bt.x, bt.y);
       this.dashFx.burst(p.sx, p.sy, p.s * VIEW.CHAR_K, bt.ch.depth);
       this.dustFx(bt.x, bt.y);
+      const h = this.headPos(bt);
+      this.popText(h.x, h.y - 10, 'DEFENSIVO', '#c9a4ff', 26);
       this.netBotDash = { t: 0, ghosts: 0 };
     } else if (a.kind === 'sprint-end') {
       bt.ch.setSprint(false, 0, true); // frenada, como en su teléfono
       this.netBotDash = null;
     }
     else if (a.kind === 'defensive') this.netRemoteDefensive(a.data);
+    else if (a.kind === 'racket') this.netRemoteRacket(a.data);
+    else if (a.kind === 'remate-start') this.netRemoteRemate(true, a.data);
+    else if (a.kind === 'remate-end') this.netRemoteRemate(false);
     else if (a.kind === 'stunned') this.netBotStunned(Number(a.data?.ms));
     else if (a.kind === 'emote') this.emotes.showRemote(String(a.data?.kind ?? ''), () => this.headPos(this.bot));
     else if (a.kind === 'smash-armed') {
@@ -4154,10 +4726,10 @@ export class MatchScene extends Phaser.Scene {
       fly.clone = clone;
       const p = project(bt.x, bt.y);
       this.dashFx.burst(p.sx, p.sy, p.s * VIEW.CHAR_K, bt.ch.depth);
-      this.popText(h.x, h.y - 10, 'SOMBRA', '#d4bfff', 26);
+      this.popText(h.x, h.y - 10, 'DEFENSIVO', '#c9a4ff', 26);
     } else {
       this.dustFx(bt.x, bt.y);
-      this.popText(h.x, h.y - 10, 'SUPERSALTO', '#ffd0a0', 26);
+      this.popText(h.x, h.y - 10, 'DEFENSIVO', '#c9a4ff', 26);
     }
     this.netBotFly = fly;
     this.netBotFlyTick(0);
@@ -4228,7 +4800,6 @@ export class MatchScene extends Phaser.Scene {
    */
   private netEndRemoteCine(drop = false) {
     this.netRemoteCine = false;
-    this.botAura?.setRingHidden(false);
     const todo = this.netDeferred;
     this.netDeferred = [];
     if (!drop) for (const f of todo) f();
@@ -4263,7 +4834,6 @@ export class MatchScene extends Phaser.Scene {
     this.netRemoteCine = true;
     const overhead = d?.overhead === true;
     const lead = bt.ch.swing(true, overhead, overhead);
-    this.botAura?.setRingHidden(true); // sin anillos alrededor de los pies durante la cinemática
     if (isSmashPower(d?.element)) this.netRivalSmashEl = d.element; // el poder de su SMASH (ya llegó con 'smash-armed'; por si no)
     this.cine.start({
       profile: smashCine(this.netRivalSmashEl),
@@ -4300,7 +4870,6 @@ export class MatchScene extends Phaser.Scene {
     // la franja con SUS ojos, igual que la ve él (necesita su imagen cargada: preload)
     showInfernoGaze(this, INFERNO_CINE.hitAtMs - GAZE_END_BEFORE_HIT_MS, this.gazeY(), this.rivalSkin(), el);
     this.ghosts.setLook(INFERNO_LOOK[el].ghostTint, INFERNO_LOOK[el].ghostRamp);
-    this.botAura?.setRingHidden(true);
     this.cine.start({
       profile: infernoCine(el),
       freeze: [...sprites, ...spritesIn(this.player.ch)],
@@ -4338,7 +4907,7 @@ export class MatchScene extends Phaser.Scene {
     const b = this.bot;
     const s = this.ball.s;
     const kind: PowerKind = this.infernoFlight ? 'inferno' : 'smash';
-    const dur = clamp(Number.isFinite(ms) ? ms : stunMsFor(kind), 200, 1500);
+    const dur = clamp(Number.isFinite(ms) ? ms : stunMsFor(kind), 200, 2000);
     // la bola de fuego desaparece en el impacto (como fireImpact)
     this.infernoFlight = false;
     this.infernoBounced = true;
@@ -4350,10 +4919,53 @@ export class MatchScene extends Phaser.Scene {
     powerImpactFx(this, kind, at.sx, at.sy, feet.s, kind === 'inferno' ? this.infernoEl : this.smashFlightEl);
     b.stun = dur / 1000; // estrellas de aturdido (renderActors) y fin sincronizado (netBotTick)
     if (kind === 'inferno') this.ultiStunOn(b, dur);
-    if (!b.ch.impactStun(kind, dur)) {
+    // con la ULTI su raqueta la dibuja la acción 'racket' (cae en la cancha), no el clip
+    if (!b.ch.impactStun(kind, dur, kind !== 'inferno')) {
       this.tweens.add({ targets: b.ch.rig, angle: { from: -POWER_IMPACT.recoilDeg * b.ch.facing, to: 0 }, duration: dur, ease: 'Elastic.easeOut' });
     }
     this.popText(head.x, head.y - 10, '¡ATURDIDO!', '#ffd23f', 30);
+  }
+
+  /** el rival está rematando un globo (red): cámara lenta aquí también */
+  private netRemateOn = false;
+
+  /**
+   * REMATE del rival (red): la misma cámara lenta mientras apunta (sin acercar la cámara ni ver su apuntado) y su salto.
+   * Termina con 'remate-end', con su golpe o al acabar el punto.
+   */
+  private netRemoteRemate(on: boolean, d?: ActionMsg['data']) {
+    const bt = this.bot;
+    if (on) {
+      if (this.phase !== 'rally' || this.netRemateOn) return;
+      const slow = clamp(Number(d?.slow) || 1, REMATE.minSlow, 1);
+      const T = clamp(Number(d?.t) || 0.4, 0.12, 0.8);
+      this.netRemateOn = true;
+      this.setSlowMo(slow);
+      this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.setSlowMo(1));
+      // salto hasta el contacto (en tiempo de juego: con la cámara lenta dura lo mismo que en su teléfono)
+      this.tweens.add({ targets: bt, lift: REMATE.jump, duration: T * 1000, ease: 'Sine.easeOut' });
+      bt.ch.remateHold(); // raqueta arriba, como en su teléfono
+      const h = this.headPos(bt);
+      this.netRemateLabel = this.popText(h.x, h.y - 10, 'REMATE', '#ffd23f', 30);
+      return;
+    }
+    if (!this.netRemateOn) return;
+    this.netRemateOn = false;
+    if (this.netRemateLabel?.active) {
+      this.tweens.killTweensOf(this.netRemateLabel);
+      this.netRemateLabel.destroy();
+    }
+    this.netRemateLabel = null;
+    this.setSlowMo(1);
+    this.tweens.add({ targets: bt, lift: 0, duration: 320, ease: 'Quad.easeIn' });
+  }
+
+  /** Raqueta del rival (red): la perdió (cae donde dice su teléfono) o la recogió. */
+  private netRemoteRacket(d: ActionMsg['data']) {
+    if (d?.lost === true) {
+      const at = this.netBotPos(d.x, d.y);
+      if (at) this.loseRacket(this.bot, at);
+    } else if (this.bot.racket) this.recoverRacket(this.bot);
   }
 
   /** Punto / falta / let decidido por el juez (el rival). */

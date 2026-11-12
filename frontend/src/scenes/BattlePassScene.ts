@@ -2,7 +2,6 @@ import Phaser from 'phaser';
 import { FONT, restartOnResize, textStyle } from '../ui/theme';
 import { stadiumBg } from '../ui/ui';
 import { arcadeButton } from '../ui/modeButtons';
-import { drawGiftIcon } from '../ui/wheelArt';
 import { fitText } from '../ui/fitText';
 import { commit, getPlayer, onPlayerChange } from '../domain/playerStore';
 import { BP_SEASON, BP_TIERS, type BpReward, type BpTrack, bpBonusSpinIndex, bpBuyPremium, bpCanClaim, bpClaim, bpClaimBonus, bpClaimWelcome, bpLevel, syncSeason } from '../domain/battlePass';
@@ -14,14 +13,26 @@ import { styleLook } from '../ui/styleLook';
 import { CHAR_COLOR_LIST } from '../domain/charColors';
 
 /**
- * PASE DE BATALLA: niveles que se llenan con la EXP ganada; cada nivel tiene premio GRATIS
- * (izquierda) y PREMIUM (derecha). Lista vertical desplazable (arrastrar). Reclamar se valida y
- * guarda en domain/battlePass (una sola vez por premio).
+ * PASE DE BATALLA a pantalla completa (estilo Clash Royale): cabecera con el nivel y el escudo del Premium, y debajo la
+ * lista de niveles en dos franjas a todo el ancho, GRATIS (azul, izquierda) y PREMIUM (dorada, derecha), con el número
+ * de nivel en un rombo entre las dos. Arrastrar desplaza la lista. Reclamar se valida y guarda en domain/battlePass (una
+ * sola vez por premio).
+ *
+ * Rendimiento: solo existen las filas que se ven (más una de margen). Al desplazar, la lista solo se mueve; las filas que
+ * entran se crean y las que salen se destruyen junto con sus animaciones. El estado del jugador se calcula una vez por
+ * cambio (no en cada movimiento del dedo).
  */
 const NAVY = 0x0b1733;
 const NEON = 0x3a7bff;
 const GOLD = 0xffc42e;
-const ROW_H = 112;
+/** alto de una fila de nivel; la del último nivel (el personaje nuevo) mide el doble */
+const ROW_H = 200;
+/** alto de la fila del bonus final (ruleta) */
+const BONUS_H = 140;
+/** alto de la cabecera (la lista empieza aquí; el escudo del Premium se monta un poco sobre ella) */
+const HEAD_H = 280;
+/** filas: 0 = regalo de bienvenida, 1..BP_TIERS = niveles, BP_TIERS + 1 = bonus */
+const LAST_ROW = BP_TIERS + 1;
 
 const STYLE_SWATCH: Record<string, number> = {
   'style:red': 0xff4f5e,
@@ -31,6 +42,9 @@ const STYLE_SWATCH: Record<string, number> = {
   // estilos de color del personaje (Claude, domain/charColors.ts): muestra del color de su ropa
   ...Object.fromEntries(CHAR_COLOR_LIST.map((c) => [`color:${c.id}`, c.color])),
 };
+
+/** Una fila creada: su contenedor y las animaciones que hay que parar al quitarla. */
+type RowView = { c: Phaser.GameObjects.Container; tweens: Phaser.Tweens.Tween[] };
 
 export class BattlePassScene extends Phaser.Scene {
   private list!: Phaser.GameObjects.Container;
@@ -42,10 +56,17 @@ export class BattlePassScene extends Phaser.Scene {
   private dragFrom = 0;
   private dragOffset = 0;
   private moved = 0;
-  private firstRenderedTier = -1;
   private listOffset = 0;
   private bottomIndicator?: Phaser.GameObjects.Text;
   private bottomArrowGraphics?: Phaser.GameObjects.Graphics;
+  /** filas creadas (solo las visibles) */
+  private rows = new Map<number, RowView>();
+  /** animaciones de la fila que se está creando (las recoge `loop`) */
+  private building: Phaser.Tweens.Tween[] | null = null;
+  /** estado del pase calculado una vez por cambio */
+  private st!: { s: PlayerState; level: number; progress: number };
+  /** ancho de la franja GRATIS (la PREMIUM ocupa el resto) */
+  private leftW = 0;
 
   constructor() {
     super('BattlePass');
@@ -68,354 +89,336 @@ export class BattlePassScene extends Phaser.Scene {
     stadiumBg(this, 0.6);
     // temporada al día (si cambió, el pase empieza de cero)
     commit((s) => ({ ok: true as const, state: syncSeason(s) }));
+    this.rows.clear();
+    this.leftW = Math.round(W * 0.4);
 
-    // cabecera
-    this.backButton(54, 76, () => {
-      this.cameras.main.fadeOut(180, 0, 0, 0);
-      this.cameras.main.once('camerafadeoutcomplete', () => this.scene.start('Menu'));
-    });
-    const passTitleW = Math.min(460, W - 160);
-    this.add.image(W / 2 + 20, 68, 'battle-pass-title').setDisplaySize(passTitleW, passTitleW / 3);
-
-    this.top = this.add.container(0, 0);
-    this.listTop = 411;
-    this.listH = H - this.listTop - 20;
+    // lista: de la cabecera al borde de abajo, recortada
+    this.listTop = HEAD_H;
+    this.listH = H - this.listTop;
     this.list = this.add.container(0, this.listTop);
     const maskG = this.make.graphics({}, false);
     maskG.fillStyle(0xffffff).fillRect(0, this.listTop, W, this.listH);
     this.list.setMask(maskG.createGeometryMask());
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => maskG.destroy());
+
+    // cabecera (encima de la lista: el escudo del Premium se monta sobre las primeras filas)
+    this.top = this.add.container(0, 0).setDepth(100);
+    this.backButton(54, 64, () => {
+      this.cameras.main.fadeOut(180, 0, 0, 0);
+      this.cameras.main.once('camerafadeoutcomplete', () => this.scene.start('Menu'));
+    });
+    this.refreshState();
     this.buildTop();
     this.setupScroll();
     this.addBottomButton();
-    // las ~25 tarjetas de la lista son lo más pesado: se dibujan en el siguiente cuadro, con la cabecera ya en pantalla
-    let listReady = false;
-    this.time.delayedCall(0, () => {
-      listReady = true;
-      this.buildList(true);
-    });
+    // al abrir: la lista empieza en tu nivel actual
+    this.listOffset = Phaser.Math.Clamp(this.rowTop(Math.max(0, this.st.level - 1)), 0, -this.scrollMin);
+    this.ensureRows();
+    this.refreshBottomControl();
+
     const off = onPlayerChange(() => {
+      this.refreshState();
       this.buildTop();
-      if (listReady) this.buildList(false);
+      this.rebuildRows();
     });
-    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => off());
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      off();
+      this.clearRows();
+    });
   }
 
-  // ================================================================ cabecera de progreso
+  /** Estado del pase y límites del desplazamiento (una vez por cambio). */
+  private refreshState() {
+    const s = syncSeason(getPlayer() as PlayerState);
+    const { level, progress } = bpLevel(s.bp.xp);
+    this.st = { s, level, progress };
+    this.scrollMin = Math.min(0, this.listH - this.rowTop(LAST_ROW) - BONUS_H - 90);
+  }
+
+  // ================================================================ cabecera
   private buildTop() {
     const W = this.scale.width;
     this.top.removeAll(true);
-    const s = syncSeason(getPlayer() as PlayerState);
+    const { s } = this.st;
     const { level, into, progress } = bpLevel(s.bp.xp);
-    const x = 24;
-    const w = W - 48;
-
-    // progreso
-    const y = 136;
-    const h = 110;
-    this.top.add(this.card(x, y, w, h, NEON));
-    this.top.add(this.add.image(x + 62, y + h / 2, 'battle-pass-insignia').setDisplaySize(100, 120));
-    this.top.add(this.add.text(x + 62, y + h / 2 - 6, 'NIV', { fontFamily: FONT, fontSize: '14px', color: '#0a1638', stroke: '#fff0a8', strokeThickness: 2 }).setOrigin(0.5));
-    this.top.add(this.add.text(x + 62, y + h / 2 + 20, String(level), { fontFamily: FONT, fontSize: '34px', color: '#0a1638', stroke: '#fff0a8', strokeThickness: 3 }).setOrigin(0.5));
     const done = level >= BP_TIERS;
-    this.top.add(this.add.text(x + 122, y + 30, done ? '¡PASE COMPLETADO!' : `NIVEL ${level + 1} DE ${BP_TIERS}`, { fontFamily: FONT, fontSize: '24px', color: '#ffffff' }).setOrigin(0, 0.5));
-    const bx = x + 122;
-    const bw = w - 146;
-    const by = y + 56;
-    const g = this.add.graphics();
-    g.fillStyle(0x05112c, 1).fillRoundedRect(bx, by, bw, 18, 9).lineStyle(1, 0x2a4a8a, 1).strokeRoundedRect(bx, by, bw, 18, 9);
-    const fw = Math.max(18, bw * (done ? 1 : progress));
-    g.fillStyle(0x1f7bff, 1).fillRoundedRect(bx, by, fw, 18, 9);
-    g.fillStyle(0x5fd0ff, 1).fillRoundedRect(bx, by, fw, 9, { tl: 9, tr: 9, bl: 0, br: 0 });
-    this.top.add(g);
-    this.top.add(this.add.text(bx + bw - 8, by + 10, done ? 'COMPLETO' : `${into} / ${BP_SEASON.xpPerTier} EXP`, { fontFamily: FONT, fontSize: '16px', color: '#d9efff', stroke: '#071332', strokeThickness: 3 }).setOrigin(1, 0.5));
-    this.top.add(this.add.text(bx, by + 34, done ? 'Has llegado al último nivel' : 'Gana EXP jugando partidas', { fontFamily: FONT, fontSize: '15px', color: '#c4d7f7' }).setOrigin(0, 0.5));
 
-    // premium
-    const py = y + h + 24;
-    const ph = 82;
-    this.top.add(this.card(x, py, w, ph, GOLD, 0x2a2108));
-    const crown = this.add.graphics({ x: x + 50, y: py + ph / 2 });
-    crown.fillStyle(0x0a1638, 1).fillPoints([{ x: -24, y: 14 }, { x: -27, y: -14 }, { x: -12, y: -2 }, { x: 0, y: -20 }, { x: 12, y: -2 }, { x: 27, y: -14 }, { x: 24, y: 14 }], true);
-    crown.fillStyle(GOLD, 1).fillPoints([{ x: -20, y: 10 }, { x: -22, y: -8 }, { x: -11, y: 2 }, { x: 0, y: -14 }, { x: 11, y: 2 }, { x: 22, y: -8 }, { x: 20, y: 10 }], true);
-    this.top.add(crown);
-    this.top.add(this.add.text(x + 92, py + 30, 'PASE PREMIUM', { fontFamily: FONT, fontSize: '24px', color: '#ffd23f' }).setOrigin(0, 0.5));
+    // fondo de la cabecera con borde inferior almenado (como la muralla de Clash Royale)
+    const bg = this.add.graphics();
+    bg.fillStyle(0x0d2a66, 1).fillRect(0, 0, W, HEAD_H);
+    bg.fillStyle(0x163f8f, 1).fillRect(0, 0, W, HEAD_H * 0.55);
+    bg.fillStyle(0x0a1f4d, 1).fillRect(0, HEAD_H - 14, W, 14);
+    for (let x = 0; x < W; x += 36) bg.fillStyle(0x0d2a66, 1).fillRect(x + 4, HEAD_H - 14, 22, 8);
+    this.top.add(bg);
+    const titleW = Math.min(420, W - 170);
+    if (this.textures.exists('battle-pass-title')) this.top.add(this.add.image(W / 2, 62, 'battle-pass-title').setDisplaySize(titleW, titleW / 3));
+
+    // progreso (izquierda): insignia con el nivel + barra de EXP
+    const shieldW = Math.min(300, W * 0.42);
+    const px = 24;
+    const pw = W - shieldW - 60 - px;
+    const py = 176;
+    if (this.textures.exists('battle-pass-insignia')) this.top.add(this.add.image(px + 40, py + 20, 'battle-pass-insignia').setDisplaySize(80, 96));
+    this.top.add(this.add.text(px + 40, py + 14, 'NIV', { fontFamily: FONT, fontSize: '12px', color: '#0a1638', stroke: '#fff0a8', strokeThickness: 2 }).setOrigin(0.5));
+    this.top.add(this.add.text(px + 40, py + 34, String(level), { fontFamily: FONT, fontSize: '28px', color: '#0a1638', stroke: '#fff0a8', strokeThickness: 3 }).setOrigin(0.5));
+    const bx = px + 90;
+    const bw = Math.max(80, pw - 90);
+    const lvl = this.add.text(bx, py - 6, done ? '¡PASE COMPLETADO!' : `NIVEL ${level + 1} DE ${BP_TIERS}`, { fontFamily: FONT, fontSize: '20px', color: '#ffffff', stroke: '#061431', strokeThickness: 4 }).setOrigin(0, 0.5);
+    fitText(lvl, bw);
+    this.top.add(lvl);
+    const g = this.add.graphics();
+    g.fillStyle(0x05112c, 1).fillRoundedRect(bx, py + 14, bw, 26, 13).lineStyle(2, 0x2a4a8a, 1).strokeRoundedRect(bx, py + 14, bw, 26, 13);
+    const fw = Math.max(26, bw * (done ? 1 : progress));
+    g.fillStyle(0xf2a51f, 1).fillRoundedRect(bx, py + 14, fw, 26, 13);
+    g.fillStyle(0xffd86a, 1).fillRoundedRect(bx, py + 14, fw, 12, { tl: 13, tr: 13, bl: 0, br: 0 });
+    this.top.add(g);
+    this.top.add(this.add.text(bx + bw / 2, py + 27, done ? 'COMPLETO' : `${into} / ${BP_SEASON.xpPerTier}`, { fontFamily: FONT, fontSize: '17px', color: '#ffffff', stroke: '#3a2400', strokeThickness: 4 }).setOrigin(0.5));
+    this.top.add(this.add.text(bx, py + 58, done ? 'Has llegado al último nivel' : 'Gana EXP jugando partidas', { fontFamily: FONT, fontSize: '14px', color: '#c4d7f7' }).setOrigin(0, 0.5));
+
+    // escudo del PREMIUM (derecha): baja sobre la lista, con la corona arriba
+    const sx = W - 24 - shieldW / 2;
+    const sTop = 110;
+    const sBot = HEAD_H + 46;
+    const sh = this.add.graphics();
+    const shield = (inset: number) => [
+      { x: sx - shieldW / 2 + inset, y: sTop + inset },
+      { x: sx + shieldW / 2 - inset, y: sTop + inset },
+      { x: sx + shieldW / 2 - inset, y: sBot - 50 },
+      { x: sx, y: sBot - inset },
+      { x: sx - shieldW / 2 + inset, y: sBot - 50 },
+    ];
+    sh.fillStyle(0x000000, 0.35).fillPoints(shield(0).map((p) => ({ x: p.x + 3, y: p.y + 6 })), true);
+    sh.fillStyle(0x8a5a00, 1).fillPoints(shield(0), true);
+    sh.fillStyle(0xf2b52a, 1).fillPoints(shield(5), true);
+    sh.fillStyle(0xffd86a, 1).fillRect(sx - shieldW / 2 + 5, sTop + 5, shieldW - 10, 34);
+    this.top.add(sh);
+    this.top.add(this.add.text(sx, sTop + 42, 'PASE PREMIUM', { fontFamily: FONT, fontSize: '24px', color: '#ffffff', stroke: '#5a3200', strokeThickness: 6 }).setOrigin(0.5));
     if (s.bp.premium) {
-      this.top.add(this.add.text(x + 92, py + 62, 'Activo: reclama los premios dorados', { fontFamily: FONT, fontSize: '16px', color: '#9fe8a0' }).setOrigin(0, 0.5));
+      this.top.add(this.add.text(sx, sTop + 88, '¡ACTIVO!', { fontFamily: FONT, fontSize: '28px', color: '#9fe8a0', stroke: '#0a3a18', strokeThickness: 6 }).setOrigin(0.5));
     } else {
-      this.top.add(this.add.text(x + 92, py + 62, 'Desbloquea todos los premios dorados', { fontFamily: FONT, fontSize: '16px', color: '#e7cf8a' }).setOrigin(0, 0.5));
-      const btn = arcadeButton(this, x + w - 96, py + ph / 2, 160, 60, BP_SEASON.premiumRealPrice, () => this.buyPremium(), { palette: 'yellow' });
+      const btn = arcadeButton(this, sx, sTop + 96, Math.min(220, shieldW - 50), 62, BP_SEASON.premiumRealPrice, () => this.buyPremium(), { palette: 'green' });
       this.top.add(btn);
     }
-
-    // títulos de columnas
-    const cy = this.listTop - 20;
-    const cardW = (W - 48 - 96) / 2;
-    const pill = (px: number, label: string, line: number, fill: number, col: string, crown: boolean) => {
-      const pw = Math.min(cardW, 250);
-      const g = this.add.graphics();
-      g.fillStyle(fill, 1).fillRoundedRect(px - pw / 2, cy - 16, pw, 32, 16);
-      g.lineStyle(3, line, 1).strokeRoundedRect(px - pw / 2, cy - 16, pw, 32, 16);
-      this.top.add(g);
-      if (crown) {
-        const c = this.add.graphics({ x: px - pw / 2 + 32, y: cy });
-        c.fillStyle(GOLD, 1).fillPoints([{ x: -17, y: 10 }, { x: -18, y: -9 }, { x: -8, y: 1 }, { x: 0, y: -14 }, { x: 8, y: 1 }, { x: 18, y: -9 }, { x: 17, y: 10 }], true);
-        this.top.add(c);
-      } else {
-        const gift = this.add.graphics();
-        drawGiftIcon(gift, 14, px - pw / 2 + 32, cy + 2);
-        this.top.add(gift);
-      }
-      this.top.add(this.add.text(px + 15, cy, label, { fontFamily: FONT, fontSize: '20px', color: col, stroke: '#061431', strokeThickness: 3 }).setOrigin(0.5).setLetterSpacing(2));
-    };
-    pill(24 + cardW / 2, 'GRATIS', NEON, 0x10224a, '#cfe0ff', false);
-    pill(W - 24 - cardW / 2, s.bp.premium ? 'PREMIUM · ACTIVO' : 'PREMIUM', GOLD, 0x3a2b08, '#ffd23f', true);
   }
 
-  // ================================================================ lista de niveles
-  private buildList(scrollToCurrent: boolean) {
-    const W = this.scale.width;
-    const keepOffset = this.listOffset;
-    const s = syncSeason(getPlayer() as PlayerState);
-    const { level, progress } = bpLevel(s.bp.xp);
-    const cardW = (W - 48 - 96) / 2;
-    const cx = this.numberColumnX(W, cardW);
-    const total = this.rowTop(BP_TIERS + 2);
-    this.scrollMin = Math.min(0, this.listH - total - 10);
-    if (scrollToCurrent) {
-      this.listOffset = 0;
-    } else this.listOffset = Phaser.Math.Clamp(keepOffset, 0, -this.scrollMin);
-    this.firstRenderedTier = -1;
-    this.renderVisibleRows(s, level, progress, cardW, cx);
-  }
-
-  /**
-   * y (dentro de la lista) donde empieza cada fila. Todas miden ROW_H salvo la del ÚLTIMO nivel (el personaje nuevo),
-   * que mide el doble para que luzca; la fila del bonus queda después.
-   */
+  // ================================================================ filas (solo las visibles)
+  /** y (dentro de la lista) donde empieza cada fila: todas miden ROW_H salvo la del último nivel (el doble). */
   private rowTop(row: number) {
     return row * ROW_H + (row > BP_TIERS ? ROW_H : 0);
   }
 
   private rowHeight(row: number) {
-    return row === BP_TIERS ? ROW_H * 2 : ROW_H;
+    return row === BP_TIERS ? ROW_H * 2 : row === LAST_ROW ? BONUS_H : ROW_H;
   }
 
-  /** Mantiene solo las filas visibles y un pequeño margen, para reducir el trabajo gráfico en móvil. */
-  private renderVisibleRows(s: PlayerState, level: number, progress: number, cardW: number, cx: number) {
-    // Conserva un margen amplio: así no reconstruimos tarjetas cada vez que cruza una fila.
-    const first = Math.max(0, Math.floor(this.listOffset / (ROW_H * 3)) * 3 - 2);
-    if (first === this.firstRenderedTier) {
-      this.list.y = this.listTop + this.rowTop(first) - this.listOffset;
-      return;
+  /** Crea las filas que entran en pantalla (con una fila de margen) y destruye las que salen. La lista solo se mueve. */
+  private ensureRows() {
+    const from = this.listOffset - ROW_H;
+    const to = this.listOffset + this.listH + ROW_H;
+    for (let row = 0; row <= LAST_ROW; row++) {
+      const y0 = this.rowTop(row);
+      const inView = y0 + this.rowHeight(row) > from && y0 < to;
+      const have = this.rows.get(row);
+      if (inView && !have) this.rows.set(row, this.buildRow(row));
+      else if (!inView && have) this.dropRow(row);
     }
-    this.firstRenderedTier = first;
-    // los destellos animados de la tarjeta del personaje se recrean con ella: se quitan los anteriores
-    for (const t of this.tallTweens) t.remove();
-    this.tallTweens = [];
-    this.list.removeAll(true);
-    const last = Math.min(BP_TIERS + 2, first + Math.ceil(this.listH / ROW_H) + 4);
-    const baseY = this.rowTop(first);
-    const rangeH = this.rowTop(last) - baseY; // alto de las filas dibujadas
-    const panels = this.add.graphics();
-    const panelW = cardW + 30;
-    const leftX = 24 + cardW / 2;
-    const rightX = this.scale.width - 24 - cardW / 2;
-    panels.fillStyle(0x061534, 0.82).fillRoundedRect(leftX - panelW / 2, 0, panelW, rangeH, 30);
-    panels.lineStyle(3, 0x174c9b, 0.9).strokeRoundedRect(leftX - panelW / 2, 0, panelW, rangeH, 30);
-    panels.fillStyle(0x251a06, 0.84).fillRoundedRect(rightX - panelW / 2, 0, panelW, rangeH, 30);
-    panels.lineStyle(3, 0x806012, 0.9).strokeRoundedRect(rightX - panelW / 2, 0, panelW, rangeH, 30);
-    this.list.add(panels);
-    const path = this.add.graphics();
-    path.fillStyle(0x0a1638, 1).fillRoundedRect(cx - 9, ROW_H / 2, 18, rangeH - ROW_H, 9);
-    path.fillStyle(0x223156, 1).fillRoundedRect(cx - 6, ROW_H / 2, 12, rangeH - ROW_H, 6);
-    // el relleno llega al centro del nodo del nivel; el último nivel está más abajo (su fila es el doble de alta)
-    const v = level + progress;
-    const doneAbs = v <= BP_TIERS - 1 ? v * ROW_H : (BP_TIERS - 1) * ROW_H + (v - (BP_TIERS - 1)) * ROW_H * 1.5;
-    const doneY = doneAbs - baseY;
-    if (level > first || progress > 0) path.fillStyle(0x5fd0ff, 1).fillRoundedRect(cx - 6, ROW_H / 2, 12, Phaser.Math.Clamp(doneY, 0, rangeH - ROW_H), 6);
-    this.list.add(path);
-    for (let row = first; row < last; row++) {
-      const y = this.rowTop(row) + this.rowHeight(row) / 2 - baseY;
-      if (row === 0) {
-        const node = this.add.graphics({ x: cx, y });
-        node.fillStyle(0x0a1638, 1).fillCircle(0, 0, 26);
-        node.fillStyle(0x5fd0ff, 1).fillCircle(0, 0, 22);
-        this.list.add(node);
-        this.list.add(this.add.text(cx, y, 'XP', { fontFamily: FONT, fontSize: '15px', color: '#07152f', fontStyle: 'bold' }).setOrigin(0.5));
-        this.rewardCard(24 + cardW / 2, y, cardW, 'free', 0, s);
-        this.rewardCard(this.scale.width - 24 - cardW / 2, y, cardW, 'prem', 0, s);
-        continue;
-      }
-      if (row === BP_TIERS + 1) {
-        const node = this.add.graphics({ x: cx, y });
-        node.fillStyle(0x0a1638, 1).fillCircle(0, 0, 28);
-        node.fillStyle(GOLD, 1).fillCircle(0, 0, 23);
-        this.list.add(node);
-        this.list.add(this.add.text(cx, y, '★', { fontFamily: FONT, fontSize: '24px', color: '#0a1638' }).setOrigin(0.5));
-        this.bonusCard(cx, y, this.scale.width - 48, s, level);
-        continue;
-      }
-      const tier = row;
-      const reached = level >= tier;
-      const node = this.add.graphics({ x: cx, y });
-      node.fillStyle(0x0a1638, 1).fillCircle(0, 0, 26);
-      node.fillStyle(reached ? 0x2f8bff : 0x2a3556, 1).fillCircle(0, 0, 22);
-      this.list.add(node);
-      this.list.add(this.add.text(cx, y, String(tier), { fontFamily: FONT, fontSize: '22px', color: reached ? '#ffffff' : '#7f93bf' }).setOrigin(0.5));
-      this.rewardCard(24 + cardW / 2, y, cardW, 'free', tier, s);
-      this.rewardCard(this.scale.width - 24 - cardW / 2, y, cardW, 'prem', tier, s);
-    }
-    this.list.y = this.listTop + baseY - this.listOffset;
+    this.list.y = this.listTop - this.listOffset;
   }
 
-  private rewardCard(x: number, y: number, w: number, track: BpTrack, tier: number, s: PlayerState) {
-    const welcome = tier === 0;
-    const reward = welcome ? BP_SEASON.welcome[track] : BP_SEASON.tiers[tier - 1][track];
+  private dropRow(row: number) {
+    const r = this.rows.get(row);
+    if (!r) return;
+    for (const t of r.tweens) t.remove();
+    r.c.destroy(true);
+    this.rows.delete(row);
+  }
+
+  private clearRows() {
+    for (const row of [...this.rows.keys()]) this.dropRow(row);
+  }
+
+  /** Tras reclamar / comprar: se rehacen solo las filas visibles. */
+  private rebuildRows() {
+    this.clearRows();
+    this.listOffset = Phaser.Math.Clamp(this.listOffset, 0, -this.scrollMin);
+    this.ensureRows();
+  }
+
+  /** Animación en bucle de la fila que se está creando (se para al quitar la fila). */
+  private loop(cfg: Phaser.Types.Tweens.TweenBuilderConfig) {
+    const t = this.tweens.add(cfg);
+    this.building?.push(t);
+    return t;
+  }
+
+  private buildRow(row: number): RowView {
+    const W = this.scale.width;
+    const tweens: Phaser.Tweens.Tween[] = [];
+    this.building = tweens;
+    const h = this.rowHeight(row);
+    const c = this.add.container(0, this.rowTop(row));
+    this.list.add(c);
+    const { s, level } = this.st;
+    const L = this.leftW;
+
+    if (row === LAST_ROW) {
+      c.add(this.bonusCard(W / 2, h / 2, W - 48, h - 24, s, level));
+      this.building = null;
+      return { c, tweens };
+    }
+
+    // franjas de fondo: más vivas en los niveles alcanzados
+    const reached = row === 0 || level >= row;
+    const bg = this.add.graphics();
+    bg.fillStyle(reached ? 0x2a7be0 : 0x16408c, 1).fillRect(0, 0, L, h);
+    bg.fillStyle(reached ? 0xf5a623 : 0xb9771c, 1).fillRect(L, 0, W - L, h);
+    bg.fillStyle(0xffffff, reached ? 0.1 : 0.05).fillRect(0, 0, W, h * 0.35);
+    bg.fillStyle(0x0b2a66, 1).fillRect(0, h - 4, L, 4);
+    bg.fillStyle(0x8a5208, 1).fillRect(L, h - 4, W - L, 4);
+    bg.fillStyle(0x06173d, 0.5).fillRect(L - 2, 0, 4, h);
+    c.add(bg);
+
+    // premios: GRATIS a la izquierda, PREMIUM a la derecha (el rombo del nivel va en la unión)
+    this.rewardCell(c, row, 'free', 0, L, h);
+    this.rewardCell(c, row, 'prem', L, W - L, h);
+
+    // rombo con el número de nivel
+    const node = this.add.graphics({ x: L, y: h / 2 });
+    const d = 30;
+    node.fillStyle(0x3a2400, 1).fillPoints([{ x: 0, y: -d - 4 }, { x: d + 4, y: 0 }, { x: 0, y: d + 4 }, { x: -d - 4, y: 0 }], true);
+    node.fillStyle(reached ? GOLD : 0x7a86a6, 1).fillPoints([{ x: 0, y: -d }, { x: d, y: 0 }, { x: 0, y: d }, { x: -d, y: 0 }], true);
+    node.fillStyle(0xffffff, 0.3).fillPoints([{ x: 0, y: -d }, { x: d, y: 0 }, { x: 0, y: 0 }, { x: -d, y: 0 }], true);
+    c.add(node);
+    c.add(this.add.text(L, h / 2, row === 0 ? 'XP' : String(row), { fontFamily: FONT, fontSize: row === 0 ? '16px' : '24px', color: reached ? '#3a2400' : '#1c2440' }).setOrigin(0.5));
+
+    this.building = null;
+    return { c, tweens };
+  }
+
+  /** Celda de un premio: icono grande centrado, nombre debajo y su estado (reclamar / reclamado / bloqueado). */
+  private rewardCell(c: Phaser.GameObjects.Container, row: number, track: BpTrack, x: number, w: number, h: number) {
+    const { s } = this.st;
+    const welcome = row === 0;
+    const reward = welcome ? BP_SEASON.welcome[track] : BP_SEASON.tiers[row - 1][track];
     const err = welcome
       ? (track === 'prem' && !s.bp.premium ? 'not_premium' : (track === 'free' ? s.bp.welcomeFreeClaimed : s.bp.welcomePremClaimed) ? 'already_claimed' : null)
-      : bpCanClaim(s, track, tier);
+      : bpCanClaim(s, track, row);
     const claimed = err === 'already_claimed';
     const ready = err === null;
     const prem = track === 'prem';
-    // el último nivel (el personaje nuevo) ocupa el doble de alto
-    const tall = !welcome && tier === BP_TIERS && reward.kind === 'character' && this.textures.exists('portrait-mai');
-    const h = (tall ? ROW_H * 2 : ROW_H) - 10;
-    const c = this.add.container(x, y);
-    c.setScale(prem ? 1.02 : 0.94);
-    const g = this.add.graphics();
-    const accent = prem ? GOLD : NEON;
-    g.fillStyle(0x000000, 0.35).fillRoundedRect(-w / 2 + 3, -h / 2 + 5, w, h, 16);
-    if (ready) g.lineStyle(10, accent, 0.35).strokeRoundedRect(-w / 2, -h / 2, w, h, 16);
-    if (prem) g.fillGradientStyle(0x674200, 0x3a2808, 0x2d2108, 0x171405, 1);
-    else g.fillGradientStyle(0x164a9b, 0x0b2d68, 0x092453, 0x081735, 1);
-    g.fillRoundedRect(-w / 2, -h / 2, w, h, 16);
-    g.fillStyle(0xffffff, 0.05).fillRoundedRect(-w / 2 + 3, -h / 2 + 3, w - 6, h * 0.4, { tl: 13, tr: 13, bl: 4, br: 4 });
-    g.lineStyle(prem ? 4 : 3, ready ? accent : prem ? 0xc9962a : 0x2c3d66, 1).strokeRoundedRect(-w / 2, -h / 2, w, h, 16);
-    if (prem) g.fillStyle(GOLD, 0.12).fillRoundedRect(-w / 2 + 3, h / 2 - 26, w - 6, 23, { tl: 4, tr: 4, bl: 13, br: 13 });
-    c.add(g);
     const needPrem = prem && !s.bp.premium;
+    // el regalo, centrado en la celda (el rombo del nivel ocupa ~34 px del borde de la unión)
+    const cx = prem ? x + 34 + (w - 34) / 2 : x + (w - 34) / 2;
+    const cy = h / 2;
 
-    if (tall && reward.kind === 'character') this.characterShowcase(c, w, h, prem, reward, ready ? accent : prem ? 0xc9962a : 0x2c3d66);
+    if (row === BP_TIERS && reward.kind === 'character' && this.textures.exists('portrait-mai')) this.characterCell(c, cx, cy, w - 50, h, prem, reward);
     else {
-      // icono + texto del premio
-      const ic = this.add.graphics({ x: -w / 2 + 44, y: 0 });
+      const iy = cy - 22;
+      if (ready) {
+        // listo para reclamar: halo que late detrás del icono
+        const glow = this.add.circle(cx, iy, 54, 0xffffff, 0.35).setBlendMode(Phaser.BlendModes.ADD);
+        c.add(glow);
+        this.loop({ targets: glow, scale: { from: 0.85, to: 1.15 }, alpha: { from: 0.5, to: 0.15 }, duration: 800, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
+      }
+      const ic = this.add.graphics({ x: cx, y: iy }).setScale(1.6);
       this.drawReward(ic, reward);
       c.add(ic);
       if (reward.kind === 'item' && reward.item.startsWith('emote:')) {
         const key = EMOTE_TEXTURE[reward.item.split(':')[1] as EmoteKind];
-        if (key && this.textures.exists(key)) c.add(this.add.image(-w / 2 + 44, 0, key).setDisplaySize(48, 48));
+        if (key && this.textures.exists(key)) c.add(this.add.image(cx, iy, key).setDisplaySize(76, 76));
       }
-      if (reward.kind === 'character' && this.textures.exists('portrait-mai')) {
-        c.add(this.add.image(-w / 2 + 44, 0, 'portrait-mai').setDisplaySize(47, 62));
-        if (reward.style) {
-          const styleBadge = this.add.graphics({ x: -w / 2 + 63, y: -h / 2 + 14 });
-          styleBadge.fillStyle(GOLD, 1).fillCircle(0, 0, 11).lineStyle(2, 0xffffff, 1).strokeCircle(0, 0, 11);
-          c.add(styleBadge);
-          c.add(this.add.text(-w / 2 + 63, -h / 2 + 14, '★', { fontFamily: FONT, fontSize: '13px', color: '#3b2600' }).setOrigin(0.5));
-        }
-      }
+      if (reward.kind === 'character' && this.textures.exists('portrait-mai')) c.add(this.add.image(cx, iy, 'portrait-mai').setDisplaySize(68, 88));
       const label = rewardLabel(reward);
-      const t = this.add.text(-w / 2 + 78, -8, label.top, { fontFamily: FONT, fontSize: '26px', color: prem ? '#ffd23f' : '#ffffff', fontStyle: 'bold', stroke: '#06122e', strokeThickness: 3 }).setOrigin(0, 0.5);
-      fitText(t, w - 115);
+      const t = this.add.text(cx, cy + 46, label.top, { fontFamily: FONT, fontSize: '26px', color: '#ffffff', stroke: prem ? '#5a3200' : '#06122e', strokeThickness: 5 }).setOrigin(0.5);
+      fitText(t, w - 50);
       c.add(t);
-      c.add(this.add.text(-w / 2 + 80, 20, label.sub, { fontFamily: FONT, fontSize: '14px', color: '#d1e3ff', stroke: '#06122e', strokeThickness: 2 }).setOrigin(0, 0.5).setLetterSpacing(1));
+      c.add(this.add.text(cx, cy + 72, label.sub, { fontFamily: FONT, fontSize: '13px', color: prem ? '#4a2a00' : '#d1e3ff' }).setOrigin(0.5).setLetterSpacing(1));
     }
 
     if (claimed) {
-      c.add(this.add.rectangle(0, 0, w, h, 0x02060f, 0.5));
-      const ok = this.add.graphics({ x: w / 2 - 27, y: -h / 2 + 25 });
-      ok.fillStyle(0x07152f, 1).fillCircle(0, 0, 19).fillStyle(0x35c85a, 1).fillCircle(0, 0, 15);
+      c.add(this.add.rectangle(x + w / 2, h / 2, w, h, 0x02060f, 0.45));
+      const ok = this.add.graphics({ x: cx + 52, y: cy - 58 });
+      ok.fillStyle(0x07152f, 1).fillCircle(0, 0, 20).fillStyle(0x35c85a, 1).fillCircle(0, 0, 16);
       ok.lineStyle(4, 0xffffff, 1).beginPath().moveTo(-7, 0).lineTo(-2, 6).lineTo(8, -6).strokePath();
       c.add(ok);
-    } else if (!ready) {
-      c.add(this.add.rectangle(0, 0, w, h, 0x02060f, err === 'not_premium' ? 0.25 : 0.42));
-      const lk = this.add.graphics({ x: w / 2 - 26, y: -h / 2 + 24 });
-      const lc = err === 'not_premium' ? GOLD : 0xc8d2ea;
-      lk.lineStyle(3, lc, 1).beginPath().arc(0, -3, 6, Math.PI, 0).strokePath();
-      lk.fillStyle(lc, 1).fillRoundedRect(-8, -3, 16, 12, 3);
-      c.add(lk);
-      if (needPrem) {
-        const pill = this.add.graphics();
-        pill.fillStyle(GOLD, 1).fillRoundedRect(w / 2 - 120, h / 2 - 27, 108, 19, 9);
-        c.add(pill);
-        c.add(this.add.text(w / 2 - 66, h / 2 - 17, 'SOLO PREMIUM', { fontFamily: FONT, fontSize: '11px', color: '#241700' }).setOrigin(0.5));
-      }
-    } else {
-      // listo para reclamar: la tarjeta completa es táctil y no necesita una etiqueta adicional.
-      c.setSize(w, h).setInteractive({ useHandCursor: true });
-      c.on('pointerup', (p: Phaser.Input.Pointer) => {
-        // la máscara no recorta los toques: solo dentro de la zona visible de la lista
-        if (this.moved > 12 || p.y < this.listTop || p.y > this.listTop + this.listH) return;
-        if (welcome) this.claimWelcome(track, c);
-        else this.claim(track, tier, c);
-      });
+      return;
     }
-    this.list.add(c);
+    if (needPrem) {
+      // pestaña con candado arriba de la celda (como el Pass Royale)
+      const tab = this.add.graphics({ x: cx, y: 0 });
+      tab.fillStyle(0x8a5208, 1).fillRoundedRect(-36, -2, 72, 34, { tl: 0, tr: 0, bl: 12, br: 12 });
+      tab.fillStyle(0xf2c04a, 1).fillRoundedRect(-32, -2, 64, 30, { tl: 0, tr: 0, bl: 10, br: 10 });
+      tab.lineStyle(3, 0x5a3200, 1).beginPath().arc(0, 10, 6, Math.PI, 0).strokePath();
+      tab.fillStyle(0x5a3200, 1).fillRoundedRect(-8, 10, 16, 12, 3);
+      c.add(tab);
+    }
+    if (!ready) {
+      if (err !== 'not_premium') c.add(this.add.rectangle(x + w / 2, h / 2, w, h, 0x02060f, 0.28));
+      return;
+    }
+    // listo: "¡RECLAMAR!" y toda la celda es táctil
+    const pill = this.add.container(cx, cy - 78);
+    const pg = this.add.graphics();
+    pg.fillStyle(0x0a3a18, 1).fillRoundedRect(-62, -15, 124, 30, 15);
+    pg.fillStyle(0x35c85a, 1).fillRoundedRect(-59, -13, 118, 26, 13);
+    pill.add([pg, this.add.text(0, 0, '¡RECLAMAR!', { fontFamily: FONT, fontSize: '15px', color: '#ffffff', stroke: '#0a3a18', strokeThickness: 4 }).setOrigin(0.5)]);
+    c.add(pill);
+    this.loop({ targets: pill, scale: { from: 1, to: 1.08 }, duration: 600, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
+    const hit = this.add.zone(x + w / 2, h / 2, w, h).setInteractive({ useHandCursor: true });
+    hit.on('pointerup', (p: Phaser.Input.Pointer) => {
+      // la máscara no recorta los toques: solo dentro de la zona visible de la lista
+      if (this.moved > 12 || p.y < this.listTop) return;
+      if (welcome) this.claimWelcome(track, cx, c.y + cy + this.list.y);
+      else this.claim(track, row, cx, c.y + cy + this.list.y);
+    });
+    c.add(hit);
   }
 
   /**
-   * Contenido de la tarjeta grande del último nivel: el personaje nuevo a casi todo el alto de la tarjeta, con rayos de
-   * luz y un resplandor detrás, destellos que titilan, su nombre grande y una etiqueta (GRATIS / ESTILO ORO).
-   * (0,0) = centro de la tarjeta. `line` = color del borde (se vuelve a trazar encima de los rayos).
+   * Celda del último nivel (el personaje nuevo): el personaje a casi todo el alto, con rayos de luz y un resplandor
+   * detrás, destellos que titilan, su nombre debajo y una etiqueta (GRATIS / ESTILO ORO). (cx, cy) = centro de la celda.
    */
-  private characterShowcase(c: Phaser.GameObjects.Container, w: number, h: number, prem: boolean, reward: Extract<BpReward, { kind: 'character' }>, line: number) {
-    const accent = prem ? GOLD : 0x6fc3ff;
+  private characterCell(c: Phaser.GameObjects.Container, cx: number, cy: number, w: number, h: number, prem: boolean, reward: Extract<BpReward, { kind: 'character' }>) {
+    const accent = prem ? 0xfff1b8 : 0x8fd8ff;
     const box = { x0: 118, y0: 4, x1: 1070, y1: 1356 }; // caja visible de mai_portrait.png (1130 × 1392), como en characters/portrait.ts
-    const vh = h - 24;
+    const vh = h * 0.66;
     const vw = ((box.x1 - box.x0) / (box.y1 - box.y0)) * vh;
-    const feetY = h / 2 - 10;
-    const px = -w / 2 + 10 + vw / 2;
+    const feetY = cy + h * 0.24;
 
-    // rayos de luz que salen de detrás del personaje (recortados al interior de la tarjeta)
+    const cell = this.add.container(cx, cy);
+    c.add(cell);
     const rays = this.add.graphics();
-    this.sunburst(rays, px, -h * 0.06, w, h, prem ? 0xffd23f : 0x8fd8ff, 0.1);
-    c.add(rays);
-    // resplandor
+    this.sunburst(rays, 0, -h * 0.12, w, h - 8, accent, 0.14);
+    cell.add(rays);
     const glow = this.add.graphics().setBlendMode(Phaser.BlendModes.ADD);
-    for (const [k, a] of [[1.5, 0.08], [1.2, 0.1], [0.9, 0.12]] as const) glow.fillStyle(accent, a).fillEllipse(px, -h * 0.04, vw * k, vh * 0.95 * (k / 1.5 + 0.3));
-    c.add(glow);
-    this.tallTweens.push(this.tweens.add({ targets: glow, alpha: { from: 0.55, to: 1 }, duration: 1500, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' }));
-    // sombra en el suelo
-    c.add(this.add.ellipse(px, feetY + 2, vw * 0.95, 14, 0x000000, 0.4));
-
-    // personaje
-    const img = this.add.image(px, feetY, 'portrait-mai');
+    for (const [k, a] of [[1.5, 0.08], [1.2, 0.1], [0.9, 0.12]] as const) glow.fillStyle(accent, a).fillEllipse(0, -h * 0.1, vw * k, vh * 0.95 * (k / 1.5 + 0.3));
+    cell.add(glow);
+    this.loop({ targets: glow, alpha: { from: 0.55, to: 1 }, duration: 1500, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
+    cell.add(this.add.ellipse(0, feetY - cy + 2, vw * 0.9, 14, 0x000000, 0.35));
+    const img = this.add.image(0, feetY - cy, 'portrait-mai');
     img.setOrigin(((box.x0 + box.x1) / 2) / img.width, box.y1 / img.height);
     img.setScale(vh / (box.y1 - box.y0));
-    c.add(img);
+    cell.add(img);
 
-    // destellos que titilan (en la columna del texto y alrededor del personaje)
-    const spark: [number, number, number][] = [[0.1, -0.36, 7], [0.62, -0.42, 5], [0.9, -0.12, 6], [0.78, 0.3, 5], [0.04, 0.08, 4], [0.5, 0.44, 4]];
+    const spark: [number, number, number][] = [[-0.4, -0.36, 8], [0.36, -0.4, 6], [0.42, -0.06, 7], [-0.44, 0.06, 5], [0.3, 0.22, 5]];
     spark.forEach(([fx, fy, r], i) => {
-      const st = this.add.star(-w / 2 + w * fx, h * fy, 4, r * 0.35, r, prem ? 0xfff1b8 : 0xe6f8ff).setBlendMode(Phaser.BlendModes.ADD);
-      c.add(st);
-      this.tallTweens.push(this.tweens.add({ targets: st, alpha: { from: 0.1, to: 1 }, scale: { from: 0.5, to: 1.15 }, angle: 45, duration: 700 + i * 140, delay: i * 190, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' }));
+      const st = this.add.star(w * fx, h * fy, 4, r * 0.35, r, 0xffffff).setBlendMode(Phaser.BlendModes.ADD);
+      cell.add(st);
+      this.loop({ targets: st, alpha: { from: 0.1, to: 1 }, scale: { from: 0.5, to: 1.15 }, angle: 45, duration: 700 + i * 140, delay: i * 190, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
     });
 
-    // texto: nombre grande + etiqueta
-    const left = -w / 2 + 10 + vw + 6;
-    const right = w / 2 - 12;
-    const colW = right - left;
-    const cx = (left + right) / 2;
-    const name = this.add.text(cx, -h * 0.14, reward.name.split(' · ')[0].toUpperCase(), { fontFamily: FONT, fontSize: '48px', color: prem ? '#ffd23f' : '#ffffff', fontStyle: 'bold', stroke: '#06122e', strokeThickness: 5 }).setOrigin(0.5);
-    fitText(name, colW);
-    c.add(name);
-    c.add(this.add.text(cx, -h * 0.14 + 36, 'PERSONAJE NUEVO', { fontFamily: FONT, fontSize: '13px', color: '#d1e3ff', stroke: '#06122e', strokeThickness: 2, align: 'center', wordWrap: { width: colW } }).setOrigin(0.5, 0).setLetterSpacing(1));
-    const tagY = h * 0.26;
-    const tagW = Math.min(colW, 118);
+    const name = this.add.text(0, h * 0.31, reward.name.split(' · ')[0].toUpperCase(), { fontFamily: FONT, fontSize: '40px', color: '#ffffff', stroke: prem ? '#5a3200' : '#06122e', strokeThickness: 7 }).setOrigin(0.5);
+    fitText(name, w - 20);
+    cell.add(name);
+    const tagY = h * 0.42;
+    const tagW = Math.min(w - 20, 170);
     const tag = this.add.graphics();
-    tag.fillStyle(0x06122e, 1).fillRoundedRect(cx - tagW / 2 - 2, tagY - 15, tagW + 4, 30, 15);
-    tag.fillStyle(prem ? GOLD : 0x2f8bff, 1).fillRoundedRect(cx - tagW / 2, tagY - 13, tagW, 26, 13);
-    tag.fillStyle(0xffffff, 0.3).fillRoundedRect(cx - tagW / 2 + 6, tagY - 11, tagW - 12, 8, 4);
-    c.add(tag);
-    const tagText = this.add.text(cx, tagY, reward.style ? '★ ESTILO ORO' : 'GRATIS', { fontFamily: FONT, fontSize: '15px', color: prem ? '#3b2600' : '#ffffff' }).setOrigin(0.5);
-    fitText(tagText, tagW - 10);
-    c.add(tagText);
-
-    // borde encima de los rayos
-    const frame = this.add.graphics();
-    frame.lineStyle(prem ? 4 : 3, line, 1).strokeRoundedRect(-w / 2, -h / 2, w, h, 16);
-    c.add(frame);
+    tag.fillStyle(0x06122e, 1).fillRoundedRect(-tagW / 2 - 2, tagY - 16, tagW + 4, 32, 16);
+    tag.fillStyle(prem ? GOLD : 0x2f8bff, 1).fillRoundedRect(-tagW / 2, tagY - 14, tagW, 28, 14);
+    cell.add(tag);
+    const tagText = this.add.text(0, tagY, reward.style ? '★ ESTILO ORO' : 'PERSONAJE NUEVO', { fontFamily: FONT, fontSize: '15px', color: prem ? '#3b2600' : '#ffffff' }).setOrigin(0.5);
+    fitText(tagText, tagW - 12);
+    cell.add(tagText);
   }
 
   /** Rayos de luz (cuñas alternas) desde (cx, cy), recortados al rectángulo de la tarjeta (centrada en 0,0, con 4 px de margen). */
@@ -453,8 +456,8 @@ export class BattlePassScene extends Phaser.Scene {
     }
   }
 
-  private bonusCard(x: number, y: number, w: number, s: PlayerState, level: number) {
-    const h = ROW_H - 18;
+  /** Bonus final (ruleta) a todo el ancho; (x, y) = centro. */
+  private bonusCard(x: number, y: number, w: number, h: number, s: PlayerState, level: number) {
     const card = this.add.container(x, y);
     const spinIndex = bpBonusSpinIndex(s);
     const pending = spinIndex >= 0 && !s.wheel.bonusSpins[spinIndex]?.claimed;
@@ -467,9 +470,9 @@ export class BattlePassScene extends Phaser.Scene {
     bg.lineStyle(ready ? 6 : 4, ready ? GOLD : 0x80682e, 1).strokeRoundedRect(-w / 2, -h / 2, w, h, 18);
     card.add(bg);
 
-    const wheel = this.add.graphics({ x: -w / 2 + 52, y: 0 });
+    const wheel = this.add.graphics({ x: -w / 2 + 60, y: 0 });
     const colors = [GOLD, 0xff6d4a, 0x5fd0ff, 0x9b72ff, 0x68d966, 0xff80b8];
-    const radius = 28;
+    const radius = 34;
     for (let i = 0; i < 6; i++) {
       const a0 = (i / 6) * Math.PI * 2 - Math.PI / 2;
       const a1 = ((i + 1) / 6) * Math.PI * 2 - Math.PI / 2;
@@ -484,11 +487,11 @@ export class BattlePassScene extends Phaser.Scene {
     wheel.fillStyle(0xffffff, 1).fillTriangle(-5, -radius - 2, 5, -radius - 2, 0, -radius + 8);
     card.add(wheel);
 
-    card.add(this.add.text(-w / 2 + 98, -18, pending ? '¡RULETA DISPONIBLE!' : 'BONUS FINAL', {
-      fontFamily: FONT, fontSize: '24px', color: ready ? '#ffd23f' : '#ffffff', fontStyle: 'bold',
+    card.add(this.add.text(-w / 2 + 112, -18, pending ? '¡RULETA DISPONIBLE!' : 'BONUS FINAL', {
+      fontFamily: FONT, fontSize: '26px', color: ready ? '#ffd23f' : '#ffffff', fontStyle: 'bold',
     }).setOrigin(0, 0.5));
     const sub = pending ? 'Toca aquí para girar' : s.bp.bonusClaimed ? 'BONUS RECLAMADO' : '1 GIRO DE RULETA · COMPARTIDO';
-    card.add(this.add.text(-w / 2 + 99, 19, sub, { fontFamily: FONT, fontSize: '15px', color: '#c4d2f0' }).setOrigin(0, 0.5).setLetterSpacing(1));
+    card.add(this.add.text(-w / 2 + 113, 19, sub, { fontFamily: FONT, fontSize: '15px', color: '#c4d2f0' }).setOrigin(0, 0.5).setLetterSpacing(1));
 
     if (s.bp.bonusClaimed && !pending) {
       const ok = this.add.graphics({ x: w / 2 - 30, y: 0 });
@@ -498,12 +501,12 @@ export class BattlePassScene extends Phaser.Scene {
     } else {
       card.setSize(w, h).setInteractive({ useHandCursor: true });
       card.on('pointerup', (p: Phaser.Input.Pointer) => {
-        if (this.moved > 12 || p.y < this.listTop || p.y > this.listTop + this.listH) return;
+        if (this.moved > 12 || p.y < this.listTop) return;
         this.openBonusWheel();
       });
     }
     if (!unlocked && !s.bp.bonusClaimed) card.add(this.add.rectangle(0, 0, w, h, 0x02060f, 0.5));
-    this.list.add(card);
+    return card;
   }
 
   private openBonusWheel() {
@@ -538,7 +541,7 @@ export class BattlePassScene extends Phaser.Scene {
       g.lineStyle(3, accent, 1).strokeCircle(0, 0, 27);
       g.fillStyle(accent, 0.25).fillCircle(0, 0, 23);
     } else if (r.item.startsWith('emote:')) {
-      // emote: disco claro detrás de la carita (la imagen la pone rewardCard)
+      // emote: disco claro detrás de la carita (la imagen la pone rewardCell)
       g.fillStyle(0x07152f, 1).fillCircle(0, 0, 29);
       g.fillStyle(0xffffff, 0.9).fillCircle(0, 0, 26);
     } else if (r.item.startsWith('charge:')) {
@@ -565,20 +568,17 @@ export class BattlePassScene extends Phaser.Scene {
   }
 
   // ================================================================ acciones
-  private claim(track: BpTrack, tier: number, card: Phaser.GameObjects.Container) {
+  private claim(track: BpTrack, tier: number, x: number, y: number) {
     const res = commit((s) => bpClaim(s, track, tier));
     if (!res.ok) return this.toast(res.error === 'not_premium' ? 'Necesitas el Pase Premium' : 'Aún no disponible');
-    const r = res.given;
-    const m = card.getWorldTransformMatrix();
-    this.burst(m.tx, m.ty, track === 'prem' ? GOLD : 0x8fd0ff);
-    this.toast(`¡${rewardLabel(r).top}!`);
+    this.burst(x, y, track === 'prem' ? GOLD : 0x8fd0ff);
+    this.toast(`¡${rewardLabel(res.given).top}!`);
   }
 
-  private claimWelcome(track: BpTrack, card: Phaser.GameObjects.Container) {
+  private claimWelcome(track: BpTrack, x: number, y: number) {
     const res = commit((s) => bpClaimWelcome(s, track));
     if (!res.ok) return this.toast(res.error === 'not_premium' ? 'Necesitas el Pase Premium' : 'Regalo ya reclamado');
-    const m = card.getWorldTransformMatrix();
-    this.burst(m.tx, m.ty, track === 'prem' ? GOLD : 0x8fd0ff);
+    this.burst(x, y, track === 'prem' ? GOLD : 0x8fd0ff);
     this.toast(`¡${rewardLabel(res.given).top} ${rewardLabel(res.given).sub}!`);
   }
 
@@ -589,17 +589,14 @@ export class BattlePassScene extends Phaser.Scene {
       if (res.error === 'real_money') return this.toast(`Pase Premium ${BP_SEASON.premiumRealPrice} · pago con dinero real: próximamente`);
       return this.toast(res.error === 'not_enough_cash' ? `Te faltan ${BP_SEASON.premiumCash - cash} de dinero: consíguelo en el camino gratis del pase` : 'Ya tienes el Pase Premium');
     }
-    this.burst(this.scale.width / 2, 312, GOLD);
+    this.burst(this.scale.width - 170, 200, GOLD);
     this.toast('¡PASE PREMIUM ACTIVADO!');
   }
 
   // ================================================================ desplazamiento
   private setupScroll() {
-    const W = this.scale.width;
-    const zone = this.add.zone(0, this.listTop, W, this.listH).setOrigin(0).setInteractive();
-    zone.setDepth(-1);
     this.input.on('pointerdown', (p: Phaser.Input.Pointer) => {
-      if (p.y < this.listTop || p.y > this.listTop + this.listH) return;
+      if (p.y < this.listTop) return;
       if (p.x > this.scale.width - 100 && p.y > this.scale.height - 110) return;
       this.tweens.killTweensOf(this.scrollMotion);
       this.dragging = true;
@@ -623,15 +620,10 @@ export class BattlePassScene extends Phaser.Scene {
   }
 
   private scrollMotion = { offset: 0 };
-  /** animaciones de la tarjeta grande del personaje (se quitan al volver a dibujar las filas) */
-  private tallTweens: Phaser.Tweens.Tween[] = [];
 
   private updateListScroll(offset: number) {
     this.listOffset = Phaser.Math.Clamp(offset, 0, -this.scrollMin);
-    const s = syncSeason(getPlayer() as PlayerState);
-    const { level, progress } = bpLevel(s.bp.xp);
-    const cardW = (this.scale.width - 48 - 96) / 2;
-    this.renderVisibleRows(s, level, progress, cardW, this.numberColumnX(this.scale.width, cardW));
+    this.ensureRows();
     this.refreshBottomControl();
   }
 
@@ -639,7 +631,7 @@ export class BattlePassScene extends Phaser.Scene {
     const maxOffset = -this.scrollMin;
     const atBonus = maxOffset > 0 && this.listOffset >= maxOffset - 12;
     if (this.bottomIndicator) {
-      const row = Math.min(BP_TIERS, Math.max(1, Math.floor(this.listOffset / ROW_H)));
+      const row = Math.min(BP_TIERS, Math.max(1, Math.floor(this.listOffset / ROW_H) + 1));
       this.bottomIndicator.setText(atBonus ? 'BONUS' : `NIVEL ${row}`).setVisible(this.listOffset >= ROW_H / 2);
     }
     if (this.bottomArrowGraphics) {
@@ -653,20 +645,11 @@ export class BattlePassScene extends Phaser.Scene {
     }
   }
 
-  private numberColumnX(width: number, cardW: number) {
-    const freeRightEdge = width / 2 - 48 - cardW * 0.03;
-    const premiumLeftEdge = width / 2 + 48 - cardW * 0.01;
-    return (freeRightEdge + premiumLeftEdge) / 2;
-  }
-
   private addBottomButton() {
     const x = this.scale.width - 48;
     const y = this.scale.height - 54;
     const button = this.add.container(x, y).setDepth(200);
     const g = this.add.graphics();
-    g.fillStyle(0x07152f, 0.96).fillCircle(0, 0, 30);
-    g.lineStyle(3, GOLD, 1).strokeCircle(0, 0, 30);
-    g.lineStyle(6, 0xffffff, 1).beginPath().moveTo(-10, -5).lineTo(0, 6).lineTo(10, -5).strokePath();
     button.add(g);
     this.bottomArrowGraphics = g;
     button.setSize(64, 64).setInteractive({ useHandCursor: true });
@@ -689,17 +672,6 @@ export class BattlePassScene extends Phaser.Scene {
   }
 
   // ================================================================ piezas
-  private card(x: number, y: number, w: number, h: number, line: number, fill = NAVY) {
-    const g = this.add.graphics();
-    g.fillStyle(0x000000, 0.35).fillRoundedRect(x + 3, y + 5, w, h, 20);
-    if (fill === 0x2a2108) g.fillGradientStyle(0x684200, 0x3e2907, 0x322205, 0x211805, 0.98);
-    else g.fillGradientStyle(0x1258b8, 0x0d3d91, 0x0b2d6a, 0x081a3e, 0.97);
-    g.fillRoundedRect(x, y, w, h, 20);
-    g.fillStyle(0xffffff, 0.05).fillRoundedRect(x + 3, y + 3, w - 6, Math.min(h * 0.45, 40), { tl: 17, tr: 17, bl: 0, br: 0 });
-    g.lineStyle(3, line, 1).strokeRoundedRect(x, y, w, h, 20);
-    return g;
-  }
-
   private burst(x: number, y: number, col: number) {
     for (let i = 0; i < 14; i++) {
       const a = (i / 14) * Math.PI * 2;
@@ -717,7 +689,7 @@ export class BattlePassScene extends Phaser.Scene {
     g.lineStyle(3, NEON, 1).strokeRoundedRect(-s / 2, -s / 2, s, s, 18);
     g.lineStyle(6, 0xffffff, 1).beginPath().moveTo(6, -13).lineTo(-8, 0).lineTo(6, 13).strokePath();
     c.add(g);
-    c.setSize(s, s).setInteractive({ useHandCursor: true }).setDepth(50);
+    c.setSize(s, s).setInteractive({ useHandCursor: true }).setDepth(150);
     c.on('pointerdown', () => {
       this.tweens.add({ targets: c, scale: { from: 0.88, to: 1 }, duration: 180, ease: 'Back.easeOut' });
       onClick();

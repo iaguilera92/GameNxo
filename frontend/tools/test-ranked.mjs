@@ -190,16 +190,25 @@ test('posición de premio: los bots no reciben premios; el jugador sí según su
 });
 
 console.log('Premio diario');
-test('un premio por día, racha de 7 y reinicio si se salta un día', () => {
+test('un premio por día de la semana (lunes a domingo) y semana nueva el lunes', () => {
   let s = newPlayer();
+  // miércoles 4: tercer día de la semana (lunes 2)
   let r = L.claimLogin(s, WED);
-  assert.equal(r.day, 1);
-  assert.equal(r.state.coins, s.coins + 250);
+  assert.equal(r.day, 3);
+  assert.equal(r.state.coins, s.coins + L.LOGIN.rewards[2].coins);
   assert.equal(L.claimLogin(r.state, WED + H).given, null);
   r = L.claimLogin(r.state, WED + D);
-  assert.equal(r.day, 2);
+  assert.equal(r.day, 4);
+  // sábado (se saltó el viernes): toca el premio del sábado
   r = L.claimLogin(r.state, WED + 3 * D);
-  assert.equal(r.day, 1);
+  assert.equal(r.day, 6);
+  assert.deepEqual(L.loginStatus(r.state, WED + 3 * D).claimedDays, [2, 3, 5]);
+  // lunes siguiente: semana nueva, nada reclamado
+  const mon = L.loginStatus(r.state, WED + 5 * D);
+  assert.equal(mon.day, 1);
+  assert.equal(mon.claimed, false);
+  assert.deepEqual(mon.claimedDays, []);
+  assert.equal(mon.week.days[0].date, 9);
 });
 
 console.log('Datos y Tienda');

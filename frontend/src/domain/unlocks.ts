@@ -2,21 +2,26 @@
  * DESBLOQUEO DE HABILIDADES POR NIVEL (datos puros, sin Phaser). Decidido con el usuario el 11-11-2026.
  *
  *   DEFENSIVO (DASH / DESTELLO)  nivel 2
- *   ESPECIAL (SMASH)             nivel 3
- *   ULTI (INFERNO DRIVE)         nivel 5
- *   ZONA                         nivel 10
+ *   ESPECIAL (SMASH)             nivel 4
+ *   ULTI (INFERNO DRIVE)         nivel 6
+ *   ESTILOS (color personaje)    nivel 8
+ *   EFECTO PELOTA (estela)       nivel 10
  *   CARGANDO GOLPE               nivel 12   (antes: el toque golpea sin cargar)
- *   EFECTO PELOTA (saque efecto) nivel 15   (antes: solo el saque normal)
+ *   ZONA                         nivel 15
+ *   SAQUE CON EFECTO             nivel 15   (antes: solo el saque normal)
+ * (niveles de defensivo a zona: decididos con el usuario el 11-11-2026, segunda vuelta)
  *
  * Con el MODO DESARROLLO activado el perfil de pruebas está en nivel 20 (domain/devMode.ts): todo queda abierto. Con el modo
  * apagado se aplica el nivel real del jugador.
  */
 export const UNLOCK_LEVEL = {
   defensive: 2,
-  special: 3,
-  ulti: 5,
-  zone: 10,
+  special: 4,
+  ulti: 6,
+  styles: 8,
+  trail: 10,
   charge: 12,
+  zone: 15,
   spin: 15,
 } as const;
 

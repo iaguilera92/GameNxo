@@ -122,6 +122,12 @@ export const SERVE = {
   /** Profundidad objetivo dentro del cuadro (0 = red, 1 = línea de saque). */
   depth: { normal: 0.76, spin: 0.7 },
   /**
+   * Las 6 zonas del saque del jugador (joystick mientras la pelota está en el aire): 3 columnas (izquierda / centro /
+   * derecha) × 2 filas (arriba = junto a la línea de saque; abajo = cerca de la red). El saque apunta al CENTRO de la
+   * casilla: `deep` / `short` = profundidad de ese centro (0 = red, 1 = línea de saque).
+   */
+  zones: { deep: 0.75, short: 0.25 },
+  /**
    * Saque DIRECTO: botón verde (no el toque en pantalla) golpeado en el punto máximo (calidad 'perfect').
    * Más rápido, más plano (pasa más justo sobre la red) y más profundo.
    */

@@ -84,7 +84,6 @@ import { playMatchEnd } from '../fx/matchEnd';
 import { playMatchIntro } from '../fx/matchIntro';
 import { ServeTurnTag } from '../ui/ServeTurnTag';
 import { setupUiCamera } from '../view/uiCamera';
-import { showCallout } from '../fx/callout';
 import { queueGazeArt, showInfernoGaze } from '../fx/infernoGaze';
 import { ZONE, ZoneTracker, type Side as ZoneSide } from '../logic/Zone';
 import { ZoneFx } from '../fx/ZoneFx';
@@ -178,6 +177,8 @@ const NET_SMASH_Z = 78;
  * CENTRO DEL CORDAJE en el frame de impacto de cada hoja (Character.serveRacket, medido en las tiras), no el borde del
  * sprite: así la pelota toca la raqueta y no queda por encima. 235 llega hasta la pelota del punto más alto del lanzamiento.
  */
+/** (red) el rival se desliza hasta el punto de su golpe en este tiempo (ms) en vez de saltar */
+const NET_SNAP_MS = 110;
 const SERVE_JUMP = { max: 235, hangMs: 70, fallMs: 300, maxShift: 45 };
 /** Solo animación: distancia (suelo) a la que el jugador se pone en guardia esperando la pelota. */
 const READY_DIST = 200;
@@ -265,6 +266,8 @@ export class MatchScene extends Phaser.Scene {
   /** (red) colocado para el saque del punto en curso (y desde cuándo, performance.now) */
   private netPlaced = false;
   private netPlacedAt = 0;
+  /** (red) desfase del dibujo del rival respecto al punto de su golpe, que se apaga en NET_SNAP_MS */
+  private netSnap: { x: number; y: number; at: number } | null = null;
   /** (red) acaba de enviar "se detuvo": se repite pronto por si se pierde */
   private netStopRepeat = false;
   /** (red) filtro por número de punto desactivado (tras una reconexión el conteo puede no cuadrar) */
@@ -630,6 +633,7 @@ export class MatchScene extends Phaser.Scene {
     this.netPlacedAt = 0;
     this.netPtOff = false;
     this.netStopRepeat = false;
+    this.netSnap = null;
     this.netRtt = 0;
     this.netPingAt = 0;
     this.netLastMsgAt = performance.now();
@@ -768,7 +772,8 @@ export class MatchScene extends Phaser.Scene {
         duration: ms,
         ease: 'Sine.easeOut',
         onStart: () => a.ch.setMoving(true, dir, 0.5),
-        onComplete: () => a.ch.setMoving(false, 0),
+        // al llegar: directo al reposo (con ritmo explícito no hace la frenada de carrera)
+        onComplete: () => a.ch.setMoving(false, 0, 0),
       });
     };
     walk(this.player, -1);
@@ -2366,7 +2371,7 @@ export class MatchScene extends Phaser.Scene {
     this.setServeUi(this.server === 'player');
     this.secondTag.setVisible(this.faults > 0);
     // menos textos: el turno lo indica la etiqueta SERVICIO sobre quien saca y el marcador ya mostró Iguales/Ventaja
-    if (secondServe) showCallout(this, '2º servicio', 0xffc42e, 700);
+    if (secondServe) showSideNotice(this, '2º servicio', 0xff9a1f, 1100); // aviso lateral (estilo único de avisos)
     // en red: lanzamiento del rival que llegó antes
     if (this.net && this.netPendingToss && this.server === 'bot') {
       const k = this.netPendingToss as ServeKind;
@@ -2548,7 +2553,7 @@ export class MatchScene extends Phaser.Scene {
     this.serveNetLoss = false;
     if (quality === 'miss') {
       // golpe en vacío: la pelota sigue cayendo y será falta al botar
-      showCallout(this, 'Al aire', 0xffc42e);
+      showSideNotice(this, 'Al aire', 0xff9a1f, 1100);
       return;
     }
 
@@ -2668,8 +2673,7 @@ export class MatchScene extends Phaser.Scene {
       this.serveClock = 0;
       this.serveClockText.setVisible(false);
       this.board?.setInfo(null);
-      this.serveCountdown.hide();
-      showCallout(this, 'Tiempo', 0xff5a6a);
+      this.serveCountdown.final('TIEMPO'); // en el mismo aviso lateral de la cuenta atrás (antes, cartel al centro)
       this.tossFault();
       return;
     }
@@ -2721,7 +2725,7 @@ export class MatchScene extends Phaser.Scene {
     this.serveLet = false;
     this.netNextSecond = this.faults > 0;
     this.phase = 'pointover';
-    showCallout(this, 'Let', 0xffc42e);
+    showSideNotice(this, 'Let', 0xff9a1f, 1000);
     this.time.delayedCall(1000, () => this.startPoint(this.faults > 0));
   }
 
@@ -2810,7 +2814,10 @@ export class MatchScene extends Phaser.Scene {
     }
     this.phase = 'pointover';
     this.netNextSecond = true;
-    showCallout(this, 'Falta', 0xffc42e);
+    // FALTA sobre quien sacó (como el ¡PERFECTO!), no en un cartel al centro
+    const srv = this.lastHitter === 'player' ? this.player : this.bot;
+    const h = this.headPos(srv);
+    this.popText(h.x, h.y - 10, 'FALTA', '#ffc42e', 36);
     this.time.delayedCall(1100, () => this.startPoint(true));
   }
   private pointTo(w: Who, reason: string, color: string) {
@@ -5168,6 +5175,17 @@ export class MatchScene extends Phaser.Scene {
     if (smp) {
       bt.x = smp.x;
       bt.y = smp.y;
+      // tras un golpe del rival: el desfase con el punto del contacto se va apagando (deslizamiento, sin salto)
+      const sn = this.netSnap;
+      if (sn) {
+        const k = 1 - (performance.now() - sn.at) / NET_SNAP_MS;
+        if (k <= 0) this.netSnap = null;
+        else {
+          const e = k * k; // sale rápido y frena al llegar
+          bt.x += sn.x * e;
+          bt.y += sn.y * e;
+        }
+      }
     } else if (this.netRemote) {
       const k = Math.min(1, dt * 14);
       bt.x += (this.netRemote.x - bt.x) * k;
@@ -5297,7 +5315,7 @@ export class MatchScene extends Phaser.Scene {
     this.netPendingToss = null;
     this.faults = 0;
     if (this.cine.active) this.cine.cancel(); // una cinemática a medias no sigue en el punto repetido
-    showCallout(this, 'SE REPITE EL PUNTO', 0xffc42e, 900);
+    showSideNotice(this, 'Se repite el punto', 0xff9a1f, 1300);
     this.phase = 'pointover';
     this.startPoint();
   }
@@ -5678,9 +5696,13 @@ export class MatchScene extends Phaser.Scene {
     this.netEarlyStart();
     this.netApplying = true;
     const bt = this.bot;
+    // golpe: sigue desde el punto del contacto, pero el dibujo se DESLIZA hasta ahí (NET_SNAP_MS) en vez de saltar: aquí
+    // el rival va ~100-150 ms por detrás y el salto se notaba (65-120 px)
+    const offX = bt.x - h.x;
+    const offY = bt.y - h.y;
+    this.netSnap = Math.hypot(offX, offY) < 220 ? { x: offX, y: offY, at: performance.now() } : null;
     bt.x = h.x;
     bt.y = h.y;
-    // golpe: se muestra YA en el punto del contacto (la raqueta coincide con la pelota) y sigue desde ahí
     if (performance.now() >= this.netBotLockUntil) this.netAnchor(h.x, h.y);
     const s = this.ball.s;
     s.x = h.ball.x;

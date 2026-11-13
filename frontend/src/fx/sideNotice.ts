@@ -3,7 +3,8 @@ import { FONT } from '../ui/theme';
 
 /**
  * Aviso lateral: entra desde la IZQUIERDA, se queda un momento y sale por la izquierda
- * (DOBLE FALTA, FUERA, IGUALES, PUNTO DE PARTIDO…). Varios a la vez se apilan hacia abajo.
+ * (DOBLE FALTA, FUERA, IGUALES, PUNTO DE PARTIDO, 2º SERVICIO, LET, AL AIRE, TIEMPO…). Varios a la vez se apilan hacia
+ * abajo. Es el ÚNICO estilo de avisos del partido: fondo negro y borde del color (igual que la cuenta atrás del saque).
  * Fijo en pantalla (scrollFactor 0 → cámara de interfaz).
  */
 const NOTICE = {
@@ -35,7 +36,8 @@ export function showSideNotice(scene: Phaser.Scene, text: string, color = 0xffd2
   const w = t.displayWidth + NOTICE.padW;
   const g = scene.add.graphics();
   g.fillStyle(0x000000, 0.35).fillPoints([{ x: 0, y: -h / 2 + 4 }, { x: w + 4, y: -h / 2 + 4 }, { x: w - s + 4, y: h / 2 + 4 }, { x: 0, y: h / 2 + 4 }], true);
-  g.fillStyle(0x0b1733, 0.95).fillPoints([{ x: 0, y: -h / 2 }, { x: w, y: -h / 2 }, { x: w - s, y: h / 2 }, { x: 0, y: h / 2 }], true);
+  // ESTILO ÚNICO de los avisos laterales (13-11-2026): el de la cuenta atrás del saque, fondo negro y borde del color
+  g.fillStyle(0x000000, 0.95).fillPoints([{ x: 0, y: -h / 2 }, { x: w, y: -h / 2 }, { x: w - s, y: h / 2 }, { x: 0, y: h / 2 }], true);
   g.fillStyle(color, 1).fillRect(0, -h / 2, NOTICE.bar, h);
   g.lineStyle(3, color, 1).lineBetween(0, -h / 2, w, -h / 2).lineBetween(w, -h / 2, w - s, h / 2).lineBetween(w - s, h / 2, 0, h / 2);
   const c = scene.add.container(-w - 20, y, [g, t]).setScrollFactor(0).setDepth(6060);
@@ -62,6 +64,8 @@ export function showSideNotice(scene: Phaser.Scene, text: string, color = 0xffd2
 export interface ServeCountdown {
   show(n: number): void;
   hide(): void;
+  /** se acabó el tiempo: el mismo aviso dice `text` (TIEMPO) todo en rojo, late y se va */
+  final(text: string): void;
 }
 
 export function createServeCountdown(scene: Phaser.Scene): ServeCountdown {
@@ -77,9 +81,9 @@ export function createServeCountdown(scene: Phaser.Scene): ServeCountdown {
     c = null;
     stack = 0;
   });
-  const draw = (n: number) => {
+  const draw = (n: number, label?: string) => {
     if (!g || !t) return;
-    t.setText(`SACA EN ${n}`);
+    t.setText(label ?? `SACA EN ${n}`);
     const w = t.displayWidth + NOTICE.padW;
     const line = n <= 3 ? 0xff1f2e : 0xff9a1f; // 5-4 naranja · 3-1 rojo
     const fill = n <= 1 ? 0xe0182a : 0x000000; // 1: todo rojo
@@ -108,6 +112,16 @@ export function createServeCountdown(scene: Phaser.Scene): ServeCountdown {
         scene.tweens.killTweensOf(t);
         scene.tweens.add({ targets: t, scale: { from: 1.25, to: 1 }, duration: 260, ease: 'Back.easeOut' });
       }
+    },
+    final(text: string) {
+      this.show(1); // (si no estaba, entra) y queda todo en rojo
+      cur = -2;
+      draw(1, text);
+      if (t) {
+        scene.tweens.killTweensOf(t);
+        scene.tweens.add({ targets: t, scale: { from: 1.35, to: 1 }, duration: 300, ease: 'Back.easeOut' });
+      }
+      scene.time.delayedCall(950, () => this.hide());
     },
     hide() {
       if (!c || leaving) return;

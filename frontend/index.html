@@ -26,6 +26,15 @@
           #game { width: min(100%, (100dvh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)) * 9 / 16); }
         }
       }
+      /* ESCRITORIO (ratón y ventana ancha): el juego es vertical, así que se muestra como un celular 9:16 centrado, de todo el
+         alto de la ventana y con negro a los lados, en vez de estirarse a pantalla completa. Se detecta por el puntero (ratón =
+         hover + pointer fine), no por el user agent: celulares y tablets táctiles no entran aquí y siguen como antes. */
+      @media (hover: hover) and (pointer: fine) and (min-aspect-ratio: 9/16) {
+        #game { margin: 0 auto; width: calc(100vh * 9 / 16); max-width: 100%; }
+        @supports (height: 100dvh) {
+          #game { width: calc(100dvh * 9 / 16); }
+        }
+      }
       /* Instalada en el iPhone (Añadir a inicio): la barra de estado es translúcida; el juego no queda bajo la
          muesca ni bajo la barra de inicio. Solo en modo instalado (la APK y el navegador no lo usan). */
       @media (display-mode: standalone) {

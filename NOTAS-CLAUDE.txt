@@ -666,3 +666,13 @@ Lo que antes estaba disperso en las notas de arriba, en un solo lugar. Detalle c
 [Claude 13-11-2026] ZONA: el rayo de los ojos del personaje de espaldas (jugador) va DETRAS del sprite; estela mas larga (ZoneFx TRAIL_N 14->20, TRAIL_STEP 3,5->4,5).
 
 (Kiro, 12-11-2026) ULTI recibida por el rival NXO: VERIFICADO en navegador (Chrome headless sobre dist): contra el BOT, al impactar la ULTI el rival usa nxof-u-ulti-hit -> ulti-stun -> idle-nr -> run-nr -> pickup (los clips de pj-nxo-rival-ulti), tanto llamando fireImpact como con la pelota viajando por el update real. Posible hueco ONLINE: netBotStunned adivinaba SMASH/ULTI con this.infernoFlight local (si la bola ya se habia apagado salia el clip viejo 'stunned'). Arreglo: playerImpact manda kind (smash|inferno) en la accion 'stunned' y netBotStunned lo usa (compatible con clientes viejos). Sigue con sprites antiguos: SMASH (usa 'stunned' de la hoja 3, por diseno) y el rival MAI (no tiene pack mai-front).
+
+[Claude 13-11-2026] Saque: TIEMPO sale en el mismo aviso lateral de la cuenta atras (ServeCountdown.final: todo rojo, late y se va), sin cartel al centro. FALTA (primera falta) sale sobre la cabeza de quien saco (popText, como el PERFECTO), sin cartel al centro.
+
+[Claude 13-11-2026] ESTILO UNICO de avisos del partido: el aviso lateral (fx/sideNotice.ts) con fondo negro y borde de color, igual que la cuenta atras del saque. 2o SERVICIO, AL AIRE, LET y SE REPITE EL PUNTO pasaron de carteles al centro (showCallout) al aviso lateral (naranja). MatchScene ya no usa showCallout.
+
+[Claude 13-11-2026] Menu al volver de una partida: MatchEndScene deja registry menu.xpGain; el menu muestra "+N EXP" sobre la card de perfil y la del PASE y llena sus barras (nivel con subida de nivel; pase desde registry bp.xpShown). Si se abre sola una ruleta, todo esto espera a que se cierre (WheelScene shutdown).
+
+[Claude 13-11-2026] Online, log e9a29e0d (todo OK: 60 fps, 0 tirones, sin "volver corriendo"). Ajustes: (1) al llegar el golpe del rival ya no salta al punto del contacto: el dibujo se desliza en NET_SNAP_MS (110 ms) con un desfase que se apaga (netSnap); (2) la entrada caminando termina en reposo (setMoving(false,0,0)) en vez de la frenada de carrera.
+
+(Kiro, 12-11-2026) WEB EN ESCRITORIO: frontend/index.html ahora muestra el juego como un celular 9:16 centrado (alto completo de la ventana, negro a los lados) cuando hay raton (@media hover:hover + pointer:fine + ventana mas ancha que 9:16). Celulares/tablets tactiles y la APK no cambian. Verificado en Chrome headless: 1920x1080 -> 608x1080 centrado; 1366x768 -> 432x768; celular 390x844 -> 390x844 (igual que antes). Solo CSS; Phaser (EXPAND) se adapta al contenedor.

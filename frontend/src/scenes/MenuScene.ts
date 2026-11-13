@@ -22,7 +22,7 @@ import { showSettings } from '../ui/SettingsDialog';
 import { BP_TIERS, bpClaimable, bpLevel, syncSeason } from '../domain/battlePass';
 import { bpSeasonInfo } from '../domain/battlePassConfig';
 import type { PlayerState } from '../domain/player';
-import { openWheel } from './WheelScene';
+import { openWheel, whenWheelReady } from './WheelScene';
 import { markWheelPresented, syncWheels, wheelToPresent } from '../logic/Wheels';
 
 /** ancho máximo del número en los contadores (entre el icono y el botón +) */
@@ -76,10 +76,21 @@ export class MenuScene extends Phaser.Scene {
     preloadRankBadges(this.load, [myLeague()]);
   }
 
+  /** EXP ganada en la partida que acaba de terminar (MatchEndScene): se anima al volver; 0 = nada pendiente */
+  private xpGain = 0;
+  /** animaciones de las barras (nivel y pase) que esperan a la ruleta / al "+N EXP" */
+  private xpAnims: (() => void)[] = [];
+  /** posición de las cards (para el texto "+N EXP") */
+  private xpAt: { x: number; y: number }[] = [];
+
   create() {
     const W = this.scale.width;
     const H = this.scale.height;
     restartOnResize(this);
+    this.xpGain = (this.registry.get('menu.xpGain') as number | undefined) ?? 0;
+    this.registry.remove('menu.xpGain');
+    this.xpAnims = [];
+    this.xpAt = [];
     this.cameras.main.fadeIn(250, 0, 0, 0);
 
     const p = getProfile();
@@ -144,7 +155,13 @@ export class MenuScene extends Phaser.Scene {
     });
 
     // --- ruletas diarias (encima de JUGAR). Una ruleta recién ganada se abre sola UNA vez.
-    this.dailyWheels(W, playY);
+    const wheelOpened = this.dailyWheels(W, playY);
+    // EXP de la partida: "+N EXP" y las barras de nivel y del pase se llenan; con ruleta, DESPUÉS de cerrarla
+    if (this.xpGain > 0) {
+      const play = () => this.playXpGain();
+      if (wheelOpened) this.time.delayedCall(700, () => whenWheelReady(this, (w) => w.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.time.delayedCall(250, play))));
+      else this.time.delayedCall(550, play);
+    }
 
     if (this.textures.exists(NAV.key)) this.navImage(W, H);
     else this.bottomBar(W, navTop, navH);
@@ -194,7 +211,21 @@ export class MenuScene extends Phaser.Scene {
   }
 
   // ---------------------------------------------------------------- ruletas diarias
-  private dailyWheels(W: number, playY: number) {
+  /** "+N EXP" sobre las cards de arriba y animación de sus barras (EXP de la partida recién terminada). */
+  private playXpGain() {
+    if (!this.sys.isActive()) return;
+    for (const p of this.xpAt) {
+      const t = this.add.text(p.x, p.y, `+${this.xpGain} EXP`, { fontFamily: FONT, fontSize: '26px', color: '#7ff0ff', stroke: '#0a1638', strokeThickness: 6 }).setOrigin(0.5).setDepth(200).setScale(0.4);
+      this.tweens.add({ targets: t, scale: 1, duration: 320, ease: 'Back.easeOut' });
+      this.tweens.add({ targets: t, y: p.y - 26, alpha: 0, delay: 1300, duration: 400, onComplete: () => t.destroy() });
+    }
+    const anims = this.xpAnims;
+    this.xpAnims = [];
+    anims.forEach((f, i) => this.time.delayedCall(250 + i * 120, f));
+  }
+
+  /** Devuelve true si se abrió sola una ruleta recién ganada. */
+  private dailyWheels(W: number, playY: number): boolean {
     syncWheels();
     // mismo ancho que la fila JUGAR + 2v2 (márgenes 26) y su misma forma inclinada
     const w = W - 52;
@@ -206,7 +237,9 @@ export class MenuScene extends Phaser.Scene {
     if (auto >= 0) {
       markWheelPresented(auto); // antes de abrir: no se repite aunque se cierre o se reinicie el menú
       this.time.delayedCall(650, () => openWheel(this, auto));
+      return true;
     }
+    return false;
   }
 
   // ---------------------------------------------------------------- fila JUGAR + 2v2
@@ -297,7 +330,7 @@ export class MenuScene extends Phaser.Scene {
   private passWidget(x: number, y: number, w: number) {
     if (bpSeasonInfo().over) return this.passWidgetLocked(x, y, w);
     const s = syncSeason(getPlayer() as PlayerState);
-    const { level, progress } = bpLevel(s.bp.xp);
+    const { level } = bpLevel(s.bp.xp);
     const ready = bpClaimable(s);
     const h = 76;
     const c = this.add.container(x, y);
@@ -323,7 +356,8 @@ export class MenuScene extends Phaser.Scene {
     g.fillStyle(0x1f3a7a, 0.6).fillEllipse(bx0 - 4, h / 2 - 12, 30, 10);
     g.fillStyle(0xffd23f, 1).fillPoints([{ x: bx0 - 11, y: h / 2 - 8 }, { x: bx0 - 13, y: h / 2 - 19 }, { x: bx0 - 6, y: h / 2 - 13 }, { x: bx0, y: h / 2 - 21 }, { x: bx0 + 6, y: h / 2 - 13 }, { x: bx0 + 13, y: h / 2 - 19 }, { x: bx0 + 11, y: h / 2 - 8 }], true);
     c.add(g);
-    c.add(this.add.text(bx0, h / 2 + 7, String(level), { fontFamily: FONT, fontSize: '24px', color: '#ffd23f' }).setOrigin(0.5));
+    const lvNum = this.add.text(bx0, h / 2 + 7, String(level), { fontFamily: FONT, fontSize: '24px', color: '#ffd23f' }).setOrigin(0.5);
+    c.add(lvNum);
     // chevron que empuja hacia la derecha
     const chev = this.add.graphics({ x: w - 22, y: h / 2 });
     chev.lineStyle(5, 0x5a3200, 1).beginPath().moveTo(-5, -10).lineTo(5, 0).lineTo(-5, 10).strokePath();
@@ -335,15 +369,38 @@ export class MenuScene extends Phaser.Scene {
     const title = this.add.text(tx, 12, 'PASE DE BATALLA', { fontFamily: FONT, fontSize: '23px', color: '#ffffff', stroke: '#7a4a00', strokeThickness: 5 }).setOrigin(0, 0);
     fitText(title, tw);
     c.add(title);
-    const done = level >= BP_TIERS;
-    c.add(this.add.text(tx, 40, done ? 'COMPLETADO' : `NIVEL ${level + 1} DE ${BP_TIERS}`, { fontFamily: FONT, fontSize: '14px', color: '#5a3200' }).setOrigin(0, 0).setLetterSpacing(1));
+    const sub = this.add.text(tx, 40, '', { fontFamily: FONT, fontSize: '14px', color: '#5a3200' }).setOrigin(0, 0).setLetterSpacing(1);
+    c.add(sub);
     const by = 58;
     const bar = this.add.graphics();
-    bar.fillStyle(0x5a3200, 1).fillRoundedRect(tx, by, tw, 10, 5).lineStyle(1, 0x7a4a00, 1).strokeRoundedRect(tx, by, tw, 10, 5);
-    const fw = Math.max(10, tw * (done ? 1 : progress));
-    bar.fillStyle(0xffffff, 1).fillRoundedRect(tx, by, fw, 10, 5);
-    bar.fillStyle(0xfff1b8, 1).fillRoundedRect(tx, by + 5, fw, 5, { tl: 0, tr: 0, bl: 5, br: 5 });
     c.add(bar);
+    // dibuja nivel, texto y barra para una EXP del pase dada (se anima al volver de una partida)
+    const drawBp = (xp: number) => {
+      const b = bpLevel(xp);
+      const dn = b.level >= BP_TIERS;
+      lvNum.setText(String(b.level));
+      sub.setText(dn ? 'COMPLETADO' : `NIVEL ${b.level + 1} DE ${BP_TIERS}`);
+      bar.clear();
+      bar.fillStyle(0x5a3200, 1).fillRoundedRect(tx, by, tw, 10, 5).lineStyle(1, 0x7a4a00, 1).strokeRoundedRect(tx, by, tw, 10, 5);
+      const fw = Math.max(10, tw * (dn ? 1 : b.progress));
+      bar.fillStyle(0xffffff, 1).fillRoundedRect(tx, by, fw, 10, 5);
+      bar.fillStyle(0xfff1b8, 1).fillRoundedRect(tx, by + 5, fw, 5, { tl: 0, tr: 0, bl: 5, br: 5 });
+    };
+    // EXP del pase: desde lo último que se mostró (sobrevive a cambiar de escena), como la barra de nivel
+    const BP_KEY = 'bp.xpShown';
+    const bpNow = s.bp.xp;
+    const bpPrev = this.registry.get(BP_KEY) as number | undefined;
+    this.registry.set(BP_KEY, bpNow);
+    if (bpPrev !== undefined && bpPrev < bpNow) {
+      drawBp(bpPrev);
+      const run = () => {
+        const o = { v: bpPrev };
+        this.tweens.add({ targets: o, v: bpNow, duration: 900, ease: 'Cubic.easeOut', onUpdate: () => drawBp(o.v), onComplete: () => drawBp(bpNow) });
+      };
+      if (this.xpGain > 0) this.xpAnims.push(run);
+      else this.time.delayedCall(400, run);
+    } else drawBp(bpNow);
+    if (this.xpGain > 0) this.xpAt.push({ x: x + tx + tw * 0.62, y: y + 30 }); // "+N EXP" sobre la barra del pase
     // brillo que cruza el cuadro (recortado a su forma)
     const shine = this.add.graphics();
     shine.fillStyle(0xffffff, 0.5).fillPoints([{ x: 0, y: 0 }, { x: 34, y: 0 }, { x: 10, y: h }, { x: -24, y: h }], true);
@@ -428,6 +485,7 @@ export class MenuScene extends Phaser.Scene {
     card.add(name);
     const lvl = this.add.text(tx, 45, `Nivel ${p.level}`, textStyle(17, '#9fc0ff')).setOrigin(0, 0);
     card.add(lvl);
+    this.xpAt.push({ x: x + tx + tw * 0.62, y: y + 52 }); // "+N EXP" sobre la barra de nivel
 
     const by = 72;
     const bh = 12;
@@ -471,8 +529,18 @@ export class MenuScene extends Phaser.Scene {
       run(0);
       this.registry.set(KEY, to);
     };
-    if (prev && (prev.level < current.level || (prev.level === current.level && prev.prog < current.prog))) animateTo(prev, current);
-    else {
+    if (prev && (prev.level < current.level || (prev.level === current.level && prev.prog < current.prog))) {
+      if (this.xpGain > 0) {
+        // EXP de la partida: se ve como estaba y se llena cuando toca (tras la ruleta)
+        drawXp(prev.prog);
+        lvl.setText(`Nivel ${prev.level}`);
+        const to = current;
+        this.xpAnims.push(() => {
+          lvl.setText(`Nivel ${to.level}`);
+          animateTo(prev, to);
+        });
+      } else animateTo(prev, current);
+    } else {
       drawXp(current.prog);
       this.registry.set(KEY, current);
     }

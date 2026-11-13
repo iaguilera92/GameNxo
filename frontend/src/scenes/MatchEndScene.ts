@@ -401,7 +401,11 @@ export class MatchEndScene extends Phaser.Scene {
     //   XP: victoria XP_WIN, derrota/rendición XP_LOSS · monedas: COINS_WIN / COINS_LOSS / COINS_SURRENDER
     const store = d as MatchEndData & { _xp?: ReturnType<typeof addXp>; _coins?: ReturnType<typeof addCoins> };
     const gained = d.win ? XP_WIN : XP_LOSS;
-    if (!store._xp) store._xp = addXp(gained);
+    if (!store._xp) {
+      store._xp = addXp(gained);
+      // el MENÚ, al volver, muestra "+N EXP" y llena las barras de nivel y del pase (después de la ruleta, si se abre)
+      this.registry.set('menu.xpGain', gained);
+    }
     if (!store._coins) store._coins = addCoins(d.surrendered ? COINS_SURRENDER : d.win ? COINS_WIN : COINS_LOSS);
     this.rewardCards(c, W, top, w, sepY + 16);
 

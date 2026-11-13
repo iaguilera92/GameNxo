@@ -262,8 +262,17 @@ export class MatchScene extends Phaser.Scene {
   /** el próximo saque es segundo saque (para adelantar el punto si el rival ya sacó) */
   private netNextSecond = false;
   private netStateAt = 0;
+  /** (red) colocado para el saque del punto en curso (y desde cuándo, performance.now) */
+  private netPlaced = false;
+  private netPlacedAt = 0;
+  /** (red) filtro por número de punto desactivado (tras una reconexión el conteo puede no cuadrar) */
+  private netPtOff = false;
+  /** número de punto de los estados propios: 2·puntos jugados + 1 si ya está colocado para el saque */
+  private get netPt() {
+    return this.score.played * 2 + (this.netPlaced ? 1 : 0);
+  }
   /** último estado enviado al rival (para no repetirlo mientras el jugador está quieto) */
-  private netLastState: { x: number; y: number; moving: boolean; dirX: number; facing: number; charging: boolean; stunned: boolean } | null = null;
+  private netLastState: { x: number; y: number; moving: boolean; dirX: number; facing: number; charging: boolean; stunned: boolean; pt: number } | null = null;
   private netPrev = { x: 0, y: 0 };
   /** último estado del rival (ya espejado) */
   private netRemote: StateMsg | null = null;
@@ -283,6 +292,10 @@ export class MatchScene extends Phaser.Scene {
   private netHit: Partial<Pick<HitMsg, 'charged' | 'overhead' | 'volley' | 'serveSpin' | 'lunge' | 'impact' | 'special' | 'shock'>> = {};
   /** cinemática del rival en curso (SMASH / INFERNO vista desde este teléfono): su golpe llegará al terminar */
   private netRemoteCine = false;
+  /** hubo una cinemática (al salir, el rival se ancla donde quedó) */
+  private netCineSeen = false;
+  /** (log) el segundo de fluidez en curso tuvo una cinemática: no se registra */
+  private fluSkip = false;
   /** avisos del rival que llegaron durante su cinemática: se aplican, en orden, cuando termina */
   private netDeferred: Array<() => void> = [];
   /** aura del SMASH armado del rival (solo en red) */
@@ -605,6 +618,9 @@ export class MatchScene extends Phaser.Scene {
     this.netHit = {};
     this.netLastState = null;
     this.netInterp.clear(); // sin estados del rival de una partida anterior
+    this.netPlaced = false;
+    this.netPlacedAt = 0;
+    this.netPtOff = false;
     this.netRtt = 0;
     this.netPingAt = 0;
     this.netLastMsgAt = performance.now();
@@ -612,6 +628,8 @@ export class MatchScene extends Phaser.Scene {
     this.netBotLockUntil = 0;
     this.netRemoteCine = false;
     this.netDeferred = [];
+    this.netCineSeen = false;
+    this.fluSkip = false;
     // aura de llamas del rival: en estado ZONA (zoneRender), también contra el BOT
     this.botAura = new HyperAura(this, this.bot.ch, 'ice');
     if (this.net) {
@@ -740,8 +758,14 @@ export class MatchScene extends Phaser.Scene {
       });
     };
     walk(this.player, -1);
-    if (this.net) this.bot.ch.walkFor(delay + ms + 400);
-    else walk(this.bot, 1);
+    if (this.net) {
+      // el rival real parte del borde de SU lado (Y_MAX en su cancha = espejo aquí): se le pone ahí desde ya, así sus
+      // primeros estados siguen desde el borde en vez de saltar desde su posición de saque (antes: salto de ~140 px)
+      const bt = this.bot;
+      bt.y = clamp(mirrorY(Y_MAX), Y_MIN, Y_MAX);
+      this.netAnchor(bt.x, bt.y);
+      bt.ch.walkFor(delay + ms + 400);
+    } else walk(this.bot, 1);
   }
 
   /** Viñeta (bordes oscuros que se desvanecen hacia el centro) para la toma especial del remate. */
@@ -2193,6 +2217,9 @@ export class MatchScene extends Phaser.Scene {
 
   // ---------------------------------------------------------------- puntos
   private placeForServe() {
+    // (red) ya colocado para el saque de este punto: desde aquí se descartan los estados del rival de un punto anterior
+    this.netPlaced = true;
+    this.netPlacedAt = performance.now();
     this.endRemate();
     this.remateWhiffed = false;
     this.remateRecover = 0;
@@ -2788,6 +2815,7 @@ export class MatchScene extends Phaser.Scene {
     const prevLabels = this.score.labels();
     const prevGames: [string, string] = [String(this.score.games[0]), String(this.score.games[1])];
     const res = this.score.pointTo(w === 'player' ? 0 : 1);
+    this.netPlaced = false; // (red) los estados que mande desde ahora son del punto siguiente, aún sin colocarse
     // ZONA: el punto jugado consume un turno de Zona; quien va perdiendo por 2 con 2+ puntos ganados (o va 0-40) puede entrar
     const zr = this.zone.onPoint(w, res.gameWinner !== null);
     for (const sd of zr.ended) this.zoneFx[sd]?.stop();
@@ -4033,12 +4061,24 @@ export class MatchScene extends Phaser.Scene {
     // cinemática del SMASH: el partido queda congelado (física, jugadores, IA, relojes); solo se animan sus efectos
     if (this.cine.active) {
       this.flu.lastFrame = 0; // (log de fluidez) la congelación de la cinemática no cuenta como tirón
+      this.netCineSeen = true;
+      if (this.net) {
+        // (log) durante la cinemática no se envían ni reciben estados: no es un corte de red ni una caída de fps
+        this.diagStateAt = performance.now();
+        this.flu.lastIn = 0;
+        this.fluSkip = true;
+      }
       this.chargeSprite.hide(); // el efecto de carga no se queda congelado a medias
       this.rivalChargeSprite.hide();
       this.cine.update();
       return;
     }
     const dt = Math.min(deltaMs / 1000, 0.05) * this.slowMo; // cámara lenta del REMATE
+    if (this.netCineSeen) {
+      // salió de una cinemática: el rival sigue desde donde quedó en ella (no salta al último estado que llegó)
+      this.netCineSeen = false;
+      if (this.net && performance.now() >= this.netBotLockUntil) this.netAnchor(this.bot.x, this.bot.y);
+    }
     this.netView.update(); // la red solo se redibuja mientras ondula / vibra
     this.syncAbilityLock(); // sin habilidades durante el saque y su resto
     this.dashBtn.update(dt);
@@ -4891,8 +4931,14 @@ export class MatchScene extends Phaser.Scene {
       onStart: intro,
       onState: (st) => {
         this.netLastMsgAt = performance.now();
-        this.netRemote = st;
         const nowIn = performance.now();
+        // estado de un punto ANTERIOR (el rival aún no termina el suyo y sigue corriendo por la cancha): ya lo colocamos en
+        // su saque, así que se descarta (antes saltaba atrás y se lo veía volver corriendo). Ventana de seguridad: 2,5 s.
+        if (!this.netPtOff && st.pt !== undefined && this.netPlaced && st.pt < this.netPt && nowIn - this.netPlacedAt < 2500) {
+          this.diagStateAt = nowIn;
+          return;
+        }
+        this.netRemote = st;
         if (this.flu.lastIn) this.flu.gapMax = Math.max(this.flu.gapMax, nowIn - this.flu.lastIn);
         this.flu.lastIn = nowIn;
         this.flu.inN++;
@@ -4996,15 +5042,17 @@ export class MatchScene extends Phaser.Scene {
   private netSendState() {
     if (!this.net) return;
     const now = this.time.now;
-    if (now - this.netStateAt < 50) return;
     const pl = this.player;
+    const l = this.netLastState;
+    // arranca a moverse estando quieto: se envía YA (sin esperar los 50 ms), así el rival no lo ve arrancar tarde
+    const starts = !!l && !l.moving && Math.hypot(pl.x - this.netPrev.x, pl.y - this.netPrev.y) > 0.6;
+    if (now - this.netStateAt < (starts ? 16 : 50)) return;
     const dx = pl.y - this.netPrev.y; // en pantalla, derecha = +y de la cancha
     const moving = Math.hypot(pl.x - this.netPrev.x, dx) > 0.6;
     const dirX = Math.abs(dx) > 0.3 ? Math.sign(dx) : 0;
-    const st = { x: pl.x, y: pl.y, moving, dirX, facing: pl.ch.facing, charging: this.charging, stunned: pl.stun > 0 };
-    // quieto y sin cambios: solo un latido cada 250 ms (en vez de 20 mensajes por segundo)
-    const l = this.netLastState;
-    const same = !!l && l.x === st.x && l.y === st.y && l.moving === st.moving && l.dirX === st.dirX && l.facing === st.facing && l.charging === st.charging && l.stunned === st.stunned;
+    const st = { x: pl.x, y: pl.y, moving, dirX, facing: pl.ch.facing, charging: this.charging, stunned: pl.stun > 0, pt: this.netPt };
+    // quieto y sin cambios: solo un latido cada 250 ms (en vez de 20 mensajes por segundo). Un punto nuevo se envía al tiro.
+    const same = !!l && l.x === st.x && l.y === st.y && l.moving === st.moving && l.dirX === st.dirX && l.facing === st.facing && l.charging === st.charging && l.stunned === st.stunned && l.pt === st.pt;
     if (same && now - this.netStateAt < 250) return;
     this.netStateAt = now;
     this.netPrev = { x: pl.x, y: pl.y };
@@ -5173,6 +5221,7 @@ export class MatchScene extends Phaser.Scene {
     this.score.games = host ? [sc.games.host, sc.games.guest] : [sc.games.guest, sc.games.host];
     this.updateHud();
     this.netInterp.clear();
+    this.netPtOff = true; // el marcador oficial puede no cuadrar con los puntos jugados de cada teléfono: sin filtro por punto
     this.netLastMsgAt = performance.now();
     this.netPendingToss = null;
     this.faults = 0;
@@ -5352,7 +5401,9 @@ export class MatchScene extends Phaser.Scene {
     if (!f.at) f.at = now + 1000;
     if (now < f.at) return;
     const playing = this.phase === 'rally' || this.phase === 'serve' || this.phase === 'toss';
-    if (playing && f.frames > 0) {
+    const skip = this.fluSkip; // segundo con cinemática: fps y cortes falsos
+    this.fluSkip = false;
+    if (playing && f.frames > 0 && !skip) {
       const secs = Math.max(0.2, (now - (f.at - 1000)) / 1000);
       d.log('flu', {
         fps: f.frames / secs,

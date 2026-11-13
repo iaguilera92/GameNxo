@@ -113,8 +113,12 @@ modo BOT no cambia.
     (`racket` con `lost` y `x, y`) y avisa cuando la recoge (`racket` con `lost: false`).
   - **DASH:** el rival ve el sprint (`game:action`).
   - **Emotes:** el emote elegido sale también sobre la cabeza del rival (`emote`).
-- **Movimiento:** cada teléfono envía la posición de su jugador unas 20 veces por segundo (`game:state`). El
-  otro la suaviza.
+- **Movimiento:** cada teléfono envía la posición de su jugador unas 20 veces por segundo (`game:state`); quieto, un
+  latido cada 250 ms, y al arrancar a moverse se envía al tiro. El otro la suaviza (`frontend/src/net/interp.ts`,
+  100 ms en el pasado): el movimiento empieza 50 ms antes del primer estado en movimiento y, si faltan estados, el
+  rival sigue en su dirección hasta 120 ms. Cada estado lleva `pt` (2 · puntos jugados + 1 si ya se colocó para el
+  saque): al colocarse para un punto se descartan durante 2,5 s los estados del punto anterior (tras una reconexión no
+  se filtra). Al salir de una cinemática el rival sigue desde donde quedó.
 - **Espejo:** cada uno envía sus coordenadas y el receptor las refleja por la red y el eje lateral
   (`frontend/src/net/mirror.ts`).
 - **Saque:** el host saca el primer juego y luego se alterna (`Score.serverOffset` en el invitado).
@@ -178,7 +182,7 @@ Están definidos en `backend/src/socket/events/protocol.ts`, con una copia idén
 | `mm:error` | s → c | `{ code, message }` | ya buscando / ya en sala / datos inválidos |
 | `game:ready` | c → s | — | escena del partido cargada |
 | `game:start` | s → c | `{ roomId }` | empiezan los dos (o al vencer `READY_TIMEOUT_MS`) |
-| `game:state` | c → s → rival | `{ t, x, y, moving, dirX, facing, charging, stunned }` | posición del jugador (~20 Hz) |
+| `game:state` | c → s → rival | `{ t, x, y, moving, dirX, facing, charging, stunned, pt? }` | posición del jugador (~20 Hz) |
 | `game:hit` | c → s → rival | `{ seq, kind: hit\|serve, ball, x, y, shotKind, power, inferno, charged, overhead, volley, serveSpin?, lunge?, impact? }` | golpe o saque con la pelota resultante y los datos reales del golpe (ver abajo) |
 | `game:action` | c → s → rival | `{ kind, data }` (ver abajo) | animaciones y habilidades |
 | `game:point` | c → s (+ rival) | `{ seq, kind: point\|fault\|let, to: me\|opponent, reason, color }` | resultado decidido por el juez; los `point` suman al marcador oficial |

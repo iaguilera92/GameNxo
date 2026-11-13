@@ -3,14 +3,14 @@ import { FONT } from '../ui/theme';
 import { VIEW } from '../view/projection';
 
 /**
- * FINAL DEL PARTIDO con espectáculo (~3,2 s, fijo en pantalla), justo después del último punto y antes de la pantalla
+ * FINAL DEL PARTIDO (~3,2 s, fijo en pantalla), justo después del último punto y antes de la pantalla
  * de resultados:
- *   0,00 s  destello blanco, golpe de cámara y, una tras otra, JUEGO · SET · ¡PARTIDO! (cada una entra con golpe y sonido;
- *           las dos primeras se van al llegar la siguiente y ¡PARTIDO! se queda sobre el marcador)
- *   1,20 s  MARCADOR FINAL al centro: tus juegos y los del rival; la cifra del ganador sube (1 → 2) con salto y brillo,
+ *   0,00 s  destello blanco y la pantalla se oscurece
+ *   0,35 s  MARCADOR FINAL al centro: tus juegos y los del rival; la cifra del ganador sube (1 → 2) con salto y brillo,
  *           corona sobre el ganador
- *   1,90 s  sello grande ¡PARTIDO GANADO! (dorado, confeti y fanfarria) o PARTIDO PERDIDO (rojo,
- *           pantalla oscura, ceniza que cae y notas que bajan). La pantalla de resultados (VICTORIA / DERROTA) no cambia.
+ *   1,00 s  textos de abajo, solo texto: ganas = "JUEGO, SET Y PARTIDO!" en una línea, de uno en uno (JUEGO, luego SET, luego
+ *           Y PARTIDO!); pierdes = "PARTIDO PERDIDO". Sin confeti, ceniza ni fanfarria. La pantalla de resultados
+ *           (VICTORIA / DERROTA) no cambia.
  * Devuelve la duración (ms) para lanzar después el final de siempre (playMatchEnd). Solo visual.
  */
 export interface MatchFinaleOpts {
@@ -21,12 +21,12 @@ export interface MatchFinaleOpts {
   games: [number, number];
 }
 
-/** separación entre las palabras JUEGO · SET · ¡PARTIDO! (ms) */
+/** separación entre las palabras JUEGO · SET · Y PARTIDO! (ms) */
 const WORD_GAP_MS = 430;
-/** retraso de todo lo que viene después de las tres palabras (marcador, cifra, corona y sello) */
-const SEQ_MS = 900;
+/** instante (ms) en que empiezan los textos de abajo */
+const TEXT_AT_MS = 1000;
 
-export const MATCH_FINALE_MS = 3200 + SEQ_MS;
+export const MATCH_FINALE_MS = 3200;
 
 const GOLD = 0xffd23f;
 const RED = 0xff4f5e;
@@ -53,36 +53,7 @@ export function playMatchFinale(scene: Phaser.Scene, o: MatchFinaleOpts): number
   scene.cameras.main.shake(260, o.win ? 0.012 : 0.008);
   const dim = add(scene.add.rectangle(0, 0, W, scene.scale.height, o.win ? 0x050b1e : 0x12040a, 0).setOrigin(0).setDepth(D));
   scene.tweens.add({ targets: dim, fillAlpha: o.win ? 0.55 : 0.7, duration: 420 });
-  // 0 → 0,9 — "JUEGO", luego "SET" y por último "¡PARTIDO!": cada palabra entra con golpe y sonido; las dos primeras se
-  // van cuando llega la siguiente y "¡PARTIDO!" se queda sobre el marcador
-  const wordY = cy - 175;
-  const words: { text: string; size: number; color: string; stroke: string }[] = [
-    { text: 'JUEGO', size: 84, color: '#ffffff', stroke: '#0a1638' },
-    { text: 'SET', size: 84, color: '#ffffff', stroke: '#0a1638' },
-    { text: '¡PARTIDO!', size: 76, color: o.win ? '#ffd23f' : '#ff9aa3', stroke: o.win ? '#5a3a00' : '#2a0610' },
-  ];
-  words.forEach((w, i) => {
-    const at = i * WORD_GAP_MS;
-    const last = i === words.length - 1;
-    const t = txt(cx, wordY, w.text, Math.min(w.size, Math.floor((W - 60) / (w.text.length * 0.6))), w.color, w.stroke);
-    t.setLetterSpacing(4).setAlpha(0).setScale(2.4);
-    scene.tweens.add({
-      targets: t,
-      alpha: 1,
-      scale: 1,
-      delay: at,
-      duration: 260,
-      ease: 'Back.easeOut',
-      onStart: () => {
-        scene.cameras.main.shake(110, last ? 0.009 : 0.006);
-        wordHit(scene, i);
-      },
-    });
-    if (last) scene.tweens.add({ targets: t, scale: 1.05, delay: at + 420, duration: 480, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
-    else scene.tweens.add({ targets: t, alpha: 0, scale: 1.18, delay: at + WORD_GAP_MS - 90, duration: 110, ease: 'Quad.easeIn' });
-  });
-
-  // marcador final (tras las tres palabras)
+  // 0,35 — marcador final
   const panel = add(scene.add.container(cx, cy - 40).setDepth(D + 3).setAlpha(0).setScale(0.7));
   const pw = Math.min(520, W - 40);
   const rowH = 62;
@@ -141,13 +112,13 @@ export function playMatchFinale(scene: Phaser.Scene, o: MatchFinaleOpts): number
       );
       crown.setScale(0).setAngle(-20);
       panel.add(crown);
-      scene.tweens.add({ targets: crown, scale: 1, angle: 0, delay: 900 + SEQ_MS, duration: 380, ease: 'Back.easeOut' });
+      scene.tweens.add({ targets: crown, scale: 1, angle: 0, delay: 900, duration: 380, ease: 'Back.easeOut' });
     }
   });
-  scene.tweens.add({ targets: panel, alpha: 1, scale: 1, delay: 300 + SEQ_MS, duration: 320, ease: 'Back.easeOut' });
+  scene.tweens.add({ targets: panel, alpha: 1, scale: 1, delay: 300, duration: 320, ease: 'Back.easeOut' });
   // la cifra del ganador sube (salto, brillo y "tic")
   const wi = o.win ? 0 : 1;
-  scene.time.delayedCall(700 + SEQ_MS, () => {
+  scene.time.delayedCall(700, () => {
     const n = numbers[wi];
     if (!n.active) return;
     n.setText(String(rows[wi].games));
@@ -157,32 +128,44 @@ export function playMatchFinale(scene: Phaser.Scene, o: MatchFinaleOpts): number
     tick(scene);
   });
 
-  // 1,0 — sello gigante
-  const sealY = cy + 120;
-  // (sin rayos detrás del sello: decisión del usuario, 12-11-2026)
-  // (la pantalla de resultados ya dice VICTORIA / DERROTA: aquí se anuncia el fin del partido)
-  const seal = txt(cx, sealY, o.win ? '¡PARTIDO GANADO!' : 'PARTIDO PERDIDO', Math.min(68, Math.floor((W - 40) / 9.5)), o.win ? '#ffd23f' : '#ff6b78', o.win ? '#5a3a00' : '#2a0610');
-  seal.setLetterSpacing(3).setAlpha(0).setScale(3);
-  scene.tweens.add({
-    targets: seal,
-    alpha: 1,
-    scale: 1,
-    delay: 1000 + SEQ_MS,
-    duration: 360,
-    ease: 'Back.easeOut',
-    onStart: () => {
-      scene.cameras.main.shake(220, o.win ? 0.014 : 0.01);
-      if (o.win) {
-        confetti(scene, cx, sealY, D + 6, objs);
-        fanfare(scene);
-      } else {
-        ash(scene, W, H, D + 2, objs);
-        sadTones(scene);
-      }
-    },
-  });
-  // brillo que recorre el sello (victoria) o latido apagado (derrota)
-  scene.tweens.add({ targets: seal, scale: o.win ? 1.06 : 0.97, delay: 1400 + SEQ_MS, duration: 520, yoyo: true, repeat: 1, ease: 'Sine.easeInOut' });
+  // 1,0 — textos de abajo (solo texto, sin confeti ni ceniza ni fanfarria)
+  //  · ganas: "JUEGO, SET Y PARTIDO!" en UNA línea; aparecen de uno en uno: JUEGO, luego SET y luego Y PARTIDO!
+  //  · pierdes: "PARTIDO PERDIDO"
+  // (la pantalla de resultados ya dice VICTORIA / DERROTA)
+  const textY = cy + 150;
+  const size = 60;
+  if (o.win) {
+    const parts = ['JUEGO,', 'SET', 'Y PARTIDO!'];
+    const gap = 22;
+    const row = add(scene.add.container(cx, textY).setDepth(D + 5));
+    const items = parts.map((s) => scene.add.text(0, 0, s, { fontFamily: FONT, fontSize: `${size}px`, color: '#ffd23f', stroke: '#5a3a00', strokeThickness: 9 }).setOrigin(0.5));
+    const total = items.reduce((n, it) => n + it.width, 0) + gap * (parts.length - 1);
+    let x = -total / 2;
+    items.forEach((it) => {
+      it.setX(x + it.width / 2).setAlpha(0).setScale(2.4);
+      x += it.width + gap;
+      row.add(it);
+    });
+    row.setScale(Math.min(1, (W - 30) / total)); // en pantallas angostas la línea entera se achica, sigue en una sola fila
+    items.forEach((it, i) => {
+      scene.tweens.add({
+        targets: it,
+        alpha: 1,
+        scale: 1,
+        delay: TEXT_AT_MS + i * WORD_GAP_MS,
+        duration: 260,
+        ease: 'Back.easeOut',
+        onStart: () => {
+          scene.cameras.main.shake(110, i === parts.length - 1 ? 0.009 : 0.006);
+          wordHit(scene, i);
+        },
+      });
+    });
+  } else {
+    const lost = txt(cx, textY, 'PARTIDO PERDIDO', Math.min(68, Math.floor((W - 40) / 9.5)), '#ff6b78', '#2a0610');
+    lost.setLetterSpacing(3).setAlpha(0);
+    scene.tweens.add({ targets: lost, alpha: 1, delay: TEXT_AT_MS, duration: 400, ease: 'Sine.easeOut' });
+  }
 
   // fuera: todo se desvanece antes de la pantalla de resultados
   scene.time.delayedCall(MATCH_FINALE_MS - 320, () => {
@@ -190,43 +173,6 @@ export function playMatchFinale(scene: Phaser.Scene, o: MatchFinaleOpts): number
   });
   scene.time.delayedCall(MATCH_FINALE_MS + 50, () => objs.forEach((ob) => ob.active && ob.destroy()));
   return MATCH_FINALE_MS;
-}
-
-/** Confeti dorado, azul, rojo y blanco que estalla desde el sello y cae girando. */
-function confetti(scene: Phaser.Scene, x: number, y: number, depth: number, objs: Phaser.GameObjects.GameObject[]) {
-  const cols = [0xffd23f, 0x2f7bff, 0xff4f5e, 0xffffff, 0x3ccf5a];
-  for (let i = 0; i < 70; i++) {
-    const p = scene.add.rectangle(x, y, Phaser.Math.Between(6, 11), Phaser.Math.Between(10, 16), Phaser.Utils.Array.GetRandom(cols), 1).setScrollFactor(0).setDepth(depth);
-    objs.push(p);
-    const a = Phaser.Math.FloatBetween(-Math.PI, 0);
-    const v = Phaser.Math.FloatBetween(160, 420);
-    const dx = Math.cos(a) * v;
-    const up = Math.sin(a) * v;
-    const t = { k: 0 };
-    const life = Phaser.Math.Between(1500, 2300);
-    scene.tweens.add({
-      targets: t,
-      k: 1,
-      duration: life,
-      onUpdate: () => {
-        const s = (t.k * life) / 1000;
-        p.setPosition(x + dx * s, y + up * s + 520 * s * s);
-        p.setAngle(t.k * 720 * (i % 2 ? 1 : -1));
-        p.scaleX = Math.cos(t.k * 18 + i);
-        p.setAlpha(1 - Math.max(0, t.k - 0.75) * 4);
-      },
-      onComplete: () => p.destroy(),
-    });
-  }
-}
-
-/** Derrota: ceniza gris que cae despacio por toda la pantalla. */
-function ash(scene: Phaser.Scene, W: number, H: number, depth: number, objs: Phaser.GameObjects.GameObject[]) {
-  for (let i = 0; i < 26; i++) {
-    const p = scene.add.circle(Phaser.Math.Between(0, W), Phaser.Math.Between(-40, H * 0.4), Phaser.Math.FloatBetween(2, 4.5), 0x8a8f9e, 0.7).setScrollFactor(0).setDepth(depth);
-    objs.push(p);
-    scene.tweens.add({ targets: p, y: p.y + Phaser.Math.Between(260, 520), x: p.x + Phaser.Math.Between(-40, 40), alpha: 0, duration: Phaser.Math.Between(1600, 2400), ease: 'Sine.easeIn', onComplete: () => p.destroy() });
-  }
 }
 
 function ctxOf(scene: Phaser.Scene): AudioContext | null {
@@ -263,19 +209,4 @@ function tick(scene: Phaser.Scene) {
   note(ctx, 1320, ctx.currentTime, 0.12, 'square', 0.08);
 }
 
-/** Fanfarria corta de victoria (arpegio que sube y acorde final). */
-function fanfare(scene: Phaser.Scene) {
-  const ctx = ctxOf(scene);
-  if (!ctx) return;
-  const t = ctx.currentTime;
-  [523, 659, 784].forEach((f, i) => note(ctx, f, t + i * 0.11, 0.18, 'square', 0.09));
-  [1047, 1319, 1568].forEach((f) => note(ctx, f, t + 0.36, 0.7, 'triangle', 0.1));
-}
 
-/** Notas que bajan (derrota). */
-function sadTones(scene: Phaser.Scene) {
-  const ctx = ctxOf(scene);
-  if (!ctx) return;
-  const t = ctx.currentTime;
-  [392, 349, 311, 262].forEach((f, i) => note(ctx, f, t + i * 0.22, 0.4, 'triangle', 0.09));
-}

@@ -33,6 +33,10 @@ type Entry = RemoteSnap & { t: number; st: number };
 
 /** un estado se coloca como mucho esto antes de su llegada (ms) */
 const MAX_LAG = 150;
+/** arranque desde quieto: el movimiento empieza este tiempo antes del primer estado en movimiento (≈ un envío, 50 ms) */
+const START_MS = 50;
+/** sin estados nuevos: el rival sigue en su dirección como mucho este tiempo (ms) antes de quedarse quieto */
+const EXTRAP_MS = 120;
 
 export class RemoteInterp {
   private buf: Entry[] = [];
@@ -57,6 +61,12 @@ export class RemoteInterp {
     const sane = !!last && last.st !== -Infinity && senderT > last.st && senderT - last.st < 1000;
     const ideal = !last ? recvT : sane ? last.t + (senderT - last.st) : recvT;
     const t = Math.min(recvT, Math.max(recvT - MAX_LAG, ideal, last ? last.t + 1 : -Infinity));
+    // ARRANQUE: quieto se manda un latido cada 250 ms; si el primer estado en movimiento llega tras un latido viejo, el
+    // rival se deslizaría desde ahí todo ese rato (parece que arranca tarde y luego "se alcanza"). Se repite la posición
+    // quieta justo antes (START_MS) para que el movimiento empiece cuando de verdad empezó.
+    if (last && !last.moving && s.moving && t - last.t > START_MS * 2) {
+      this.buf.push({ ...last, t: t - START_MS, st: senderT - START_MS });
+    }
     // (...s primero: el estado recibido trae su propio `t` = reloj del EMISOR, que no debe pisar la hora local)
     this.buf.push({ ...s, t, st: senderT });
     if (this.buf.length > 60) this.buf.shift();
@@ -90,7 +100,18 @@ export class RemoteInterp {
     const a = b[0];
     if (rt <= a.t || b.length === 1) return { x: a.x, y: a.y, speed: 0, snap: a, starved: b.length === 1 && rt > a.t };
     const c = b[1];
-    if (rt >= c.t) return { x: c.x, y: c.y, speed: 0, snap: c, starved: true }; // sin estados nuevos: se queda en el último
+    if (rt >= c.t) {
+      // sin estados nuevos: si venía corriendo, sigue un poco en su dirección (EXTRAP_MS) en vez de frenar en seco y
+      // saltar cuando llegue el siguiente; luego se queda en el último
+      const dt = (c.t - a.t) / 1000;
+      if (c.moving && a.moving && dt >= 0.02) {
+        const ex = Math.min(rt - c.t, EXTRAP_MS) / 1000;
+        const vx = (c.x - a.x) / dt;
+        const vy = (c.y - a.y) / dt;
+        return { x: c.x + vx * ex, y: c.y + vy * ex, speed: Math.hypot(vx, vy), snap: c, starved: true };
+      }
+      return { x: c.x, y: c.y, speed: 0, snap: c, starved: true };
+    }
     const k = (rt - a.t) / (c.t - a.t);
     const dt = (c.t - a.t) / 1000;
     const speed = dt > 0 ? Math.hypot(c.x - a.x, c.y - a.y) / dt : 0;

@@ -29,7 +29,11 @@ export class Score {
     return ((this.gameIndex + this.serverOffset) % 2) as Side;
   }
 
+  /** puntos jugados en el partido (crece siempre, también en iguales/ventaja): numera los estados en red */
+  played = 0;
+
   pointTo(w: Side): PointResult {
+    this.played++;
     const l = (1 - w) as Side;
     const p = this.points;
     let gameWon = false;

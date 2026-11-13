@@ -22,6 +22,7 @@ export function sanitizeState(d: unknown): StateMsg | null {
   const x = num(d.x);
   const y = num(d.y);
   if (x === null || y === null) return null;
+  const pt = num(d.pt);
   return {
     t: time(d.t) ?? 0,
     x,
@@ -31,6 +32,8 @@ export function sanitizeState(d: unknown): StateMsg | null {
     facing: num(d.facing) ?? 1,
     charging: d.charging === true,
     stunned: d.stunned === true,
+    // número de punto (entero ≥ 0); los clientes antiguos no lo mandan
+    ...(pt !== null && pt >= 0 ? { pt: Math.floor(pt) } : {}),
   };
 }
 

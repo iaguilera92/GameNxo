@@ -16,6 +16,13 @@ test('sanitizeState: exige x e y numéricos finitos y recorta lo demás', () => 
   assert.deepEqual(s, { t: 0, x: 1e5, y: -1e5, moving: false, dirX: 0, facing: 1, charging: false, stunned: false });
 });
 
+test('sanitizeState: número de punto (pt) entero ≥ 0, solo si viene', () => {
+  assert.equal(sanitizeState({ x: 1, y: 2, pt: 7.9 })!.pt, 7);
+  assert.equal('pt' in sanitizeState({ x: 1, y: 2 })!, false);
+  assert.equal('pt' in sanitizeState({ x: 1, y: 2, pt: -3 })!, false);
+  assert.equal('pt' in sanitizeState({ x: 1, y: 2, pt: 'x' })!, false);
+});
+
 test('sanitizeHit: pelota obligatoria, booleanos estrictos, texto recortado, opcionales solo si vienen', () => {
   assert.equal(sanitizeHit({ ...hit, ball: { x: 1 } }), null);
   assert.equal(sanitizeHit({ ...hit, kind: 'otro' }), null);

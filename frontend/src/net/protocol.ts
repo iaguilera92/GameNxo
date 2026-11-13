@@ -131,6 +131,11 @@ export interface StateMsg {
   facing: number;
   charging: boolean;
   stunned: boolean;
+  /**
+   * Punto al que pertenece el estado: 2·puntos jugados + 1 si el emisor ya se colocó para el saque de ese punto.
+   * El receptor descarta los estados de un punto anterior (el rival "volvía corriendo" al empezar cada punto).
+   */
+  pt?: number;
 }
 
 export type HitKind = 'hit' | 'serve';

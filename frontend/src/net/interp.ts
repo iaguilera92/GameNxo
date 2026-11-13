@@ -25,6 +25,8 @@ export interface InterpSample {
   speed: number;
   /** "hambre": no hay un estado más nuevo que el instante mostrado (se queda en el último; con red lenta, se nota) */
   starved: boolean;
+  /** sin estados nuevos desde hace más que la extrapolación: la última info ya no vale (p. ej. "corre" sin moverse) */
+  stale?: boolean;
   /** estado (banderas) del instante que se muestra */
   snap: RemoteSnap;
 }
@@ -98,19 +100,20 @@ export class RemoteInterp {
     // quitar lo que ya quedó atrás (se conserva uno anterior al instante mostrado)
     while (b.length > 2 && b[1].t <= rt) b.shift();
     const a = b[0];
-    if (rt <= a.t || b.length === 1) return { x: a.x, y: a.y, speed: 0, snap: a, starved: b.length === 1 && rt > a.t };
+    if (rt <= a.t || b.length === 1) return { x: a.x, y: a.y, speed: 0, snap: a, starved: b.length === 1 && rt > a.t, stale: rt - a.t > EXTRAP_MS };
     const c = b[1];
     if (rt >= c.t) {
       // sin estados nuevos: si venía corriendo, sigue un poco en su dirección (EXTRAP_MS) en vez de frenar en seco y
       // saltar cuando llegue el siguiente; luego se queda en el último
       const dt = (c.t - a.t) / 1000;
+      const stale = rt - c.t > EXTRAP_MS;
       if (c.moving && a.moving && dt >= 0.02) {
         const ex = Math.min(rt - c.t, EXTRAP_MS) / 1000;
         const vx = (c.x - a.x) / dt;
         const vy = (c.y - a.y) / dt;
-        return { x: c.x + vx * ex, y: c.y + vy * ex, speed: Math.hypot(vx, vy), snap: c, starved: true };
+        return { x: c.x + vx * ex, y: c.y + vy * ex, speed: stale ? 0 : Math.hypot(vx, vy), snap: c, starved: true, stale };
       }
-      return { x: c.x, y: c.y, speed: 0, snap: c, starved: true };
+      return { x: c.x, y: c.y, speed: 0, snap: c, starved: true, stale };
     }
     const k = (rt - a.t) / (c.t - a.t);
     const dt = (c.t - a.t) / 1000;

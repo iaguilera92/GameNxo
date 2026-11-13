@@ -599,10 +599,11 @@ export class Character extends Phaser.GameObjects.Container {
    * `overhead`: remate (SMASH o pelota alta). Solo lo usa el personaje con sprites.
    * Devuelve los ms hasta el impacto visual de la raqueta (para sincronizar los efectos; 0 = ya).
    */
-  swing(power = false, overhead = false, special = false, volley = false): number {
+  swing(power = false, overhead = false, special = false, volley = false, chargePose = false): number {
     // `special`: ataque especial SMASH (remate con salto si el personaje tiene esa animación)
     // `volley`: volea en la red (clip propio si el personaje lo tiene; si no, el golpe normal)
-    if (this.nxo) return this.nxo.swing(overhead, power, special, volley);
+    // `chargePose`: arranca en la pose de carga (frame 4) aunque venga corriendo (cinemática del ESPECIAL)
+    if (this.nxo) return this.nxo.swing(overhead, power, special, volley, chargePose);
     if (this.swinging) return 0;
     this.swinging = true;
     this.charging = false;

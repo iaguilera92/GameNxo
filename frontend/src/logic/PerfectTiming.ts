@@ -67,7 +67,8 @@ export const TIMING = {
   maxSpeedMult: { normal: 1.95, ability: 2.15 },
   /** Efectos (ver src/fx/timingFx.ts). */
   fx: {
-    text: { perfect: '¡PERFECTO!', good: 'BIEN', early: 'PRONTO', late: 'TARDE' } as Partial<Record<TimingGrade, string>>,
+    // sin texto "BIEN" (13-11-2026: pedido del usuario; solo suena su tic)
+    text: { perfect: '¡PERFECTO!', early: 'PRONTO', late: 'TARDE' } as Partial<Record<TimingGrade, string>>,
     color: { perfect: '#ffe066', good: '#8fe3ff', early: '#ffb38a', late: '#ff8a8a' } as Partial<Record<TimingGrade, string>>,
     size: { perfect: 40, good: 26, early: 24, late: 24 } as Partial<Record<TimingGrade, number>>,
     vibrateMs: 30, // algunos motores de vibración de Android ignoran pulsos muy cortos

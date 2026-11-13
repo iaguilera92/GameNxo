@@ -171,7 +171,7 @@ export interface HitMsg {
  * Acciones visuales y de habilidades (no cambian la pelota ni el marcador):
  *  toss / catch                 lanzamiento del saque / lo atrapa sin golpear
  *  sprint-start / sprint-end    DASH del emisor (data: dirX)
- *  stunned                      el emisor quedó aturdido por una bola de fuego (data: ms)
+ *  stunned                      el emisor quedó aturdido por una bola de fuego (data: ms, kind = smash | inferno)
  *  bump                         el emisor recibió un golpe cargado al máximo y retrocede un poco (data: ms)
  *  emote                        carita del chat (data: kind = happy | cool | wow)
  *  smash-armed / smash-disarmed el emisor arma / consume su SMASH (aura en el rival)

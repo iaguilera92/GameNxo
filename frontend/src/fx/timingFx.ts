@@ -6,13 +6,17 @@ import { TIMING, type TimingGrade } from '../logic/PerfectTiming';
  * Feedback de Perfect Timing, todo por código (sin sprites):
  *  - PERFECTO: texto "¡PERFECTO!", destello pequeño en el contacto, sonido sintetizado, vibración breve
  *    y un temblor mínimo de cámara (no tapa la pelota).
- *  - BIEN: texto celeste y un "tic" limpio. PRONTO / TARDE: texto naranja / rojo y un golpe sordo y grave.
+ *  - BIEN: sin texto (13-11-2026), solo un "tic" limpio. PRONTO / TARDE: texto naranja / rojo y un golpe sordo y grave.
  *    Cada nota suena distinta para aprender el ritmo de oído.
  */
 /** `remote` = nota del rival en red: se ve y se oye, sin vibración ni temblor de cámara. */
 export function playTimingFx(scene: Phaser.Scene, grade: TimingGrade, head: { x: number; y: number }, contact: { x: number; y: number }, remote = false) {
   const text = TIMING.fx.text[grade];
-  if (!text) return;
+  if (!text) {
+    // nota sin texto (BIEN): solo su sonido
+    if (grade === 'good' && TIMING.fx.sound) gradeSound(scene, grade);
+    return;
+  }
   const perfect = grade === 'perfect';
   const t = scene.add
     .text(head.x, head.y - 8, text, textStyle(TIMING.fx.size[grade] ?? 20, TIMING.fx.color[grade] ?? '#ffffff'))

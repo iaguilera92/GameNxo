@@ -64,10 +64,6 @@ export class ScoreBoard extends Phaser.GameObjects.Container {
   /** aviso breve en la píldora (FALTA, TIEMPO, LET…); tiene prioridad sobre `info` */
   private flash: { text: string; color: string } | null = null;
   private flashTimer?: Phaser.Time.TimerEvent;
-  /** aviso de tiempo para sacar en la card del jugador */
-  private alertG?: Phaser.GameObjects.Graphics;
-  private alertShape: Phaser.Math.Vector2[] = [];
-  private alertN: number | null = null;
 
   constructor(scene: Phaser.Scene, cfg: ScoreBoardConfig) {
     super(scene, 0, 0);
@@ -137,12 +133,6 @@ export class ScoreBoard extends Phaser.GameObjects.Container {
     g.fillStyle(pal.top, 1).fillPoints(roundedPoly(hi, 10), true);
     g.fillStyle(0xffffff, 0.28).fillRoundedRect(Math.min(inner, outer) + 22, top + 5, PW - 44, 6, 3);
     this.add(g);
-    // capa del aviso de tiempo de saque (solo la card del jugador): encima del panel y bajo nombre / puntos
-    if (side === 0) {
-      this.alertShape = roundedPoly(pts(0), 12);
-      this.alertG = this.scene.add.graphics();
-      this.add(this.alertG);
-    }
 
     // nombre
     // hueco libre para el nombre: desde el borde de la placa central hasta antes de la pelota de saque
@@ -204,32 +194,6 @@ export class ScoreBoard extends Phaser.GameObjects.Container {
     pill.lineStyle(2, GOLD, 0.9).strokeRoundedRect(-pw / 2, py - ph / 2, pw, ph, ph / 2);
     this.gameTxt = this.scene.add.text(0, py, 'JUEGO 1', { fontFamily: FONT, fontSize: '16px', color: '#ffd76a' }).setOrigin(0.5).setLetterSpacing(1);
     this.add([pill, this.gameTxt]);
-  }
-
-  /**
-   * Segundos que le quedan al jugador para sacar, en su card: 5-4 borde naranja, 3-2 borde rojo fuerte, 1 toda roja.
-   * Late en cada cambio de número. null = sin aviso.
-   */
-  setServeAlert(n: number | null) {
-    const g = this.alertG;
-    if (!g || n === this.alertN) return;
-    this.alertN = n;
-    this.scene.tweens.killTweensOf(g);
-    g.clear().setAlpha(1);
-    if (n === null) return;
-    const shape = this.alertShape;
-    if (n <= 1) {
-      g.fillStyle(0xe0182a, 0.92).fillPoints(shape, true);
-      g.lineStyle(6, 0xff2a3a, 1).strokePoints(shape, true, true);
-      g.lineStyle(2, 0xffffff, 0.75).strokePoints(shape, true, true);
-    } else if (n <= 3) {
-      g.lineStyle(12, 0xff1f2e, 0.3).strokePoints(shape, true, true);
-      g.lineStyle(6, 0xff1f2e, 1).strokePoints(shape, true, true);
-    } else {
-      g.lineStyle(10, 0xff9a1f, 0.28).strokePoints(shape, true, true);
-      g.lineStyle(5, 0xff9a1f, 1).strokePoints(shape, true, true);
-    }
-    this.scene.tweens.add({ targets: g, alpha: { from: 1, to: n <= 1 ? 0.75 : 0.55 }, duration: 250, yoyo: true, repeat: 1, ease: 'Sine.easeInOut' });
   }
 
   /** Información fija en la píldora bajo el marcador (null = vuelve a "JUEGO N"). */

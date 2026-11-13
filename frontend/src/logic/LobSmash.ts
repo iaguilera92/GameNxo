@@ -69,7 +69,12 @@ export const REMATE = {
   /** tocar ANTES de esta fracción del aro = golpe al aire: no le pega, el juego sigue y se recupera en `whiffRecover` s */
   whiff: 0.6,
   whiffRecover: 0.35,
-  jump: 85,
+  /** golpe al aire (sin red): la pelota cae esto más atrás (unidades de cancha), dentro de la pista */
+  whiffBack: 45,
+  // 13-11-2026: 85 -> 120 (salta más, jugador y rival). Cae donde saltó: solo una deriva mínima con el joystick
+  jump: 120,
+  /** deriva en el aire con el joystick: velocidad (u/s de juego) y máximo desde el punto del salto */
+  drift: { speed: 40, max: 14 },
   // más directo (plano y rápido hacia abajo)
   // SMASH! justo al cierre del aro: 2,1 -> 1,85 (12-11-2026: era demasiado; sigue algo por encima del ESPECIAL, 1,75)
   speed: { perfect: 1.85, early: 1.45, late: 1.25 },

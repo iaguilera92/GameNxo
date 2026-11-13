@@ -9,6 +9,9 @@ import Phaser from 'phaser';
  */
 const COL = 0x5fd4ff;
 const HOT = 0xe8fbff;
+/** largo del rayo de los ojos: puntos de la estela y separación base entre ellos (13-11-2026: 14 / 3,5 -> 20 / 4,5) */
+const TRAIL_N = 20;
+const TRAIL_STEP = 4.5;
 
 export class ZoneFx {
   private aura: Phaser.GameObjects.Graphics;
@@ -40,8 +43,9 @@ export class ZoneFx {
   /**
    * `head` = punto de la cabeza en pantalla, `feet` = pies, `k` = escala de perspectiva, `depth` = profundidad del
    * personaje, `side` = hacia dónde mira la cara en pantalla (1 derecha / -1 izquierda; los ojos se desplazan).
+   * `back` = personaje de espaldas (jugador): sus ojos no se ven, así que el rayo va DETRÁS del sprite.
    */
-  update(dt: number, head: { x: number; y: number }, feet: { x: number; y: number }, k: number, depth: number, side: number) {
+  update(dt: number, head: { x: number; y: number }, feet: { x: number; y: number }, k: number, depth: number, side: number, back = false) {
     if (!this.active) return;
     this.t += dt;
     const a = this.aura.clear().setDepth(depth - 0.05);
@@ -56,10 +60,10 @@ export class ZoneFx {
     // rayo de los ojos: estela con las últimas posiciones del ojo
     const eye = { x: head.x + side * 10 * k, y: head.y + 26 * k };
     this.hist.unshift(eye);
-    if (this.hist.length > 14) this.hist.pop();
+    if (this.hist.length > TRAIL_N) this.hist.pop();
     // siempre algo de estela aunque esté quieto: se alarga hacia atrás/arriba con un temblor eléctrico
-    const tr = this.trail.clear().setDepth(depth + 0.05);
-    const pts = this.hist.map((p, i) => ({ x: p.x - side * i * 3.5 * k + Math.sin(this.t * 40 + i) * 2 * k, y: p.y - i * 1.2 * k }));
+    const tr = this.trail.clear().setDepth(back ? depth - 0.04 : depth + 0.05);
+    const pts = this.hist.map((p, i) => ({ x: p.x - side * i * TRAIL_STEP * k + Math.sin(this.t * 40 + i) * 2 * k, y: p.y - i * 1.2 * k }));
     for (let i = 0; i < pts.length - 1; i++) {
       const f = 1 - i / pts.length;
       tr.lineStyle(9 * k * f, COL, 0.35 * f).lineBetween(pts[i].x, pts[i].y, pts[i + 1].x, pts[i + 1].y);

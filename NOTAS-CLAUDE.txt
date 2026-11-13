@@ -634,3 +634,35 @@ Lo que antes estaba disperso en las notas de arriba, en un solo lugar. Detalle c
  - Log: durante las cinematicas no se registran 'flu' ni 'no-state' (eran los falsos 2 fps y cortes de 1-2 s).
 
 (Kiro, 12-11-2026) matchFinale.ts SIMPLIFICADO (pedido: solo textos): sin sello '¡PARTIDO GANADO!', sin confeti, ceniza, fanfarria ni notas tristes (funciones borradas). Abajo (cy+150): si ganas, UNA linea 'JUEGO, SET Y PARTIDO!' que aparece por partes (JUEGO, / SET / Y PARTIDO!) con golpe de camara y tono; si pierdes, 'PARTIDO PERDIDO' con fundido simple. Se quito SEQ_MS: el final vuelve a durar 3200 ms. Marcador y corona vuelven a sus tiempos (0,35 s). Mismo camino para usuario, bot y rival online.
+[Claude 13-11-2026] FLUIDEZ ONLINE, 2.a pasada (log 200099bf, Nxo vs Nxo): el "volver corriendo" tras el saque ya no aparece.
+ - Entrada online: ahora el rival camina AQUI (tween local como contra el bot) y durante 'entering' se ignoran sus
+   estados; al terminar se ancla en su saque. (El anclaje al borde de la 1.a pasada lo hacia saltar mas: cada telefono
+   empieza la intro en otro momento.)
+ - "Corre en el sitio" (run-in-place, stateAge ~400-500 ms): se perdia el estado de "se detuvo" (va volatile).
+   Emisor: el estado quieto tras moverse se repite a los 100 ms. Receptor: con la muestra 'stale' (sin estados > 120 ms
+   tras el ultimo) deja de correr.
+ - Los 'no-state' de ~500 ms con el rival quieto: latido de 250 ms con algun estado perdido; no se nota en juego.
+
+[Claude 13-11-2026] Online: nadie bota la pelota antes de sacar (still exige !this.net en MatchScene; el reposo es el normal, pelota en la mano). Contra el bot sigue el bote.
+
+[Claude 13-11-2026] ESPECIAL: la cinematica congela SIEMPRE en la pose de carga (frame 4 de hoja 2 filas 3-4; swing(..., chargePose)), tambien si venia corriendo o de la guardia (antes arrancaba en el 5). Igual para el bot y el rival en red.
+
+[Claude 13-11-2026] REMATE (smash del circulo): salto 85 -> 120 (REMATE.jump; jugador, bot y rival en red). Ya no se desplaza hacia la pelota: cae donde salto, con una deriva minima con el joystick (REMATE.drift: 40 u/s, max 14 u). El bot tambien salta en el sitio.
+
+[Claude 13-11-2026] REMATE golpe al aire: texto "¡MUY PRONTO!" (antes "¡AL AIRE!", tambien el que ve el rival). No se le puede pegar a la pelota hasta que bote (remateWhiffBlock en checkHits); sin red la pelota cae REMATE.whiffBack (45 u) mas atras, dentro de la cancha. En red la pelota no se toca (la simula el rival).
+
+[Claude 13-11-2026] Tiempo de saque: la cuenta atras va ahora en el AVISO LATERAL (donde sale DOBLE FALTA; fx/sideNotice.ts createServeCountdown): "SACA EN 5..1", fondo negro y borde naranja (5-4), borde rojo (3-2), todo rojo (1); se queda mientras dura y sale al sacar. Quitado el aviso en la card TU del marcador (ScoreBoard.setServeAlert). La pildora "SACA EN n" del marcador sigue.
+
+[Claude 13-11-2026] Raqueta en el suelo que no se iba: si la recogida (clip pickup) se cortaba antes del agarre (p. ej. un ESPECIAL recibido), la imagen del suelo solo se quitaba en el agarre y quedaba para siempre. Ahora: MatchScene.pickingRackets + temporizador (pickMs + 250 ms) que la quita y quita la pose sin raqueta; clearRacket (fin de punto) tambien las borra.
+
+[Claude 13-11-2026] Raqueta que sale volando con la ULTI: usa el ESTILO DE COLOR del personaje (applyCharColor sobre la imagen y su estela; MatchScene.colorStyle por lado, tambien el rival en red). Ojo: con Mai el estilo cambia el rosa; la raqueta suelta es roja y queda fuera de ese rango.
+
+[Claude 13-11-2026] Perfect Timing: quitado el texto "BIEN" sobre el personaje (TIMING.fx.text sin good); sigue sonando su tic. PERFECTO / PRONTO / TARDE sin cambios.
+
+[Claude 13-11-2026] Pelota con el brillo/rayos del cargado al maximo que seguia en el punto siguiente: placeForServe apaga ball.setMaxCharge(false).
+
+[Claude 13-11-2026] Menu, RULETAS DIARIAS: al entrar aparecen en cascada (de a una, rebote; DailyWheels.intro) y la primera aun no cobrada lleva un aro celeste que late ("seleccionada": la proxima que se abrira).
+
+[Claude 13-11-2026] ZONA: el rayo de los ojos del personaje de espaldas (jugador) va DETRAS del sprite; estela mas larga (ZoneFx TRAIL_N 14->20, TRAIL_STEP 3,5->4,5).
+
+(Kiro, 12-11-2026) ULTI recibida por el rival NXO: VERIFICADO en navegador (Chrome headless sobre dist): contra el BOT, al impactar la ULTI el rival usa nxof-u-ulti-hit -> ulti-stun -> idle-nr -> run-nr -> pickup (los clips de pj-nxo-rival-ulti), tanto llamando fireImpact como con la pelota viajando por el update real. Posible hueco ONLINE: netBotStunned adivinaba SMASH/ULTI con this.infernoFlight local (si la bola ya se habia apagado salia el clip viejo 'stunned'). Arreglo: playerImpact manda kind (smash|inferno) en la accion 'stunned' y netBotStunned lo usa (compatible con clientes viejos). Sigue con sprites antiguos: SMASH (usa 'stunned' de la hoja 3, por diseno) y el rival MAI (no tiene pack mai-front).

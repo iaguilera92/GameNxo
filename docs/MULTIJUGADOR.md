@@ -210,7 +210,7 @@ Están definidos en `backend/src/socket/events/protocol.ts`, con una copia idén
 |---|---|---|
 | `toss` / `catch` | `kind` (normal\|spin) / — | lanzamiento del saque / lo atrapa |
 | `sprint-start` / `sprint-end` | `dirX` / — | DASH |
-| `stunned` | `ms` (duración del aturdido) | explosión, aturdido y estrellas |
+| `stunned` | `ms` (duración del aturdido), `kind` (smash\|inferno) | explosión, aturdido y estrellas; con `inferno` el rival usa los clips de la ULTI (`ulti-hit` / `ulti-stun`) |
 | `racket` | `lost: true` + `x, y` (dónde cae) / `lost: false` | su raqueta cae en la cancha y queda en el suelo / la recogió |
 | `bump` | `ms` | recibió mi golpe cargado al máximo (no cortita ni globo) y retrocede un poco: el rival solo pone el polvo y la sacudida; la posición llega con `game:state`. Lo decide y mueve SU teléfono |
 | `remate-start` / `remate-end` | `slow` (cámara lenta), `t` (s de juego hasta el contacto) / — | la misma cámara lenta mientras apunta su remate y su salto (sin acercar la cámara); termina con `remate-end` o con su golpe |

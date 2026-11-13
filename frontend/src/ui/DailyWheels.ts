@@ -31,6 +31,8 @@ export class DailyWheels extends Phaser.GameObjects.Container {
   private slotPos = new Map<number, number>();
   private info!: Phaser.GameObjects.Text;
   private timer!: Phaser.GameObjects.Text;
+  /** primera vez que se dibujan (al entrar al menú): aparecen en cascada, de a una */
+  private intro = true;
 
   constructor(scene: Phaser.Scene, x: number, y: number, private pw: number, private opts: DailyWheelsOpts) {
     super(scene, x, y);
@@ -86,11 +88,22 @@ export class DailyWheels extends Phaser.GameObjects.Container {
     const area = this.pw - 210;
     const step = Math.min(96, area / WHEEL.perDay);
     const x0 = -this.pw / 2 + PANEL_H * 0.22 + 12 + step / 2;
+    // SELECCIONADA: la primera que aún no se cobró (la próxima que se abrirá)
+    const sel = st.findIndex((s) => s !== 'done');
     st.forEach((s, i) => {
       const x = x0 + i * step;
       this.slotPos.set(i, x);
-      this.slots.push(this.mini(x, 4, i, s));
+      const c = this.mini(x, 4, i, s, i === sel);
+      this.slots.push(c);
+      // al entrar al menú: aparecen en cascada (de a una, de izquierda a derecha) con un pequeño rebote
+      if (this.intro) {
+        const alpha = c.alpha;
+        c.setScale(0).setAlpha(0);
+        this.scene.tweens.add({ targets: c, scale: 1, duration: 360, delay: 220 + i * 150, ease: 'Back.easeOut', easeParams: [2.2] });
+        this.scene.tweens.add({ targets: c, alpha, duration: 200, delay: 220 + i * 150 });
+      }
     });
+    this.intro = false;
     // la recién cobrada se "abre" y se desvanece donde estaba
     st.forEach((s, i) => {
       if (s === 'done' && prev[i] && prev[i] !== 'done') this.vanish(prevPos.get(i) ?? 0);
@@ -121,10 +134,18 @@ export class DailyWheels extends Phaser.GameObjects.Container {
     if (ms < 1500) this.scene.time.delayedCall(1600, () => this.refresh());
   }
 
-  private mini(x: number, y: number, i: number, s: WheelStatus) {
+  private mini(x: number, y: number, i: number, s: WheelStatus, selected = false) {
     const c = this.scene.add.container(x, y);
     this.add(c);
     const ready = s === 'ready' || s === 'spun';
+    if (selected) {
+      // la próxima en abrirse: aro celeste que late alrededor (como un "seleccionado")
+      const sel = this.scene.add.graphics();
+      sel.lineStyle(4, 0x7ff0ff, 1).strokeCircle(0, 0, MINI_R + 9);
+      sel.lineStyle(10, 0x7ff0ff, 0.22).strokeCircle(0, 0, MINI_R + 10);
+      c.add(sel);
+      this.scene.tweens.add({ targets: sel, scale: { from: 0.96, to: 1.08 }, alpha: { from: 1, to: 0.55 }, duration: 650, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
+    }
     if (ready) {
       const aura = this.scene.add.circle(0, 0, MINI_R + 10, GOLD, 0.35).setBlendMode(Phaser.BlendModes.ADD);
       c.add(aura);

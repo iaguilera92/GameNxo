@@ -673,7 +673,8 @@ export class NxoActor {
    * `power`: tiro cargado o SMASH (golpe mÃ¡s marcado). Devuelve los ms hasta el frame visual de
    * impacto, para que la escena sincronice el destello (la fÃ­sica NO se retrasa).
    */
-  swing(overhead: boolean, power = false, special = false, volley = false): number {
+  /** `chargePose`: el golpe arranca SIEMPRE en su pose de carga (frame 4 de las filas 3-4), venga de correr o de la guardia */
+  swing(overhead: boolean, power = false, special = false, volley = false, chargePose = false): number {
     if (this.state === 'victory') return 0;
     if (this.state === 'serve') {
       // el saque ya está en marcha: asegurar que termina el golpe. serveRelease (no releaseServe): si aún está en el
@@ -706,7 +707,8 @@ export class NxoActor {
           : this.clip(anim);
     const geo = this.geo;
     // desde la preparaciÃ³n se continÃºa justo despuÃ©s; sin ella se arranca EN la preparaciÃ³n (se ve la raqueta atrÃ¡s)
-    const start = inferno ? this.P.inf.strikeFrom : useSpecial ? this.P.special.start : useVolley ? 1 : overhead ? geo.smashStart : wasHold ? holdFrame + 1 : holdFrame;
+    // ESPECIAL (cinemática): se congela en la pose de carga (frame 4) aunque viniera corriendo o de la guardia
+    const start = inferno ? this.P.inf.strikeFrom : useSpecial ? this.P.special.start : useVolley ? 1 : overhead ? geo.smashStart : chargePose ? holdFrame : wasHold ? holdFrame + 1 : holdFrame;
     const impact = inferno ? this.P.inf.impact : Math.max(start, info.impact ?? start + 2);
     this.stopShake();
     this.stopLean();

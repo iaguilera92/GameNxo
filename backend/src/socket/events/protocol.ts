@@ -172,6 +172,7 @@ export interface HitMsg {
  *  toss / catch                 lanzamiento del saque / lo atrapa sin golpear
  *  sprint-start / sprint-end    DASH del emisor (data: dirX)
  *  stunned                      el emisor quedó aturdido por una bola de fuego (data: ms, kind = smash | inferno)
+ *  duel-start / duel-tap / duel-result / duel-aim   DUELO EN LA RED: el juez (el que recibe la pelota) lo empieza (data: x, y) · toque de cada uno (ms desde su inicio) · ganador (w = 1: el emisor) · lado del globo (side = -1 | 1)
  *  bump                         el emisor recibió un golpe cargado al máximo y retrocede un poco (data: ms)
  *  emote                        carita del chat (data: kind = happy | cool | wow)
  *  smash-armed / smash-disarmed el emisor arma / consume su SMASH (aura en el rival)
@@ -199,6 +200,10 @@ export type ActionKind =
   | 'sprint-end'
   | 'stunned'
   | 'bump'
+  | 'duel-start'
+  | 'duel-tap'
+  | 'duel-result'
+  | 'duel-aim'
   | 'emote'
   | 'smash-armed'
   | 'smash-disarmed'

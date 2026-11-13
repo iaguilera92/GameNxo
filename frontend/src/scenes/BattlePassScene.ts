@@ -1,3 +1,4 @@
+import { installTapSound } from '../fx/uiSound';
 import Phaser from 'phaser';
 import { FONT, restartOnResize, textStyle } from '../ui/theme';
 import { stadiumBg } from '../ui/ui';
@@ -90,6 +91,7 @@ export class BattlePassScene extends Phaser.Scene {
       return;
     }
     restartOnResize(this);
+    installTapSound(this); // clic de interfaz en cada botón / diálogo
     this.cameras.main.fadeIn(200, 0, 0, 0);
     stadiumBg(this, 0.6);
     // temporada al día (si cambió, el pase empieza de cero)

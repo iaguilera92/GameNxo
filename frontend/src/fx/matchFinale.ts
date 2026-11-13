@@ -54,8 +54,9 @@ export function playMatchFinale(scene: Phaser.Scene, o: MatchFinaleOpts): number
   const dim = add(scene.add.rectangle(0, 0, W, scene.scale.height, o.win ? 0x050b1e : 0x12040a, 0).setOrigin(0).setDepth(D));
   scene.tweens.add({ targets: dim, fillAlpha: o.win ? 0.55 : 0.7, duration: 420 });
   // 0,35 — marcador final
-  const panel = add(scene.add.container(cx, cy - 40).setDepth(D + 3).setAlpha(0).setScale(0.7));
   const pw = Math.min(520, W - 40);
+  const K = Math.min(1.25, (W - 24) / pw); // el marcador final se ve 25 % más grande (sin salirse en pantallas angostas)
+  const panel = add(scene.add.container(cx, cy - 40).setDepth(D + 3).setAlpha(0).setScale(0.7 * K));
   const rowH = 62;
   const g = scene.add.graphics();
   g.fillStyle(0x000000, 0.45).fillRoundedRect(-pw / 2 + 4, -rowH + 6, pw, rowH * 2 + 8, 18);
@@ -115,7 +116,7 @@ export function playMatchFinale(scene: Phaser.Scene, o: MatchFinaleOpts): number
       scene.tweens.add({ targets: crown, scale: 1, angle: 0, delay: 900, duration: 380, ease: 'Back.easeOut' });
     }
   });
-  scene.tweens.add({ targets: panel, alpha: 1, scale: 1, delay: 300, duration: 320, ease: 'Back.easeOut' });
+  scene.tweens.add({ targets: panel, alpha: 1, scale: K, delay: 300, duration: 320, ease: 'Back.easeOut' });
   // la cifra del ganador sube (salto, brillo y "tic")
   const wi = o.win ? 0 : 1;
   scene.time.delayedCall(700, () => {

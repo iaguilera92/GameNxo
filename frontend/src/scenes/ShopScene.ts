@@ -1,3 +1,4 @@
+import { installTapSound } from '../fx/uiSound';
 import Phaser from 'phaser';
 import { FONT, restartOnResize, textStyle } from '../ui/theme';
 import { stadiumBg } from '../ui/ui';
@@ -108,9 +109,20 @@ export class ShopScene extends Phaser.Scene {
     queueButtonArt(this.load); // botón SMASH (vista previa de sus poderes)
   }
 
+  /** al entrar: a qué sección baja sola ('cash' = DINERO; viene del + del menú) */
+  private scrollTo: string | null = null;
+  /** y de la sección DINERO dentro del contenido */
+  private cashY = 0;
+
+  init(data?: { scrollTo?: string }) {
+    this.scrollTo = data?.scrollTo ?? null;
+    this.scrollY = 0;
+  }
+
   create() {
     const W = this.scale.width;
     restartOnResize(this);
+    installTapSound(this); // clic de interfaz en cada botón / diálogo
     this.cameras.main.fadeIn(200, 0, 0, 0);
     stadiumBg(this, 0.55);
     this.modal = [];
@@ -131,6 +143,15 @@ export class ShopScene extends Phaser.Scene {
     this.build();
     this.setupScroll();
     this.makeFreeArrow();
+    // viene del + del dinero: tras el fundido, el contenido baja con el scroll (animado) hasta la sección DINERO
+    if (this.scrollTo === 'cash') {
+      const target = Math.min(this.maxScroll, Math.max(0, this.cashY - HEADER_H - 24));
+      this.time.delayedCall(450, () => {
+        if (!this.sys.isActive()) return;
+        const from = { v: 0 };
+        this.tweens.add({ targets: from, v: target, duration: 1500, ease: 'Cubic.easeInOut', onUpdate: () => this.setScroll(from.v) });
+      });
+    }
     const off = onPlayerChange(() => this.refreshCash());
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => off());
   }
@@ -202,6 +223,7 @@ export class ShopScene extends Phaser.Scene {
     y += dh + 52;
 
     // ---------------------------------------------------------------- dinero (se compra con CLP)
+    this.cashY = y;
     this.sectionTitle(W, y, 'DINERO');
     y += titleGap;
     // cuadrícula de 3 columnas (como la tienda de gemas de Brawl Stars)

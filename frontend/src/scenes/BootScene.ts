@@ -1,4 +1,6 @@
 import Phaser from 'phaser';
+import { queueUiSounds } from '../fx/uiSound';
+import { queueSfx } from '../fx/sfx';
 import { FONT } from '../ui/theme';
 import { UI } from '../ui/ui';
 import { bakeSkins, queueSkinLoads } from '../characters/skins';
@@ -24,6 +26,8 @@ export class BootScene extends Phaser.Scene {
     this.cameras.main.setBackgroundColor('#000000');
     // imágenes de personajes (si existen); si faltan, se usan los personajes vectoriales
     queueSkinLoads(this.load);
+    queueSfx(this.load); // sonidos de juego en archivo (fx/sfx.ts)
+    queueUiSounds(this.load); // sonidos de interfaz en mp3 (solo los de UI_SOUND_FILES; el resto se sintetiza)
     queuePortraitLoads(this.load);
     queueNxoSpriteLoads(this.load); // animaciones de NXO en el partido (si falta algo, se usa el dibujo de siempre)
     this.load.image('nxo-logo', 'assets/nxo-logo.webp');

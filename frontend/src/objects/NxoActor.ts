@@ -195,6 +195,11 @@ type Pack = {
   extra: ExtraCfg;
   /** el reposo del saque es el bote de la pelota (clip y alturas medidas solo en la hoja de espaldas) */
   bounce: typeof BOUNCE | null;
+  /**
+   * su hoja 4 fila 2 NO es un lanzamiento de saque (rival NXO, 13-11-2026: viene dibujado un golpe de derecha): el saque
+   * usa solo su clip de la hoja 2: empieza en el frame 3 (pelota en el aire), espera ahí y al soltar va del 4 al final
+   */
+  noToss?: boolean;
   /** ULTI (hoja de 6 x 9, build-ulti.mjs) y su carpeta */
   inf: InfCfg;
   infDir: string;
@@ -209,6 +214,7 @@ const PACKS = {
     move: nxoFMove as typeof MOVE,
     extra: nxoFExtra as typeof EXTRA,
     bounce: BOUNCE_FRONT,
+    noToss: true, // su hoja 4 fila 2 es un golpe de derecha, no el lanzamiento (ver Pack.noToss)
     inf: nxoFInferno as InfCfg,
     infDir: 'nxo-front-inferno',
   },
@@ -775,13 +781,21 @@ export class NxoActor {
     this.serveIdle = false;
     // la pelota ya va hacia arriba: el brazo llega rÃ¡pido a la pose de lanzamiento (frame serveWait)
     this.sprite.anims.timeScale = SERVE_TOSS_SPEED;
-    if (this.v2 && this.xr('serve-toss')) {
+    if (this.v2 && this.xr('serve-toss') && !this.P.noToss) {
       // hojas nuevas: lanzamiento propio (brazo sube, raqueta atrÃ¡s); queda en su Ãºltimo frame hasta soltar
       this.tossing = true;
       this.playClip(this.xk('serve-toss'));
       return;
     }
     this.tossing = false;
+    if (this.P.noToss) {
+      // sin clip de lanzamiento propio (rival NXO): arranca YA en el frame de la pelota en el aire (hoja 2, frame 3 =
+      // serveWait) y espera ahí; al soltar sigue del 4 al final, con el impacto en el 5
+      this.sprite.anims.timeScale = 1;
+      this.playClip(this.serveClip().key, this.geo.serveWait);
+      this.sprite.anims.pause();
+      return;
+    }
     this.playClip(this.serveClip().key);
   }
 
@@ -955,6 +969,8 @@ export class NxoActor {
   /** ReacciÃ³n al acabar un punto (ganado / perdido). Se corta sola al empezar el siguiente. */
   pointEnd(won: boolean) {
     if (!this.v2 || this.state === 'victory' || this.state === 'stun') return;
+    // sin raqueta (ULTI recibida, aún en el suelo): sus reacciones llevan raqueta; se queda en el reposo sin raqueta
+    if (this.noRacketClips) return;
     this.emote(won ? 'point-won' : 'point-lost');
   }
 
@@ -1002,12 +1018,18 @@ export class NxoActor {
     this.sprite.setFlipX(false);
     this.state = 'victory'; // misma regla: se queda en la Ãºltima pose
     this.sprite.anims.timeScale = 1;
+    // perdió sin raqueta (la tiene en el suelo): reposo sin raqueta (ULTI completa, fila 4) en vez de la derrota con raqueta
+    if (this.noRacketClips) {
+      this.playClip(ultiKey('idle-nr', this.P.key));
+      return;
+    }
     this.playClip(this.xk('defeat'));
   }
 
   /** Clips sueltos de la hoja nueva (intro, saludo, espera activa, caminarâ€¦): una vez y vuelve al reposo. */
   emote(a: ExtraAnim) {
     if (!this.xr(a) || this.state === 'victory') return;
+    if (this.noRacketClips) return; // las reacciones llevan raqueta: sin ella, se queda sin raqueta
     this.stopShake();
     this.stopLean();
     this.sprite.setFlipX(false);

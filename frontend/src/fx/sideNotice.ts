@@ -24,12 +24,33 @@ const NOTICE = {
   rightClear: 100,
 };
 
-let stack = 0;
+/**
+ * Huecos ocupados (0 = arriba, 1 = debajo…): cada aviso toma el PRIMER hueco libre y lo suelta al irse. (Antes un
+ * contador: si se iba el de arriba, el siguiente caía encima del de abajo, p. ej. de "SACA EN 5".)
+ */
+const used = new Set<number>();
+let resetHooked: Phaser.Scene | null = null;
+function takeSlot(scene: Phaser.Scene): number {
+  if (resetHooked !== scene) {
+    // la escena se reutiliza entre partidos: al cerrarse, todos los huecos quedan libres
+    resetHooked = scene;
+    scene.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      used.clear();
+      resetHooked = null;
+    });
+  }
+  let i = 0;
+  while (used.has(i)) i++;
+  used.add(i);
+  return i;
+}
+const slotY = (i: number) => NOTICE.y + i * (NOTICE.h + NOTICE.gap);
+
 export function showSideNotice(scene: Phaser.Scene, text: string, color = 0xffd23f, ms = 1600) {
   const h = NOTICE.h;
   const s = NOTICE.slant;
-  const y = NOTICE.y + stack * (h + NOTICE.gap);
-  stack++;
+  const slot = takeSlot(scene);
+  const y = slotY(slot);
   const t = scene.add.text(NOTICE.textX, 0, text.toUpperCase(), { fontFamily: FONT, fontSize: `${NOTICE.font}px`, color: '#ffffff', stroke: '#0a1638', strokeThickness: 4 }).setOrigin(0, 0.5).setLetterSpacing(2);
   const maxW = scene.scale.width - NOTICE.rightClear;
   if (t.width + NOTICE.padW > maxW) t.setScale((maxW - NOTICE.padW) / t.width); // texto largo: se encoge para no tapar el botón de emotes
@@ -50,10 +71,9 @@ export function showSideNotice(scene: Phaser.Scene, text: string, color = 0xffd2
     ease: 'Cubic.easeIn',
     onComplete: () => {
       c.destroy();
-      stack = Math.max(0, stack - 1);
+      used.delete(slot);
     },
   });
-  if (stack === 1) scene.events.once(Phaser.Scenes.Events.SHUTDOWN, () => (stack = 0)); // una sola escucha por tanda
   return c;
 }
 
@@ -74,12 +94,12 @@ export function createServeCountdown(scene: Phaser.Scene): ServeCountdown {
   let t: Phaser.GameObjects.Text | null = null;
   let cur = -1;
   let leaving = false;
+  let slot = -1;
   const h = NOTICE.h;
   const s = NOTICE.slant;
-  // la escena se reutiliza entre partidos: al cerrarse, la pila de avisos vuelve a cero
   scene.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
     c = null;
-    stack = 0;
+    slot = -1;
   });
   const draw = (n: number, label?: string) => {
     if (!g || !t) return;
@@ -101,9 +121,11 @@ export function createServeCountdown(scene: Phaser.Scene): ServeCountdown {
         leaving = false;
         t = scene.add.text(NOTICE.textX, 0, '', { fontFamily: FONT, fontSize: `${NOTICE.font}px`, color: '#ffffff', stroke: '#0a1638', strokeThickness: 4 }).setOrigin(0, 0.5).setLetterSpacing(2);
         g = scene.add.graphics();
-        c = scene.add.container(-260, NOTICE.y, [g, t]).setScrollFactor(0).setDepth(6061);
+        // primer hueco libre (si hay otro aviso arriba, va debajo; los que lleguen después, debajo de este)
+        if (slot >= 0) used.delete(slot);
+        slot = takeSlot(scene);
+        c = scene.add.container(-260, slotY(slot), [g, t]).setScrollFactor(0).setDepth(6061);
         scene.tweens.add({ targets: c, x: 0, duration: 220, ease: 'Cubic.easeOut' });
-        stack++; // los demás avisos se apilan debajo mientras se ve
       }
       cur = n;
       draw(n);
@@ -135,8 +157,11 @@ export function createServeCountdown(scene: Phaser.Scene): ServeCountdown {
         ease: 'Cubic.easeIn',
         onComplete: () => {
           box.destroy();
-          if (c === box) c = null;
-          stack = Math.max(0, stack - 1);
+          if (c === box) {
+            c = null;
+            used.delete(slot);
+            slot = -1;
+          }
         },
       });
     },

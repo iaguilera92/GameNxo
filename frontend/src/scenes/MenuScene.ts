@@ -23,6 +23,9 @@ import { BP_TIERS, bpClaimable, bpLevel, syncSeason } from '../domain/battlePass
 import { bpSeasonInfo } from '../domain/battlePassConfig';
 import type { PlayerState } from '../domain/player';
 import { openWheel, whenWheelReady } from './WheelScene';
+import { uiSound } from '../fx/uiSound';
+import { sfx } from '../fx/sfx';
+import { startIntroMusic } from '../fx/introMusic';
 import { markWheelPresented, syncWheels, wheelToPresent } from '../logic/Wheels';
 
 /** ancho máximo del número en los contadores (entre el icono y el botón +) */
@@ -81,16 +84,21 @@ export class MenuScene extends Phaser.Scene {
   /** animaciones de las barras (nivel y pase) que esperan a la ruleta / al "+N EXP" */
   private xpAnims: (() => void)[] = [];
   /** posición de las cards (para el texto "+N EXP") */
-  private xpAt: { x: number; y: number }[] = [];
+  private xpAt: { x: number; y: number; rect: { x: number; y: number; w: number; h: number }; obj?: Phaser.GameObjects.Container }[] = [];
 
   create() {
     const W = this.scale.width;
     const H = this.scale.height;
     restartOnResize(this);
+    startIntroMusic(this); // música del menú (fx/introMusic.ts): sigue sonando en Personalizar, Tienda, Pase y Ranked
     this.xpGain = (this.registry.get('menu.xpGain') as number | undefined) ?? 0;
     this.registry.remove('menu.xpGain');
     this.xpAnims = [];
     this.xpAt = [];
+    // SONIDO: clic en cualquier botón del menú (JUGAR suma además su sonido propio al soltar)
+    const onTapSfx = () => uiSound(this, 'tap');
+    this.input.on(Phaser.Input.Events.GAMEOBJECT_DOWN, onTapSfx);
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.input.off(Phaser.Input.Events.GAMEOBJECT_DOWN, onTapSfx));
     this.cameras.main.fadeIn(250, 0, 0, 0);
 
     const p = getProfile();
@@ -146,6 +154,7 @@ export class MenuScene extends Phaser.Scene {
     // --- JUGAR
     // JUGAR = partida Ranked en tu liga con la apuesta elegida (monto tocable + info). Sin monedas: amistosa gratis
     this.playRow(W, playY, (bet) => {
+      uiSound(this, 'play'); // arranque del partido: golpe + whoosh + acorde
       // datos del flujo BOT de siempre: Ranked con la apuesta elegida, o AMISTOSO sin monedas
       const botFlow = bet ? { ranked: { bet }, from: 'Menu' } : { unranked: true, from: 'Menu' };
       // con servidor multijugador configurado: primero se busca un rival real 5 s (LanSearch); sin rival, el BOT
@@ -214,15 +223,138 @@ export class MenuScene extends Phaser.Scene {
   /** "+N EXP" sobre las cards de arriba y animación de sus barras (EXP de la partida recién terminada). */
   private playXpGain() {
     if (!this.sys.isActive()) return;
-    for (const p of this.xpAt) {
-      const t = this.add.text(p.x, p.y, `+${this.xpGain} EXP`, { fontFamily: FONT, fontSize: '26px', color: '#7ff0ff', stroke: '#0a1638', strokeThickness: 6 }).setOrigin(0.5).setDepth(200).setScale(0.4);
-      this.tweens.add({ targets: t, scale: 1, duration: 320, ease: 'Back.easeOut' });
-      this.tweens.add({ targets: t, y: p.y - 26, alpha: 0, delay: 1300, duration: 400, onComplete: () => t.destroy() });
+    // PRESENTACIÓN de la EXP ganada (el sonido recolectar-exp trae 3 "pings"): la pantalla se oscurece, las cards de NIVEL y
+    // PASE quedan encendidas encima, el total ganado se ve grande en el centro y sale en 3 oleadas de orbes hacia las dos
+    // cards; el total va bajando a medida que sale (se ve que "se suma") y cada llegada hace latir la card, suelta un
+    // "+n" y la barra sube. Ajustar WAVE_MS si los pings del audio no caen justo en cada llegada.
+    const W = this.scale.width;
+    const H = this.scale.height;
+    const WAVES = 3;
+    const WAVE_MS = 650; // entre oleadas
+    const FLY_MS = 520; // vuelo de cada EXP
+    const PER_WAVE = 5; // orbes por tarjeta y oleada
+    const src = { x: W / 2, y: H * 0.46 };
+    const cards = this.xpAt;
+    const gain = this.xpGain;
+    const share = (w: number) => (w < WAVES - 1 ? Math.floor(gain / WAVES) : gain - Math.floor(gain / WAVES) * (WAVES - 1));
+    sfx(this, 'recolectar-exp');
+
+    // pantalla oscura; las cards de nivel y pase suben por encima para que resalten
+    const dim = this.add.rectangle(0, 0, W, H, 0x02060f, 0).setOrigin(0).setDepth(190);
+    this.tweens.add({ targets: dim, fillAlpha: 0.6, duration: 280 });
+    const lifted = cards.map((c) => {
+      const prev = c.obj?.depth ?? 0;
+      c.obj?.setDepth(195);
+      return { obj: c.obj, prev };
+    });
+
+    // total ganado, grande y con aura; baja con cada oleada
+    const glow = this.add.circle(src.x, src.y, 150, 0x7ff0ff, 0.22).setBlendMode(Phaser.BlendModes.ADD).setDepth(200).setScale(0.2);
+    this.tweens.add({ targets: glow, scale: 1, duration: 420, ease: 'Cubic.easeOut' });
+    this.tweens.add({ targets: glow, alpha: { from: 0.22, to: 0.1 }, duration: 600, yoyo: true, repeat: -1 });
+    const label = this.add.text(src.x, src.y - 62, 'EXP GANADA', { fontFamily: FONT, fontSize: '26px', color: '#ffffff', stroke: '#0a1638', strokeThickness: 6 }).setOrigin(0.5).setDepth(201).setLetterSpacing(3).setAlpha(0);
+    const total = this.add.text(src.x, src.y, `+${gain}`, { fontFamily: FONT, fontSize: '96px', color: '#7ff0ff', stroke: '#0a1638', strokeThickness: 12 }).setOrigin(0.5).setDepth(201).setScale(0.3);
+    this.tweens.add({ targets: label, alpha: 1, duration: 250 });
+    this.tweens.add({ targets: total, scale: 1, duration: 420, ease: 'Back.easeOut' });
+    // anillos que salen del total al aparecer
+    for (let k = 0; k < 2; k++) {
+      const ring = this.add.circle(src.x, src.y, 60, 0x7ff0ff, 0).setStrokeStyle(6, 0x7ff0ff, 0.9).setDepth(200).setBlendMode(Phaser.BlendModes.ADD);
+      this.tweens.add({ targets: ring, scale: 4, alpha: 0, duration: 700, delay: k * 220, ease: 'Cubic.easeOut', onComplete: () => ring.destroy() });
     }
+
+    let remaining = gain;
+    const arrivalsTotal = WAVES * cards.length;
+    let arrivals = 0;
+    for (let w = 0; w < WAVES; w++) {
+      const t0 = 650 + w * WAVE_MS; // las oleadas empiezan cuando el total ya se leyó
+      const part = share(w);
+      // sale la parte de esta oleada: el total baja
+      this.time.delayedCall(t0, () => {
+        if (!this.sys.isActive()) return;
+        remaining = Math.max(0, remaining - part);
+        total.setText(`+${remaining}`);
+        this.tweens.add({ targets: total, scale: { from: 1.18, to: 1 }, duration: 260, ease: 'Back.easeOut' });
+      });
+      cards.forEach((p) => {
+        const r = p.rect;
+        for (let o = 0; o < PER_WAVE; o++) {
+          this.time.delayedCall(t0 + o * 55, () => {
+            if (!this.sys.isActive()) return;
+            const orb = this.add.container(src.x + Phaser.Math.Between(-50, 50), src.y + Phaser.Math.Between(-20, 20)).setDepth(202);
+            const g = this.add.graphics();
+            g.fillStyle(0x7ff0ff, 0.3).fillCircle(0, 0, 30);
+            g.fillStyle(0x0a1638, 1).fillCircle(0, 0, 19);
+            g.fillStyle(0x1f7bff, 1).fillCircle(0, 0, 16.5);
+            g.fillStyle(0x7ff0ff, 1).fillCircle(0, -3, 10);
+            const tx = this.add.text(0, 0, 'EXP', { fontFamily: FONT, fontSize: '12px', color: '#ffffff', stroke: '#0a1638', strokeThickness: 3 }).setOrigin(0.5);
+            orb.add([g, tx]).setScale(0.4);
+            const sx = orb.x;
+            const sy = orb.y;
+            // destino: la barra de la card (con un poco de dispersión)
+            const dx = p.x + Phaser.Math.Between(-18, 18);
+            const dy = p.y + Phaser.Math.Between(-6, 6);
+            const arc = Phaser.Math.Between(60, 140);
+            const side = (dx < src.x ? -1 : 1) * Phaser.Math.Between(20, 50);
+            const k = { v: 0 };
+            this.tweens.add({ targets: orb, scale: 1.2, duration: 150 });
+            this.tweens.add({
+              targets: k,
+              v: 1,
+              duration: FLY_MS,
+              ease: 'Sine.easeIn',
+              onUpdate: () => {
+                orb.setPosition(sx + (dx - sx) * k.v + Math.sin(k.v * Math.PI) * side, sy + (dy - sy) * k.v - Math.sin(k.v * Math.PI) * arc);
+                // estela corta detrás del orbe
+                if (Math.random() < 0.5) {
+                  const tr = this.add.circle(orb.x, orb.y, 6, 0x7ff0ff, 0.6).setDepth(201).setBlendMode(Phaser.BlendModes.ADD);
+                  this.tweens.add({ targets: tr, alpha: 0, scale: 0.2, duration: 260, onComplete: () => tr.destroy() });
+                }
+              },
+              onComplete: () => {
+                orb.destroy();
+                const spark = this.add.circle(dx, dy, 8, 0xffffff, 0.9).setDepth(203).setBlendMode(Phaser.BlendModes.ADD);
+                this.tweens.add({ targets: spark, scale: 3.4, alpha: 0, duration: 300, onComplete: () => spark.destroy() });
+                // al cerrar la última orbe de cada oleada: la card late y suelta lo que recibió
+                if (o === PER_WAVE - 1) {
+                  const flash = this.add.graphics().setDepth(196).setBlendMode(Phaser.BlendModes.ADD);
+                  flash.fillStyle(0x7ff0ff, 0.45).fillRoundedRect(r.x, r.y, r.w, r.h, 18);
+                  this.tweens.add({ targets: flash, alpha: 0, duration: 420, onComplete: () => flash.destroy() });
+                  const ring = this.add.graphics().setDepth(196).setBlendMode(Phaser.BlendModes.ADD);
+                  ring.lineStyle(5, 0x7ff0ff, 0.95).strokeRoundedRect(r.x - 2, r.y - 2, r.w + 4, r.h + 4, 20);
+                  this.tweens.add({ targets: ring, alpha: 0, duration: 520, onComplete: () => ring.destroy() });
+                  const add = this.add.text(dx, p.y - 8, `+${part}`, { fontFamily: FONT, fontSize: '34px', color: '#7ff0ff', stroke: '#0a1638', strokeThickness: 7 }).setOrigin(0.5).setDepth(204).setScale(0.4);
+                  this.tweens.add({ targets: add, scale: 1, duration: 220, ease: 'Back.easeOut' });
+                  this.tweens.add({ targets: add, y: p.y - 46, alpha: 0, delay: 380, duration: 520, onComplete: () => add.destroy() });
+                  arrivals++;
+                  // última llegada: el resumen "+N EXP" queda sobre cada card un momento y todo se apaga
+                  if (arrivals === arrivalsTotal) this.time.delayedCall(250, () => finish());
+                }
+              },
+            });
+          });
+        }
+      });
+    }
+    // fin: se va el total, la pantalla se aclara y las cards vuelven a su sitio
+    const finish = () => {
+      if (!this.sys.isActive()) return;
+      this.tweens.add({ targets: [total, label, glow], alpha: 0, duration: 350, onComplete: () => [total, label, glow].forEach((o) => o.destroy()) });
+      cards.forEach((p) => {
+        const sum = this.add.text(p.x, p.y, `+${gain} EXP`, { fontFamily: FONT, fontSize: '30px', color: '#7ff0ff', stroke: '#0a1638', strokeThickness: 7 }).setOrigin(0.5).setDepth(204).setScale(0.4);
+        this.tweens.add({ targets: sum, scale: 1, duration: 300, ease: 'Back.easeOut' });
+        this.tweens.add({ targets: sum, y: p.y - 28, alpha: 0, delay: 1400, duration: 450, onComplete: () => sum.destroy() });
+      });
+      this.tweens.add({ targets: dim, fillAlpha: 0, delay: 1100, duration: 500, onComplete: () => {
+        dim.destroy();
+        lifted.forEach((l) => l.obj?.setDepth(l.prev));
+      } });
+    };
+    // las barras empiezan a llenarse con la primera llegada y siguen mientras entran las oleadas
     const anims = this.xpAnims;
     this.xpAnims = [];
-    anims.forEach((f, i) => this.time.delayedCall(250 + i * 120, f));
+    anims.forEach((f, i) => this.time.delayedCall(650 + FLY_MS + PER_WAVE * 55 + i * 120, f));
   }
+
 
   /** Devuelve true si se abrió sola una ruleta recién ganada. */
   private dailyWheels(W: number, playY: number): boolean {
@@ -400,7 +532,7 @@ export class MenuScene extends Phaser.Scene {
       if (this.xpGain > 0) this.xpAnims.push(run);
       else this.time.delayedCall(400, run);
     } else drawBp(bpNow);
-    if (this.xpGain > 0) this.xpAt.push({ x: x + tx + tw * 0.62, y: y + 30 }); // "+N EXP" sobre la barra del pase
+    if (this.xpGain > 0) this.xpAt.push({ x: x + tx + tw * 0.62, y: y + 30, rect: { x, y, w, h }, obj: c }); // "+N EXP" sobre la barra del pase
     // brillo que cruza el cuadro (recortado a su forma)
     const shine = this.add.graphics();
     shine.fillStyle(0xffffff, 0.5).fillPoints([{ x: 0, y: 0 }, { x: 34, y: 0 }, { x: 10, y: h }, { x: -24, y: h }], true);
@@ -485,7 +617,7 @@ export class MenuScene extends Phaser.Scene {
     card.add(name);
     const lvl = this.add.text(tx, 45, `Nivel ${p.level}`, textStyle(17, '#9fc0ff')).setOrigin(0, 0);
     card.add(lvl);
-    this.xpAt.push({ x: x + tx + tw * 0.62, y: y + 52 }); // "+N EXP" sobre la barra de nivel
+    this.xpAt.push({ x: x + tx + tw * 0.62, y: y + 52, rect: { x, y, w: cw, h: ch }, obj: card }); // "+N EXP" sobre la barra de nivel
 
     const by = 72;
     const bh = 12;
@@ -667,10 +799,11 @@ export class MenuScene extends Phaser.Scene {
     const ig = this.add.graphics();
     ig.fillStyle(0x0a1638, 1).fillCircle(0, 0, 14);
     ig.fillStyle(accent, 1).fillCircle(0, 0, 12);
-    // dinero: "+" (conseguir más); monedas: "i". Los dos abren la ventana de cómo conseguirla y para qué sirve
+    // dinero: "+" (lleva a comprar más a la Tienda); monedas: "i" (ventana de cómo conseguirlas y para qué sirven)
     info.add([ig, this.add.text(0, kind === 'cash' ? 0 : 1, kind === 'cash' ? '+' : 'i', { fontFamily: FONT, fontSize: kind === 'cash' ? '24px' : '18px', color: kind === 'cash' ? '#ffffff' : '#0a1638' }).setOrigin(0.5)]);
     info.setSize(40, 42).setInteractive({ useHandCursor: true });
-    info.on('pointerup', () => this.currencyInfo(kind));
+    // el + del DINERO lleva a la Tienda y esta baja sola hasta la sección DINERO; la (i) de las monedas abre su información
+    info.on('pointerup', () => (kind === 'cash' ? this.scene.start('Shop', { scrollTo: 'cash' }) : this.currencyInfo(kind)));
     c.add(info);
     return c;
   }

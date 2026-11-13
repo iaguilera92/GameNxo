@@ -54,7 +54,8 @@ import { getPlayer } from '../domain/playerStore';
 import { C, FONT, textStyle } from '../ui/theme';
 import { VIEW, project } from '../view/projection';
 import { drawCourtView } from '../view/CourtView';
-import { playMatchMusic, stopMatchMusic, takePickedAmbiente } from '../fx/matchMusic';
+import { stopIntroMusic } from '../fx/introMusic';
+import { playMatchMusic, playResultMusic, stopMatchMusic, takePickedAmbiente } from '../fx/matchMusic';
 import { LOB_SMASH, LobTracker, REMATE } from '../logic/LobSmash';
 import { LobMarker, superSmashFx } from '../fx/LobMarker';
 import { SmokeTrail } from '../fx/SmokeTrail';
@@ -101,11 +102,23 @@ import { getSettings } from '../logic/Settings';
 import { MOTION, type MotionEvent, createMotion, stepMotion, stopMotion } from '../logic/PlayerMotion';
 import { DASH, type DashRun, createRun, guaranteeStep, planSprint, sampleTrajectory, shouldCancelRun, stepRun } from '../logic/DashSprint';
 import { DashFx } from '../fx/dashFx';
+import { dashSfx, sfx } from '../fx/sfx';
 import { WALL, type WallGeom, wallFromArt, wallHit, wallOutcome } from '../logic/BackWall';
 import { type ZoneStatLevels, newZoneProgress, zoneStatPercent } from '../domain/zoneProgress';
 import { WallFx } from '../fx/wallFx';
+import { NET_DUEL, botTapProgress, defaultAimSide, duelWinner, judgeTap, lobTarget, mirrorSide, ringProgress, shouldStartDuel, sideFromJoystick, volleyHitters } from '../logic/NetDuel';
+import { DUEL_CINE, createDuelGaze, createDuelVignette, type DuelGaze, type DuelVignette } from '../fx/NetDuelFx';
 
 type Who = 'player' | 'bot';
+
+/** Bandera de desarrollo apagada a propósito (localStorage = '0'); sin definir cuenta como encendida. */
+function devFlagOff(key: string) {
+  try {
+    return localStorage.getItem(key) === '0';
+  } catch {
+    return false;
+  }
+}
 
 /** Bandera de desarrollo en localStorage ('1' = activa), como dev.botDebug. */
 function devFlagOn(key: string) {
@@ -116,6 +129,39 @@ function devFlagOn(key: string) {
   }
 }
 type Phase = 'intro' | 'serve' | 'toss' | 'rally' | 'pointover' | 'over';
+
+/** DUELO EN LA RED en curso (logic/NetDuel.ts, fx/NetDuelFx.ts). Nace en duelStart y muere en duelEnd / duelAbort. */
+interface DuelState {
+  /** face = cara a cara (partido congelado por la cinemática) · wait = esperando el resultado del juez (red) · volley = las 6 voleas · aim = el ganador elige el lado · hit = el globo final */
+  stage: 'face' | 'wait' | 'volley' | 'aim' | 'hit';
+  /** quién iba a recibir la pelota (gana los empates) */
+  receiver: Who;
+  /** este teléfono decide el ganador (modo bot: siempre; en red: el que recibe la pelota) */
+  judge: boolean;
+  /** performance.now() al empezar el cara a cara */
+  t0: number;
+  /** ms dentro de la fase actual (después del cara a cara) */
+  stageT: number;
+  /** recorrido del aro en el toque de cada uno (null = no tocó) */
+  taps: { player: number | null; bot: number | null };
+  /** AUTO: recorrido en que toca el piloto automático */
+  autoTap: number | null;
+  /** resultado que llegó (red) antes de terminar el cara a cara */
+  pending: Who | null;
+  waitUntil: number;
+  winner: Who | null;
+  hitters: Who[];
+  volleyIdx: number;
+  /** pelota al empezar el intercambio y su estado al empezar el duelo (se restaura si se cancela) */
+  ballFrom: { x: number; y: number; z: number };
+  saved: BallState;
+  /** lado del globo en las coordenadas de ESTE teléfono: -1 = y menor, 1 = y mayor */
+  side: -1 | 1 | null;
+  gaze: DuelGaze;
+  vignette: DuelVignette;
+  ring: Phaser.GameObjects.Graphics;
+  aimG: Phaser.GameObjects.Graphics | null;
+}
 
 /** Personaje en coordenadas lógicas de cancha (x = profundidad, y = lateral). */
 interface Actor {
@@ -164,6 +210,8 @@ const clamp = Phaser.Math.Clamp;
 
 /** Solo animación: altura de pelota desde la que el golpe del jugador se muestra como remate. */
 const OVERHEAD_Z = 116;
+/** volumen del "cargando" del rival (el tuyo suena a 0,7): más bajo = más lejos */
+const RIVAL_CHARGE_VOL = 0.3;
 /** En la red (jugador por delante de esta x) y pelota sin botar: remate si viene al menos a esta altura; si no, volea. */
 const NET_ZONE_X = NET_X - 170;
 /** partido en red: espera máxima a la salida del servidor (game:start) antes de cancelar */
@@ -297,6 +345,12 @@ export class MatchScene extends Phaser.Scene {
   private netHit: Partial<Pick<HitMsg, 'charged' | 'overhead' | 'volley' | 'serveSpin' | 'lunge' | 'impact' | 'special' | 'shock'>> = {};
   /** cinemática del rival en curso (SMASH / INFERNO vista desde este teléfono): su golpe llegará al terminar */
   private netRemoteCine = false;
+  /** DUELO EN LA RED en curso (logic/NetDuel.ts) · ya hubo uno en este punto · quién defiende el globo final (el bot lo intenta con estirada) */
+  private duel: DuelState | null = null;
+  private duelUsed = false;
+  private duelDefend: Who | null = null;
+  /** el bot decidió (una vez por globo) si se tira a por el globo del duelo */
+  private duelLungeRoll: boolean | null = null;
   /** hubo una cinemática (al salir, el rival se ancla donde quedó) */
   private netCineSeen = false;
   /** (log) el segundo de fluidez en curso tuvo una cinemática: no se registra */
@@ -447,6 +501,8 @@ export class MatchScene extends Phaser.Scene {
   private rivalChargeKind: ChargeFxId = 'classic';
   private rivalChargeSprite!: ChargeSpriteFx;
   private chargeSnd: Phaser.Sound.BaseSound | null = null;
+  /** "cargando" del rival (más bajo que el tuyo) */
+  private rivalChargeSnd: Phaser.Sound.BaseSound | null = null;
   private ambienteKey = '';
   private ambienteHint: string | null = null;
   private dizzy!: Phaser.GameObjects.Container;
@@ -576,6 +632,8 @@ export class MatchScene extends Phaser.Scene {
       .setVisible(false);
     this.rivalRingGold = false;
     this.rivalChargeT = 0;
+    this.rivalChargeSnd?.destroy(); // (la escena se reutiliza: sin el sonido de una partida anterior)
+    this.rivalChargeSnd = null;
     // efectos de CARGA con sprites: el mío (Personalización; por defecto el de mi personaje) y el del rival en red
     const myFx = getProfile().charge;
     this.chargeKind = chargeFxReady(this, myFx) ? myFx : 'classic';
@@ -640,6 +698,10 @@ export class MatchScene extends Phaser.Scene {
     this.netWeak = null;
     this.netBotLockUntil = 0;
     this.netRemoteCine = false;
+    this.duel = null;
+    this.duelUsed = false;
+    this.duelDefend = null;
+    this.duelLungeRoll = null;
     this.netDeferred = [];
     this.netCineSeen = false;
     this.fluSkip = false;
@@ -717,6 +779,7 @@ export class MatchScene extends Phaser.Scene {
     this.scale.on('resize', onResize);
     // soundtrack del ambiente (fx/matchMusic.ts): si ya suena desde el VS sigue sin cortarse; si no (revancha), arranca.
     // Suena en bucle también bajo la pantalla de resultados y se libera al salir del partido.
+    stopIntroMusic(this); // (por si se entra al partido sin pasar por la búsqueda)
     playMatchMusic(this, this.ambienteKey);
     this.events.once('shutdown', () => {
       stopMatchMusic(this);
@@ -1307,7 +1370,7 @@ export class MatchScene extends Phaser.Scene {
   // ---------------------------------------------------------------- habilidades
   /** DASH: desaparece y reaparece donde llegará la pelota. */
   private activateDash(): boolean {
-    if (this.paused || this.cine.active || !this.unlocked('defensive')) return false;
+    if (this.paused || this.cine.active || this.duel || !this.unlocked('defensive')) return false;
     if (this.player.racket) return this.noRacketHint();
     if (this.serveLock) return this.serveLockHint();
     if (this.phase !== 'rally' || this.lastHitter !== 'bot' || this.player.vanished) {
@@ -1406,6 +1469,7 @@ export class MatchScene extends Phaser.Scene {
     this.dashHit = { t: plan.t, elapsed: 0, x: tx, y: ty };
     const p = project(pl.x, pl.y);
     this.dashFx.burst(p.sx, p.sy, p.s * VIEW.CHAR_K, pl.ch.depth);
+    sfx(this, 'dash-shadow');
     const h = this.headPos(pl);
     this.popText(h.x, h.y - 10, 'DEFENSIVO', '#c9a4ff', 26);
     // el rival ve el mismo clon corriendo y el cambio de lugar (netRemoteDefensive)
@@ -1471,6 +1535,7 @@ export class MatchScene extends Phaser.Scene {
     this.dashHit = { t: plan.t, elapsed: 0, x: tx, y: ty };
     // despegue: polvo e impulso
     this.dustFx(pl.x, pl.y);
+    sfx(this, 'dash-jump');
     const h0 = this.headPos(pl);
     this.popText(h0.x, h0.y - 10, 'DEFENSIVO', '#c9a4ff', 26);
     navigator.vibrate?.(25);
@@ -1544,6 +1609,7 @@ export class MatchScene extends Phaser.Scene {
     const b = project(tx, ty);
     const k = a.s * VIEW.CHAR_K;
     this.dashFx.burst(a.sx, a.sy, k, pl.ch.depth);
+    sfx(this, 'dash-destello');
     if (Math.hypot(tx - from.x, ty - from.y) > 40) {
       for (let i = 0; i < 3; i++) {
         const f = (i + 1) / 4;
@@ -1689,6 +1755,7 @@ export class MatchScene extends Phaser.Scene {
     this.net?.sendAction('sprint-start', { dirX: this.dashRun.dirX });
     const p = project(pl.x, pl.y);
     this.dashFx.burst(p.sx, p.sy, p.s * VIEW.CHAR_K, pl.ch.depth);
+    sfx(this, dashSfx(this.smashEl));
     const h = this.headPos(pl);
     this.popText(h.x, h.y - 10, 'DEFENSIVO', '#c9a4ff', 26);
     return true;
@@ -1797,7 +1864,7 @@ export class MatchScene extends Phaser.Scene {
 
   /** SMASH: la pelota se prende fuego; el siguiente golpe es una bola de fuego. */
   private activateSmash(): boolean {
-    if (this.paused || this.cine.active ||this.phase === 'over' || this.phase === 'intro' || this.smashArmed || !this.unlocked('special')) return false;
+    if (this.paused || this.cine.active || this.duel || this.phase === 'over' || this.phase === 'intro' || this.smashArmed || !this.unlocked('special')) return false;
     if (this.player.racket) return this.noRacketHint();
     if (this.serveLock) return this.serveLockHint();
     this.smashArmed = true;
@@ -1838,7 +1905,7 @@ export class MatchScene extends Phaser.Scene {
 
   /** Botón en modo INFERNO: arma la técnica (no consume la carga). */
   private armInferno(): boolean {
-    if (this.paused || this.cine.busy || this.phase !== 'rally' || this.smashArmed || this.player.vanished || !this.unlocked('ulti')) return false;
+    if (this.paused || this.cine.busy || this.duel || this.phase !== 'rally' || this.smashArmed || this.player.vanished || !this.unlocked('ulti')) return false;
     if (this.player.racket) return this.noRacketHint();
     if (this.serveLock) return this.serveLockHint();
     if (!this.inferno.arm()) return false;
@@ -2025,7 +2092,7 @@ export class MatchScene extends Phaser.Scene {
     this.fire.setElement(this.infernoEl);
     infernoImpactFx(this, b.sx, b.sy, b.s, this.infernoEl);
     infernoShake(this);
-    infernoSound.impact(this);
+    infernoSound.impact(this, this.infernoEl);
     this.ball.quietFx = true; // la pelota es ahora la esfera de fuego (sin estela propia)
     this.infernoBounced = false; // su primer bote tendrá explosión de fuego
   }
@@ -2220,6 +2287,438 @@ export class MatchScene extends Phaser.Scene {
     this.cameras.main.shake(MAX_PUSH.shake.ms, MAX_PUSH.shake.intensity);
   }
 
+  // ================================================================ DUELO EN LA RED ("subir a la red")
+  // Reglas y números: src/logic/NetDuel.ts (NET_DUEL). Efectos: src/fx/NetDuelFx.ts. Docs: docs/MULTIJUGADOR.md.
+  //   1) cara a cara (cinemática sin efectos: partido congelado) → 2) 6 voleas → 3) el ganador elige lado → 4) globo a la esquina.
+  // Online: decide el teléfono que RECIBE la pelota (juez) y avisa duel-start / duel-result; los dos ven lo mismo.
+
+  /** ¿Empieza un duelo en este fotograma? Solo con la pelota yendo hacia uno de los dos y los dos pegados a la red. */
+  private duelCheck() {
+    if (this.duel || this.duelUsed || this.phase !== 'rally' || this.paused || devFlagOn('dev.netDuelOff')) return;
+    const s = this.ball.s;
+    let receiver: Who | null = null;
+    if (this.lastHitter === 'bot' && s.x < NET_X && s.vx < 0) receiver = 'player';
+    else if (this.lastHitter === 'player' && s.x > NET_X && s.vx > 0) receiver = 'bot';
+    if (!receiver) return;
+    // en red lo decide el teléfono que recibe la pelota: si la recibe el rival, aquí llegará 'duel-start'
+    if (this.net && receiver === 'bot') return;
+    const pl = this.player;
+    const bt = this.bot;
+    const rx = receiver === 'player' ? pl : bt;
+    const busy =
+      this.cine.busy ||
+      this.remateCine !== null ||
+      this.botRemate !== null ||
+      this.netRemateOn ||
+      this.netRemoteCine ||
+      this.dashRun !== null ||
+      this.dashHit !== null ||
+      this.lungeAt > 0 ||
+      this.infernoPending ||
+      this.inferno.armed ||
+      this.inferno.executing ||
+      this.smashArmed ||
+      (!!this.net && this.netRivalArmed) ||
+      this.shadowRun !== null ||
+      this.remateRecover > 0 ||
+      this.entering ||
+      this.netBotDash !== null ||
+      performance.now() < this.netBotLockUntil;
+    if (
+      !shouldStartDuel({
+        rally: true,
+        serveLock: this.serveLock,
+        used: this.duelUsed,
+        busy,
+        incapacitated: !!pl.racket || !!bt.racket || pl.stun > 0 || bt.stun > 0 || pl.vanished || bt.vanished,
+        powerOrLob: this.ball.power || this.infernoFlight || this.ball.shotKind === 'lob',
+        playerNetDist: NET_X - pl.x,
+        botNetDist: bt.x - NET_X,
+        halfLen: NET_X - COURT.left,
+        receiver,
+        ballDist: s.z < HIT_MAX_Z * 1.2 ? this.reachDist(rx, s) : 1e9,
+        hitRange: HIT_RANGE,
+      })
+    )
+      return;
+    this.duelStart(receiver);
+  }
+
+  /** Empieza el cara a cara. `remoteBot` = posición del rival que llegó en 'duel-start' (red: este teléfono no es el juez). */
+  private duelStart(receiver: Who, remoteBot?: { x: number; y: number }) {
+    if (this.duel || this.cine.active) return;
+    this.duelUsed = true;
+    const pl = this.player;
+    const bt = this.bot;
+    this.stopCharge();
+    this.timing.clear(); // el toque del duelo no cuenta como golpe con Perfect Timing
+    stopMotion(this.motion);
+    pl.ch.setMoving(false, 0);
+    bt.ch.setMoving(false, 0);
+    bt.ch.setCharging(false);
+    this.rivalChargeT = 0;
+    this.rivalChargeFx(0);
+    this.rivalChargeSprite.hide();
+    if (remoteBot) this.netBotSnap(remoteBot);
+    const online = !!this.net;
+    const d: DuelState = {
+      stage: 'face',
+      receiver,
+      judge: !online || receiver === 'player',
+      t0: performance.now(),
+      stageT: 0,
+      taps: { player: null, bot: online ? null : botTapProgress(this.ai.d, Math.random) },
+      autoTap: this.autoPlay ? botTapProgress(0.7, Math.random) : null,
+      pending: null,
+      waitUntil: 0,
+      winner: null,
+      hitters: [],
+      volleyIdx: -1,
+      ballFrom: { x: this.ball.s.x, y: this.ball.s.y, z: this.ball.s.z },
+      saved: { ...this.ball.s },
+      side: null,
+      gaze: createDuelGaze(this, { centerY: this.gazeY(), mySkin: getProfile().skin, rivalSkin: this.rivalSkin() }),
+      vignette: createDuelVignette(this),
+      ring: this.add.graphics().setDepth(4000),
+      aimG: null,
+    };
+    this.duel = d;
+    const rx = receiver === 'player' ? pl : bt;
+    this.cine.start({
+      profile: DUEL_CINE,
+      freeze: [...spritesIn(pl.ch), ...spritesIn(bt.ch)],
+      executor: [],
+      leadMs: 0,
+      focus: () => this.cineFocus(rx),
+      onFrame: () => this.duelFrame(),
+      onHit: () => this.duelFaceEnd(),
+      onCancel: () => this.duelAbort('cancel'),
+    });
+    if (online && d.judge) this.net?.sendAction('duel-start', { x: pl.x, y: pl.y });
+  }
+
+  /** Cada fotograma del cara a cara (congelado): miradas, viñeta, aro y el toque del piloto automático. */
+  private duelFrame() {
+    const d = this.duel;
+    if (!d || d.stage !== 'face') return;
+    const ms = performance.now() - d.t0;
+    const end = NET_DUEL.faceMs + NET_DUEL.graceMs;
+    d.gaze.update(ms, end);
+    d.vignette.update(ms, end);
+    const p = ringProgress(ms);
+    if (ms <= NET_DUEL.faceMs) this.drawDuelRing(d.ring, p, d.taps.player);
+    else d.ring.clear();
+    if (d.autoTap !== null && d.taps.player === null && p >= d.autoTap) this.duelTap();
+  }
+
+  /** Aro que se cierra sobre la pelota; el toque propio queda marcado (verde = válido, rojo = demasiado pronto). */
+  private drawDuelRing(g: Phaser.GameObjects.Graphics, p: number, tapP: number | null) {
+    const s = this.ball.s;
+    const bp = project(s.x, s.y, s.z);
+    const rb = 18 * bp.s;
+    const R0 = 130 * bp.s;
+    const near = p >= 0.9;
+    g.clear();
+    g.lineStyle(Math.max(2, 3 * bp.s), 0xffffff, 0.45).strokeCircle(bp.sx, bp.sy, rb);
+    g.lineStyle(Math.max(3, (near ? 8 : 5) * bp.s), near ? 0xffd23f : 0xffffff, 1).strokeCircle(bp.sx, bp.sy, rb + (R0 - rb) * (1 - p));
+    if (near) g.fillStyle(0xffd23f, 0.22).fillCircle(bp.sx, bp.sy, rb * 1.4);
+    if (tapP !== null) g.lineStyle(Math.max(3, 4 * bp.s), judgeTap(tapP) === 'ok' ? 0x6dff9a : 0xff6b78, 0.95).strokeCircle(bp.sx, bp.sy, rb + (R0 - rb) * (1 - tapP));
+  }
+
+  /** Toque del botón de golpe durante el cara a cara (lo llama toggleCharge). */
+  private duelTap() {
+    const d = this.duel;
+    if (!d || d.stage !== 'face' || d.taps.player !== null) return;
+    const ms = performance.now() - d.t0;
+    if (ms > NET_DUEL.faceMs) return; // el aro ya se cerró
+    d.taps.player = ringProgress(ms);
+    navigator.vibrate?.(judgeTap(d.taps.player) === 'ok' ? 20 : [10, 30, 10]);
+    this.net?.sendAction('duel-tap', { ms: Math.round(ms) });
+  }
+
+  /** Fin del cara a cara: el juez decide (o espera su resultado en red) y empieza el intercambio. */
+  private duelFaceEnd() {
+    const d = this.duel;
+    if (!d) return;
+    d.gaze.destroy();
+    d.vignette.destroy();
+    d.ring.clear();
+    d.stage = 'wait';
+    d.stageT = 0;
+    this.netCineSeen = true;
+    if (d.judge) this.duelDecide(duelWinner(d.taps, d.receiver).winner);
+    else if (d.pending) this.duelDecide(d.pending);
+    else d.waitUntil = performance.now() + 1500; // sin resultado a tiempo: gana el que iba a recibir
+  }
+
+  /** Ya hay ganador: avisos y empieza el intercambio de voleas. */
+  private duelDecide(winner: Who) {
+    const d = this.duel;
+    if (!d) return;
+    d.winner = winner;
+    if (this.net && d.judge) this.net.sendAction('duel-result', { w: winner === 'player' ? 1 : 0 });
+    d.stage = 'volley';
+    d.stageT = 0;
+    d.hitters = volleyHitters(winner);
+    d.volleyIdx = -1;
+    const s = this.ball.s;
+    d.ballFrom = { x: s.x, y: s.y, z: s.z };
+    s.vx = s.vy = s.vz = 0; // la pelota la mueve el duelo (si se cancela, duelEnd restaura la suya)
+    const h = this.headPos(winner === 'player' ? this.player : this.bot);
+    this.popText(h.x, h.y - 30, winner === 'player' ? '¡DUELO GANADO!' : '¡DUELO!', winner === 'player' ? '#ffd23f' : '#ff9aa3', 40);
+    showSideNotice(this, winner === 'player' ? 'DUELO GANADO' : 'DUELO PERDIDO', winner === 'player' ? 0x5dff8a : 0xff4f5e, 1300);
+  }
+
+  /** Punto de contacto de la raqueta de uno (delante del cuerpo, a media altura). */
+  private duelContact(w: Who) {
+    const a = w === 'player' ? this.player : this.bot;
+    return { x: a.x + a.dir * 15, y: a.y, z: 52 };
+  }
+
+  /** Voleas automáticas, elección del lado y golpe final: el partido sigue parado (sin física) mientras dura. */
+  private tickDuel(deltaMs: number) {
+    const d = this.duel;
+    if (!d) return;
+    this.flu.lastFrame = 0; // (log de fluidez) la pausa del duelo no cuenta como tirón
+    this.netCineSeen = true;
+    if (this.net) {
+      this.diagStateAt = performance.now();
+      this.flu.lastIn = 0;
+      this.fluSkip = true;
+    }
+    this.chargeSprite.hide();
+    this.rivalChargeSprite.hide();
+    const dt = Math.min(deltaMs, 50);
+    d.stageT += dt;
+    const s = this.ball.s;
+    if (d.stage === 'wait') {
+      if (d.pending) this.duelDecide(d.pending);
+      else if (performance.now() >= d.waitUntil) this.duelDecide(d.receiver);
+    } else if (d.stage === 'volley') {
+      const n = d.hitters.length;
+      const V = NET_DUEL.volleyMs;
+      const at = (k: number) => V * 0.6 + k * V; // instante en que la pelota llega al golpeador k
+      while (d.volleyIdx + 1 < n - 1 && d.stageT >= at(d.volleyIdx + 1)) {
+        d.volleyIdx++;
+        this.duelVolleyHit(d.hitters[d.volleyIdx]);
+      }
+      const k = Math.min(d.volleyIdx + 1, n - 1);
+      const from = k === 0 ? d.ballFrom : this.duelContact(d.hitters[k - 1]);
+      const to = this.duelContact(d.hitters[k]);
+      const t0 = k === 0 ? 0 : at(k - 1);
+      const u = clamp((d.stageT - t0) / (at(k) - t0), 0, 1);
+      s.x = from.x + (to.x - from.x) * u;
+      s.y = from.y + (to.y - from.y) * u;
+      s.z = from.z + (to.z - from.z) * u + 26 * Math.sin(Math.PI * u);
+      if (d.stageT >= at(n - 1)) {
+        d.stage = 'aim';
+        d.stageT = 0;
+        this.duelAimStart(d);
+      }
+    } else if (d.stage === 'aim') {
+      const w = d.winner as Who;
+      const c = this.duelContact(w);
+      s.x = c.x;
+      s.y = c.y;
+      s.z = c.z + 4 * Math.sin(d.stageT / 90);
+      if (w === 'player') {
+        const sd = sideFromJoystick(this.inputVector().x);
+        if (sd !== null && sd !== d.side) {
+          d.side = sd;
+          this.net?.sendAction('duel-aim', { side: sd });
+        }
+      }
+      this.drawDuelAim(d);
+      if (d.stageT >= NET_DUEL.aimMs) {
+        d.stage = 'hit';
+        d.stageT = 0;
+        d.waitUntil = performance.now() + NET_DUEL.hitWaitMs;
+      }
+    } else if (d.stage === 'hit') {
+      // el ganador local (o el bot) golpea ya; si gana el rival en red, su golpe llega por game:hit (netApplyHit cierra el duelo)
+      if (d.winner === 'player' || !this.net || performance.now() >= d.waitUntil) this.duelFinish();
+    }
+    if (!this.duel) return; // (duelFinish lo cerró)
+    this.renderActors();
+    this.ball.render(dt / 1000);
+    this.netView.update();
+  }
+
+  /** Golpe automático del intercambio: el gesto de volea, el impacto y su sonido (sin física: la pelota la mueve tickDuel). */
+  private duelVolleyHit(w: Who) {
+    const a = w === 'player' ? this.player : this.bot;
+    a.ch.swing(false, false, false, true);
+    const c = this.duelContact(w);
+    this.hitFx(c.x, c.y, c.z, false, 0.25);
+  }
+
+  /** Empieza la elección del lado: el ganador tiene NET_DUEL.aimMs; sin elección va al lado contrario de donde está el rival. */
+  private duelAimStart(d: DuelState) {
+    const w = d.winner as Who;
+    const a = w === 'player' ? this.player : this.bot;
+    a.ch.setCharging(true); // pose de preparación mientras elige
+    if (w === 'player') showSideNotice(this, 'ELIGE EL LADO DEL GLOBO', 0xffd23f, 900);
+    else if (!this.net) d.side = Math.random() < 0.75 ? defaultAimSide(this.player.y, LAT_C) : Math.random() < 0.5 ? -1 : 1;
+  }
+
+  /** Los dos lados del fondo del rival con el elegido resaltado (como el apuntado del REMATE). */
+  private drawDuelAim(d: DuelState) {
+    const w = d.winner as Who;
+    const loser = w === 'player' ? this.bot : this.player;
+    const g = d.aimG ?? (d.aimG = this.add.graphics().setDepth(0.8));
+    g.clear();
+    const chosen = d.side ?? defaultAimSide(loser.y, LAT_C);
+    const half = w === 'player' ? COURT.right - NET_X : NET_X - COURT.left;
+    const x0 = w === 'player' ? NET_X + half * 0.55 : COURT.left;
+    const x1 = w === 'player' ? COURT.right : NET_X - half * 0.55;
+    for (const sd of [-1, 1] as const) {
+      const [y0, y1] = sd < 0 ? [COURT.top, LAT_C] : [LAT_C, COURT.bottom];
+      const pts = [this.P(x0, y0), this.P(x0, y1), this.P(x1, y1), this.P(x1, y0)];
+      const on = sd === chosen;
+      if (on) g.fillStyle(0xffd23f, 0.35).fillPoints(pts, true);
+      g.lineStyle(on ? 4 : 2, on ? 0xffd23f : 0xffffff, on ? 0.95 : 0.4).strokePoints(pts, true);
+    }
+  }
+
+  /** El golpe 6 lo da el ganador (este teléfono o el bot): cierra el duelo y manda el globo. */
+  private duelFinish() {
+    const d = this.duel;
+    if (!d) return;
+    const w = d.winner as Who;
+    const loser = w === 'player' ? this.bot : this.player;
+    const side = d.side ?? defaultAimSide(loser.y, LAT_C);
+    this.duelEnd(false);
+    this.duelLaunchLob(w, side);
+  }
+
+  /** GLOBO final a la esquina del fondo de `side` (física normal: aimShot + globo de siempre). */
+  private duelLaunchLob(w: Who, side: -1 | 1) {
+    const a = w === 'player' ? this.player : this.bot;
+    const s = this.ball.s;
+    const c = this.duelContact(w);
+    const tg = lobTarget(w, side, COURT, LAT_C, HALF_W);
+    s.x = c.x;
+    s.y = c.y;
+    s.z = c.z;
+    s.vx = s.vy = s.vz = 0;
+    aimShot(s, tg.x, tg.y, SHOT_SPEED * NET_DUEL.lob.speedK, NET_DUEL.lob.margin);
+    this.ball.setPower(false);
+    this.ball.setIgnited(false);
+    this.ball.setKind('lob');
+    a.ch.setCharging(false);
+    const fx = a.ch.swing(false, false, false, true);
+    this.bounces = 0;
+    if (w === 'player') {
+      if (this.net) this.netHit = { charged: false, overhead: false, volley: true };
+      this.lastHitter = 'player';
+      this.ai.onPlayerHit(false);
+    } else {
+      this.lastHitter = 'bot';
+      this.ai.onBotHit();
+    }
+    this.hitFxAt(fx, s.x, s.y, s.z, false, 0.7);
+    const h = this.headPos(a);
+    this.popText(h.x, h.y - 20, '¡GLOBO!', '#ffd23f', 34);
+    this.duelDefend = w === 'player' ? 'bot' : 'player';
+    this.duelLungeRoll = null;
+    this.netFlushHit();
+  }
+
+  /** Quita todo lo del duelo. `restore` = devolver la pelota como estaba (cancelado sin golpe final). */
+  private duelEnd(restore: boolean) {
+    const d = this.duel;
+    if (!d) return;
+    this.duel = null;
+    d.gaze.destroy();
+    d.vignette.destroy();
+    d.ring.destroy();
+    d.aimG?.destroy();
+    this.player.ch.setCharging(false);
+    this.bot.ch.setCharging(false);
+    if (restore) Object.assign(this.ball.s, d.saved);
+    this.netCineSeen = true; // el rival sigue desde donde quedó (no salta al último estado que llegó)
+  }
+
+  /** Cancela el duelo (punto decidido, reconexión, golpe del rival, fin del partido): el partido sigue normal. */
+  private duelAbort(_reason: string) {
+    if (!this.duel) return;
+    this.duelEnd(_reason !== 'hit' && _reason !== 'point' && _reason !== 'end');
+    if (this.cine.active) this.cine.cancel();
+  }
+
+  // ---- red
+  /** El juez (el que recibe la pelota) empezó el duelo: aquí se ve el mismo cara a cara. */
+  private netRemoteDuelStart(d: ActionMsg['data']) {
+    if (this.duel || this.cine.active || this.phase !== 'rally') return;
+    const pos = this.netBotPos(d?.x, d?.y);
+    if (!pos) return;
+    this.duelUsed = true;
+    this.duelStart('bot', pos);
+  }
+
+  /** Toque del rival (ms desde el inicio de SU cara a cara). */
+  private netRemoteDuelTap(ms: number) {
+    const d = this.duel;
+    if (!d || d.stage !== 'face' || !Number.isFinite(ms) || ms < 0 || ms > NET_DUEL.faceMs) return;
+    if (d.taps.bot === null) d.taps.bot = ringProgress(ms);
+  }
+
+  /** Resultado del juez: 1 = ganó SU jugador (para este teléfono, el rival). */
+  private netRemoteDuelResult(w: number) {
+    const d = this.duel;
+    if (!d || d.judge) return;
+    const winner: Who = w === 1 ? 'bot' : 'player';
+    if (d.stage === 'face') d.pending = winner;
+    else if (d.stage === 'wait') this.duelDecide(winner);
+  }
+
+  /** Lado que eligió el ganador remoto (sus coordenadas → las de aquí). */
+  private netRemoteDuelAim(side: number) {
+    const d = this.duel;
+    if (!d || d.winner !== 'bot' || !Number.isFinite(side) || side === 0) return;
+    d.side = mirrorSide(side);
+  }
+
+  /**
+   * ESTIRADA del BOT al globo del duelo: solo defendiendo el globo final, si la pelota no entra en su alcance normal pero sí en el
+   * ampliado. Lo intenta con probabilidad según su nivel (una vez por globo). Devuelve true si se tira (el golpe sale al contacto).
+   */
+  private botDuelLunge(s: BallState): boolean {
+    const bt = this.bot;
+    if (!this.inReach(bt, s, LUNGE_RANGE, LUNGE_MAX_Z)) return false;
+    if (this.duelLungeRoll === null) this.duelLungeRoll = Math.random() < NET_DUEL.botLunge.base + NET_DUEL.botLunge.k * this.ai.d;
+    if (!this.duelLungeRoll) return false;
+    // contacto previsto: la pelota dentro de LUNGE_CONTACT_S
+    const p = { ...s };
+    let bounces = this.bounces;
+    for (let t = 0; t < LUNGE_CONTACT_S; t += 1 / 120) {
+      const ev = stepBall(p, 1 / 120);
+      if (ev === 'net' || (ev === 'bounce' && ++bounces >= 2)) return false;
+    }
+    this.duelDefend = null;
+    this.duelLungeRoll = null;
+    const side = p.y > bt.y ? 1 : -1;
+    bt.ch.facing = side;
+    if (!bt.ch.lunge(side)) bt.ch.swing();
+    bt.stun = LUNGE_RECOVER + LUNGE_CONTACT_S;
+    const ms = Math.max(60, LUNGE_CONTACT_S * 1000);
+    this.tweens.add({ targets: bt, x: clamp(p.x - bt.dir * 15, B_X[0], B_X[1]), y: clamp(p.y - side * Math.min(LUNGE_ARM, Math.abs(p.y - bt.y)), Y_MIN, Y_MAX), duration: ms, ease: 'Quad.easeOut' });
+    this.dustFx(bt.x, bt.y);
+    this.time.delayedCall(ms, () => {
+      if (this.phase !== 'rally' || this.lastHitter !== 'player') return;
+      const b = this.ball.s;
+      b.z = Math.max(b.z, 18);
+      aimShot(b, NET_X - (NET_X - COURT.left) * rand(0.6, 0.85), LAT_C + rand(-0.45, 0.45) * (HALF_W - 30), SHOT_SPEED * 0.72, 80);
+      this.ball.setPower(false);
+      this.ball.setKind('lob');
+      this.lastHitter = 'bot';
+      this.bounces = 0;
+      this.ai.onBotHit();
+      this.hitFx(b.x, b.y, b.z, false);
+    });
+    return true;
+  }
+
   private makeDizzy() {
     const c = this.add.container(0, 0).setDepth(4500).setVisible(false);
     for (let i = 0; i < 3; i++) {
@@ -2232,6 +2731,9 @@ export class MatchScene extends Phaser.Scene {
 
   // ---------------------------------------------------------------- puntos
   private placeForServe() {
+    this.duelUsed = false; // un duelo como máximo por punto
+    this.duelDefend = null;
+    this.duelLungeRoll = null;
     // (red) ya colocado para el saque de este punto: desde aquí se descartan los estados del rival de un punto anterior
     this.netPlaced = true;
     this.netPlacedAt = performance.now();
@@ -2268,6 +2770,11 @@ export class MatchScene extends Phaser.Scene {
     this.player.ch.resetPose();
     this.bot.ch.facing = -1;
     this.bot.ch.resetPose();
+    // PRUEBAS del DUELO EN LA RED: en el PRIMER juego (0-0 en juegos) el bot, tras devolver, se queda pegado a la red.
+    // Se apaga con localStorage 'dev.botNet' = '0' (y no existe en red: el rival es el otro teléfono). Quitar al terminar las pruebas.
+    const netTest = !this.net && this.score.games[0] + this.score.games[1] === 0 && !devFlagOff('dev.botNet');
+    this.ai.homeX = netTest ? NET_X + 70 : null;
+    this.brain.netPractice = netTest; // y en ese juego solo peloteo suave a la red (BotBrain.netPractice)
     this.ai.reset(this.bot.x, this.bot.y);
     // en red: el suavizado del rival arranca desde su posición de saque (si no, volvía a sus últimas posiciones del
     // punto anterior y saltaba de vuelta al empezar el punto)
@@ -2614,7 +3121,7 @@ export class MatchScene extends Phaser.Scene {
     else this.ai.onBotHit();
     // potencia real del saque (la velocidad que lleva) para el efecto de impacto
     const mult = SERVE.speed[quality][second] * (kind === 'spin' ? SERVE.spinSpeedMult : 1);
-    this.hitFx(s.x, s.y, s.z, false, clamp((mult - 0.8) / 0.6, 0, 1));
+    this.hitFx(s.x, s.y, s.z, false, clamp((mult - 0.8) / 0.6, 0, 1), false, undefined, 'ball-saque-1');
     if (quality === 'perfect') this.perfectFx(s.x, s.y, s.z, direct);
     // Perfect Timing en el saque: el saque YA tiene su ventana perfecta y su bonus (SERVE.speed); aquí solo
     // se suma el feedback común (sonido + vibración), sin más potencia (evita acumular bonificaciones)
@@ -2777,6 +3284,7 @@ export class MatchScene extends Phaser.Scene {
     const p = project(s.x, s.y, s.z);
     const ground = project(s.x, s.y, 0);
     const wasPower = this.ball.power;
+    if (this.infernoFlight) sfx(this, 'ball-ulti-pared'); // la bola de la ULTI choca con la pared
     const wallEl: InfernoElement = this.infernoFlight ? this.infernoEl : this.smashFlightEl; // colores del poder de la bola (INFERNO o SMASH)
     // INFERNO DRIVE: al chocar con la pared se apaga la bola de fuego (vuelve la pelota normal)
     if (this.infernoFlight) {
@@ -2825,6 +3333,7 @@ export class MatchScene extends Phaser.Scene {
     if (this.netGate('point', w, reason, color)) return;
     // (log) solo el punto que se aplica de verdad (antes se anotaba también el que decide el otro teléfono)
     this.diag?.log('point', { w, reason, score: `${this.score.points.join('-')} / ${this.score.games.join('-')}` });
+    this.duelAbort('point'); // punto decidido (también el que llega por red): el duelo en curso se cancela
     this.phase = 'pointover';
     this.maxPushOn = null;
     this.stopCharge();
@@ -2854,6 +3363,7 @@ export class MatchScene extends Phaser.Scene {
       // pantalla de resultados de siempre
       this.phase = 'over'; // ya terminó: el fin oficial del servidor (red) no vuelve a lanzar endMatch a mitad del final
       this.diag?.log('end-pose', { at: 'finale', win, me: this.diagActor(this.player), rival: this.diagActor(this.bot) });
+      playResultMusic(this, win); // el soundtrack del partido se corta ya: suena el de victoria / derrota
       const ms = playMatchFinale(this, { win, playerName: getProfile().name, rivalName: this.botName, games: [this.score.games[0], this.score.games[1]] });
       this.time.delayedCall(ms + 150, () => this.endMatch(win));
       return;
@@ -2882,7 +3392,9 @@ export class MatchScene extends Phaser.Scene {
   }
 
   private endMatch(win: boolean, surrendered = false) {
+    this.duelAbort('end');
     this.phase = 'over';
+    playResultMusic(this, win); // (rendición / fin del servidor: aquí; tras el final con espectáculo ya suena y no se reinicia)
     // poses finales aseguradas: si algo cortó la celebración / derrota (p. ej. un estado del rival en red), se vuelven a
     // poner antes de la pantalla de resultados (que usa esas mismas poses en sus cuadros)
     const winA = win ? this.player : this.bot;
@@ -2956,6 +3468,11 @@ export class MatchScene extends Phaser.Scene {
 
   /** 1er toque: empieza a cargar (quieto). 2º toque: cancela y vuelve a moverse. */
   private toggleCharge(eventMs?: number) {
+    // DUELO EN LA RED: durante el cara a cara el toque es el del duelo; en el resto del duelo no se hace nada
+    if (this.duel) {
+      if (!this.paused) this.duelTap();
+      return;
+    }
     // REMATE en curso: el toque es el golpe
     if (this.remateCine && !this.paused) {
       this.remateHit();
@@ -3382,6 +3899,8 @@ export class MatchScene extends Phaser.Scene {
       const near = this.inReach(this.bot);
       // ESPECIAL del BOT: con él listo (y decidido para esta pelota) llega un poco más lejos, y ese golpe es su ESPECIAL
       const smashReach = !near && !this.ball.power && !this.serveLock && this.botSmashRoll() && this.inReach(this.bot, s, HIT_RANGE * SMASH_REACH);
+      // GLOBO del duelo: el bot se tira a por él (estirada) si no llega con el alcance normal
+      if (!near && !smashReach && this.duelDefend === 'bot' && this.ball.shotKind === 'lob' && this.botDuelLunge(s)) return;
       if (near || smashReach) {
         // en ZONA el rival resiste el ESPECIAL, pero la ULTI aturde siempre
         if (this.ball.power && (this.infernoFlight || !this.zone.active('bot'))) this.fireImpact();
@@ -3732,11 +4251,12 @@ export class MatchScene extends Phaser.Scene {
     this.lastHitter = 'player';
     this.bounces = 0;
     this.ai.onPlayerHit(power || remate);
-    this.hitFxAt(fxDelay, s.x, s.y, s.z, power, charged ? c : remate ? 1 : 0.15, this.infernoPending, this.infernoPending ? getProfile().inferno : power ? this.smashEl : undefined);
+    this.hitFxAt(fxDelay, s.x, s.y, s.z, power, charged ? c : remate ? 1 : 0.15, this.infernoPending, this.infernoPending ? getProfile().inferno : power ? this.smashEl : undefined, remate && lobRemate && !power ? 'ball-saque-2' : undefined); // REMATE del globo (salto en el círculo): ball-saque-2
     if (charged && !power && c >= 0.995) {
       const pc = project(s.x, s.y, s.z);
       this.time.delayedCall(fxDelay, () => {
         shockFx(this, pc.sx, pc.sy, pc.s);
+        sfx(this, 'electricidad', 0.8); // choque eléctrico del golpe cargado al 100 %
         this.maxContactFlash(pc.sx, pc.sy, pc.s);
       });
     }
@@ -3825,6 +4345,7 @@ export class MatchScene extends Phaser.Scene {
 
   /** `forcePower` = llegó con el alcance extra del ESPECIAL: este golpe es su ESPECIAL. */
   private botHit(ulti = false, el: InfernoElement = 'fire', forcePower = false) {
+    if (this.duelDefend === 'bot') this.duelDefend = null; // llegó al globo del duelo con su alcance normal
     const s = this.ball.s;
     // a dónde y cómo devuelve: lo decide el cerebro; la física del golpe se aplica aquí como siempre
     // sin ESPECIAL en el resto del saque (serveLock: este golpe sería el 2º del punto)
@@ -3883,7 +4404,7 @@ export class MatchScene extends Phaser.Scene {
       const b = project(s.x, s.y, s.z);
       infernoImpactFx(this, b.sx, b.sy, b.s, el);
       infernoShake(this);
-      infernoSound.impact(this);
+      infernoSound.impact(this, this.infernoEl);
       this.ball.quietFx = true;
       // (sin texto: la ULTI ya se anuncia con la mirada)
     } else if (power) this.popText(h.x, h.y - 10, 'ESPECIAL', '#ffb347', 28);
@@ -3893,10 +4414,10 @@ export class MatchScene extends Phaser.Scene {
    * Efecto de golpe sincronizado con el frame de impacto de la raqueta. La física ya se aplicó;
    * el destello, las partículas y la estela salen cuando la raqueta "toca" la pelota (en el punto de contacto).
    */
-  private hitFxAt(delayMs: number, bx: number, by: number, bz: number, power: boolean, level = 0.15, silent = false, el?: InfernoElement) {
+  private hitFxAt(delayMs: number, bx: number, by: number, bz: number, power: boolean, level = 0.15, silent = false, el?: InfernoElement, snd?: string) {
     this.ball.holdVisual(delayMs); // la pelota se ve en el contacto hasta que la raqueta llega a su frame de impacto
-    if (delayMs <= 0) this.hitFx(bx, by, bz, power, level, silent, el);
-    else this.time.delayedCall(delayMs, () => this.hitFx(bx, by, bz, power, level, silent, el));
+    if (delayMs <= 0) this.hitFx(bx, by, bz, power, level, silent, el, snd);
+    else this.time.delayedCall(delayMs, () => this.hitFx(bx, by, bz, power, level, silent, el, snd));
   }
 
   // ---------------------------------------------------------------- efectos
@@ -3905,8 +4426,11 @@ export class MatchScene extends Phaser.Scene {
    * (suave / medio / fuerte / máximo) del destello, las ondas y la estela. Con SMASH sale el fuego de siempre; con
    * INFERNO (`el`), el anillo, las chispas y el destello van con los colores de su poder (INFERNO_LOOK).
    */
-  private hitFx(bx: number, by: number, bz: number, power: boolean, level = 0.15, silent = false, el?: InfernoElement) {
-    if (!silent && this.cache.audio.exists('golpe-fuerte')) this.sound.play('golpe-fuerte', { volume: power ? 1 : 0.75 });
+  private hitFx(bx: number, by: number, bz: number, power: boolean, level = 0.15, silent = false, el?: InfernoElement, snd?: string) {
+    if (!silent) {
+      const key = snd && this.cache.audio.exists(snd) ? snd : 'golpe-fuerte'; // sin el archivo propio, el de siempre
+      if (this.cache.audio.exists(key)) this.sound.play(key, { volume: power ? 1 : 0.75 });
+    }
     const p = project(bx, by, bz);
     const x = p.sx;
     const y = p.sy;
@@ -4010,6 +4534,7 @@ export class MatchScene extends Phaser.Scene {
     const b = project(tx, ty);
     const k = a.s * VIEW.CHAR_K;
     this.dashFx.burst(a.sx, a.sy, k, bt.ch.depth);
+    sfx(this, 'dash-destello');
     if (Math.hypot(tx - from.x, ty - from.y) > 40) {
       for (let i = 0; i < 3; i++) {
         const f = (i + 1) / 4;
@@ -4095,6 +4620,11 @@ export class MatchScene extends Phaser.Scene {
       this.chargeSprite.hide(); // el efecto de carga no se queda congelado a medias
       this.rivalChargeSprite.hide();
       this.cine.update();
+      return;
+    }
+    // DUELO EN LA RED: tras el cara a cara el partido sigue parado (voleas, elección del lado, globo final)
+    if (this.duel) {
+      this.tickDuel(deltaMs);
       return;
     }
     const dt = Math.min(deltaMs / 1000, 0.05) * this.slowMo; // cámara lenta del REMATE
@@ -4216,6 +4746,7 @@ export class MatchScene extends Phaser.Scene {
         // destello de arranque y sombras al correr: los mismos efectos que tu DASH
         const p = project(bt.x, bt.y);
         this.dashFx.burst(p.sx, p.sy, p.s * VIEW.CHAR_K, bt.ch.depth);
+        sfx(this, dashSfx(this.botKit.smash));
         this.botDashFx = { t: 0, ghosts: 0 };
       }
     } else if (mv.sprint === 'end' && this.botKit.defensive !== 'blink') {
@@ -4250,9 +4781,12 @@ export class MatchScene extends Phaser.Scene {
     // al empezar el partido (presentación + entrada caminando) nadie tiene la pelota ni la bota: aparece al tener
     // el control del personaje
     const intro = this.phase === 'intro' || this.entering;
-    if (intro !== this.ballHidden) {
-      this.ballHidden = intro;
-      this.ball.setVisible(!intro);
+    // y antes de lanzar para sacar la pelota tampoco se dibuja (se veía flotando): aparece al presionar para lanzar (fase 'toss').
+    // Vale para el usuario, el bot y el rival online (su 'toss' pasa por beginToss); si se atrapa o falla el lanzamiento, vuelve a ocultarse.
+    const hideBall = intro || this.phase === 'serve';
+    if (hideBall !== this.ballHidden) {
+      this.ballHidden = hideBall;
+      this.ball.setVisible(!hideBall);
     }
     // en red nadie bota la pelota antes de sacar (pedido del usuario 13-11-2026): reposo normal con la pelota en la mano
     const still = !intro && !this.net && this.phase === 'serve' && this.serveCtl.state === 'POSITIONING' && (srvA !== pl || this.inputVector().lengthSq() < 0.01);
@@ -4320,6 +4854,8 @@ export class MatchScene extends Phaser.Scene {
       this.updateDashHit(dt);
     }
 
+    this.duelCheck(); // DUELO EN LA RED: los dos pegados a la red y la pelota a punto de llegar
+    if (this.duel) { this.renderActors(); return; }
     // globo: caída prevista, círculo en el suelo y aviso del SMASH potenciado (solo presentación + reglas)
     const lob = this.lob.update(dt, this.ball.s, this.lastHitter, this.ball.shotKind, this.phase, this.bounces);
     if (!lob.active) this.remateWhiffed = false; // otro globo: el remate vuelve a estar disponible
@@ -4672,7 +5208,7 @@ export class MatchScene extends Phaser.Scene {
     this.lastHitter = 'bot';
     this.bounces = 0;
     this.ai.onBotHit();
-    this.hitFxAt(fxDelay, s.x, s.y, s.z, false, 1);
+    this.hitFxAt(fxDelay, s.x, s.y, s.z, false, 1, false, undefined, 'ball-saque-2'); // REMATE del bot
     this.tweens.add({ targets: this.bot, lift: 0, duration: 320, ease: 'Quad.easeIn' });
     const p = project(s.x, s.y, s.z);
     this.time.delayedCall(fxDelay, () => {
@@ -4847,6 +5383,7 @@ export class MatchScene extends Phaser.Scene {
     };
     const pickMs = a.ch.pickupRacket(vanish);
     if (pickMs > 0) {
+      sfx(this, 'recoger-raqueta'); // al empezar a agacharse (usuario, bot y rival online: todos pasan por aquí)
       // si algo corta la recogida antes del agarre (otro golpe, aturdido), la del suelo no se queda para siempre
       this.pickingRackets.add(img);
       this.time.delayedCall(pickMs + 250, () => {
@@ -5314,6 +5851,7 @@ export class MatchScene extends Phaser.Scene {
     this.netLastMsgAt = performance.now();
     this.netPendingToss = null;
     this.faults = 0;
+    this.duelAbort('resume'); // un duelo a medias tampoco
     if (this.cine.active) this.cine.cancel(); // una cinemática a medias no sigue en el punto repetido
     showSideNotice(this, 'Se repite el punto', 0xff9a1f, 1300);
     this.phase = 'pointover';
@@ -5634,6 +6172,14 @@ export class MatchScene extends Phaser.Scene {
 
   /** Carga del rival vista desde aquí: aro en el suelo, brillo del cuerpo y la raqueta y, al máximo, chispas (como las suyas). */
   private rivalChargeFx(dt: number) {
+    // sonido de "cargando" del rival (bot y online): el mismo del tuyo pero más bajo, como si sonara más lejos
+    if (this.rivalChargeT > 0 && !this.rivalChargeSnd && this.cache.audio.exists('cargando')) {
+      this.rivalChargeSnd = this.sound.add('cargando', { volume: RIVAL_CHARGE_VOL });
+      this.rivalChargeSnd.play();
+    } else if (this.rivalChargeT <= 0 && this.rivalChargeSnd) {
+      this.fadeOutSnd(this.rivalChargeSnd);
+      this.rivalChargeSnd = null;
+    }
     const bt = this.bot;
     // efecto con sprites (su carga elegida o la de su personaje): como el tuyo, ~1 s de carga CLÁSICA y luego la elegida;
     // al soltar, la elegida se disipa (si llegó a verse)
@@ -5686,6 +6232,7 @@ export class MatchScene extends Phaser.Scene {
   /** `recvAt` = llegada (performance.now); sin él (golpe aplicado tras una cinemática) no se compensa el retraso. */
   private netApplyHit(h: HitMsg, recvAt?: number) {
     if (this.phase === 'over') return;
+    this.duelAbort('hit'); // el golpe del ganador del duelo (o cualquier golpe del rival) cierra el duelo y se aplica normal
     this.netRemoteRemate(false); // por si no llegó 'remate-end': su golpe termina la cámara lenta
     this.netEndBotFly(true); // su golpe llegó: la SOMBRA / SUPERSALTO ya terminó en su teléfono
     // el rival está en su cinemática (aquí congelada el mismo tiempo): su golpe se aplica al terminar, una sola vez
@@ -5758,7 +6305,9 @@ export class MatchScene extends Phaser.Scene {
       this.serving = false;
       fx = bt.ch.swing(h.power || h.charged, h.overhead, h.special ?? (h.power && h.overhead), h.volley);
     }
-    if (fx >= 0) this.hitFxAt(fx, s.x, s.y, s.z, h.power || h.inferno, 0.15, !!h.inferno, h.inferno ? infernoElementFor(this.net?.opponent.skin, this.netRivalInferno) : h.power ? this.netRivalSmashEl : undefined);
+    // sonido propio: saque y remate del globo; el resto, golpe-fuerte
+    const netSnd = h.kind === 'serve' ? 'ball-saque-1' : h.special && h.overhead && !h.power && !h.inferno ? 'ball-saque-2' : undefined;
+    if (fx >= 0) this.hitFxAt(fx, s.x, s.y, s.z, h.power || h.inferno, 0.15, !!h.inferno, h.inferno ? infernoElementFor(this.net?.opponent.skin, this.netRivalInferno) : h.power ? this.netRivalSmashEl : undefined, netSnd);
     // REMATE del globo del rival: la misma onda, sacudida y, si fue justo al cierre del aro, SMASH! dorado
     const rg = this.netRemateGrade;
     this.netRemateGrade = null;
@@ -5790,6 +6339,7 @@ export class MatchScene extends Phaser.Scene {
       const pc = project(s.x, s.y, s.z);
       this.time.delayedCall(fx, () => {
         shockFx(this, pc.sx, pc.sy, pc.s);
+        sfx(this, 'electricidad', 0.8); // choque eléctrico del golpe cargado al 100 %
         this.maxContactFlash(pc.sx, pc.sy, pc.s);
       });
     }
@@ -5804,7 +6354,7 @@ export class MatchScene extends Phaser.Scene {
       const b = project(s.x, s.y, s.z);
       infernoImpactFx(this, b.sx, b.sy, b.s, this.infernoEl);
       infernoShake(this);
-      infernoSound.impact(this);
+      infernoSound.impact(this, this.infernoEl);
     }
     if (h.power || h.inferno) {
     }
@@ -5846,6 +6396,7 @@ export class MatchScene extends Phaser.Scene {
         bt.ch.setSprint(true, dirX);
         const p = project(bt.x, bt.y);
         this.dashFx.burst(p.sx, p.sy, p.s * VIEW.CHAR_K, bt.ch.depth);
+        sfx(this, dashSfx(this.netRivalSmashEl));
         this.dustFx(bt.x, bt.y);
         const h = this.headPos(bt);
         this.popText(h.x, h.y - 10, 'DEFENSIVO', '#c9a4ff', 26);
@@ -5864,6 +6415,10 @@ export class MatchScene extends Phaser.Scene {
     else if (a.kind === 'remate-end') this.netRemoteRemate(false, a.data);
     else if (a.kind === 'stunned') this.netBotStunned(Number(a.data?.ms), a.data?.kind);
     else if (a.kind === 'bump') this.netRemoteBump();
+    else if (a.kind === 'duel-start') this.netRemoteDuelStart(a.data);
+    else if (a.kind === 'duel-tap') this.netRemoteDuelTap(Number(a.data?.ms));
+    else if (a.kind === 'duel-result') this.netRemoteDuelResult(Number(a.data?.w));
+    else if (a.kind === 'duel-aim') this.netRemoteDuelAim(Number(a.data?.side));
     else if (a.kind === 'emote') this.emotes.showRemote(String(a.data?.kind ?? ''), () => this.headPos(this.bot));
     else if (a.kind === 'smash-armed') {
       // el rival armó su SMASH: aura con el color de SU poder (sin dato, fuego)
@@ -5909,9 +6464,11 @@ export class MatchScene extends Phaser.Scene {
       fly.clone = clone;
       const p = project(bt.x, bt.y);
       this.dashFx.burst(p.sx, p.sy, p.s * VIEW.CHAR_K, bt.ch.depth);
+      sfx(this, 'dash-shadow');
       this.popText(h.x, h.y - 10, 'DEFENSIVO', '#c9a4ff', 26);
     } else {
       this.dustFx(bt.x, bt.y);
+      sfx(this, 'dash-jump');
       this.popText(h.x, h.y - 10, 'DEFENSIVO', '#c9a4ff', 26);
     }
     this.netBotFly = fly;
@@ -5945,6 +6502,7 @@ export class MatchScene extends Phaser.Scene {
       const b = project(to.x, to.y);
       const k = a.s * VIEW.CHAR_K;
       this.dashFx.burst(a.sx, a.sy, k, bt.ch.depth);
+      sfx(this, 'dash-destello');
       if (Math.hypot(to.x - from.x, to.y - from.y) > 40) {
         for (let i = 0; i < 3; i++) {
           const f = (i + 1) / 4;

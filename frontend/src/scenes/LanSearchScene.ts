@@ -12,6 +12,10 @@ import { getProfile } from '../logic/Profile';
 import { charColorOf } from '../domain/charColors';
 import { connect } from '../net/NetClient';
 import { MatchNet } from '../net/MatchNet';
+import { rankedSearchPanel } from '../ui/searchPanel';
+import { startIntroMusic, stopIntroMusic } from '../fx/introMusic';
+import { preloadRankBadges } from '../ui/RankBadge';
+import { rankedView } from '../logic/Ranked';
 import { EV, type ErrorMsg, type MatchedMsg, type SearchingMsg } from '../net/protocol';
 
 /**
@@ -42,10 +46,25 @@ export class LanSearchScene extends Phaser.Scene {
     this.cleanup = [];
   }
 
+  preload() {
+    // liga de la apuesta (la misma pantalla que la búsqueda contra el BOT)
+    if (this.rk) preloadRankBadges(this.load, [rankedView().league]);
+  }
+
+  private get bet(): number | null {
+    return (this.fallback.ranked as { bet?: number } | undefined)?.bet ?? null;
+  }
+
+  /** ¿Ranked o AMISTOSO? (ambos muestran liga y apuesta, igual que la búsqueda contra el BOT) */
+  private get rk() {
+    return !!this.bet || !!this.fallback.unranked;
+  }
+
   create() {
     const W = this.scale.width;
     const H = this.scale.height;
     restartOnResize(this);
+    startIntroMusic(this); // la música del menú SIGUE durante la búsqueda (se corta al salir el VS); si no sonaba, arranca
     this.cameras.main.fadeIn(200, 0, 0, 0);
     stadiumBg(this, 0.55);
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.cleanup.forEach((f) => f()));
@@ -62,6 +81,8 @@ export class LanSearchScene extends Phaser.Scene {
     const title = this.add.text(0, 196, 'BUSCANDO RIVAL', { fontFamily: FONT, fontSize: '40px', color: UI.text }).setOrigin(0.5).setLetterSpacing(2);
     const count = this.add.text(0, 148, '0:00', { fontFamily: FONT, fontSize: '30px', color: '#37e0ff' }).setOrigin(0.5);
     c.add([title, count]);
+    // liga + lo invertido / premio (o AMISTOSO), como en la búsqueda contra el BOT
+    const panel = this.rk ? rankedSearchPanel(this, { bet: this.bet, unranked: !this.bet }, () => undefined, () => undefined) : [];
     const cancel = flatButton(this, W / 2, H * 0.84, 240, 72, 'CANCELAR', () => this.cancelSearch(), { fontSize: 28 });
 
     connect()
@@ -79,6 +100,7 @@ export class LanSearchScene extends Phaser.Scene {
           if (this.done) return;
           this.done = true;
           cancel.destroy();
+          if (panel.length) this.tweens.add({ targets: panel, alpha: 0, duration: 220, onComplete: () => panel.forEach((o) => o.destroy()) });
           this.tweens.add({ targets: c, alpha: 0, scale: 0.85, duration: 220 });
           this.versus(new MatchNet(tr, m.roomId, m.role, m.opponent, m.gamesToWin, m.token));
         };
@@ -127,13 +149,14 @@ export class LanSearchScene extends Phaser.Scene {
       detail: '¿Quieres jugar contra el BOT?',
       confirmLabel: 'JUGAR VS BOT',
       cancelLabel: 'MENÚ',
-      onConfirm: () => this.scene.start('Matchmaking', this.fallback),
+      onConfirm: () => this.scene.start('Matchmaking', { ...this.fallback, skipSearch: true }), // la búsqueda online ya esperó: directo al VS
       onCancel: () => this.scene.start('Menu'),
     });
   }
 
   /** Emparejados: pantalla VS y partido en red. */
   private versus(net: MatchNet) {
+    stopIntroMusic(this, 400); // sale el VS: la música de la búsqueda se apaga de a poco
     this.matched = true;
     const p = getProfile();
     const opp = net.opponent;

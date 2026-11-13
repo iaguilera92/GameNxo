@@ -3,6 +3,7 @@ import { POWER_IMPACT, type PowerKind } from '../logic/PowerImpact';
 import { BALL_ART, ballDims, type InfernoElement } from './InfernoFx';
 import { SMASH_LOOK } from './smashFx';
 import { smashPowerOf } from '../domain/smashPowers';
+import { sfx } from './sfx';
 import { lightningBlast, lightningGroundFx, windBlast, windGroundFx } from './elementImpactFx';
 
 /**
@@ -25,6 +26,11 @@ const BLAST: Record<InfernoElement, { flash: number; tongues: number[]; puffs: n
  * Pocos objetos de vida corta (≈ 30) que se destruyen solos.
  */
 export function powerImpactFx(scene: Phaser.Scene, kind: PowerKind, x: number, y: number, k: number, el: InfernoElement = 'fire') {
+  // ULTI de FUEGO que impacta a quien la recibe (el bot, tú o el rival online): su sonido propio
+  // (el pelotazo le llega al personaje y la raqueta sale volando; el golpe de la bola suena aparte, en infernoSound.impact)
+  if (kind === 'inferno') sfx(scene, el === 'fire' ? 'impacto-ulti-fuego' : el === 'lightning' ? 'impacto-ulti-rayo' : el === 'ice' ? 'impacto-ulti-hielo' : 'ball-recibir-ulti-ataque');
+  // el personaje queda ATURDIDO (SMASH o ULTI): sonido de stun, un instante después del golpe para que no se pisen
+  scene.time.delayedCall(180, () => sfx(scene, 'stun'));
   const D = 3800; // por encima de personajes y pelota
   const s = Math.max(0.7, k);
   const ADD = Phaser.BlendModes.ADD;

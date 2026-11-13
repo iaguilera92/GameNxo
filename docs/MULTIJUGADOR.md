@@ -280,3 +280,8 @@ redesplegar el backend (cada cliente ignora las que no conoce).
   ruleta de siempre.
 - La seguridad es la de una red local de confianza: el servidor valida salas, roles y marcador, pero cree los
   golpes que envía cada cliente. El servidor autoritativo y las cuentas llegarán con la etapa online.
+
+## Duelo en la red
+
+Acciones: `duel-start` (posiciones de ambos), `duel-tap` (ms desde el inicio del duelo), `duel-result` (w=1: ganó el jugador del emisor), `duel-aim` (lado del globo).
+Juez = el teléfono cuyo jugador recibe la pelota; espera `graceMs` (300 ms) el toque remoto y envía `duel-result`. El ganador manda el globo como `game:hit` normal. Se cancela en `netResume`, punto o fin de partido. Constantes en `frontend/src/logic/NetDuel.ts`.

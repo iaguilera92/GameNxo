@@ -1,3 +1,4 @@
+import { installTapSound } from '../fx/uiSound';
 import Phaser from 'phaser';
 import { FONT, restartOnResize, textStyle } from '../ui/theme';
 import { stadiumBg } from '../ui/ui';
@@ -153,6 +154,8 @@ const PASSIVES: Record<'spin' | 'charge', PassiveDef> = {
 export class CustomizeScene extends Phaser.Scene {
   /** tarjeta del INFERNO (se redibuja al elegir otro poder) */
   private infernoBox?: Phaser.GameObjects.Container;
+  /** posición de las tarjetas equipables (para el efecto al equipar): style · color · charge · defensive · special · ulti */
+  private cardRects: Record<string, { x: number; y: number; w: number; h: number }> = {};
 
   constructor() {
     super('Customize');
@@ -160,6 +163,7 @@ export class CustomizeScene extends Phaser.Scene {
 
   preload() {
     if (!this.textures.exists('menu-bg')) this.load.image('menu-bg', 'assets/menu-bg.webp');
+    if (!this.textures.exists('icon-zona')) this.load.image('icon-zona', 'assets/icon-zona.webp');
     for (const k of ['estilos', 'efecto', 'cargando', 'mascotas']) if (!this.textures.exists(`personalizar-${k}`)) this.load.image(`personalizar-${k}`, `assets/personalizar-${k}.webp`);
     for (const art of Object.values(ABILITY_ART)) if (art && !this.textures.exists(art.key)) this.load.image(art.key, art.file);
     queueInfernoArt(this.load); // bolas de los poderes del INFERNO (vista previa del selector)
@@ -170,6 +174,8 @@ export class CustomizeScene extends Phaser.Scene {
     const W = this.scale.width;
     const H = this.scale.height;
     restartOnResize(this);
+    installTapSound(this); // clic de interfaz en cada botón / diálogo
+    this.cardRects = {};
     this.infernoBox = undefined; // la escena se reinicia (p. ej. al subir un atributo de Zona)
     ensureBallAnims(this);
     this.cameras.main.fadeIn(200, 0, 0, 0);
@@ -199,7 +205,7 @@ export class CustomizeScene extends Phaser.Scene {
     // fila 2 las dos habilidades equipadas (DASH | SMASH), fila 3 INFERNO | ZONA
     // (11-11-2026) arriba una fila de 4 cosméticos (ESTILOS · EFECTO PELOTA · CARGANDO GOLPE · MASCOTAS) y debajo el título
     // HABILIDADES con DEFENSIVO | ESPECIAL y ULTI | ZONA
-    const L = { gapHero: 14, level: 78, gapA: 22, cosmetic: 136, cosToTitle: 30, titleToCard: 28, ability: 104, abilityGap: GRID_GAP, gapFeatures: GRID_GAP, features: 270, gapC: 18, play: 92, bottom: 52 };
+    const L = { gapHero: 14, level: 78, gapA: 22, cosmetic: 136, cosToTitle: 30, titleToCard: 28, ability: 104, abilityGap: GRID_GAP, gapFeatures: GRID_GAP, features: 270, gapC: 18, play: 0, bottom: 52 };
     // NIVEL MÁXIMO: sin tarjeta de nivel en la lista (sale como pastilla pequeña sobre el nombre, en la vitrina) y todo su
     // alto se reparte entre las dos filas de tarjetas de habilidades (el resto del reparto no cambia)
     const maxed = p.level >= MAX_LEVEL;
@@ -261,14 +267,58 @@ export class CustomizeScene extends Phaser.Scene {
     }
     y += L.features + L.gapC + extra * 0.5;
 
-    // ---------------------------------------------------------------- JUGAR
-    const playH = L.play;
-    const playY = y + playH / 2;
-    // sin latido (quieto), con la flecha de siempre
-    arcadeButton(this, W / 2, playY, Math.min(520, W - 120), playH, 'JUGAR', () => {
-      this.cameras.main.fadeOut(180, 0, 0, 0);
-      this.cameras.main.once('camerafadeoutcomplete', () => this.scene.start('Matchmaking'));
-    }, { palette: 'yellow', chevron: true, pulse: false });
+    // venimos de equipar algo (la escena se reinició): la tarjeta brilla y su icono entra de nuevo
+    const justEquipped = this.registry.get('custom.equipped') as string | undefined;
+    this.registry.remove('custom.equipped');
+    if (justEquipped && this.cardRects[justEquipped]) this.time.delayedCall(260, () => this.playEquipFx(this.cardRects[justEquipped]));
+  }
+
+  /** Reinicia la pantalla para mostrar lo equipado; al volver, playEquipFx hace brillar la tarjeta id. */
+  private restartEquipped(id: string) {
+    this.registry.set('custom.equipped', id);
+    this.scene.restart();
+  }
+
+  /**
+   * EFECTO AL EQUIPAR sobre la tarjeta: destello blanco, borde dorado que late, anillo que se expande, chispas que saltan
+   * del borde y, con ellas, el icono y los textos de la tarjeta entran de nuevo con rebote (se ve el cambio).
+   */
+  private playEquipFx(r: { x: number; y: number; w: number; h: number }) {
+    if (!this.sys.isActive()) return;
+    const cx = r.x + r.w / 2;
+    const cy = r.y + r.h / 2;
+    const GOLD = 0xffd23f;
+    const RAD = 16;
+    // icono y textos de la tarjeta: entran de nuevo (escala desde 0,3 con rebote)
+    for (const o of this.children.list) {
+      if (!(o instanceof Phaser.GameObjects.Image || o instanceof Phaser.GameObjects.Text)) continue; // (los Container escalan desde la esquina de la pantalla: se quedan fuera)
+      const b = (o as Phaser.GameObjects.Image).getBounds();
+      if (b.centerX < r.x || b.centerX > r.x + r.w || b.centerY < r.y || b.centerY > r.y + r.h || b.width > r.w) continue;
+      const sx = (o as Phaser.GameObjects.Image).scaleX;
+      const sy = (o as Phaser.GameObjects.Image).scaleY;
+      this.tweens.add({ targets: o, scaleX: { from: sx * 0.3, to: sx }, scaleY: { from: sy * 0.3, to: sy }, duration: 460, ease: 'Back.easeOut' });
+    }
+    // destello blanco sobre toda la tarjeta
+    const flash = this.add.graphics().setDepth(60).setBlendMode(Phaser.BlendModes.ADD);
+    flash.fillStyle(0xffffff, 0.6).fillRoundedRect(r.x, r.y, r.w, r.h, RAD);
+    this.tweens.add({ targets: flash, alpha: 0, duration: 520, ease: 'Cubic.easeOut', onComplete: () => flash.destroy() });
+    // borde dorado brillante que late dos veces y se apaga
+    const edge = this.add.graphics().setDepth(61).setBlendMode(Phaser.BlendModes.ADD);
+    edge.lineStyle(10, GOLD, 0.35).strokeRoundedRect(r.x - 2, r.y - 2, r.w + 4, r.h + 4, RAD + 2);
+    edge.lineStyle(4, 0xfff6c8, 1).strokeRoundedRect(r.x, r.y, r.w, r.h, RAD);
+    this.tweens.add({ targets: edge, alpha: { from: 1, to: 0.25 }, duration: 260, yoyo: true, repeat: 1, onComplete: () => this.tweens.add({ targets: edge, alpha: 0, duration: 420, onComplete: () => edge.destroy() }) });
+    // anillo que se expande desde la tarjeta
+    const ring = this.add.graphics({ x: cx, y: cy }).setDepth(59).setBlendMode(Phaser.BlendModes.ADD);
+    ring.lineStyle(5, GOLD, 0.9).strokeRoundedRect(-r.w / 2, -r.h / 2, r.w, r.h, RAD);
+    this.tweens.add({ targets: ring, scale: 1.28, alpha: 0, duration: 620, ease: 'Cubic.easeOut', onComplete: () => ring.destroy() });
+    // chispas que salen del borde
+    for (let i = 0; i < 12; i++) {
+      const side = Math.random();
+      const px = r.x + Math.random() * r.w;
+      const py = side < 0.5 ? r.y : r.y + r.h;
+      const star = this.add.star(px, py, 4, 2, 7, i % 2 ? GOLD : 0xffffff).setDepth(62).setBlendMode(Phaser.BlendModes.ADD).setScale(0.4);
+      this.tweens.add({ targets: star, y: py + (py === r.y ? -1 : 1) * Phaser.Math.Between(14, 38), x: px + Phaser.Math.Between(-16, 16), scale: 1.1, alpha: 0, angle: 140, duration: Phaser.Math.Between(500, 800), delay: Phaser.Math.Between(0, 220), ease: 'Cubic.easeOut', onComplete: () => star.destroy() });
+    }
   }
 
   // ================================================================ piezas
@@ -361,6 +411,55 @@ ${unlockLabel(key)}`, { fontFamily: FONT, fontSize: '16px', color: '#ffd23f', st
     // ESTILO DE COLOR elegido (fx/CharColorFx.ts): la vitrina ya lo muestra
     applyCharColor(hero, getProfile().color, skin);
 
+    // GIRO 2D del personaje (solo 2 vistas: derecha / izquierda, la misma imagen espejada; sin efecto 3D):
+    //  - ARRASTRAR hacia un lado: el personaje sigue el dedo (se desliza y se inclina un poco) y mira hacia ese lado
+    //  - al soltar vuelve al centro con un rebote y se queda mirando hacia donde lo llevaste
+    //  - un toque sin arrastrar: cambia de lado
+    // El cuerpo se mantiene centrado (el retrato lleva la raqueta a un lado, por eso `bodyShift` también se espeja).
+    if (hero instanceof Phaser.GameObjects.Image) {
+      let facingLeft = false;
+      let down = false;
+      let moved = false;
+      let startX = 0;
+      let back: Phaser.Tweens.Tween | null = null;
+      const baseX = () => cx + (facingLeft ? -bodyShift : bodyShift);
+      const face = (left: boolean) => {
+        facingLeft = left;
+        hero.setFlipX(left);
+      };
+      hero.setInteractive({ useHandCursor: true });
+      hero.on('pointerdown', (ptr: Phaser.Input.Pointer) => {
+        down = true;
+        moved = false;
+        startX = ptr.x;
+        back?.stop(); // (no se usa killTweensOf: mataría también el vaivén de arriba/abajo)
+      });
+      const onMove = (ptr: Phaser.Input.Pointer) => {
+        if (!down) return;
+        const dx = ptr.x - startX;
+        if (Math.abs(dx) > 10) moved = true;
+        if (!moved) return;
+        if (dx < 0 !== facingLeft) face(dx < 0);
+        hero.x = baseX() + Phaser.Math.Clamp(dx, -60, 60) * 0.5; // sigue el dedo (poco)
+        hero.setAngle(Phaser.Math.Clamp(dx, -60, 60) * 0.12); // y se inclina hacia ese lado
+      };
+      const onUp = () => {
+        if (!down) return;
+        down = false;
+        if (!moved) {
+          // toque: cambia de lado y da un saltito lateral
+          face(!facingLeft);
+          hero.x = baseX() + (facingLeft ? 18 : -18);
+        }
+        back = this.tweens.add({ targets: hero, x: baseX(), angle: 0, duration: 260, ease: 'Back.easeOut' });
+      };
+      this.input.on('pointermove', onMove);
+      this.input.on('pointerup', onUp);
+      this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+        this.input.off('pointermove', onMove);
+        this.input.off('pointerup', onUp);
+      });
+    }
     // placa con el nombre del personaje (abajo a la izquierda de la vitrina)
     const name = skinById(skin).name.toUpperCase();
     const px = 40;
@@ -397,14 +496,14 @@ ${unlockLabel(key)}`, { fontFamily: FONT, fontSize: '16px', color: '#ffd23f', st
     // ESTILOS y EFECTO PELOTA (bloqueadas hasta su nivel, como las habilidades)
     const sc = this.cosCol(W, 0);
     // su dibujo es más alto y estrecho que el de las otras: se achica para que se vea del mismo tamaño
-    this.miniCard(sc, y, h, 0xff8fc4, 'personalizar-estilos', () => this.openColorDialog(skin), 0.72);
+    this.miniCard(sc, y, h, 0xff8fc4, 'personalizar-estilos', () => this.openColorDialog(skin), 0.72, 'color');
     this.lockCard(sc.x, y, sc.w, h, 'styles', 16);
     const ec = this.cosCol(W, 1);
-    this.miniCard(ec, y, h, styleLook((getPlayer().equipped.style ?? 'classic') as StyleId).color, 'personalizar-efecto', () => this.openStyleDialog());
+    this.miniCard(ec, y, h, styleLook((getPlayer().equipped.style ?? 'classic') as StyleId).color, 'personalizar-efecto', () => this.openStyleDialog(), 1, 'style');
     this.lockCard(ec.x, y, ec.w, h, 'trail', 16);
     // CARGANDO GOLPE (bloqueada hasta su nivel, como la habilidad)
     const cc = this.cosCol(W, 2);
-    this.miniCard(cc, y, h, PASSIVES.charge.color, 'personalizar-cargando', () => this.openChargeDialog());
+    this.miniCard(cc, y, h, PASSIVES.charge.color, 'personalizar-cargando', () => this.openChargeDialog(), 1, 'charge');
     this.lockCard(cc.x, y, cc.w, h, 'charge', 16);
     // MASCOTAS: aún no existen; se abrirán al llegar a la LIGA ORO
     const mc = this.cosCol(W, 3);
@@ -414,8 +513,9 @@ ${unlockLabel(key)}`, { fontFamily: FONT, fontSize: '16px', color: '#ffd23f', st
   }
 
   /** Tarjeta pequeña (1/4 de ancho): solo su imagen, centrada y ajustada al cuadro. */
-  private miniCard(col: { x: number; w: number }, y: number, h: number, color: number, key: string, onTap: () => void, size = 1) {
+  private miniCard(col: { x: number; w: number }, y: number, h: number, color: number, key: string, onTap: () => void, size = 1, id?: string) {
     const { x, w } = col;
+    if (id) this.cardRects[id] = { x, y, w, h };
     this.card(x, y, w, h, { line: color, glow: 0.2, r: 16 });
     if (this.textures.exists(key)) {
       // sin el margen transparente de cada archivo (traen márgenes distintos): así las 4 se ven del mismo tamaño
@@ -475,7 +575,7 @@ ${unlockLabel(key)}`, { fontFamily: FONT, fontSize: '16px', color: '#ffd23f', st
         this.cameras.main.once('camerafadeoutcomplete', () => this.scene.start('Shop'));
       },
       onClose: ({ changed }) => {
-        if (changed) this.scene.restart(); // al instante: la pantalla ya muestra lo que se equipó
+        if (changed) this.restartEquipped('style'); // al instante: la pantalla ya muestra lo que se equipó
       },
     });
   }
@@ -530,7 +630,7 @@ ${unlockLabel(key)}`, { fontFamily: FONT, fontSize: '16px', color: '#ffd23f', st
         this.cameras.main.once('camerafadeoutcomplete', () => this.scene.start('BattlePass'));
       },
       onClose: ({ changed }) => {
-        if (changed) this.scene.restart(); // al instante: la pantalla ya muestra lo que se equipó
+        if (changed) this.restartEquipped('color'); // al instante: la pantalla ya muestra lo que se equipó
       },
     });
   }
@@ -646,16 +746,26 @@ ${unlockLabel(key)}`, { fontFamily: FONT, fontSize: '16px', color: '#ffd23f', st
     this.infernoCard(left.x, top, w, h);
     const item = { x: right.x, title: 'ZONA', color: 0x45d9ff };
     {
-      this.card(item.x, top, w, h, { line: item.color, glow: 0.24, r: 16 });
-      const icon = this.add.graphics({ x: item.x + 34, y: top + 35 });
-      icon.lineStyle(4, item.color, 0.5).strokeCircle(0, 0, 24);
-      icon.lineStyle(4, item.color, 0.9).strokeCircle(0, 0, 16);
-      icon.fillStyle(0xffffff, 1).fillCircle(0, 0, 7);
+      // tarjeta con degradado azul, sin borde ni brillo animado (la ULTI es la que lleva el borde con brillo)
+      this.gradientCard(item.x, top, w, h, ['#2fc4f0', '#146fa8', '#082a55'], 16, 'zona');
+      // icono de la ZONA: public/assets/icon-zona.webp (ajustado a ~52 px, como el de la ULTI); si no cargó, los anillos de siempre
+      if (this.textures.exists('icon-zona')) {
+        const icon = this.add.image(item.x + 34, top + 35, 'icon-zona');
+        icon.setScale(Math.min(52 / icon.width, 52 / icon.height)); // mismo tamaño que el icono de la ULTI
+      } else {
+        const icon = this.add.graphics({ x: item.x + 34, y: top + 35 });
+        icon.lineStyle(4, item.color, 0.5).strokeCircle(0, 0, 24);
+        icon.lineStyle(4, item.color, 0.9).strokeCircle(0, 0, 16);
+        icon.fillStyle(0xffffff, 1).fillCircle(0, 0, 7);
+      }
       const tx = item.x + 66;
       const tw = w - 76;
       // solo el título: lo que es la Zona y cómo funcionan los Rayos va en el (i)
-      const title = this.add.text(tx, top + 35, item.title, { fontFamily: FONT, fontSize: '24px', color: '#75e7ff', stroke: '#061431', strokeThickness: 3 }).setOrigin(0, 0.5);
+      // título y descriptor con los mismos tamaños y posiciones que la ULTI (20 px arriba, 14 px abajo)
+      const title = this.add.text(tx, top + 18, item.title, { fontFamily: FONT, fontSize: '20px', color: '#ffe36b', stroke: '#061431', strokeThickness: 4 }).setOrigin(0, 0);
       title.setScale(Math.min(1, (tw - 44) / title.width));
+      const sub = this.add.text(tx, top + 43, 'Pasiva de remontada', { fontFamily: FONT, fontSize: '14px', color: '#ffffff' }).setOrigin(0, 0).setLetterSpacing(1);
+      sub.setScale(Math.min(1, (tw - 44) / sub.width));
       this.infoButton(item.x + w - 26, top + 35, () => this.zoneInfoDialog());
       {
         const zone = getPlayer().zone;
@@ -770,17 +880,13 @@ ${unlockLabel(key)}`, { fontFamily: FONT, fontSize: '16px', color: '#ffd23f', st
    */
   private infernoCard(x: number, top: number, w: number, h: number) {
     this.infernoBox?.destroy();
+    this.cardRects.ulti = { x, y: top, w, h };
     const box = this.add.container(0, 0);
     this.infernoBox = box;
     const power = getProfile().inferno;
     const def = infernoPowerDef(power);
-    box.add(this.card(x, top, w, h, { line: def.color, glow: 0.32, r: 16 }));
-    // fondo morado de la ULTI (más claro arriba)
-    const bg = this.add.graphics();
-    bg.fillStyle(0x2a0c63, 0.85).fillRoundedRect(x + 3, top + 3, w - 6, h - 6, 14);
-    bg.fillStyle(0x5a22b8, 0.55).fillRoundedRect(x + 3, top + 3, w - 6, h * 0.5, { tl: 14, tr: 14, bl: 6, br: 6 });
-    bg.lineStyle(3, def.color, 1).strokeRoundedRect(x, top, w, h, 16);
-    box.add(bg);
+    // degradado morado sin borde (como las tarjetas de PODERES ULTI de la Tienda); el borde brilla al final de la función
+    box.add(this.gradientCard(x, top, w, h, ['#8a4cf0', '#5a22b8', '#2a0c63'], 16, 'ulti'));
 
     // la bola equipada en grande, envuelta en un aura de energía: halo suave fijo + chispas de su color que brotan
     // del borde y suben desvaneciéndose (emisor de partículas: sin crear objetos por fotograma)
@@ -841,9 +947,99 @@ ${unlockLabel(key)}`, { fontFamily: FONT, fontSize: '16px', color: '#ffd23f', st
     if (more.width > w - 20) more.setScale((w - 20) / more.width);
     box.add([title, name, desc, rule, more]);
 
+    // brillo que recorre el borde (dos destellos opuestos con estela), como el de la oferta del Pase en la Tienda
+    box.add(this.borderShine(x, top, w, h));
+
     const hit = this.add.zone(x + w / 2, top + h / 2, w, h).setInteractive({ useHandCursor: true });
     hit.on('pointerup', () => this.openUltiDialog());
     box.add(hit);
+  }
+
+  /**
+   * Tarjeta con degradado diagonal (arriba claro, abajo oscuro) y reflejo de vidrio arriba, SIN borde: sombra + imagen
+   * pintada una vez en un canvas por tamaño y colores. Devuelve el contenedor con la sombra y la imagen.
+   */
+  private gradientCard(x: number, y: number, w: number, h: number, [c0, c1, c2]: [string, string, string], r: number, name: string) {
+    const cw = Math.round(w);
+    const key = `cust-grad-${name}-${cw}x${Math.round(h)}`;
+    const c = this.add.container(0, 0);
+    const shadow = this.add.graphics();
+    shadow.fillStyle(0x000000, 0.35).fillRoundedRect(x + 3, y + 5, w, h, r);
+    c.add(shadow);
+    if (!this.textures.exists(key)) {
+      const tex = this.textures.createCanvas(key, cw, Math.round(h));
+      if (tex) {
+        const ctx = tex.getContext();
+        const hh = Math.round(h);
+        const path = () => {
+          ctx.beginPath();
+          ctx.moveTo(r, 0);
+          ctx.arcTo(cw, 0, cw, hh, r);
+          ctx.arcTo(cw, hh, 0, hh, r);
+          ctx.arcTo(0, hh, 0, 0, r);
+          ctx.arcTo(0, 0, cw, 0, r);
+          ctx.closePath();
+        };
+        path();
+        const lin = ctx.createLinearGradient(0, 0, cw * 0.35, hh);
+        lin.addColorStop(0, c0);
+        lin.addColorStop(0.5, c1);
+        lin.addColorStop(1, c2);
+        ctx.fillStyle = lin;
+        ctx.fill();
+        ctx.save();
+        path();
+        ctx.clip();
+        const gloss = ctx.createLinearGradient(0, 0, 0, hh * 0.45);
+        gloss.addColorStop(0, 'rgba(255,255,255,0.22)');
+        gloss.addColorStop(1, 'rgba(255,255,255,0)');
+        ctx.fillStyle = gloss;
+        ctx.fillRect(0, 0, cw, hh * 0.45);
+        ctx.restore();
+        tex.refresh();
+      }
+    }
+    if (this.textures.exists(key)) c.add(this.add.image(x, y, key).setOrigin(0).setDisplaySize(w, h));
+    else c.add(this.add.graphics().fillStyle(0x3a2a80, 1).fillRoundedRect(x, y, w, h, r));
+    return c;
+  }
+
+  /** Dos destellos opuestos que dan la vuelta al borde de la tarjeta, con estela que se apaga (el de la oferta del Pase en la Tienda). */
+  private borderShine(x: number, y: number, w: number, h: number) {
+    const edge = this.add.graphics().setBlendMode(Phaser.BlendModes.ADD);
+    const per = 2 * (w + h);
+    /** punto del borde a la distancia d (desde la esquina superior izquierda, en sentido horario) */
+    const at = (d: number) => {
+      const t = ((d % per) + per) % per;
+      if (t < w) return { px: x + t, py: y };
+      if (t < w + h) return { px: x + w, py: y + (t - w) };
+      if (t < 2 * w + h) return { px: x + w - (t - w - h), py: y + h };
+      return { px: x, py: y + h - (t - 2 * w - h) };
+    };
+    const run = { d: 0 };
+    const trail = 130;
+    const tw = this.tweens.add({
+      targets: run,
+      d: per,
+      duration: 2800,
+      repeat: -1,
+      onUpdate: () => {
+        if (!edge.active) return tw.remove();
+        edge.clear();
+        for (const off of [0, per / 2]) {
+          for (let k = 0; k < 10; k++) {
+            const a = at(run.d + off - (k * trail) / 10);
+            const b = at(run.d + off - ((k + 1) * trail) / 10);
+            const f = 1 - k / 10;
+            edge.lineStyle(5 * f + 2, 0xffffff, 0.85 * f).lineBetween(a.px, a.py, b.px, b.py);
+          }
+          const head = at(run.d + off);
+          edge.fillStyle(0xffffff, 1).fillCircle(head.px, head.py, 4);
+        }
+      },
+    });
+    edge.once(Phaser.GameObjects.Events.DESTROY, () => tw.remove());
+    return edge;
   }
 
   /** ULTI › PODERES: televisión con el poder elegido y todos los de la ULTI (los que no se tienen, con candado). */
@@ -869,7 +1065,7 @@ ${unlockLabel(key)}`, { fontFamily: FONT, fontSize: '16px', color: '#ffd23f', st
         this.cameras.main.once('camerafadeoutcomplete', () => this.scene.start('Shop'));
       },
       onClose: ({ changed }) => {
-        if (changed) this.scene.restart(); // al instante: la tarjeta ya muestra la ULTI equipada
+        if (changed) this.restartEquipped('ulti'); // al instante: la tarjeta ya muestra la ULTI equipada
       },
     });
   }
@@ -924,6 +1120,7 @@ ${unlockLabel(key)}`, { fontFamily: FONT, fontSize: '16px', color: '#ffd23f', st
   /** Tarjeta de habilidad equipada: icono, nombre, recarga y descripción. */
   private abilityCard(W: number, y: number, h: number, col: 0 | 1, a: AbilityDef) {
     const { x, w } = gridCol(W, col);
+    this.cardRects[a.id === 'dash' ? 'defensive' : 'special'] = { x, y, w, h };
     // el PODER equipado de la habilidad (DEFENSIVO: dash / destello; ESPECIAL: fuego / hielo / viento / rayo): su
     // descripción, su icono y su nombre en la tarjeta, para ver lo que se equipó en el diálogo
     const eq = getPlayer().equipped;
@@ -991,7 +1188,7 @@ ${unlockLabel(key)}`, { fontFamily: FONT, fontSize: '16px', color: '#ffd23f', st
         this.cameras.main.once('camerafadeoutcomplete', () => this.scene.start('Shop'));
       },
       onClose: ({ changed }) => {
-        if (changed) this.scene.restart(); // al instante: la pantalla ya muestra lo que se equipó
+        if (changed) this.restartEquipped('special'); // al instante: la pantalla ya muestra lo que se equipó
       },
     });
   }
@@ -1026,7 +1223,7 @@ ${unlockLabel(key)}`, { fontFamily: FONT, fontSize: '16px', color: '#ffd23f', st
       },
       // (faltaba) al equipar otro poder, la pantalla se rehace al instante y la tarjeta DEFENSIVO lo muestra
       onClose: ({ changed }) => {
-        if (changed) this.scene.restart();
+        if (changed) this.restartEquipped('defensive');
       },
     });
   }
@@ -1073,7 +1270,7 @@ ${unlockLabel(key)}`, { fontFamily: FONT, fontSize: '16px', color: '#ffd23f', st
         this.cameras.main.once('camerafadeoutcomplete', () => this.scene.start('Shop'));
       },
       onClose: ({ changed }) => {
-        if (changed) this.scene.restart(); // al instante: la pantalla ya muestra lo que se equipó
+        if (changed) this.restartEquipped('charge'); // al instante: la pantalla ya muestra lo que se equipó
       },
     });
   }

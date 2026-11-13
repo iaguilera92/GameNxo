@@ -896,13 +896,16 @@ export const infernoSound = {
     if (!c) return;
     tone(c, 1400, 300, c.currentTime, 0.28, 'sawtooth', 0.04);
   },
-  impact(scene: Phaser.Scene) {
+  impact(scene: Phaser.Scene, el?: InfernoElement) {
     chargeSnd?.stop();
     chargeSnd?.destroy();
     chargeSnd = null;
-    // mp3 del golpe INFERNO (cargado en MatchScene.preload); si falta, el golpe sintetizado de siempre
-    if (scene.cache.audio.exists('inferno-hit')) {
-      scene.sound.play('inferno-hit', { volume: 1 });
+    // golpe de la ULTI: el suyo si el poder lo tiene (fuego, rayo); si no, el inferno.mp3 genérico (cargado en MatchScene.preload).
+    // Si falta el archivo, el golpe sintetizado de siempre
+    const own = el === 'fire' ? 'ulti-fuego' : el === 'lightning' ? 'ulti-rayo' : el === 'ice' ? 'ulti-hielo' : '';
+    const key = own && scene.cache.audio.exists(own) ? own : 'inferno-hit';
+    if (scene.cache.audio.exists(key)) {
+      scene.sound.play(key, { volume: 1 });
       return;
     }
     const c = audio(scene);

@@ -676,3 +676,37 @@ Lo que antes estaba disperso en las notas de arriba, en un solo lugar. Detalle c
 [Claude 13-11-2026] Online, log e9a29e0d (todo OK: 60 fps, 0 tirones, sin "volver corriendo"). Ajustes: (1) al llegar el golpe del rival ya no salta al punto del contacto: el dibujo se desliza en NET_SNAP_MS (110 ms) con un desfase que se apaga (netSnap); (2) la entrada caminando termina en reposo (setMoving(false,0,0)) en vez de la frenada de carrera.
 
 (Kiro, 12-11-2026) WEB EN ESCRITORIO: frontend/index.html ahora muestra el juego como un celular 9:16 centrado (alto completo de la ventana, negro a los lados) cuando hay raton (@media hover:hover + pointer:fine + ventana mas ancha que 9:16). Celulares/tablets tactiles y la APK no cambian. Verificado en Chrome headless: 1920x1080 -> 608x1080 centrado; 1366x768 -> 432x768; celular 390x844 -> 390x844 (igual que antes). Solo CSS; Phaser (EXPAND) se adapta al contenedor.
+
+[Claude 13-11-2026] (1) Sin raqueta (ULTI recibida, raqueta en el suelo): sin reacciones de punto ni emotes (llevan raqueta) y la derrota del partido usa idle-nr (ULTI fila 4); se queda con idle-nr / run-nr hasta recogerla. (2) Avisos laterales: huecos ocupados (Set) en vez de contador; cada aviso y "SACA EN n" toman el primer hueco libre: ya no se montan.
+
+[Claude 13-11-2026] SONIDOS de interfaz: fx/uiSound.ts (sintetizados con Web Audio; respetan el ajuste Sonido). Menu: "tap" en cualquier boton (input GAMEOBJECT_DOWN) y "play" al soltar JUGAR (golpe grave + whoosh + acorde). Para usar un mp3: public/mp3/ui-<tipo>.mp3 y anadir el tipo a UI_SOUND_FILES (lo carga BootScene).
+
+=== DUELO EN LA RED (Kiro) ===
+Hecho: NetDuel.ts (+test-net-duel, 19 OK), fx/NetDuelFx.ts, integración en MatchScene, acciones duel-* en protocol (front+back). Probado: bot en Chrome headless y online con 2 navegadores en localhost (mismo ganador en ambos, globo aplicado). NO probado en móviles reales ni caso rival-gana online.
+Ajustes en NetDuel.ts: muy frecuente -> bajar triggerDist/reachK; globo imposible -> subir lob.inset/lob.margin; muy fácil -> bajarlos; toque estricto -> subir earlyMin. Apagar: localStorage dev.netDuelOff='1'. El bot defensor tiene su propia estirada (botLunge). ONLINE_URL temporal revertida.
+
+[Kiro 13-11-2026] AUDIOS NUEVOS (Descargas -> frontend/public/mp3/, copiados; las originales siguen en Descargas). Lista y dónde suenan en fx/sfx.ts (cargados en BootScene). ball-saque-1/2 (saque normal/efecto), ball-revez (revés normal), especial/-electrico/-onda (ESPECIAL fuego/rayo/hielo+viento), electricidad (carga 100%), dash-1 / dash-electirco-1 (DASH; eléctrico si su ESPECIAL es rayo), dash-shadow, dash-jump, dash-destello, ball-recibir-ulti-ataque (loseRacket), ball-ulti-pared (checkBackWall con ULTI), recoger-raqueta, equipar y preview (PowerDialog). Reemplazan a golpe-fuerte solo en esos golpes. Sin ffmpeg: m4a y wav se cargan tal cual (electricidad.wav pesa 744 KB: convertir a mp3 cuando se pueda). Probado: tsc OK; sin oír en juego.
+
+[Claude 13-11-2026] Rival NXO: su hoja 4 fila 2 (serve-toss) NO es un lanzamiento, trae dibujado un golpe de derecha. PACKS nxo-front noToss: el saque usa solo hoja 2 fila 5/6 (lanza en frames 2-3, espera en el 3, impacto en el 5). Pendiente de arte: redibujar pj-nxo-rival-4 fila 2 como lanzamiento y quitar noToss.
+
+[Claude 13-11-2026] Rival NXO saque (noToss): arranca directo en hoja 2 frame 3 (pelota en el aire, serveWait), espera ahi y al soltar va del 4 al final; impacto en el 5.
+
+[Kiro 13-11-2026] MODO PRUEBA DEL DUELO EN LA RED (TEMPORAL, quitar cuando el usuario avise que acabaron las pruebas): en el PRIMER juego (0-0 en juegos, sin red) el bot solo hace peloteo suave hacia el jugador y sale a volear a NET_X+70. Piezas a quitar: (1) MatchScene.placeForServe: bloque 'netTest' (ai.homeX y brain.netPractice) + devFlagOff si ya no se usa; (2) logic/BotAI.ts: campo homeX, el uso en get home y el bloque de volea en predict(); (3) ai/BotBrain.ts: campo netPractice y sus 4 usos (wantsUlti, smashReady, DASH en tick, el return temprano de planShot). Apagar sin tocar código: localStorage dev.botNet = '0'.
+
+[Claude 13-11-2026] RANKED: las 4 cards de estadisticas pasan a 3 (POSICION, RECORD, RACHA; se quita SEMANA, que ya esta en la recompensa semanal). Formato nuevo: placa inclinada, medallon del icono sobre el borde superior, cifra grande, etiqueta, pildora con el detalle y franja de color abajo; halo dorado si destaca (top 10 / racha >= 3).
+
+[Claude 13-11-2026] RANKED, LIDERES DE LA LIGA: ahora es un PODIO (2.o-1.o-3.o): pedestales de distinta altura con el numero grande, avatar con aro de medalla, corona animada y foco dorado en el 1.o, nombre y monedas encima; "TU" resaltado. 4.o y 5.o en filas compactas con fondo. VER TOP 100 debajo.
+
+[Claude 13-11-2026] RANKED, RECOMPENSA SEMANAL redisenada: cinta dorada de titulo (LISTA / EN CURSO), cofre en medallon con rayos girando si ya cumple, progreso con un punto por partida (check en los jugados) y el premio en fichas [icono + cifra] que se miden antes de dibujar: el cuadro se ajusta (antes ancho fijo: la moneda o el rayo se salian). Quitado rewardAmounts.
+
+[Claude 13-11-2026] RANKED ajustes: lider sin circulo/foco detras; aura de rayos dorados girando + destellos. Pedestales mas chicos (78/56/40 de alto, 82% del ancho, numeros 44/36). Cards POSICION/RECORD/RACHA mas arriba en pantallas altas (sy usa e2*0.15; la recompensa semanal compensa con e2*0.6).
+
+[Claude 13-11-2026] RANKED: quitada la linea "LA SEMANA TERMINA EL DOMINGO"; en su lugar un temporizador chico a la izquierda del emblema ("TEMPORADA TERMINA EN 2d 06h", con relojito). Monedas y barra suben 22 px. Separacion uniforme GAP entre todas las secciones (barra, placas con su medallon, recompensa semanal, lideres, paneles); el alto extra de pantallas altas ya no se reparte entre bloques (queda al final).
+
+[Claude 13-11-2026] RANKED: el temporizador pasa a la cinta de RECOMPENSA SEMANAL ("TERMINA EN 2d 06h", con reloj; "LISTA! �" delante si ya cumple). Quitada la caja junto al emblema.
+
+[Claude 13-11-2026] RANKED: bajo el emblema ya no va el nombre de la liga (el emblema lo trae); en su lugar "(reloj) TEMPORADA TERMINA EN 2d 06h". La cinta de la recompensa semanal vuelve a "EN CURSO" / "LISTA!".
+
+[Claude 13-11-2026] RANKED: el fin de temporada bajo el emblema pasa a una pildora (capsula oscura, borde del color de la liga, segmento de color con reloj blanco, "FIN DE TEMPORADA | 2d 06h").
+
+[Claude 13-11-2026] RANKED podio: los 3 bloques pegados (ancho = separacion de columnas, 86% de la columna), cara frontal oscura del color de la medalla, tapa 3D clara, base comun debajo y el numero en una medalla. Alturas 84/62/48.

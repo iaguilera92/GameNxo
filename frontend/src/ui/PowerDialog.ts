@@ -1,6 +1,7 @@
 ﻿import Phaser from 'phaser';
 import { FONT, textStyle } from './theme';
 import { type ArcadePalette, arcadeButton } from './modeButtons';
+import { sfx } from '../fx/sfx';
 
 /** Cuántos huecos muestra el diálogo: 2 filas × 5. */
 export const POWER_SLOTS = 10;
@@ -318,6 +319,7 @@ export function openPowerDialog(scene: Phaser.Scene, opts: PowerDialogOpts) {
         tag('EQUIPAR', 'yellow', () => {
           // se equipa y el diálogo se cierra al instante: la escena (onClose con `changed`) ya muestra lo equipado
           s.onEquip?.();
+          sfx(scene, 'equipar');
           changed = true;
           slots.forEach((q, k) => (q.equipped = k === i));
           close();

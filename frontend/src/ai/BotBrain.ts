@@ -168,6 +168,11 @@ const ULTI_AI = {
 export type SprintEvt = 'start' | 'end' | null;
 
 export class BotBrain {
+  /**
+   * PRUEBAS del DUELO EN LA RED (temporal; lo enciende MatchScene solo en el primer juego): el rival solo hace peloteo suave
+   * hacia ti, sin ESPECIAL, ULTI, DASH, globos ni dejadas ni errores, y sale a volear cerca de la red.
+   */
+  netPractice = false;
   /** enfriamientos restantes de las habilidades (s) */
   private dashCd = 0;
   private smashCd = 0;
@@ -240,7 +245,7 @@ export class BotBrain {
    * luego llama a planShot(…, true).
    */
   wantsUlti(ball: BallState, ctx: ShotContext): boolean {
-    if (!this.ultiReady || this.abil.ulti <= 0) return false;
+    if (this.netPractice || !this.ultiReady || this.abil.ulti <= 0) return false;
     if (this.contactQuality(ball, ctx) < ULTI_AI.minQuality) return false;
     const mood = this._mode === 'competitivo' ? 1.2 : this._mode === 'concentrado' ? 1.1 : 1;
     return Math.random() < Math.min(1, this.abil.ulti * mood);
@@ -296,7 +301,7 @@ export class BotBrain {
     if (reading && !this.dashDecided && !frozen) {
       this.dashDecided = true;
       const need = Math.hypot(this.ai.target.x - body.x, this.ai.target.y - body.y) / this.ai.speed;
-      if (!inp.noAbilities && this.dashCd <= 0 && need > DASH_AI.needS && Math.random() < this.abil.dash) {
+      if (!inp.noAbilities && !this.netPractice && this.dashCd <= 0 && need > DASH_AI.needS && Math.random() < this.abil.dash) {
         this.dashT = DASH_AI.time;
         this.dashCd = DASH_COOLDOWN * this.abil.cd;
         this.dashAnim = true;
@@ -386,7 +391,7 @@ export class BotBrain {
    */
   /** ¿Tiene el ESPECIAL listo? (recarga cumplida y su nivel lo usa). Lo usa la escena para el alcance extra. */
   get smashReady(): boolean {
-    return this.smashCd <= 0 && this.abil.smash > 0;
+    return !this.netPractice && this.smashCd <= 0 && this.abil.smash > 0;
   }
 
   /** Probabilidad de usar el ESPECIAL en un golpe (la misma que planShot, según su modo). */
@@ -408,6 +413,20 @@ export class BotBrain {
     const q = this.contactQuality(ball, ctx);
 
     const depth = (ctx.playerX - COURT.left) / ownLen; // 0 = en su línea de fondo, 1 = en la red
+
+    // PRUEBAS del duelo en la red: peloteo suave, justo hacia donde está el jugador (que lo pueda volear), sin riesgos
+    if (this.netPractice) {
+      this.lastIntents = ['normal', this.lastIntents[0]];
+      return {
+        tx: clamp(ctx.playerX + rand(-40, 10), COURT.left + 60, NET_X - 30),
+        ty: clamp(ctx.playerY + rand(-35, 35), COURT.top + 30, COURT.bottom - 30),
+        speed: SHOT_SPEED * 0.6,
+        kind: 'normal',
+        margin: 38,
+        intent: 'normal',
+        quality: q,
+      };
+    }
 
     // ULTI (INFERNO DRIVE): la escena ya hizo la cinemática; golpe de máxima potencia lejos del jugador. Gasta la carga.
     if (ulti) {

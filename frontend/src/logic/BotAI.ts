@@ -72,8 +72,11 @@ export class BotAI {
     return this.tracking;
   }
 
+  /** x de su posición de espera (null = detrás de la línea de fondo, como siempre). MatchScene la acerca a la red para PROBAR el duelo en la red. */
+  homeX: number | null = null;
+
   get home() {
-    return new Phaser.Math.Vector2(COURT.right + 40, (COURT.top + COURT.bottom) / 2);
+    return new Phaser.Math.Vector2(this.homeX ?? COURT.right + 40, (COURT.top + COURT.bottom) / 2);
   }
 
   /** Llamar cuando el jugador golpea la pelota. */
@@ -148,6 +151,11 @@ export class BotAI {
       const ev = stepBall(s, dt);
       t += dt;
       if (ev === 'net') break;
+      // PRUEBAS del duelo en la red (homeX = cerca de la red): sale a VOLEAR, antes del bote, en cuanto la pelota llega a su sitio
+      if (this.homeX !== null && bounces === 0 && s.x >= this.homeX && s.vx > 0) {
+        found = { x: s.x, y: s.y };
+        break;
+      }
       if (ev === 'bounce') {
         bounces++;
         if (bounces === 1) firstBounce = t;

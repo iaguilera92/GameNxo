@@ -3,6 +3,7 @@ import { FONT } from '../ui/theme';
 import { COINS_LOSS, COINS_SURRENDER, COINS_WIN, XP_LOSS, XP_WIN, xpToNext, MAX_LEVEL } from '../config';
 import { addCoins, addXp, getProfile } from '../logic/Profile';
 import { applyCharColor } from '../fx/CharColorFx';
+import { sfx } from '../fx/sfx';
 import { arcadeButton } from '../ui/modeButtons';
 import { fitText } from '../ui/fitText';
 import type { RankId } from '../domain/ranks';
@@ -74,10 +75,9 @@ const CARD_H = 196;
 /** alto extra del panel con el duelo de apuestas Ranked */
 const RANKED_H = 286;
 /** alto de los cuadros de los personajes del duelo */
-const DUEL_BOX_H = 224;
-/** cuadro del duelo cuando se decide: ganador en verde (ganó monedas), perdedor en rojo suave */
-const DUEL_WIN = { fill: 0x0f3a24, line: 0x3fd46a, text: '#9fe8a0' };
-const DUEL_LOSE = { fill: 0x3a1620, line: 0xd9707a, text: '#ffb3ba' };
+const DUEL_BOX_H = 214;
+/** zoom al que llega el mapa de atrás cuando terminan de pasar las monedas (parte de 0,9, el de matchEnd.ts) */
+const MAP_ZOOM_END = 0.74;
 
 /** Moneda dibujada (sin imagen): disco dorado con canto, brillo y una corona. */
 function drawCoin(g: Phaser.GameObjects.Graphics, r: number) {
@@ -272,6 +272,7 @@ export class MatchEndScene extends Phaser.Scene {
     const panelTop = btnY - btnH / 2 - 14 - panelH;
     this.resultPanel(W, panelTop, panelH);
     this.buttons(W, btnY, btnH);
+    this.framePlayer(panelTop);
     if (win) this.confetti(W, H);
     if (win) this.time.delayedCall(900, () => { void showInterstitial('match_victory'); });
   }
@@ -649,8 +650,8 @@ export class MatchEndScene extends Phaser.Scene {
     const rivalStake = pot - entry;
     const won = r.delta > 0;
     // cabecera: resultado de la apuesta (rendirse = perderla); la de prueba lo dice
-    const hy = y0 + 18;
-    const headText = `${won ? 'Has ganado la apuesta' : 'Has perdido la apuesta'}${r.demo ? ' (PRUEBA, sin monedas)' : ''}:`;
+    const hy = y0 + 16; // a media altura entre las 3 tarjetas de arriba y los 2 cuadros de abajo
+    const headText = `${won ? 'Ganaste la apuesta' : 'Has perdido la apuesta'}${r.demo ? ' (PRUEBA, sin monedas)' : ''}:`;
     const head = this.add
       .text(0, hy, headText, { fontFamily: FONT, fontSize: '22px', color: won ? '#ffd23f' : '#ff9aa3', stroke: '#0a1638', strokeThickness: 5 })
       .setOrigin(0.5)
@@ -659,7 +660,7 @@ export class MatchEndScene extends Phaser.Scene {
     c.add(head);
     // cuadros (más grandes; sin nombre: el personaje ya dice quién es)
     const bh = DUEL_BOX_H;
-    const by = y0 + 40 + bh / 2;
+    const by = y0 + 50 + bh / 2;
     const bw = (w - 40 - 44) / 2;
     const lx = -w / 2 + 20 + bw / 2;
     const rx = w / 2 - 20 - bw / 2;
@@ -675,17 +676,55 @@ export class MatchEndScene extends Phaser.Scene {
     const sprites: { me?: Phaser.GameObjects.Sprite; rival?: Phaser.GameObjects.Sprite } = {};
     // ancla y escala por la SILUETA real del primer frame (pies y alto dibujados), no por el ancla de la hoja: así ningún
     // personaje queda hundido ni más grande que el otro aunque sus hojas tengan celdas y márgenes distintos
-    /** fondo + borde del cuadro (sin separador entre sus dos columnas) */
-    const paintBox = (g: Phaser.GameObjects.Graphics, fill: number, line: number, lw: number) => {
-      g.clear();
-      // halo del color del cuadro (azul tú, rojo rival; verde / rojo al decidirse): se distinguen del fondo
-      g.lineStyle(lw + 10, line, 0.2).strokeRoundedRect(-bw / 2 - 2, -bh / 2 - 2, bw + 4, bh + 4, 18);
-      g.lineStyle(lw + 4, line, 0.35).strokeRoundedRect(-bw / 2 - 1, -bh / 2 - 1, bw + 2, bh + 2, 17);
-      g.fillStyle(fill, 1).fillRoundedRect(-bw / 2, -bh / 2, bw, bh, 16);
-      g.fillStyle(0xffffff, 0.04).fillRoundedRect(-bw / 2 + 3, -bh / 2 + 3, bw - 6, bh * 0.4, { tl: 13, tr: 13, bl: 4, br: 4 });
-      g.lineStyle(lw, line, 1).strokeRoundedRect(-bw / 2, -bh / 2, bw, bh, 16);
-    };
-    const place = (sp: Phaser.GameObjects.Sprite, key: string) => {
+    /**
+     * Fondo del cuadro: degradado diagonal con reflejo de vidrio, SIN borde (como la card de la ULTI en Personalización).
+     * Azul (tú) / rojo (rival) antes de decidirse; al decidirse, VERDE el que ganó y ROJO VINO TINTO el que perdió.
+     */
+    const boxTex = (name: 'me' | 'rv' | 'win' | 'lose') => {
+      const cols: Record<string, [string, string, string]> = {
+        me: ['#3f7cff', '#1f48b8', '#0c1d52'],
+        rv: ['#f0586a', '#a82a40', '#4d1022'],
+        win: ['#3fd46a', '#17803a', '#08371a'],
+        lose: ['#8c2a40', '#5c1428', '#2a0814'],
+      };
+      const bwr = Math.round(bw);
+      const bhr = Math.round(bh);
+      const key = `end-box-${name}-${bwr}x${bhr}`;
+      if (!this.textures.exists(key)) {
+        const tex = this.textures.createCanvas(key, bwr, bhr);
+        if (tex) {
+          const ctx = tex.getContext();
+          const r = 16;
+          const path = () => {
+            ctx.beginPath();
+            ctx.moveTo(r, 0);
+            ctx.arcTo(bwr, 0, bwr, bhr, r);
+            ctx.arcTo(bwr, bhr, 0, bhr, r);
+            ctx.arcTo(0, bhr, 0, 0, r);
+            ctx.arcTo(0, 0, bwr, 0, r);
+            ctx.closePath();
+          };
+          path();
+          const lin = ctx.createLinearGradient(0, 0, bwr * 0.35, bhr);
+          lin.addColorStop(0, cols[name][0]);
+          lin.addColorStop(0.5, cols[name][1]);
+          lin.addColorStop(1, cols[name][2]);
+          ctx.fillStyle = lin;
+          ctx.fill();
+          ctx.save();
+          path();
+          ctx.clip();
+          const gloss = ctx.createLinearGradient(0, 0, 0, bhr * 0.45);
+          gloss.addColorStop(0, 'rgba(255,255,255,0.22)');
+          gloss.addColorStop(1, 'rgba(255,255,255,0)');
+          ctx.fillStyle = gloss;
+          ctx.fillRect(0, 0, bwr, bhr * 0.45);
+          ctx.restore();
+          tex.refresh();
+        }
+      }
+      return key;
+    };    const place = (sp: Phaser.GameObjects.Sprite, key: string) => {
       const b = silhouette(this, key);
       if (!b) return;
       // el MISMO alto para los dos personajes, salvo que su silueta (con la raqueta) no quepa a lo ancho en su columna
@@ -698,9 +737,10 @@ export class MatchEndScene extends Phaser.Scene {
       const hasPose = !useClip && !!pose && this.textures.exists(pose.key);
       const useDefault = !useClip && !hasPose && this.textures.exists('portrait-nxo');
       const bc = this.add.container(x, by);
-      const g = this.add.graphics();
-      paintBox(g, 0x11224d, color, 4);
-      bc.add(g);
+      const shadow = this.add.graphics();
+      shadow.fillStyle(0x000000, 0.35).fillRoundedRect(-bw / 2 + 3, -bh / 2 + 5, bw, bh, 16);
+      const g = this.add.image(0, 0, boxTex(color === 0x3a7bff ? 'me' : 'rv')).setDisplaySize(bw, bh);
+      bc.add([shadow, g]);
       // sin círculo de luz ni sombra bajo los pies: en las cards no gustaron
       let sp: Phaser.GameObjects.Sprite | undefined;
       if (useClip && clips) {
@@ -751,6 +791,10 @@ export class MatchEndScene extends Phaser.Scene {
     c.add(vs);
     // animación: tras las tarjetas de recompensa
     const start = 750 + 380 * 3;
+    // el mapa de atrás se sigue alejando de a poco mientras dura todo el duelo: desde ahora hasta que las monedas terminan de pasar
+    // (el traspaso dura 3 s desde start; el zoom a 0,9 de playMatchEnd ya casi acabó, por eso force = true)
+    const mapCam = this.d.matchKey ? this.scene.get(this.d.matchKey)?.cameras?.main : undefined;
+    mapCam?.zoomTo(MAP_ZOOM_END, start + 3000, 'Sine.easeInOut', true);
     this.time.delayedCall(start, () => {
       // victoria / derrota según el PARTIDO (con rendición, gana el rival)
       // con los MISMOS clips de la tarjeta (MAI de frente usa sus poses nuevas: con los del partido salía con la raqueta
@@ -762,35 +806,50 @@ export class MatchEndScene extends Phaser.Scene {
       const moved = won ? rivalStake : entry;
       vs.setText(won ? '◀' : '▶').setColor(won ? '#9fe8a0' : '#ff9aa3').setFontSize(30);
       this.tweens.add({ targets: vs, scale: { from: 1.5, to: 1 }, duration: 300, ease: 'Back.easeOut' });
-      // monedas que vuelan de un cuadro al otro (en arco)
-      const n = 7;
+      // monedas que vuelan de un cuadro al otro: un chorro de ~40 durante 3 s (lo que dura el sonido), llegando una tras otra
+      sfx(this, 'recolectar-monedas');
+      const TOTAL = 3000; // ms de todo el traspaso
+      const FLY = 700; // ms que tarda cada moneda en cruzar
+      const n = 40;
+      const gapMs = (TOTAL - FLY) / n;
+      let pulse: Phaser.Tweens.Tween | null = null;
       for (let i = 0; i < n; i++) {
         const cg = this.add.graphics();
-        drawCoin(cg, 11);
-        cg.setPosition(from.bc.x + colR, by);
+        drawCoin(cg, Phaser.Math.Between(8, 12));
+        const sx = from.bc.x + colR + Phaser.Math.Between(-14, 14);
+        const sy = by + Phaser.Math.Between(-22, 22);
+        const ex = to.bc.x + colR + Phaser.Math.Between(-10, 10);
+        const ey = by + Phaser.Math.Between(-14, 14) - 24;
+        const arc = Phaser.Math.Between(30, 90);
+        cg.setPosition(sx, sy).setVisible(false);
         c.add(cg);
         const t = { k: 0 };
         this.tweens.add({
           targets: t,
           k: 1,
-          duration: 520,
-          delay: i * 70,
+          duration: FLY,
+          delay: i * gapMs,
           ease: 'Sine.easeInOut',
-          onUpdate: () => cg.setPosition(from.bc.x + colR + (to.bc.x - from.bc.x) * t.k, by - Math.sin(t.k * Math.PI) * 46),
+          onStart: () => cg.setVisible(true),
+          onUpdate: () => {
+            cg.setPosition(sx + (ex - sx) * t.k, sy + (ey - sy) * t.k - Math.sin(t.k * Math.PI) * arc);
+            cg.setAngle(t.k * 360);
+          },
           onComplete: () => {
             cg.destroy();
-            this.tweens.add({ targets: to.coin, scale: { from: 1.35, to: 1 }, duration: 160 });
+            if (!pulse || !pulse.isPlaying()) pulse = this.tweens.add({ targets: to.coin, scale: { from: 1.25, to: 1 }, duration: 120 });
           },
         });
       }
-      // cifras: el ganador cuenta hacia arriba, el perdedor hasta 0
+      // cifras: el ganador cuenta hacia arriba, el perdedor hasta 0, al ritmo de las monedas que llegan
       const a0 = won ? entry : rivalStake;
       const cnt = { v: 0 };
       this.tweens.add({
         targets: cnt,
         v: moved,
-        duration: 520 + n * 70,
-        ease: 'Cubic.easeOut',
+        delay: FLY * 0.5,
+        duration: TOTAL - FLY * 0.5,
+        ease: 'Linear',
         onUpdate: () => {
           const v = Math.round(cnt.v);
           to.val.setText((a0 + v).toLocaleString('es-CL'));
@@ -800,10 +859,10 @@ export class MatchEndScene extends Phaser.Scene {
         },
         onComplete: () => {
           // ganador en VERDE (ganó las monedas) y perdedor en ROJO suave
-          paintBox(to.g, DUEL_WIN.fill, DUEL_WIN.line, 4);
-          to.val.setColor(DUEL_WIN.text);
-          paintBox(from.g, DUEL_LOSE.fill, DUEL_LOSE.line, 3);
-          from.val.setColor(DUEL_LOSE.text);
+          to.g.setTexture(boxTex('win')); // verde: ganó las monedas
+          to.val.setColor('#9fe8a0');
+          from.g.setTexture(boxTex('lose')); // rojo vino tinto: las perdió
+          from.val.setColor('#ffb3ba');
           this.tweens.add({ targets: to.bc, scale: { from: 1.08, to: 1 }, duration: 300, ease: 'Back.easeOut' });
           const gain = this.add
             .text(me.bc.x + colR, by - 66, won ? `+${moved.toLocaleString('es-CL')}` : `−${entry.toLocaleString('es-CL')}`, { fontFamily: FONT, fontSize: '24px', color: won ? '#9fe8a0' : '#ff9aa3', stroke: '#0a1638', strokeThickness: 5 })
@@ -827,6 +886,38 @@ export class MatchEndScene extends Phaser.Scene {
     this.tweens.add({ targets: t, scale: 1, duration: 420, ease: 'Back.easeOut' });
   }
 
+  /**
+   * Tu personaje (el de espaldas, abajo del mapa) quedaba TAPADO por el panel de resultados: hacía la pose de victoria /
+   * derrota pero no se veía. Se desplaza el mapa de atrás (la cámara del partido) hacia arriba lo justo para que sus pies
+   * queden sobre el panel; sin duelo casi no hace falta, con el duelo de apuestas (panel alto) sube más.
+   */
+  private framePlayer(panelTop: number) {
+    const ms = (this.d.matchKey ? this.scene.get(this.d.matchKey) : null) as unknown as { player?: { ch?: { y: number } }; cameras?: { main: Phaser.Cameras.Scene2D.Camera } } | null;
+    const feetY = ms?.player?.ch?.y;
+    const cam = ms?.cameras?.main;
+    if (feetY === undefined || !cam) return;
+    const zEnd = this.duel() ? MAP_ZOOM_END : 0.9; // el zoom al que termina el mapa (matchEnd.ts / duelo)
+    const target = panelTop - 30; // pies a 30 px sobre el panel
+    // pantalla = (mundo - centro) * zoom + mitad de la pantalla  →  centro necesario para que los pies queden en `target`
+    const mid = feetY - (target - cam.height / 2) / zEnd;
+    let shift = 0; // px de pantalla que sube el mapa
+    if (mid > cam.midPoint.y) {
+      const newMid = Math.min(mid, cam.midPoint.y + 460);
+      cam.pan(cam.midPoint.x, newMid, 1400, 'Sine.easeInOut', true);
+      shift = Math.max(0, (newMid - cam.midPoint.y) * zEnd);
+    }
+    // arriba el ambiente (la imagen) se queda sin alto: se oscurece como abajo, con un degradado largo y suave
+    // (varias franjas con caída curva: sin corte seco). Más alto cuanto más sube el mapa.
+    const hTop = Math.min(620, shift + 340);
+    const shade = this.add.graphics().setDepth(-5).setAlpha(0);
+    const N = 32;
+    const sh = hTop / N;
+    for (let k = 0; k < N; k++) {
+      const a = Math.pow(1 - (k + 0.5) / N, 1.7); // 1 arriba → 0 abajo, cae despacio al final
+      shade.fillStyle(0x050d22, a).fillRect(0, k * sh, this.scale.width, sh + 1);
+    }
+    this.tweens.add({ targets: shade, alpha: 1, duration: 1400, ease: 'Sine.easeInOut' });
+  }
   // ---------------------------------------------------------------- botones
   private buttons(W: number, y: number, bh: number) {
     const d = this.d;

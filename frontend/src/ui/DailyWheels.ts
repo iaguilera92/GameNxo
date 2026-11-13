@@ -25,6 +25,9 @@ export interface DailyWheelsOpts {
 const MINI_R = 34;
 const PANEL_H = 104;
 
+/** ms que se espera antes de que las ruletas aparezcan en cascada al entrar al menú (a los 0 s ya iban por la mitad) */
+const INTRO_DELAY = 1000;
+
 export class DailyWheels extends Phaser.GameObjects.Container {
   private slots: Phaser.GameObjects.Container[] = [];
   private status: WheelStatus[] = [];
@@ -99,8 +102,8 @@ export class DailyWheels extends Phaser.GameObjects.Container {
       if (this.intro) {
         const alpha = c.alpha;
         c.setScale(0).setAlpha(0);
-        this.scene.tweens.add({ targets: c, scale: 1, duration: 360, delay: 220 + i * 150, ease: 'Back.easeOut', easeParams: [2.2] });
-        this.scene.tweens.add({ targets: c, alpha, duration: 200, delay: 220 + i * 150 });
+        this.scene.tweens.add({ targets: c, scale: 1, duration: 360, delay: INTRO_DELAY + 220 + i * 150, ease: 'Back.easeOut', easeParams: [2.2] });
+        this.scene.tweens.add({ targets: c, alpha, duration: 200, delay: INTRO_DELAY + 220 + i * 150 });
       }
     });
     this.intro = false;

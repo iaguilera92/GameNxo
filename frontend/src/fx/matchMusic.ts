@@ -65,6 +65,8 @@ export function playMatchMusic(scene: Phaser.Scene, ambiente: string) {
 /** Para la música. `release` = además la saca de la memoria (fin del partido / búsqueda cancelada). */
 export function stopMatchMusic(scene: Phaser.Scene, release = true) {
   token++;
+  if (fadeTimer) clearInterval(fadeTimer);
+  fadeTimer = null;
   music?.stop();
   music?.destroy();
   music = null;
@@ -73,4 +75,45 @@ export function stopMatchMusic(scene: Phaser.Scene, release = true) {
     picked = null;
   }
   musicKey = '';
+}
+/** volumen de la música del resultado (soundtrack-victoria / soundtrack-derrota) */
+const RESULT_VOLUME = 0.5;
+/**
+ * Fin del partido (apenas termina): corta el soundtrack del ambiente y suena `soundtrack-victoria` (ganaste) o
+ * `soundtrack-derrota` (perdiste) en public/mp3/. Se puede llamar varias veces (final con espectáculo, rendición,
+ * fin del servidor): la segunda no la reinicia. Se para y se libera al salir del partido (stopMatchMusic).
+ * Si el archivo no existe no suena nada (el del ambiente ya se cortó).
+ */
+export function playResultMusic(scene: Phaser.Scene, win: boolean) {
+  const key = win ? 'soundtrack-victoria' : 'soundtrack-derrota';
+  if (musicKey === key) return;
+  stopMatchMusic(scene); // corta y libera el soundtrack del ambiente
+  const my = ++token;
+  musicKey = key;
+  ensureLoaded(scene, key, () => {
+    if (my !== token || music || !scene.cache.audio.exists(key)) return;
+    music = scene.sound.add(key, { loop: false, volume: RESULT_VOLUME });
+    playResultCycle(music);
+  });
+}
+/** ms finales de cada vuelta en los que el volumen baja poco a poco hasta 0 */
+const RESULT_FADE_MS = 4000;
+let fadeTimer: ReturnType<typeof setInterval> | null = null;
+/**
+ * Una vuelta de la música del resultado: suena entera, en sus últimos RESULT_FADE_MS el volumen baja de a poco hasta 0
+ * y, al acabar, vuelve a empezar a volumen completo (hasta que se salga de la pantalla: stopMatchMusic).
+ * El fundido va por reloj real (setInterval) y no por tweens: no depende de que la escena del partido siga activa.
+ */
+function playResultCycle(snd: Phaser.Sound.BaseSound) {
+  if (music !== snd) return;
+  snd.play(undefined, { volume: RESULT_VOLUME });
+  if (fadeTimer) clearInterval(fadeTimer);
+  fadeTimer = setInterval(() => {
+    if (music !== snd || !snd.isPlaying) return;
+    const total = snd.duration * 1000;
+    const left = total - (snd as Phaser.Sound.WebAudioSound).seek * 1000;
+    const fade = Math.min(RESULT_FADE_MS, total);
+    if (left < fade) (snd as Phaser.Sound.WebAudioSound).setVolume(RESULT_VOLUME * Math.max(0, left / fade));
+  }, 80);
+  snd.once(Phaser.Sound.Events.COMPLETE, () => playResultCycle(snd));
 }

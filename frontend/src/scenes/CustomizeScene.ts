@@ -935,7 +935,7 @@ ${unlockLabel(key)}`, { fontFamily: FONT, fontSize: '16px', color: '#ffd23f', st
     // con el poder de siempre (dash / fuego) se deja la descripción de la habilidad (dice también la duración del aturdido)
     const isDefault = !power || power.id === 'dash' || power.id === 'fire';
     this.gridCard(x, y, w, h, a.color, a.name, isDefault ? a.desc : power.desc, 78);
-    // botón de la habilidad: imagen (assets/btn-<id>.png) si existe; si no, el icono dibujado
+    // botón de la habilidad: imagen (assets/btn-<id>.webp) si existe; si no, el icono dibujado
     // el SMASH con el color de su poder; el DEFENSIVO con el icono de su poder (el DASH, la imagen de siempre)
     if (defPower && defPower.id !== 'dash') {
       const g = this.add.graphics({ x: x + 48, y: y + h / 2 });
@@ -1031,7 +1031,7 @@ ${unlockLabel(key)}`, { fontFamily: FONT, fontSize: '16px', color: '#ffd23f', st
     });
   }
 
-  /** Botón de la habilidad centrado en (x, y), de `size` px de diámetro: la imagen del botón (assets/btn-<id>.png) o un disco dibujado. */
+  /** Botón de la habilidad centrado en (x, y), de `size` px de diámetro: la imagen del botón (assets/btn-<id>.webp) o un disco dibujado. */
   private abilityIcon(a: AbilityDef, x: number, y: number, size: number, el: SmashPower = 'fire'): Phaser.GameObjects.GameObject {
     const art = ABILITY_ART[a.id];
     const baked = art ? bakeImage(this, art.key, 150) : null;

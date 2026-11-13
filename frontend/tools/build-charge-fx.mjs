@@ -1,7 +1,7 @@
-﻿// Arma la hoja de un efecto de CARGA (el "cargando golpe" que se ve en el suelo bajo el jugador mientras carga la potencia).
+// Arma la hoja de un efecto de CARGA (el "cargando golpe" que se ve en el suelo bajo el jugador mientras carga la potencia).
 //   node tools/build-charge-fx.mjs            (las tres: fuego, energia, tulipan)
 //   node tools/build-charge-fx.mjs fuego      (solo una)
-// Fuentes: art/cargando/cargando-<nombre>.png  ->  salida: public/assets/charge-<id>.png  (fuego->fire, energia->energy, tulipan->tulip)
+// Fuentes: art/cargando/cargando-<nombre>.png  ->  salida: public/assets/charge-<id>.webp  (fuego->fire, energia->energy, tulipan->tulip)
 //
 // Cada fuente es una hoja de 10 frames (5 columnas x 2 filas, en orden de lectura): el efecto nace (0), crece hasta su
 // punto máximo (5-6) y se disipa (9). A diferencia de las bolas del INFERNO (tools/build-power-ball.mjs) NO se centra
@@ -14,7 +14,8 @@
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { mkdirSync } from 'node:fs';
-import { decode, save } from './png-lite.mjs';
+import { decode } from './png-lite.mjs';
+import { saveWebp } from './image-out.mjs';
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const SHEETS = {
   // fuente nueva (11-11-2026, cargando-fuego.webp → .png con tools/convert-image.mjs); la anterior en art/cargando/Old/
@@ -40,7 +41,7 @@ for (const name of names) build(name, SHEETS[name]);
 function build(name, cfg) {
   if (!cfg) throw new Error(`hoja desconocida: ${name} (fuego | energia | tulipan)`);
   const SRC = join(ROOT, 'art', 'cargando', `cargando-${name}.png`);
-  const OUT = join(ROOT, 'public', 'assets', `charge-${cfg.id}.png`);
+  const OUT = join(ROOT, 'public', 'assets', `charge-${cfg.id}.webp`);
   const { w, h, px } = decode(SRC);
   // limpieza: alfa residual fuera
   for (let i = 3; i < px.length; i += 4) if (px[i] <= (cfg.floor ?? 2)) px[i] = 0;
@@ -167,7 +168,7 @@ function build(name, cfg) {
       }
   });
   mkdirSync(dirname(OUT), { recursive: true });
-  save(OUT, SW, SH, sheet);
+  saveWebp(OUT, SW, SH, sheet);
   // ancho del aro respecto a la celda (para escalar en el juego): el del último frame
   const ringW = (anchors.reduce((s, q) => s + q.ringW, 0) / NF) * scale;
   console.log(`${name} -> ${OUT}`);

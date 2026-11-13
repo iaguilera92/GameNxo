@@ -2,13 +2,15 @@
 //
 //   node tools/make-button-sprites.mjs
 //
-// Entrada : public/assets/btn-dash.png, btn-smash.png, btn-saque.png, btn-saque-efecto.png (arte original, no se toca)
-// Salida  : public/assets/ui/<mismo nombre>.png  (lo que carga MatchScene; el original pesa ~1 MB y 1312x1199)
+// Entrada : public/assets/btn-dash.webp, btn-smash.webp, btn-saque.webp, btn-saque-efecto.webp (arte original, no se toca)
+// Salida  : public/assets/ui/<mismo nombre>.webp  (lo que carga MatchScene; el original pesa ~1 MB y 1312x1199)
 // Si cambias el arte original, vuelve a ejecutar este script.
-import { mkdirSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { decode, save } from './png-lite.mjs';
+import { decode } from './png-lite.mjs';
+import { saveWebp, webpToPng } from './image-out.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const NAMES = ['btn-dash', 'btn-smash', 'btn-saque', 'btn-saque-efecto'];
@@ -18,7 +20,10 @@ const PAD = 3; // margen transparente alrededor del círculo (px del original)
 mkdirSync(join(ROOT, 'public', 'assets', 'ui'), { recursive: true });
 
 for (const name of NAMES) {
-  const { w, h, px } = decode(join(ROOT, 'public', 'assets', `${name}.png`));
+  // el original está en WebP: se pasa a un PNG temporal para leerlo
+  const tmp = mkdtempSync(join(tmpdir(), 'btn-'));
+  const { w, h, px } = decode(webpToPng(join(ROOT, 'public', 'assets', `${name}.webp`), join(tmp, `${name}.png`)));
+  rmSync(tmp, { recursive: true, force: true });
   // caja del círculo visible (alfa > 20)
   let x0 = w, x1 = -1, y0 = h, y1 = -1;
   for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
@@ -43,6 +48,6 @@ for (const name of NAMES) {
     if (a > 0) { out[o] = Math.round(r / a); out[o + 1] = Math.round(g / a); out[o + 2] = Math.round(b / a); }
     out[o + 3] = Math.round((a / n) * 255);
   }
-  save(join(ROOT, 'public', 'assets', 'ui', `${name}.png`), SIZE, SIZE, out);
+  saveWebp(join(ROOT, 'public', 'assets', 'ui', `${name}.webp`), SIZE, SIZE, out);
   console.log(`${name}: ${w}x${h} -> círculo ${cw}x${ch} -> ${SIZE}x${SIZE}`);
 }

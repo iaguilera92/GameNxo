@@ -2,7 +2,7 @@
 //
 //   node tools/build-nxo-sprites.mjs [ruta-a-la-hoja.png]
 //
-// Salida: public/assets/characters/nxo-sprites/{idle,run,runstop,forehand,backhand,serve,smash,victory}.png
+// Salida: public/assets/characters/nxo-sprites/{idle,run,runstop,forehand,backhand,serve,smash,victory}.webp
 //         src/characters/nxo-sprites.json   (celda, ancla, fps, frames y fotograma de impacto)
 //
 // Qué hace (la hoja NO tiene 8 frames por fila ni celdas fijas, así que todo se mide):
@@ -15,7 +15,8 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { decode, save } from './png-lite.mjs';
+import { decode } from './png-lite.mjs';
+import { saveWebp } from './image-out.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 // personaje: node tools/build-nxo-sprites.mjs [hoja.png] [nxo|mai]   (por defecto nxo)
@@ -345,8 +346,8 @@ ALL.forEach((an, r) => {
       }
     }
   });
-  save(join(OUT, `${an.name}.png`), sw, CH, strip);
-  cfg.animations[an.name] = { file: `${an.name}.png`, frames: list.length, fps: an.fps, loop: an.loop, ...(an.impact !== undefined ? { impact: an.impact } : {}), scale: +scaleOf[r].toFixed(3) };
+  saveWebp(join(OUT, `${an.name}.webp`), sw, CH, strip);
+  cfg.animations[an.name] = { file: `${an.name}.webp`, frames: list.length, fps: an.fps, loop: an.loop, ...(an.impact !== undefined ? { impact: an.impact } : {}), scale: +scaleOf[r].toFixed(3) };
 });
 cfg.standHeight = CC.standHeight ?? Math.round(REF_H); // alto (cabeza→suelo) del idle en px de celda
 // el JSON va en src/ (se importa desde el código; Vite no permite importar desde public/)

@@ -12,12 +12,13 @@
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { decode, save } from './png-lite.mjs';
+import { decode } from './png-lite.mjs';
+import { saveWebp } from './image-out.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const SRC = process.argv[2] || join(homedir(), 'Downloads', 'inferno-ball-ice.png');
 const NF = Number(process.argv[3] || 9);
-const OUT = process.argv[4] || join(ROOT, 'public', 'assets', 'inferno-ball-ice.png');
+const OUT = process.argv[4] || join(ROOT, 'public', 'assets', 'inferno-ball-ice.webp');
 const CELL = 192;
 const COLS = 5;
 const PAD = 3;
@@ -133,5 +134,5 @@ frames.forEach((f, k) => {
       sheet[di + 3] = Math.min(255, Math.round((a / n) * 255));
     }
 });
-save(OUT, SW, SH, sheet);
+saveWebp(OUT, SW, SH, sheet);
 console.log('listo ->', OUT, `${SW}x${SH}`);

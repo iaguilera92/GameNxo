@@ -3,8 +3,8 @@ import { cpSync, existsSync, mkdirSync, readdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 
 /**
- * public/personajes contiene las hojas FUENTE de los sprites (las que procesan tools/build-nxo-*.mjs) y copias
- * de seguridad ("_temp/respaldo_oficial"): ~50 MB que el juego no usa y que acabarían dentro del APK. El juego solo lee de
+ * public/personajes contiene las hojas FUENTE de los sprites (las que procesan tools/build-moves.mjs y build-ulti.mjs) y copias
+ * de seguridad: ~50 MB que el juego no usa y que acabarían dentro del APK. Los respaldos nuevos van a _temp/respaldo_oficial/ (raíz del repo, fuera de public/). El juego solo lee de
  * personajes/ el retrato WebP de Nxo y las franjas de la mirada (INFERNO de Nxo y Mai); el resto se quita de dist.
  * (Los emojis de personajes/Nxo/emojis/ son fuentes de tools/build-emote-thumbs.mjs: el juego usa assets/emotes/.)
  */

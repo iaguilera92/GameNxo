@@ -4,7 +4,7 @@ import maiBack from './mai-sprites.json';
 import maiFront from './mai-front-sprites.json';
 
 /**
- * Hojas de animación procesadas (tools/build-nxo-sprites.mjs <hoja.png> <id>).
+ * Hojas de animación de cada personaje y vista (config de celda, ancla y fotogramas clave; las genera tools/build-moves.mjs <id>).
  * Cada una vive en public/assets/characters/<id>-sprites/ y tiene su JSON de celda, ancla y fotogramas clave.
  * Para añadir una hoja: generarla con la herramienta, importar su JSON aquí y registrarla en SHEETS.
  */

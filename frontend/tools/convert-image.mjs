@@ -3,7 +3,7 @@
 //   node tools/convert-image.mjs <entrada.webp> <salida.png>        fuente webp -> png (las herramientas de hojas leen PNG)
 //   node tools/convert-image.mjs <entrada.png> <salida.webp> [0.92]  hoja procesada -> webp con alfa (calidad 0..1)
 // Necesita Google Chrome instalado (ruta por defecto de Windows o la variable CHROME).
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -15,7 +15,8 @@ const mime = out.toLowerCase().endsWith('.webp') ? 'image/webp' : 'image/png';
 const quality = Math.min(1, Math.max(0, Number(q)));
 const chrome = process.env.CHROME || 'C:/Program Files/Google/Chrome/Application/chrome.exe';
 const ud = mkdtempSync(join(tmpdir(), 'webp2png-'));
-const port = 9341;
+// puerto al azar: con uno fijo, un Chrome huérfano de una corrida anterior respondía en su lugar y devolvía otra imagen
+const port = 20000 + Math.floor(Math.random() * 30000);
 const proc = spawn(chrome, ['--headless=new', '--allow-file-access-from-files', `--remote-debugging-port=${port}`, `--user-data-dir=${ud}`, 'about:blank'], { stdio: 'ignore' });
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 let ws;
@@ -56,7 +57,9 @@ try {
   console.log(`${inp} -> ${out} (${v.w}x${v.h})`);
 } finally {
   ws?.close();
-  proc.kill();
+  // Chrome lanza procesos hijos: se cierra todo el árbol para no dejar instancias escuchando
+  if (process.platform === 'win32') spawnSync('taskkill', ['/pid', String(proc.pid), '/T', '/F'], { stdio: 'ignore' });
+  else proc.kill();
   await sleep(300);
   try { rmSync(ud, { recursive: true, force: true }); } catch {}
 }

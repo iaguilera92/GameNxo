@@ -279,7 +279,7 @@ export class MatchEndScene extends Phaser.Scene {
   // ---------------------------------------------------------------- anuncio
   private banner(W: number, win: boolean) {
     const cx = W / 2;
-    const y = 150;
+    const y = 182; // corona + VICTORIA / DERROTA + nombre del ganador: 32 px más abajo (antes 150)
     const c = this.add.container(cx, y);
 
     if (win) {

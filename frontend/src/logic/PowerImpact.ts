@@ -42,6 +42,15 @@ export const POWER_IMPACT = {
  */
 export const RACKET_LOSS = { side: [110, 170] as [number, number], depth: 40, pickR: 42, flyMs: 700, launchMs: 143, sizeK: 0.55, arcK: 1.1 };
 
+/**
+ * EMPUJÓN LEVE al que RECIBE un golpe cargado al máximo (no cortita ni globo, ni SMASH / ULTI): al devolverlo retrocede un poco
+ * hacia su fondo, con polvo y un golpecito de cámara; sin estrellas ni pérdida de raqueta. Mucho más suave que el SMASH
+ * (knockback 110 / 280 ms, aturdido 2 s).
+ *  dist    retroceso (unidades de cancha)    ms  duración del retroceso    stunS  s sin poder moverse (el empujón)
+ *  shake   sacudida de cámara
+ */
+export const MAX_PUSH = { dist: 48, ms: 240, stunS: 0.2, shake: { ms: 90, intensity: 0.004 } };
+
 /** Posición final del retroceso: hacia atrás (lejos de la red) sin salir de la zona del rival. */
 export function knockbackX(x: number, xMax: number, dist = POWER_IMPACT.knockback.dist) {
   return Math.max(x, Math.min(xMax, x + dist));

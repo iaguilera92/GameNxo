@@ -13,7 +13,8 @@
 // (originX / originY) que van en BALL_ART (src/fx/InfernoFx.ts). Revisar a ojo public/assets/inferno-ball-<id>*.png.
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { decode, save } from './png-lite.mjs';
+import { decode } from './png-lite.mjs';
+import { saveWebp } from './image-out.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 /**
@@ -61,7 +62,7 @@ function clean(img, cfg) {
 function build(name, cfg) {
   if (!cfg) throw new Error(`hoja desconocida: ${name} (${Object.keys(SHEETS).join(' | ')})`);
   const srcs = [`inferno-ball-${name}.png`, `inferno-ball-${name}-rastro.png`].map((f) => join(ROOT, 'art', 'inferno', f));
-  const outs = [`inferno-ball-${cfg.id}.png`, `inferno-ball-${cfg.id}-trail.png`].map((f) => join(ROOT, 'public', 'assets', f));
+  const outs = [`inferno-ball-${cfg.id}.webp`, `inferno-ball-${cfg.id}-trail.webp`].map((f) => join(ROOT, 'public', 'assets', f));
   const imgs = srcs.map((s) => clean(decode(s), cfg));
   const { w, h } = imgs[0];
   if (imgs[1].w !== w || imgs[1].h !== h) throw new Error(`${name}: la bola (${w}x${h}) y el rastro (${imgs[1].w}x${imgs[1].h}) deben medir lo mismo`);
@@ -132,7 +133,7 @@ function build(name, cfg) {
           sheet[di + 3] = Math.min(255, Math.round((a / n) * 255));
         }
     }
-    save(outs[s], SW, SH, sheet);
+    saveWebp(outs[s], SW, SH, sheet);
   });
   console.log(`${name} -> ${outs.join(' + ')}`);
   console.log(`  fuente ${w}x${h}  celda ${CW}x${CH}  hoja ${SW}x${SH}  ancla (${Math.round(oxPx)}, ${Math.round(oyPx)})  originX ${(oxPx / CW).toFixed(3)}  originY ${(oyPx / CH).toFixed(3)}`);

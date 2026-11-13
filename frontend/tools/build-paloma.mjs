@@ -12,13 +12,14 @@
 import { mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { decode, save } from './png-lite.mjs';
+import { decode } from './png-lite.mjs';
+import { saveWebp } from './image-out.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const PLANE = process.argv[2] === 'avion';
 const SRC = join(ROOT, 'art', 'ambiente', PLANE ? 'ambiente-avion.png' : 'ambiente-paloma.png');
 const OUT_DIR = join(ROOT, 'public', 'assets', 'ambiente');
-const OUT_NAME = PLANE ? 'avion.png' : 'paloma.png';
+const OUT_NAME = PLANE ? 'avion.webp' : 'paloma.webp';
 const COLS = 8;
 const ROWS = PLANE ? 1 : 3;
 const K = 2; // reducción (2 = mitad)
@@ -63,5 +64,5 @@ for (let r = 0; r < ROWS; r++) {
 }
 
 mkdirSync(OUT_DIR, { recursive: true });
-save(join(OUT_DIR, OUT_NAME), W, H, out);
+saveWebp(join(OUT_DIR, OUT_NAME), W, H, out);
 console.log(`${OUT_NAME} ${W}x${H} (celda ${cw}x${ch}, ${COLS}x${ROWS})`);

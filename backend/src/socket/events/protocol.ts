@@ -167,6 +167,7 @@ export interface HitMsg {
  *  toss / catch                 lanzamiento del saque / lo atrapa sin golpear
  *  sprint-start / sprint-end    DASH del emisor (data: dirX)
  *  stunned                      el emisor quedó aturdido por una bola de fuego (data: ms)
+ *  bump                         el emisor recibió un golpe cargado al máximo y retrocede un poco (data: ms)
  *  emote                        carita del chat (data: kind = happy | cool | wow)
  *  smash-armed / smash-disarmed el emisor arma / consume su SMASH (aura en el rival)
  *  smash-cine                   empieza la cinemática del SMASH del emisor (data: x, y, overhead, ms)
@@ -192,6 +193,7 @@ export type ActionKind =
   | 'sprint-start'
   | 'sprint-end'
   | 'stunned'
+  | 'bump'
   | 'emote'
   | 'smash-armed'
   | 'smash-disarmed'

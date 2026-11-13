@@ -65,7 +65,7 @@ import { elementTexture } from '../ui/AbilityButton';
 import { INFERNO, INFERNO_CINE, InfernoDrive, planInfernoContact } from '../logic/InfernoDrive';
 import { GhostTrail, INFERNO_LOOK, InfernoFire, infernoCine, infernoElementFor, infernoImpactFx, infernoShake, infernoSound, queueInfernoArt, type InfernoElement } from '../fx/InfernoFx';
 import { isInfernoPower } from '../domain/infernoPowers';
-import { POWER_IMPACT, type PowerKind, RACKET_LOSS, knockbackX, stunMsFor, stunSeconds } from '../logic/PowerImpact';
+import { MAX_PUSH, POWER_IMPACT, type PowerKind, RACKET_LOSS, knockbackX, stunMsFor, stunSeconds } from '../logic/PowerImpact';
 import { LOOSE_RACKET, ensureLooseRacket } from '../objects/NxoActor';
 import { type BotKit, botKitFor } from '../ai/botKit';
 import { NetView } from '../fx/NetView';
@@ -126,6 +126,8 @@ interface Actor {
   /** +1 jugador (mira hacia x creciente), -1 bot */
   dir: number;
   stun: number;
+  /** hasta este instante (time.now) su 'stun' es solo un empujón leve (golpe cargado al máximo): sin estrellas */
+  softUntil?: number;
   /** 1 = normal; 0 = desaparecido (teleport) */
   warp: number;
   vanished: boolean;
@@ -437,6 +439,8 @@ export class MatchScene extends Phaser.Scene {
     return getProfile().style === 'classic' ? undefined : this.look;
   }
   private playerDizzy = false;
+  /** quién recibirá un golpe cargado al máximo (empujón leve al devolverlo). Se fija al golpear y se gasta al recibirlo; el fin del punto lo borra */
+  private maxPushOn: Who | null = null;
 
   // HUD
   private hud!: Phaser.GameObjects.Container;
@@ -2148,6 +2152,35 @@ export class MatchScene extends Phaser.Scene {
     this.popText(head.x, head.y - 10, '¡ATURDIDO!', '#ff9aa3', 30);
   }
 
+  /**
+   * EMPUJÓN LEVE (MAX_PUSH) al que devuelve un golpe cargado al máximo: retrocede un poco hacia su fondo y se queda un instante
+   * sin moverse, con polvo y un golpecito de cámara. Sin estrellas ni cambio de animación (sigue su golpe). Lo aplica el
+   * teléfono de quien lo recibe: si es el usuario, avisa al rival ('bump') y su posición llega con el estado; el bot local
+   * lo aplica aquí mismo; el rival online solo lo muestra (netRemoteBump).
+   */
+  private maxPush(a: Actor) {
+    if (a.vanished || a.racket || this.phase !== 'rally') return;
+    const isPlayer = a === this.player;
+    a.stun = Math.max(a.stun, MAX_PUSH.stunS);
+    a.softUntil = this.time.now + MAX_PUSH.stunS * 1000;
+    if (isPlayer) stopMotion(this.motion);
+    const to = isPlayer ? clamp(a.x - MAX_PUSH.dist, P_X[0], P_X[1]) : knockbackX(a.x, B_X[1], MAX_PUSH.dist);
+    this.tweens.add({ targets: a, x: to, duration: MAX_PUSH.ms, ease: 'Cubic.easeOut' });
+    this.dustFx(a.x, a.y);
+    this.cameras.main.shake(MAX_PUSH.shake.ms, MAX_PUSH.shake.intensity);
+    if (isPlayer) {
+      navigator.vibrate?.(30);
+      this.net?.sendAction('bump', { ms: Math.round(MAX_PUSH.stunS * 1000) });
+    }
+  }
+
+  /** El rival (online) recibió mi golpe cargado al máximo y retrocede un poco: aquí solo se ve su polvo y la sacudida (la posición llega con su estado). */
+  private netRemoteBump() {
+    if (this.phase !== 'rally') return;
+    this.dustFx(this.bot.x, this.bot.y);
+    this.cameras.main.shake(MAX_PUSH.shake.ms, MAX_PUSH.shake.intensity);
+  }
+
   private makeDizzy() {
     const c = this.add.container(0, 0).setDepth(4500).setVisible(false);
     for (let i = 0; i < 3; i++) {
@@ -2747,6 +2780,7 @@ export class MatchScene extends Phaser.Scene {
     // (log) solo el punto que se aplica de verdad (antes se anotaba también el que decide el otro teléfono)
     this.diag?.log('point', { w, reason, score: `${this.score.points.join('-')} / ${this.score.games.join('-')}` });
     this.phase = 'pointover';
+    this.maxPushOn = null;
     this.stopCharge();
     this.disarmUnusedSmash(); // ESPECIAL armado que no se usó en el punto: se desarma y queda listo otra vez
     this.netRivalArmed = false; // (red) el del rival también
@@ -3412,6 +3446,9 @@ export class MatchScene extends Phaser.Scene {
       return;
     }
     const s = this.ball.s;
+    // el golpe que devuelvo venía cargado al máximo: empujón leve al final (más abajo)
+    const pushed = this.maxPushOn === 'player';
+    this.maxPushOn = null;
     // INFERNO DRIVE usa el golpe de máxima potencia (como el SMASH) con su propio multiplicador
     const inferno = this.infernoPending;
     // ESPECIAL armado: no sale en el resto del saque (serveLock); queda armado para el siguiente golpe
@@ -3619,6 +3656,9 @@ export class MatchScene extends Phaser.Scene {
     this.ball.setKind(kind, charged || remate, this.trailLook);
     // cargado al máximo: pelota brillante con rayos y sin estela (objects/Ball.setMaxCharge)
     this.ball.setMaxCharge(charged && !power && c >= 0.995);
+    // cargado al máximo (no cortita, globo ni remate): el rival que lo reciba retrocede un poco. En red lo decide SU teléfono
+    if (!this.net && charged && !power && !remate && c >= 0.995 && kind !== 'drop' && kind !== 'lob') this.maxPushOn = 'bot';
+    if (pushed && !remate) this.maxPush(this.player);
     // CORTITA cargada: solo su aviso "CORTITA" (es peligrosa y tiene que leerse); sin BIEN / PERFECTO encima
     if (timed && timed.grade !== 'none' && !(charged && kind === 'drop')) {
       const grade = timed.grade;
@@ -3761,6 +3801,10 @@ export class MatchScene extends Phaser.Scene {
   private applyBotShot(shot: ReturnType<BotBrain['planShot']>, ulti: boolean, el: InfernoElement) {
     const s = this.ball.s;
     const power = !!shot.power;
+    // lo que devuelve venía cargado al máximo (lo tiraste tú): retrocede un poco; el bot no carga, así que no empuja a nadie
+    const pushed = this.maxPushOn === 'bot';
+    this.maxPushOn = null;
+    if (pushed && !power) this.maxPush(this.bot);
     // SMASH del rival: golpe fuerte (remate si la pelota viene alta) y bola de fuego
     // ESPECIAL del rival: golpe fuerte de derecha / revés (sin el remate con salto), igual que el tuyo
     // (la ULTI del rival conserva el remate por arriba si la pelota viene alta)
@@ -3976,7 +4020,7 @@ export class MatchScene extends Phaser.Scene {
     this.renderCharge();
     const h = this.headPos(this.bot);
     // sin estrellas de la escena si el aturdido ya las trae dibujadas (ULTI completa) ni al recoger la raqueta
-    this.dizzy.setVisible(this.bot.stun > 0 && !this.bot.ch.stunStarsDrawn && !this.bot.ch.pickingUp).setPosition(h.x, h.y);
+    this.dizzy.setVisible(this.bot.stun > 0 && !this.bot.ch.stunStarsDrawn && !this.bot.ch.pickingUp && !(this.bot.softUntil && this.time.now < this.bot.softUntil)).setPosition(h.x, h.y);
     const hp = this.headPos(this.player);
     // solo el aturdido del SMASH (la estirada también usa stun, sin estrellas)
     this.dizzyP.setVisible(this.player.stun > 0 && this.playerDizzy).setPosition(hp.x, hp.y);
@@ -5539,6 +5583,8 @@ export class MatchScene extends Phaser.Scene {
     if (h.power) this.netRivalArmed = false; // su ESPECIAL ya salió
     this.ball.setKind(h.shotKind as ShotKind, h.charged);
     this.ball.setMaxCharge(!!h.shock && !h.power && !h.inferno); // su golpe cargado al máximo se ve igual aquí
+    // si me lo manda así (ni cortita, globo, estirada ni respuesta a la ULTI), al devolverlo retrocedo un poco: lo aplico yo y lo aviso
+    this.maxPushOn = h.kind === 'hit' && !!h.shock && !h.power && !h.inferno && !h.impact && !h.lunge && h.shotKind !== 'drop' && h.shotKind !== 'lob' ? 'player' : null;
     this.lastHitter = 'bot';
     this.bounces = 0;
     this.phase = 'rally';
@@ -5673,6 +5719,7 @@ export class MatchScene extends Phaser.Scene {
     else if (a.kind === 'remate-start') this.netRemoteRemate(true, a.data);
     else if (a.kind === 'remate-end') this.netRemoteRemate(false, a.data);
     else if (a.kind === 'stunned') this.netBotStunned(Number(a.data?.ms));
+    else if (a.kind === 'bump') this.netRemoteBump();
     else if (a.kind === 'emote') this.emotes.showRemote(String(a.data?.kind ?? ''), () => this.headPos(this.bot));
     else if (a.kind === 'smash-armed') {
       // el rival armó su SMASH: aura con el color de SU poder (sin dato, fuego)

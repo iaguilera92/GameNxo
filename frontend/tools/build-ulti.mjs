@@ -10,29 +10,34 @@
 // factor (el guardia del frame 1 mide 140 px), apoya cada fila en su suelo, centra por el cuerpo (píxeles oscuros: pelo y ropa,
 // no estrellas ni destellos) y empaqueta los 9 frames de cada fila en una textura de 3 columnas.
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, unlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { decode, save } from './png-lite.mjs';
+import { fail, saveWebp } from './image-out.mjs';
 import { keepEnclosedGreen } from './keep-enclosed-green.mjs';
 import { CHARACTERS } from './characters.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const ID = process.argv[2];
+const PNG_MODE = process.argv[3] === 'png'; // tiras en PNG, solo para pruebas rápidas (no pasa por Chrome)
+const WITH_ULTI = Object.entries(CHARACTERS).filter(([, c]) => c.ulti).map(([id]) => id);
 if (ID === 'all') {
-  for (const [id, c] of Object.entries(CHARACTERS)) if (c.ulti) execFileSync(process.execPath, [fileURLToPath(import.meta.url), id], { stdio: 'inherit' });
+  const failed = [];
+  for (const id of WITH_ULTI) {
+    try { execFileSync(process.execPath, [fileURLToPath(import.meta.url), id, ...(PNG_MODE ? ['png'] : [])], { stdio: 'inherit' }); } catch { failed.push(id); }
+  }
+  if (failed.length) fail(`fallaron: ${failed.join(', ')} (el resto se generó)`);
   process.exit(0);
 }
 const CHAR = CHARACTERS[ID];
-if (!CHAR?.ulti) throw new Error(`uso: node tools/build-ulti.mjs <${Object.entries(CHARACTERS).filter(([, c]) => c.ulti).map(([id]) => id).join('|')}|all> [png]`);
+if (!CHAR?.ulti) fail(`uso: node tools/build-ulti.mjs <${WITH_ULTI.join('|')}|all> [png]`);
 const CFG = CHAR.ulti;
 const SRC = join(ROOT, 'public', 'personajes', ...CHAR.dir.split('/'), `${CHAR.prefix}-ulti.png`);
 const OUT = join(ROOT, 'public', 'assets', 'characters', `${ID}-inferno`);
 const JSON_NAME = `${ID}-inferno.json`;
 const GREEN = !!CFG.greenDetails; // detalles verdes dentro del personaje (la flor de la gorra de MAI) que el croma no debe borrar
 const STAND_H = 140;
-/** tiras en WebP (docs §0.4). `png` como 2.º argumento las deja en PNG (más rápido, para probar) */
-const GRID_WEBP = process.argv[3] !== 'png';
 // frames (0-based): hold = pose congelada en la concentración, PRE = justo antes del golpe, IMPACT = contacto
 const [HOLD, PRE, IMPACT] = [CFG.hold ?? 4, CFG.preStrike ?? 5, CFG.impact ?? 6];
 const COLS = 3;
@@ -183,15 +188,10 @@ function buildGrid() {
           sheet[di + 3] = Math.min(255, Math.round((aa / n) * 255));
         }
     });
-    // tira en PNG y, si se pide, a WebP (docs §0.4): se convierte y se borra el PNG de public/
-    save(join(OUT, `${name}.png`), SW, SH, sheet);
-    let file = `${name}.png`;
-    if (GRID_WEBP) {
-      execFileSync(process.execPath, [join(ROOT, 'tools', 'convert-image.mjs'), join(OUT, `${name}.png`), join(OUT, `${name}.webp`), '0.92'], { stdio: 'ignore' });
-      if (!existsSync(join(OUT, `${name}.webp`))) throw new Error(`no se pudo convertir ${name}.png a webp`);
-      unlinkSync(join(OUT, `${name}.png`));
-      file = `${name}.webp`;
-    }
+    // WebP (docs §0, regla 4): image-out.mjs convierte y falla si la conversión no sale; con `png` solo se guarda el PNG (pruebas)
+    const file = PNG_MODE ? `${name}.png` : `${name}.webp`;
+    if (PNG_MODE) save(join(OUT, file), SW, SH, sheet);
+    else saveWebp(join(OUT, file), SW, SH, sheet);
     anims[name] = { file, frames: GRID_COLS, fps, loop, ...(name === 'inferno-swing' ? { impact: IMPACT } : {}) };
   });
   const cfg = {

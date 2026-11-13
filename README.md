@@ -79,11 +79,11 @@ npm run cap:release   # build de producción (anuncios reales, .env.release) + c
 
 Las imágenes con las que se trabajan los sprites están siempre en `frontend/public/personajes/<Personaje>/`
 (la vista de frente del rival, en su subcarpeta `rival/`). Cada personaje tiene, por vista, 4 hojas de movimientos
-de 8 filas × 8 frames y una hoja del INFERNO DRIVE; más adelante habrá más hojas. `frontend/tools/build-nxo-v2.mjs`
-y `build-nxo-inferno.mjs` las cortan en las tiras que carga el juego (`public/assets/characters/`).
+de 8 filas × 8 frames y una hoja de la ULTI (6 × 9); más adelante habrá más hojas. `frontend/tools/build-moves.mjs`
+y `build-ulti.mjs` (con el registro `tools/characters.mjs`) las cortan en las tiras que carga el juego (`public/assets/characters/`).
 
 **Regla:** un sprite nuevo SIEMPRE entra como hoja en `personajes/` y se pasa a `assets/characters/` con la herramienta.
-Nunca se pone una imagen directo en `assets/characters/`. Desde la próxima hoja, las tiras van en WebP (detalles en
+Nunca se pone una imagen directo en `assets/characters/`. Todas las tiras van en WebP (detalles en
 `docs/COMO-TRABAJAR-SPRITES-MOVIMIENTOS.md`, sección 0).
 
 Qué es cada hoja y cada fila, las reglas de dibujo y los comandos:

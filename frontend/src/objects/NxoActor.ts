@@ -36,7 +36,7 @@ const extraKey = (a: ExtraAnim, pk = 'nxo') => `${pk}-x-${a}`;
 export const LOOSE_RACKET = 'nxo-loose-racket';
 
 /**
- * NXO de espaldas con animaciones por sprites (hoja procesada con tools/build-nxo-sprites.mjs).
+ * NXO de espaldas con animaciones por sprites (tiras cortadas con tools/build-moves.mjs; ver docs/COMO-TRABAJAR-SPRITES-MOVIMIENTOS.md).
  * Es el "cuerpo" del Character cuando el jugador usa la skin 'nxo' en la vista 'back'.
  *
  * MÃ¡quina de estados:
@@ -149,7 +149,7 @@ const moveKey = (a: MoveAnim, pk = 'nxo') => `${pk}-move-${a}`;
 
 
 /**
- * INFERNO DRIVE de NXO de espaldas (hoja pj-nxo-sprite-inferno, 16 frames en una textura de 4 columnas).
+ * INFERNO DRIVE de NXO de espaldas (fila 1 de la hoja de la ULTI, pj-<id>-ulti.png: 9 frames en una textura de 3 columnas).
  * EXCLUSIVO del INFERNO: ningÃºn otro golpe lo usa. `hold` = pose de espera congelada durante la cinemÃ¡tica;
  * `preStrike` = Ãºltimo fotograma de preparaciÃ³n, justo antes del golpe; `strikeFrom` = donde arranca el clip
  * al contacto real; `impact` = frame del contacto. Si falta la textura se usa la guardia de siempre.
@@ -169,8 +169,8 @@ type InfCfg = {
   animations: { 'inferno-swing': AnimInfo } & Partial<Record<UltiAnim, AnimInfo>>;
 };
 /**
- * ULTI completa (hoja de 6 x 9 de NXO de espaldas, pj-nxo-sprite-inferno-v2): recibir el pelotazo, aturdido sin raqueta,
- * reposo y carrera sin raqueta y recogerla. Packs sin estos clips (rival, Mai) usan inferno-hit / stunned y los de siempre.
+ * ULTI completa (hoja de 6 x 9, pj-<id>-ulti.png, cortada con tools/build-ulti.mjs): recibir el pelotazo, aturdido sin raqueta,
+ * reposo y carrera sin raqueta y recogerla. Un pack cuyo JSON no los traiga usa inferno-hit / stunned y los de siempre.
  */
 type UltiAnim = 'ulti-hit' | 'ulti-stun' | 'idle-nr' | 'run-nr' | 'pickup';
 const ULTI_ANIMS: UltiAnim[] = ['ulti-hit', 'ulti-stun', 'idle-nr', 'run-nr', 'pickup'];
@@ -183,7 +183,7 @@ const INFERNO_HOLD_MAX_MS = 3500;
 
 /**
  * Juego de hojas v2 de un personaje: tiras en assets/characters/<dir>/ y sus JSON. `key` prefija las texturas/animaciones.
- * 'nxo' = NXO de espaldas (jugador); 'nxo-front' = el rival (NXO de frente, tools/build-moves.mjs front);
+ * 'nxo' = NXO de espaldas (jugador); 'nxo-front' = el rival (NXO de frente, tools/build-moves.mjs nxo-front);
  * 'mai' = MAI de espaldas (jugadora, tools/build-moves.mjs mai).
  */
 type Pack = {
@@ -195,7 +195,7 @@ type Pack = {
   extra: ExtraCfg;
   /** el reposo del saque es el bote de la pelota (clip y alturas medidas solo en la hoja de espaldas) */
   bounce: typeof BOUNCE | null;
-  /** INFERNO DRIVE (hoja de 9 frames) y su carpeta */
+  /** ULTI (hoja de 6 x 9, build-ulti.mjs) y su carpeta */
   inf: InfCfg;
   infDir: string;
 };
@@ -959,7 +959,7 @@ export class NxoActor {
   /** Texturas + último frame de las poses de victoria / derrota (para dibujarlas fuera del partido). */
   endPoses(): { victory: { key: string; frame: number }; defeat: { key: string; frame: number } } | null {
     // En las tarjetas del resultado todos miran a cámara, incluso el personaje que jugó de espaldas.
-    const frontId: SpriteCharId = this.id === 'nxo' ? 'nxo-front' : this.id === 'mai' ? 'mai-front' : this.id;
+    const frontId = (this.id.endsWith('-front') ? this.id : `${this.id}-front`) as SpriteCharId; // el rival de <id> es <id>-front
     const frontPack = PACKS[frontId];
     const last = (k: string) => {
       const a = this.scene.anims.get(k);
@@ -978,7 +978,7 @@ export class NxoActor {
    * de frente, hoja antigua) se usa el reposo. null = sin hoja.
    */
   endClips(): { idle: EndClip; victory: EndClip; defeat: EndClip } | null {
-    const frontId: SpriteCharId = this.id === 'nxo' ? 'nxo-front' : this.id === 'mai' ? 'mai-front' : this.id;
+    const frontId = (this.id.endsWith('-front') ? this.id : `${this.id}-front`) as SpriteCharId; // el rival de <id> es <id>-front
     const frontPack = PACKS[frontId];
     const cfg = CFGS[frontId];
     const mk = (k: string, g: { origin: { x: number; y: number }; standHeight: number }): EndClip | null => {

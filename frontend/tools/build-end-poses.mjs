@@ -3,11 +3,11 @@
 // con fondo transparente. NO toca las hojas del partido. Hoy: MAI rival (public/personajes/Mai/rival/pj-mai-rival-1.png).
 //   node tools/build-end-poses.mjs   -> public/assets/characters/mai-front-end/{idle,victory,defeat}.webp
 // La escena mide la silueta de cada tira al dibujarla (alto y pies), así que no hace falta JSON de ancla.
-import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, unlinkSync } from 'node:fs';
+import { mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { decode, save } from './png-lite.mjs';
+import { decode } from './png-lite.mjs';
+import { saveWebp } from './image-out.mjs';
 import { keepEnclosedGreen } from './keep-enclosed-green.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -43,10 +43,6 @@ for (const [name, row] of Object.entries(CLIPS)) {
     const x0 = Math.round((c * s.w) / COLS);
     for (let y = 0; y < ch; y++) out.copy(strip, (y * W + c * cw) * 4, ((y0 + y) * s.w + x0) * 4, ((y0 + y) * s.w + x0 + cw) * 4);
   }
-  save(join(OUT, `${name}.png`), W, ch, strip);
-  // WebP (docs/COMO-TRABAJAR-SPRITES-MOVIMIENTOS.md §0.4): se convierte con Chrome headless y se borra el PNG de public/
-  execFileSync(process.execPath, [join(ROOT, 'tools', 'convert-image.mjs'), join(OUT, `${name}.png`), join(OUT, `${name}.webp`), '0.92'], { stdio: 'ignore' });
-  if (!existsSync(join(OUT, `${name}.webp`))) throw new Error(`no se pudo convertir ${name}.png a webp`);
-  unlinkSync(join(OUT, `${name}.png`));
+  saveWebp(join(OUT, `${name}.webp`), W, ch, strip); // PNG temporal -> WebP (image-out.mjs)
   console.log(`${name}.webp ${W}x${ch} (celda ${cw}x${ch})`);
 }

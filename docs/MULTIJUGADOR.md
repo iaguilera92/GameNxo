@@ -208,6 +208,7 @@ Están definidos en `backend/src/socket/events/protocol.ts`, con una copia idén
 | `sprint-start` / `sprint-end` | `dirX` / — | DASH |
 | `stunned` | `ms` (duración del aturdido) | explosión, aturdido y estrellas |
 | `racket` | `lost: true` + `x, y` (dónde cae) / `lost: false` | su raqueta cae en la cancha y queda en el suelo / la recogió |
+| `bump` | `ms` | recibió mi golpe cargado al máximo (no cortita ni globo) y retrocede un poco: el rival solo pone el polvo y la sacudida; la posición llega con `game:state`. Lo decide y mueve SU teléfono |
 | `remate-start` / `remate-end` | `slow` (cámara lenta), `t` (s de juego hasta el contacto) / — | la misma cámara lenta mientras apunta su remate y su salto (sin acercar la cámara); termina con `remate-end` o con su golpe |
 | `emote` | `kind` (happy\|cool\|wow) | globo con la carita sobre su cabeza |
 | `smash-armed` / `smash-disarmed` | — | aura del SMASH armado |

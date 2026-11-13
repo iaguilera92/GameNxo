@@ -7,22 +7,28 @@
 // Salida:  public/assets/characters/<id>-v2/<clip>.webp y src/characters/<id>-{sprites,hits,move,special,extra}.json
 // La ULTI (hoja de 6 x 9) va aparte: tools/build-ulti.mjs. Guía: docs/COMO-TRABAJAR-SPRITES-MOVIMIENTOS.md.
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, unlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { decode, save } from './png-lite.mjs';
+import { decode } from './png-lite.mjs';
+import { fail, saveWebp } from './image-out.mjs';
 import { keepEnclosedGreen } from './keep-enclosed-green.mjs';
 import { CHARACTERS } from './characters.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const ID = process.argv[2];
+const WITH_MOVES = Object.entries(CHARACTERS).filter(([, c]) => c.moves).map(([id]) => id);
 if (ID === 'all') {
-  for (const [id, c] of Object.entries(CHARACTERS)) if (c.moves) execFileSync(process.execPath, [fileURLToPath(import.meta.url), id], { stdio: 'inherit' });
+  const failed = [];
+  for (const id of WITH_MOVES) {
+    try { execFileSync(process.execPath, [fileURLToPath(import.meta.url), id], { stdio: 'inherit' }); } catch { failed.push(id); }
+  }
+  if (failed.length) fail(`fallaron: ${failed.join(', ')} (el resto se generó)`);
   process.exit(0);
 }
 const CHAR = CHARACTERS[ID];
-if (!CHAR) throw new Error(`uso: node tools/build-moves.mjs <${Object.keys(CHARACTERS).join('|')}|all>`);
-if (!CHAR.moves) throw new Error(`${ID}: aún no tiene hojas de movimientos en tools/characters.mjs (solo ULTI)`);
+if (!CHAR) fail(`uso: node tools/build-moves.mjs <${WITH_MOVES.join('|')}|all>`);
+if (!CHAR.moves) fail(`${ID} aún no tiene hojas de movimientos en tools/characters.mjs (solo ULTI). Con movimientos: ${WITH_MOVES.join(', ')}`);
 const CFG = CHAR.moves;
 const VIEW = CHAR.view;
 const SRC_DIR = join(ROOT, 'public', 'personajes', ...CHAR.dir.split('/'));
@@ -38,19 +44,15 @@ const DERIVED = CFG.derived ?? {};
 const KEEP_MAIN = new Set(CFG.keepMain ?? []);
 const REF_FOURTH = CFG.refFourth;
 const SCALE_AS_CFG = CFG.scaleAs ?? {};
-/** tiras en WebP (docs/COMO-TRABAJAR-SPRITES-MOVIMIENTOS.md §0.4): todas, desde el 12-11-2026 */
-const WEBP = true;
-const EXT = WEBP ? '.webp' : '.png';
+for (const s of [1, 2, 3, 4]) if (!existsSync(join(SRC_DIR, SRC_NAME(s)))) fail(`falta la hoja ${join(SRC_DIR, SRC_NAME(s))}`);
+const EXT = '.webp'; // todas las tiras van en WebP (docs §0, regla 4)
 const OUT = join(ROOT, 'public', 'assets', 'characters', DIR);
-const CW = 192;
-const CH = 128;
 const N = 8; // filas por hoja
 const COLS = CFG.cols; // frames por fila de cada hoja
 // ------------------------------------------------------------------ fondo blanco / espejo (hojas del rival)
 /** espeja cada celda de la hoja en horizontal (celda a celda, para que las columnas no se inviertan) */
-function flipX(img) {
+function flipX(img, NC) {
   const { w, h, px } = img;
-  const NC = COLS[1];
   const cw = w / NC;
   const out = Buffer.from(px);
   for (let y = 0; y < h; y++)
@@ -108,35 +110,6 @@ function chroma(px, i) {
   return [r, d > 0 ? m : g, b, px[i + 3]];
 }
 
-/** Deja solo la pieza conexa mÃ¡s grande (alfa > 40) de una celda. */
-function keepMain(cell) {
-  const seen = new Int32Array(CW * CH).fill(-1);
-  const sizes = [];
-  for (let s = 0; s < CW * CH; s++) {
-    if (seen[s] >= 0 || cell[s * 4 + 3] <= 40) continue;
-    const id = sizes.length;
-    let n = 0;
-    const st = [s];
-    seen[s] = id;
-    while (st.length) {
-      const p = st.pop();
-      n++;
-      const x = p % CW, y = (p / CW) | 0;
-      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [-1, -1], [1, -1], [-1, 1]]) {
-        const nx = x + dx, ny = y + dy;
-        if (nx < 0 || ny < 0 || nx >= CW || ny >= CH) continue;
-        const q = ny * CW + nx;
-        if (seen[q] >= 0 || cell[q * 4 + 3] <= 40) continue;
-        seen[q] = id;
-        st.push(q);
-      }
-    }
-    sizes.push(n);
-  }
-  const best = sizes.indexOf(Math.max(...sizes));
-  for (let p = 0; p < CW * CH; p++) if (seen[p] !== best) cell[p * 4 + 3] = 0;
-}
-
 // ------------------------------------------------------------------ corte
 // Las hojas NO caen exactas en la rejilla de 192x128 (los pies de una fila cruzan a la celda de abajo y
 // cada hoja tiene un tamaÃ±o de dibujo algo distinto). Por eso: se quita el verde de toda la hoja, se
@@ -149,7 +122,7 @@ const frames = {}; // name -> [{ sheet, bx0, bx1, by0, by1, ground, cx, mask }]
 const sheets = {};
 for (const sheet of [1, 2, 3, 4]) {
   const img = decode(join(SRC_DIR, SRC_NAME(sheet)));
-  if (FLIP_SHEETS.has(sheet)) flipX(img);
+  if (FLIP_SHEETS.has(sheet)) flipX(img, COLS[sheet]);
   whiteToAlpha(img);
   const { w, h } = img;
   const NC = COLS[sheet];
@@ -410,13 +383,7 @@ for (const [name, list] of Object.entries(frames)) {
         strip[di + 3] = Math.min(255, Math.round((a / n) * 255));
       }
   });
-  save(join(OUT, `${name}.png`), OW * NF, OH, strip);
-  // WebP: se convierte la tira recién escrita (Chrome headless) y se borra el PNG de public/
-  if (WEBP) {
-    execFileSync(process.execPath, [join(ROOT, 'tools', 'convert-image.mjs'), join(OUT, `${name}.png`), join(OUT, `${name}.webp`), '0.92'], { stdio: 'ignore' });
-    if (!existsSync(join(OUT, `${name}.webp`))) throw new Error(`no se pudo convertir ${name}.png a webp`);
-    unlinkSync(join(OUT, `${name}.png`));
-  }
+  saveWebp(join(OUT, `${name}.webp`), OW * NF, OH, strip); // PNG temporal -> WebP (image-out.mjs); falla si la conversión no sale
   metrics[name] = list.map((f) => Math.round((f.ground - f.y0) * f.sc));
   console.log(`${name.padEnd(15)} hoja ${list[0].sheet}  suelo ${list[0].ground}  alto ${metrics[name].join(',')}`);
 }
@@ -426,7 +393,7 @@ const STAND_H = Math.round(STAND_SRC);
 const origin = { x: 0.5, y: +(AY / OH).toFixed(5) };
 const cell = { w: OW, h: OH };
 const src = (s, r) => `${SRC_NAME(s)} (fila ${r})`;
-/** frames reales de cada animaciÃ³n (la hoja 2 tiene 9) */
+/** frames reales de cada animaciÃ³n ((las hojas de Mai pueden traer 9 columnas)) */
 const nf = (file) => frames[file]?.length ?? N;
 const anim = (file, fps, loop, impact) => ({ file: `${file}${EXT}`, frames: nf(file), fps, loop, ...(impact !== undefined ? { impact } : {}), scale: 1 });
 const hit = (file, fps, impact) => ({ file: `${file}${EXT}`, frames: nf(file), fps, loop: false, impact });

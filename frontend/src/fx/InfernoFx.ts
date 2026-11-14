@@ -877,6 +877,9 @@ function tone(ctx: AudioContext, f0: number, f1: number, at: number, dur: number
 let chargeSnd: Phaser.Sound.BaseSound | null = null;
 
 /** Carga de energía (1 s ascendente), desplazamiento (silbido) e impacto (golpe grave). */
+/** largo máximo del sonido de golpe de la ULTI (ms): los archivos más largos se cortan con un desvanecido */
+const ULTI_SOUND_MAX_MS = 2600;
+
 export const infernoSound = {
   charge(scene: Phaser.Scene) {
     // mp3 cargando (se corta al golpear); si falta, el zumbido sintetizado de siempre
@@ -905,7 +908,27 @@ export const infernoSound = {
     const own = el === 'fire' ? 'ulti-fuego' : el === 'lightning' ? 'ulti-rayo' : el === 'ice' ? 'ulti-hielo' : '';
     const key = own && scene.cache.audio.exists(own) ? own : 'inferno-hit';
     if (scene.cache.audio.exists(key)) {
-      scene.sound.play(key, { volume: 1 });
+      // (13-11-2026) ulti-fuego.m4a dura 9,6 s (las otras ~2-3 s): seguía sonando mucho después del golpe. Se corta a
+      // ULTI_SOUND_MAX_MS con un desvanecido corto. Reloj real (la cinemática pausa el reloj de la escena).
+      const snd = scene.sound.add(key, { volume: 1 });
+      snd.play();
+      const fadeAt = ULTI_SOUND_MAX_MS - 400;
+      window.setTimeout(() => {
+        if (!snd.isPlaying) return;
+        const t0 = performance.now();
+        const fade = () => {
+          const k = 1 - (performance.now() - t0) / 400;
+          if (k <= 0 || !snd.isPlaying) {
+            snd.stop();
+            snd.destroy();
+            return;
+          }
+          (snd as Phaser.Sound.WebAudioSound).setVolume?.(k);
+          requestAnimationFrame(fade);
+        };
+        fade();
+      }, fadeAt);
+      snd.once('complete', () => snd.destroy());
       return;
     }
     const c = audio(scene);

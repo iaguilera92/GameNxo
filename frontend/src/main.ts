@@ -44,5 +44,8 @@ void installAdMob();
 const orientation = screen.orientation as ScreenOrientation & { lock?: (o: string) => Promise<void> };
 orientation?.lock?.('portrait').catch(() => undefined);
 
+// solo en desarrollo (npm run dev): el juego queda en window.__game para probar mecánicas desde la consola del navegador
+if (import.meta.env.DEV) (window as unknown as { __game: Phaser.Game }).__game = game;
+
 export default game;
 

@@ -336,13 +336,17 @@ export class RankedScene extends Phaser.Scene {
     const panelTop = ry + rh / 2 + GAP + TAG_H / 2;
     const podiumW = Math.min(660, W - 40);
     const podiumPanel = this.add.graphics();
-    // PODIO (13-11-2026): 2.º · 1.º · 3.º, el 1.º al centro y más alto, con corona; pedestales numerados abajo
-    const cardGap = 10;
-    const cardW = (podiumW - 36 - cardGap * 2) / 3;
-    const podiumTop = panelTop + TAG_H / 2 + 22;
-    const floorY = podiumTop + 222; // suelo de los pedestales
-    const row4Y = floorY + 30;
-    const top100Y = row4Y + 2 * 40 + 18;
+    // LÍDERES (13-11-2026, estilo de la referencia): top 3 en cards pegadas (el 1.º al centro y más alto), insignia
+    // cuadrada con el número, y debajo filas del 4.º, 5.º y la tuya (seleccionada)
+    const colGap = 6;
+    const colW = (podiumW - 36 - colGap * 2) / 3;
+    const podCardH = 148;
+    const podiumTop = panelTop + TAG_H / 2 + 18;
+    const podiumBottom = podiumTop + podCardH + 22;
+    const rowH3 = 50;
+    const rowGap3 = 8;
+    const rowsTop = podiumBottom + 14;
+    const top100Y = rowsTop + 3 * rowH3 + 2 * rowGap3 + 18 + 23;
     const leadersH = top100Y + 23 + 16 - panelTop;
     podiumPanel.fillStyle(0x061433, 0.94).fillRoundedRect(W / 2 - podiumW / 2, panelTop, podiumW, leadersH, 24);
     podiumPanel.lineStyle(10, NEON, 0.16).strokeRoundedRect(W / 2 - podiumW / 2, panelTop, podiumW, leadersH, 24);
@@ -362,111 +366,89 @@ export class RankedScene extends Phaser.Scene {
     this.children.bringToTop(classificationTitle);
     const topThree = v.board.slice(0, 3);
     const medalColors = [GOLD, 0xc0c8d8, 0xd88a4a];
-    const pedestalH = [84, 62, 48]; // alto del bloque de 1.º, 2.º y 3.º (caben la tapa y la medalla del número)
-    // PODIO JUNTO (13-11-2026): los tres bloques pegados, como un podio de verdad, con cara frontal, tapa 3D y base común
-    const colStep = cardW * 0.86; // separación entre columnas = ancho de cada bloque (se tocan)
-    const pedW = colStep;
     const slotOf = [1, 0, 2]; // columna de cada puesto: 1.º al centro, 2.º a la izquierda, 3.º a la derecha
-    const faceColors = [0x5c3f00, 0x2c3650, 0x4a2a12]; // cara frontal (oro, plata, bronce, oscuros)
-    const capColors = [0xffd23f, 0xdfe6f2, 0xe59a5c]; // tapa de arriba (claros)
-    {
-      // base común bajo los tres bloques
-      const bw3 = pedW * 3 + 16;
-      const base = this.add.graphics();
-      base.fillStyle(0x000000, 0.4).fillRoundedRect(W / 2 - bw3 / 2 + 3, floorY + 2, bw3, 12, 6);
-      base.fillStyle(0x0a1638, 1).fillRoundedRect(W / 2 - bw3 / 2, floorY - 2, bw3, 12, 6);
-      base.lineStyle(2, 0x2a4a8a, 1).strokeRoundedRect(W / 2 - bw3 / 2, floorY - 2, bw3, 12, 6);
-    }
+    // avatar dibujado (círculo del color del jugador con silueta), con aro del color indicado
+    const drawAvatar = (x: number, y: number, r: number, e: BoardEntry, ring: number) => {
+      const av = this.add.graphics({ x, y });
+      av.fillStyle(0x07152f, 1).fillCircle(0, 0, r + 4);
+      av.fillStyle(ring, 1).fillCircle(0, 0, r + 2);
+      av.fillStyle(e.avatar.color, 1).fillCircle(0, 0, r - 1);
+      av.fillStyle(0x0a1638, 0.85).fillCircle(0, -r * 0.2, r * 0.32);
+      av.fillRoundedRect(-r * 0.5, r * 0.18, r, r * 0.45, { tl: r * 0.4, tr: r * 0.4, bl: 2, br: 2 });
+      return av;
+    };
+    // insignia cuadrada con el número (estilo de la referencia)
+    const numBadge = (x: number, y: number, s: number, n: number, fill: number, txt = '#07152f') => {
+      const b = this.add.graphics();
+      b.fillStyle(0x07152f, 1).fillRoundedRect(x - s / 2 - 2, y - s / 2 - 2, s + 4, s + 4, 7);
+      b.fillStyle(fill, 1).fillRoundedRect(x - s / 2, y - s / 2, s, s, 6);
+      b.fillStyle(0xffffff, 0.3).fillRoundedRect(x - s / 2 + 3, y - s / 2 + 3, s - 6, s * 0.3, 4);
+      this.add.text(x, y + 1, `${n}`, { fontFamily: FONT, fontSize: `${Math.round(s * 0.62)}px`, color: txt }).setOrigin(0.5);
+    };
+    // TOP 3: tres cards pegadas; la del 1.º más alta (sobresale hacia arriba), las tres con la base alineada
     topThree.forEach((entry, i) => {
-      const x = W / 2 + (slotOf[i] - 1) * colStep;
-      const color = medalColors[i];
-      const me = entry.id === 'me';
-      const ph = pedestalH[i];
-      const pTop = floorY - ph;
-      // bloque del podio: cara frontal oscura del color de la medalla, tapa 3D clara arriba, bordes exteriores redondeados
-      const ped = this.add.graphics();
       const slot = slotOf[i];
-      const L = x - pedW / 2;
-      const cap = 12; // alto de la tapa
-      const rad = { tl: slot === 2 ? 0 : 10, tr: slot === 0 ? 0 : 10, bl: 0, br: 0 };
-      if (slot === 1) {
-        rad.tl = 10;
-        rad.tr = 10;
-      }
-      ped.fillStyle(faceColors[i], 1).fillRoundedRect(L, pTop, pedW, ph, rad);
-      // luz en la cara (franja más clara arriba) y sombra abajo
-      ped.fillStyle(0xffffff, 0.08).fillRect(L + 3, pTop + cap + 2, pedW - 6, Math.max(4, ph * 0.25));
-      ped.fillStyle(0x000000, 0.22).fillRect(L, pTop + ph * 0.72, pedW, ph * 0.28);
-      // tapa
-      ped.fillStyle(capColors[i], 1).fillRoundedRect(L, pTop, pedW, cap, { tl: rad.tl, tr: rad.tr, bl: 0, br: 0 });
-      ped.fillStyle(0xffffff, 0.45).fillRect(L + 6, pTop + 2, pedW - 12, 3);
-      // contorno (las uniones entre bloques quedan como una línea fina)
-      ped.lineStyle(2, 0x07152f, 1).strokeRoundedRect(L, pTop, pedW, ph, rad);
-      // número con medalla
-      const nY = pTop + cap + (ph - cap) / 2 + 2;
-      const nr = i === 0 ? 17 : 14;
-      ped.fillStyle(0x07152f, 1).fillCircle(x, nY, nr + 3);
-      ped.fillStyle(color, 1).fillCircle(x, nY, nr);
-      ped.fillStyle(0xffffff, 0.35).fillCircle(x - nr * 0.35, nY - nr * 0.35, nr * 0.35);
-      this.add.text(x, nY + 1, `${i + 1}`, { fontFamily: FONT, fontSize: i === 0 ? '22px' : '18px', color: '#07152f' }).setOrigin(0.5);
-      // avatar sobre el pedestal, con aro del color de la medalla (más grande el 1.º)
-      const r = i === 0 ? 34 : 28;
-      const ay = pTop - 66 - r;
+      const x = W / 2 + (slot - 1) * (colW + colGap);
+      const ch = i === 0 ? podCardH + 22 : podCardH;
+      const top = podiumBottom - ch;
+      const me = entry.id === 'me';
+      const color = medalColors[i];
+      const cg = this.add.graphics();
+      cg.fillStyle(0x000000, 0.3).fillRoundedRect(x - colW / 2 + 2, top + 4, colW, ch, 14);
+      cg.fillStyle(i === 0 ? 0x162a5c : 0x10224b, 1).fillRoundedRect(x - colW / 2, top, colW, ch, 14);
+      cg.fillStyle(color, 0.1).fillRoundedRect(x - colW / 2, top, colW, ch * 0.45, { tl: 14, tr: 14, bl: 0, br: 0 });
+      cg.lineStyle(me ? 3 : 2, me ? GOLD : i === 0 ? GOLD : 0x2a4a8a, me || i === 0 ? 1 : 0.9).strokeRoundedRect(x - colW / 2, top, colW, ch, 14);
+      numBadge(x, top + 26, i === 0 ? 34 : 28, i + 1, color);
+      const r = i === 0 ? 26 : 22;
+      const ay = top + (i === 0 ? 80 : 70);
       if (i === 0) {
-        // AURA del líder: rayos de luz dorados girando detrás del avatar + destellos que titilan (sin círculo de fondo)
+        // AURA del líder: rayos dorados girando detrás del avatar + destellos
         const rays = this.add.graphics({ x, y: ay }).setBlendMode(Phaser.BlendModes.ADD);
         for (let k = 0; k < 12; k++) {
           const a = (k / 12) * Math.PI * 2;
-          const len = k % 2 ? 58 : 72;
-          rays.fillStyle(GOLD, k % 2 ? 0.16 : 0.28).fillTriangle(0, 0, Math.cos(a - 0.09) * len, Math.sin(a - 0.09) * len, Math.cos(a + 0.09) * len, Math.sin(a + 0.09) * len);
+          const len = k % 2 ? 44 : 54;
+          rays.fillStyle(GOLD, k % 2 ? 0.16 : 0.28).fillTriangle(0, 0, Math.cos(a - 0.1) * len, Math.sin(a - 0.1) * len, Math.cos(a + 0.1) * len, Math.sin(a + 0.1) * len);
         }
         this.tweens.add({ targets: rays, angle: 360, duration: 12000, repeat: -1 });
         this.tweens.add({ targets: rays, alpha: { from: 1, to: 0.55 }, duration: 1100, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
-        [[-44, -18, 0], [46, -4, 500], [-30, 30, 900], [36, 34, 1300]].forEach(([dx, dy, dl]) => {
-          const sp = this.add.star(x + dx, ay + dy, 4, 1.6, 6, 0xfff1b8).setBlendMode(Phaser.BlendModes.ADD).setAlpha(0);
-          this.tweens.add({ targets: sp, alpha: { from: 0, to: 1 }, scale: { from: 0.5, to: 1.2 }, duration: 520, yoyo: true, repeat: -1, delay: dl, repeatDelay: 900 });
-        });
       }
-      const av = this.add.graphics({ x, y: ay });
-      av.fillStyle(0x07152f, 1).fillCircle(0, 0, r + 6);
-      av.fillStyle(color, 1).fillCircle(0, 0, r + 3);
-      av.fillStyle(entry.avatar.color, 1).fillCircle(0, 0, r - 1);
-      av.fillStyle(0x0a1638, 0.85).fillCircle(0, -r * 0.2, r * 0.32);
-      av.fillRoundedRect(-r * 0.5, r * 0.18, r, r * 0.45, { tl: r * 0.4, tr: r * 0.4, bl: 2, br: 2 });
-      if (me) av.lineStyle(3, 0xffffff, 1).strokeCircle(0, 0, r + 6);
-      // corona del 1.º
-      if (i === 0) {
-        const cr = this.add.graphics({ x, y: ay - r - 16 });
-        cr.fillStyle(0x7a4a00, 1).fillPoints([{ x: -20, y: 10 }, { x: -23, y: -9 }, { x: -11, y: 0 }, { x: 0, y: -14 }, { x: 11, y: 0 }, { x: 23, y: -9 }, { x: 20, y: 10 }], true);
-        cr.fillStyle(GOLD, 1).fillPoints([{ x: -17, y: 8 }, { x: -19, y: -5 }, { x: -9, y: 2 }, { x: 0, y: -10 }, { x: 9, y: 2 }, { x: 19, y: -5 }, { x: 17, y: 8 }], true);
-        cr.fillStyle(0xff3b4f, 1).fillCircle(0, 1, 3);
-        this.tweens.add({ targets: cr, y: cr.y - 4, duration: 900, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
-      }
-      // nombre y monedas entre el avatar y el pedestal
-      const nm = this.add.text(x, pTop - 46, me ? 'TÚ' : entry.name, { fontFamily: FONT, fontSize: i === 0 ? '19px' : '16px', color: me ? '#ffd23f' : '#ffffff', stroke: '#07152f', strokeThickness: 4 }).setOrigin(0.5);
-      fitText(nm, colStep - 6);
-      const coins = this.add.text(0, pTop - 22, fmtCoins(entry.coins), { fontFamily: FONT, fontSize: '16px', color: '#ffd23f' }).setOrigin(0, 0.5);
+      drawAvatar(x, ay, r, entry, color);
+      const nm = this.add.text(x, podiumBottom - 40, me ? 'TÚ' : entry.name, { fontFamily: FONT, fontSize: i === 0 ? '18px' : '16px', color: me ? '#ffd23f' : '#ffffff' }).setOrigin(0.5);
+      fitText(nm, colW - 12);
+      const coins = this.add.text(0, podiumBottom - 18, fmtCoins(entry.coins), { fontFamily: FONT, fontSize: i === 0 ? '20px' : '17px', color: '#ffd23f' }).setOrigin(0, 0.5);
       const coinsW = coins.width + 24;
-      const coin = this.add.graphics({ x: x - coinsW / 2 + 9, y: pTop - 22 });
+      const coin = this.add.graphics({ x: x - coinsW / 2 + 9, y: podiumBottom - 18 });
       drawCoinIcon(coin, 8);
       coins.setX(x - coinsW / 2 + 22);
     });
-    // 4.º y 5.º: filas compactas bajo el podio
-    [3, 4].forEach((i) => {
-      const entry = v.board[i];
-      if (!entry) return;
-      const ry2 = row4Y + (i - 3) * 40;
-      const rw2 = podiumW - 36;
+    // FILAS: 4.º, 5.º y la tuya (seleccionada). Si estás en el top 5, la 6.ª; si estás en el top 3, tu card ya se resalta
+    const meEntry = v.board.find((e) => e.id === 'me');
+    const rowsList: BoardEntry[] = [v.board[3], v.board[4]].filter((e): e is BoardEntry => !!e);
+    if (meEntry && meEntry.position > 5) rowsList.push(meEntry);
+    else if (v.board[5]) rowsList.push(v.board[5]);
+    const rw3 = colW * 3 + colGap * 2;
+    rowsList.forEach((entry, k) => {
+      const yy = rowsTop + k * (rowH3 + rowGap3) + rowH3 / 2;
       const me = entry.id === 'me';
-      const rg = this.add.graphics();
-      rg.fillStyle(me ? 0x3a2a08 : 0x0c1d42, 1).fillRoundedRect(W / 2 - rw2 / 2, ry2 - 16, rw2, 32, 16);
-      rg.lineStyle(1.5, me ? GOLD : 0x2a4a8a, 1).strokeRoundedRect(W / 2 - rw2 / 2, ry2 - 16, rw2, 32, 16);
-      this.add.text(W / 2 - rw2 / 2 + 22, ry2, `${i + 1}°`, { fontFamily: FONT, fontSize: '17px', color: '#9fb4e0' }).setOrigin(0.5);
-      const nm = this.add.text(W / 2 - rw2 / 2 + 46, ry2, me ? `${entry.name} (TÚ)` : entry.name, { fontFamily: FONT, fontSize: '16px', color: me ? '#ffd23f' : '#ffffff' }).setOrigin(0, 0.5);
-      fitText(nm, rw2 * 0.55);
-      const ct = this.add.text(W / 2 + rw2 / 2 - 16, ry2, fmtCoins(entry.coins), { fontFamily: FONT, fontSize: '16px', color: '#ffd23f' }).setOrigin(1, 0.5);
-      const ci = this.add.graphics({ x: W / 2 + rw2 / 2 - 16 - ct.width - 12, y: ry2 });
-      drawCoinIcon(ci, 8);
+      const L = W / 2 - rw3 / 2;
+      const rgx = this.add.graphics();
+      if (me) {
+        // SELECCIONADA: halo dorado que respira
+        const halo = this.add.graphics();
+        halo.lineStyle(8, GOLD, 0.3).strokeRoundedRect(L - 2, yy - rowH3 / 2 - 2, rw3 + 4, rowH3 + 4, 14);
+        this.tweens.add({ targets: halo, alpha: { from: 1, to: 0.35 }, duration: 900, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
+      }
+      rgx.fillStyle(me ? 0x3a2a08 : 0x10224b, 1).fillRoundedRect(L, yy - rowH3 / 2, rw3, rowH3, 12);
+      rgx.lineStyle(me ? 2.5 : 1.5, me ? GOLD : 0x2a4a8a, 1).strokeRoundedRect(L, yy - rowH3 / 2, rw3, rowH3, 12);
+      const bs = rowH3 - 12;
+      numBadge(L + 8 + bs / 2, yy, bs, entry.position, me ? GOLD : NEON, me ? '#07152f' : '#ffffff');
+      drawAvatar(L + 8 + bs + 12 + 17, yy, 15, entry, me ? GOLD : 0x2a4a8a);
+      const nx = L + 8 + bs + 12 + 34 + 12;
+      const nm = this.add.text(nx, yy, me ? `${entry.name} (TÚ)` : entry.name, { fontFamily: FONT, fontSize: '17px', color: me ? '#ffd23f' : '#ffffff' }).setOrigin(0, 0.5);
+      fitText(nm, rw3 * 0.5);
+      const ct = this.add.text(L + rw3 - 14, yy, fmtCoins(entry.coins), { fontFamily: FONT, fontSize: '19px', color: '#ffd23f' }).setOrigin(1, 0.5);
+      const ci = this.add.graphics({ x: L + rw3 - 14 - ct.width - 13, y: yy });
+      drawCoinIcon(ci, 9);
     });
     arcadeButton(this, W / 2, top100Y, Math.min(480, W - 80), 46, 'VER TOP 100', () => this.leaderboard(), { palette: 'blue' });
 

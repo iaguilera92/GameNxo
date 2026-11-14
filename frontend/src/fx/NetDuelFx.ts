@@ -4,14 +4,14 @@ import { NET_DUEL } from '../logic/NetDuel';
 import type { CineProfile } from './SmashCinematic';
 
 /**
- * Efectos del DUELO EN LA RED (logic/NetDuel.ts): las dos MIRADAS del cara a cara y la viñeta de los lados.
+ * Efectos del DUELO RED (logic/NetDuel.ts): las dos MIRADAS del inicio, la viñeta de los lados y el MARCADOR de las 3 rondas.
  *
  * Las miradas son las franjas de ojos de la ULTI (fx/infernoGaze.ts, public/personajes/<Personaje>/pj-<id>-mirada.webp) pero
  * LIMPIAS: sin resplandor de elemento, rayo en los ojos, chispas ni líneas de velocidad. Cada una ocupa ≈ 1/3 del ancho de la
  * pantalla, a la derecha y a la altura de la red, una sobre otra y "mirándose": el jugador (abajo) mira a la derecha (como
  * dibujada) y el rival (arriba) a la izquierda (espejada).
  *
- * Durante el cara a cara la escena está congelada (tweens y temporizadores en pausa): todo se anima desde `update(ms)` con el
+ * Durante el inicio la escena está congelada (tweens y temporizadores en pausa): todo se anima desde `update(ms)` con el
  * tiempo REAL transcurrido, que llama la escena en cada fotograma. Fijo en pantalla (scrollFactor 0 → cámara de interfaz).
  */
 export interface DuelGaze {
@@ -111,18 +111,18 @@ export function createDuelVignette(scene: Phaser.Scene): DuelVignette {
 }
 
 /**
- * Perfil "vacío" de la cinemática (fx/SmashCinematic.ts) que usa el CARA A CARA solo como CONGELADOR: pausa tweens,
+ * Perfil "vacío" de la cinemática (fx/SmashCinematic.ts) que usa el INICIO del duelo solo como CONGELADOR: pausa tweens,
  * temporizadores y animaciones y llama a `onFrame` cada fotograma, pero sin oscurecer ni dibujar energía (todo en 0).
- * Dura el aro + el margen para recibir el toque del rival en red.
+ * Dura NET_DUEL.introMs.
  */
 export const DUEL_CINE: CineProfile = {
-  durationMs: NET_DUEL.faceMs + NET_DUEL.graceMs,
-  hitAtMs: NET_DUEL.faceMs + NET_DUEL.graceMs,
+  durationMs: NET_DUEL.introMs,
+  hitAtMs: NET_DUEL.introMs,
   activateMs: 1,
   focusMs: 2,
   peakMs: 3,
   raysUntilMs: 0,
-  releaseFromMs: NET_DUEL.faceMs + NET_DUEL.graceMs,
+  releaseFromMs: NET_DUEL.introMs,
   flashAtMs: 1e9,
   flashMs: 0,
   darken: 0,
@@ -132,3 +132,72 @@ export const DUEL_CINE: CineProfile = {
   pulseEveryMs: 110,
   colors: { core: 0xffffff, gold: 0xffffff, hot: 0xffffff, cyan: 0xffffff },
 };
+
+/**
+ * MARCADOR DEL DUELO: 3 pelotas de tenis arriba al centro (una por ronda), grises al empezar. Al decidirse una ronda su pelota
+ * se pinta: azul = ganaste tú, rojo = ganó el rival, gris oscuro con borde = empate. La ronda en curso late.
+ * Fijo en pantalla (scrollFactor 0 → cámara de interfaz).
+ */
+export type DuelRoundColor = 'player' | 'bot' | 'tie';
+export interface DuelScore {
+  /** resalta la ronda `i` (la que está en juego) */
+  active(i: number): void;
+  /** pinta la pelota de la ronda `i` con su resultado (con rebote) */
+  set(i: number, who: DuelRoundColor): void;
+  destroy(): void;
+}
+
+export function createDuelScore(scene: Phaser.Scene, y: number): DuelScore {
+  const W = scene.scale.width;
+  const R = 17;
+  const gap = 18;
+  const n = NET_DUEL.rounds;
+  const x0 = W / 2 - ((n - 1) * (2 * R + gap)) / 2;
+  const panel = scene.add.graphics().setScrollFactor(0).setDepth(7600);
+  const pw = n * 2 * R + (n - 1) * gap + 34;
+  panel.fillStyle(0x000000, 0.45).fillRoundedRect(W / 2 - pw / 2 + 2, y - R - 10, pw, 2 * R + 20, 18);
+  panel.fillStyle(0x0b1733, 0.92).fillRoundedRect(W / 2 - pw / 2, y - R - 12, pw, 2 * R + 20, 18);
+  panel.lineStyle(3, 0xffd23f, 1).strokeRoundedRect(W / 2 - pw / 2, y - R - 12, pw, 2 * R + 20, 18);
+  const balls: Phaser.GameObjects.Container[] = [];
+  const bodies: Phaser.GameObjects.Arc[] = [];
+  for (let i = 0; i < n; i++) {
+    const body = scene.add.circle(0, 0, R, 0x6b7280, 1).setStrokeStyle(3, 0x1a2238, 1);
+    // costuras de la pelota (dos arcos blancos)
+    const seams = scene.add.graphics();
+    seams.lineStyle(3, 0xffffff, 0.75);
+    seams.beginPath().arc(-R * 1.15, 0, R * 0.95, -0.7, 0.7).strokePath();
+    seams.beginPath().arc(R * 1.15, 0, R * 0.95, Math.PI - 0.7, Math.PI + 0.7).strokePath();
+    const c = scene.add.container(x0 + i * (2 * R + gap), y, [body, seams]).setScrollFactor(0).setDepth(7601);
+    balls.push(c);
+    bodies.push(body);
+  }
+  let act = -1;
+  let pulse: Phaser.Tweens.Tween | null = null;
+  return {
+    active(i: number) {
+      if (i === act || !balls[i]?.active) return;
+      pulse?.remove();
+      balls.forEach((b) => b.setScale(1));
+      act = i;
+      pulse = scene.tweens.add({ targets: balls[i], scale: { from: 1, to: 1.18 }, duration: 260, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
+    },
+    set(i: number, who: DuelRoundColor) {
+      const b = bodies[i];
+      if (!b?.active) return;
+      const col = who === 'player' ? 0x2f7bff : who === 'bot' ? 0xff4f5e : 0x3a3f4d;
+      b.setFillStyle(col, 1);
+      b.setStrokeStyle(3, who === 'tie' ? 0xcfd6e6 : 0xffffff, 1);
+      if (act === i) {
+        pulse?.remove();
+        pulse = null;
+      }
+      balls[i].setScale(1);
+      scene.tweens.add({ targets: balls[i], scale: { from: 1.5, to: 1 }, duration: 320, ease: 'Back.easeOut' });
+    },
+    destroy() {
+      pulse?.remove();
+      if (panel.active) panel.destroy();
+      for (const b of balls) if (b.active) b.destroy();
+    },
+  };
+}

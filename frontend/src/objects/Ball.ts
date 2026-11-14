@@ -421,10 +421,13 @@ export class Ball {
     this.guide.clear();
     if (z > 12) this.guide.lineStyle(2 * ground.s, 0xffffff, Math.min(0.28, z / 500)).lineBetween(ground.sx, ground.sy, air.sx, sy);
 
-    // golpe cargado al máximo: sin estela; la pelota late con su brillo y los rayos parpadean
+    // golpe cargado al máximo: la pelota late con su brillo y los rayos parpadean; sin estela, salvo el GLOBO DISPARADO
+    // (globo cargado al máximo, 13-11-2026), que conserva su estela amarilla de globo
     if (this.max && !this.power && !this.quietFx) {
-      this.history = [];
-      this.trail.clear();
+      if (this.kind !== 'lob') {
+        this.history = [];
+        this.trail.clear();
+      }
       const pulse = 0.5 + 0.5 * Math.sin(this.scn.time.now / 55);
       this.maxGlow.setScale(1 + pulse * 0.3).setAlpha(0.18 + pulse * 0.22);
       this.maxHalo.setScale(1 + pulse * 0.22).setAlpha(0.55 + pulse * 0.4);
@@ -434,7 +437,7 @@ export class Ball {
         this.maxBoltT = Phaser.Math.FloatBetween(0.05, 0.09);
         this.drawBolts();
       }
-      return;
+      if (this.kind !== 'lob') return;
     }
     // efecto propio encima (bola de fuego de INFERNO DRIVE): sin estela ni chispas de fuego
     if (this.quietFx) {

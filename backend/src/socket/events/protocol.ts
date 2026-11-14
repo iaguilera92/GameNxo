@@ -65,6 +65,8 @@ export interface PlayerProfile {
   charge?: string;
   /** ESTILO DE COLOR del personaje (azul, verde…; sin él o 'classic' = colores de siempre) */
   color?: string;
+  /** victorias totales del jugador (se muestran bajo su nombre en la pantalla VS; sin dato o 0 = no se muestra) */
+  wins?: number;
 }
 
 export interface FindRequest {
@@ -172,7 +174,7 @@ export interface HitMsg {
  *  toss / catch                 lanzamiento del saque / lo atrapa sin golpear
  *  sprint-start / sprint-end    DASH del emisor (data: dirX)
  *  stunned                      el emisor quedó aturdido por una bola de fuego (data: ms, kind = smash | inferno)
- *  duel-start / duel-tap / duel-result / duel-aim   DUELO EN LA RED: el juez (el que recibe la pelota) lo empieza (data: x, y) · toque de cada uno (ms desde su inicio) · ganador (w = 1: el emisor) · lado del globo (side = -1 | 1)
+ *  duel-start / duel-tap / duel-round / duel-result / duel-aim   DUELO RED: el juez (el que recibe la pelota) lo empieza (data: x, y, a, b, c = golpes del peloteo de cada ronda) · error en ms de cada toque contra el cierre de SU aro (r, ms) · resultado de cada ronda (r, w: 1 = ganó el jugador del emisor, 2 = su rival, 0 = empate; p, b = errores en ms, 9999 = sin toque) · ganador del duelo (w = 1: el emisor) · lado del globo (side = -1 | 1)
  *  bump                         el emisor recibió un golpe cargado al máximo y retrocede un poco (data: ms)
  *  emote                        carita del chat (data: kind = happy | cool | wow)
  *  smash-armed / smash-disarmed el emisor arma / consume su SMASH (aura en el rival)
@@ -187,6 +189,7 @@ export interface HitMsg {
  */
 export type ActionKind =
   | 'racket'
+  | 'sky-launch'
   | 'remate-start'
   | 'remate-end'
   | 'serve-swing'
@@ -202,6 +205,7 @@ export type ActionKind =
   | 'bump'
   | 'duel-start'
   | 'duel-tap'
+  | 'duel-round'
   | 'duel-result'
   | 'duel-aim'
   | 'emote'

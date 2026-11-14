@@ -132,6 +132,8 @@ export class MatchmakingScene extends Phaser.Scene {
         level: rivalLevel,
         look: rivalLook(p.skin),
         portraitSkin: rivalFor(p.skin),
+        // el rival simulado también lleva victorias (proporcionales a su nivel), como un jugador real
+        wins: Math.round(rivalLevel * Phaser.Math.FloatBetween(2, 5)),
       },
     );
     // 1 s después del sonido del VS entra la música de la cancha (sigue sonando en el partido)

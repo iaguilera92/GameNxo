@@ -7,7 +7,7 @@ import Phaser from 'phaser';
  * Para cambiar uno por un archivo de verdad: dejar public/mp3/ui-<tipo>.mp3 (p. ej. ui-play.mp3) y añadir el tipo a
  * UI_SOUND_FILES. Se carga en BootScene (queueUiSounds) y, si existe, suena el archivo en vez del sintetizado.
  */
-export type UiSound = 'tap' | 'play' | 'back';
+export type UiSound = 'tap' | 'play' | 'back' | 'duel-hit' | 'duel-tick' | 'duel-win';
 
 /** tipos que tienen archivo en public/mp3/ui-<tipo>.mp3 (vacío = todos sintetizados) */
 export const UI_SOUND_FILES: UiSound[] = [];
@@ -73,6 +73,18 @@ export function uiSound(scene: Phaser.Scene, kind: UiSound) {
     // clic corto y redondo (botones del menú)
     tone(ctx, out, 900, t, 0.06, 'triangle', 0.12, 620);
     tone(ctx, out, 1800, t, 0.03, 'sine', 0.04);
+  } else if (kind === 'duel-hit') {
+    // DUELO RED: golpe corto de cada volea del peloteo (seco, grave y rápido)
+    tone(ctx, out, 520, t, 0.05, 'triangle', 0.14, 260);
+    noise(ctx, out, t, 0.04, 0.1, 1800, 700);
+  } else if (kind === 'duel-tick') {
+    // DUELO RED: "tic" al cerrarse el aro
+    tone(ctx, out, 1500, t, 0.05, 'square', 0.1);
+    tone(ctx, out, 2300, t + 0.012, 0.04, 'sine', 0.07);
+  } else if (kind === 'duel-win') {
+    // DUELO RED: ronda ganada (dos notas que suben)
+    tone(ctx, out, 660, t, 0.1, 'triangle', 0.12);
+    tone(ctx, out, 990, t + 0.08, 0.16, 'triangle', 0.12);
   } else if (kind === 'back') {
     // volver / cerrar: dos notas que bajan
     tone(ctx, out, 700, t, 0.07, 'triangle', 0.1);
@@ -93,4 +105,15 @@ export function installTapSound(scene: Phaser.Scene) {
   const onTap = () => uiSound(scene, 'tap');
   scene.input.on(Phaser.Input.Events.GAMEOBJECT_DOWN, onTap);
   scene.events.once(Phaser.Scenes.Events.SHUTDOWN, () => scene.input.off(Phaser.Input.Events.GAMEOBJECT_DOWN, onTap));
+}
+
+/** ¡A LAS ESTRELLAS!: "ting" brillante cuando el personaje se convierte en destello en el cielo. */
+export function skyTwinkleSound(scene: Phaser.Scene) {
+  const ctx = ctxOf(scene);
+  if (!ctx) return;
+  const t = ctx.currentTime;
+  const out = ctx.destination;
+  tone(ctx, out, 2093, t, 0.5, 'sine', 0.14);
+  tone(ctx, out, 3136, t + 0.05, 0.45, 'sine', 0.08);
+  tone(ctx, out, 4186, t + 0.1, 0.35, 'triangle', 0.05);
 }

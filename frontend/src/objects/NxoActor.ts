@@ -232,8 +232,17 @@ const PACKS = {
   },
 } as Record<'nxo' | 'nxo-front' | 'mai', Pack> & Partial<Record<SheetId, Pack>>;
 const PACK_LIST = Object.values(PACKS) as Pack[];
+/** frame (0 = el primero) en que se CONGELA la celebración de victoria de cada personaje de espaldas (la mano / raqueta arriba) */
+const VICTORY_HOLD: Record<string, number> = { nxo: 3 };
+/**
+ * Derrota de MAI de FRENTE (rival) en el partido: su hoja antigua no trae derrota, pero sí la de las tarjetas del resultado
+ * (tools/build-end-poses.mjs, celda 192 x 128). Se carga con los sprites y la usa defeat() al perder el partido; MatchEndScene
+ * usa la misma textura y animación (misma clave).
+ */
+const MAI_DEFEAT = { key: 'mai-front-end-defeat', file: 'assets/characters/mai-front-end/defeat.webp', w: 192, h: 128, fps: 10, stand: 118 };
 
 export function queueNxoSpriteLoads(load: Phaser.Loader.LoaderPlugin) {
+  if (!load.textureManager.exists(MAI_DEFEAT.key)) load.spritesheet(MAI_DEFEAT.key, MAI_DEFEAT.file, { frameWidth: MAI_DEFEAT.w, frameHeight: MAI_DEFEAT.h });
   if (skinMode() !== 'off') {
     for (const p of PACK_LIST) {
       for (const a of Object.keys(p.move.animations) as MoveAnim[]) {
@@ -303,6 +312,7 @@ export function registerNxoAnims(scene: Phaser.Scene) {
     if (!scene.textures.exists(k) || scene.anims.exists(k)) return;
     scene.anims.create({ key: k, frames: scene.anims.generateFrameNumbers(k, { start: 0, end: info.frames - 1 }), frameRate: info.fps, repeat });
   };
+  mk(MAI_DEFEAT.key, { file: MAI_DEFEAT.file, frames: 8, fps: MAI_DEFEAT.fps, loop: false, scale: 1 } as AnimInfo, 0);
   for (const p of PACK_LIST) {
     for (const a of Object.keys(p.move.animations) as MoveAnim[]) mk(moveKey(a, p.key), p.move.animations[a], 0);
     for (const [a, info] of extrasOf(p)) mk(extraKey(a, p.key), info, info.loop ? -1 : 0);
@@ -1012,6 +1022,18 @@ export class NxoActor {
 
   /** Derrota (partido perdido): queda en la Ãºltima pose. */
   defeat() {
+    // MAI de FRENTE (hoja antigua, sin derrota propia): usa la de las tarjetas del resultado, a la misma altura de pie
+    if (!this.v2 && !this.pk && this.id.startsWith('mai') && this.scene.anims.exists(MAI_DEFEAT.key)) {
+      this.stopShake();
+      this.stopLean();
+      this.sprite.setFlipX(false);
+      this.state = 'victory'; // misma regla: se queda en la última pose
+      this.sprite.anims.timeScale = 1;
+      this.sprite.setOrigin(0.5, 1).setScale(CHAR_UNITS_H / MAI_DEFEAT.stand);
+      this.sprite.y = 0;
+      this.sprite.play(MAI_DEFEAT.key);
+      return;
+    }
     if (!this.v2) return;
     this.stopShake();
     this.stopLean();
@@ -1077,9 +1099,22 @@ export class NxoActor {
     this.sprite.setFlipX(false);
     this.state = 'victory';
     this.sprite.anims.timeScale = 1;
-    this.playClip(this.k('victory'));
+    const key = this.k('victory');
+    this.playClip(key);
+    // NXO de espaldas: la celebración se CONGELA en el frame de la mano arriba (VICTORY_HOLD) y ahí se queda mientras el
+    // mapa se aleja y salen los resultados (su último frame es casi un reposo y la celebración no se notaba)
+    const hold = VICTORY_HOLD[this.id];
+    if (hold !== undefined) {
+      const onUpdate = (a: Phaser.Animations.Animation, f: Phaser.Animations.AnimationFrame) => {
+        if (this.state !== 'victory' || a.key !== key) return void this.sprite.off(Phaser.Animations.Events.ANIMATION_UPDATE, onUpdate);
+        if (Number(f.textureFrame) >= hold) {
+          this.sprite.anims.stop(); // se queda dibujado el frame actual
+          this.sprite.off(Phaser.Animations.Events.ANIMATION_UPDATE, onUpdate);
+        }
+      };
+      this.sprite.on(Phaser.Animations.Events.ANIMATION_UPDATE, onUpdate);
+    }
   }
-
   /** Vuelve a la pose neutra (nuevo punto: el jugador se recoloca). */
   resetPose() {
     this.stopShake();

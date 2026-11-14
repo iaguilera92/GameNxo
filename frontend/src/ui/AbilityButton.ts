@@ -1,4 +1,4 @@
-﻿import Phaser from 'phaser';
+import Phaser from 'phaser';
 import { C, textStyle } from './theme';
 import { drawAbilityIcon, drawDisc } from './icons';
 import type { AbilityIcon } from '../logic/Abilities';
@@ -18,6 +18,8 @@ export class AbilityButton extends Phaser.GameObjects.Container {
   enabled = true;
   // variante INFERNO DRIVE (mismo botón): aspecto de fuego, sin enfriamiento, con medidor de carga
   private infernoMode = false;
+  /** velo gris del botón NO disponible (saque, sin raqueta, bloqueado por nivel) */
+  private lockG!: Phaser.GameObjects.Graphics;
   private hyperWave?: Phaser.GameObjects.Arc;
   private labelText!: Phaser.GameObjects.Text;
   private subText!: Phaser.GameObjects.Text;
@@ -57,9 +59,10 @@ export class AbilityButton extends Phaser.GameObjects.Container {
     drawAbilityIcon(g, icon, R);
     this.face.add(g);
 
+    this.lockG = scene.add.graphics();
     this.overlay = scene.add.graphics();
     this.ring = scene.add.graphics();
-    this.add([this.overlay, this.ring]);
+    this.add([this.lockG, this.overlay, this.ring]);
     this.secs = scene.add.text(0, 0, '', textStyle(Math.round(R * 0.6))).setOrigin(0.5);
     this.add(this.secs);
     this.baseLabel = label;
@@ -324,7 +327,15 @@ export class AbilityButton extends Phaser.GameObjects.Container {
     this.ring.clear();
     // en modo INFERNO no se muestra el enfriamiento del SMASH (sigue contando por detrás)
     const busy = this.remaining > 0 && !this.infernoMode;
-    this.face.setAlpha(busy || !this.enabled ? 0.55 : 1);
+    this.face.setAlpha(busy ? 0.55 : 1);
+    // NO disponible (durante el saque y su resto, sin raqueta, bloqueado por nivel): se ve GRIS apagado, no solo atenuado
+    this.lockG.clear();
+    if (!this.enabled) {
+      this.lockG.fillStyle(0x4b5262, 0.86).fillCircle(0, 0, R + 7);
+      this.lockG.lineStyle(5, 0x8a93a6, 0.9).strokeCircle(0, 0, R + 8);
+    }
+    this.labelText?.setColor(this.enabled ? '#ffffff' : '#8f98a8');
+    this.subText?.setColor(this.enabled ? '#cfe0ff' : '#7a8394');
     if (busy) {
       const frac = this.remaining / this.cooldown; // parte que falta
       const start = -Math.PI / 2;

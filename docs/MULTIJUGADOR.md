@@ -281,7 +281,17 @@ redesplegar el backend (cada cliente ignora las que no conoce).
 - La seguridad es la de una red local de confianza: el servidor valida salas, roles y marcador, pero cree los
   golpes que envía cada cliente. El servidor autoritativo y las cuentas llegarán con la etapa online.
 
-## Duelo en la red
+## Duelo en la red (DUELO RED)
 
-Acciones: `duel-start` (posiciones de ambos), `duel-tap` (ms desde el inicio del duelo), `duel-result` (w=1: ganó el jugador del emisor), `duel-aim` (lado del globo).
-Juez = el teléfono cuyo jugador recibe la pelota; espera `graceMs` (300 ms) el toque remoto y envía `duel-result`. El ganador manda el globo como `game:hit` normal. Se cancela en `netResume`, punto o fin de partido. Constantes en `frontend/src/logic/NetDuel.ts`.
+Un peloteo en la red nunca se alarga: se convierte en el duelo (1 vez por punto, < 8 s) y acaba siempre en un GLOBO DISPARADO.
+Flujo: intro (~1,2 s, miradas, cámara a la red, DEFENSIVO/ESPECIAL bloqueados) → 3 rondas (peloteo auto 2-3 golpes + aro que se cierra en 1 s; cada uno toca y se mide la diferencia en ms con el cierre) → gana quien gane más rondas (empate: el que recibía) → el ganador apunta (joystick izq/der, 1 s) → globo con tiempo de vuelo ajustado al rival.
+Disparo: receptor cerca de la red y pelota a su alcance, o `forceAfterShots` (6) golpes en el punto.
+
+Acciones (`ActionKind`):
+- `duel-start {x,y,a,b,c}`: lo manda el receptor (juez); posiciones y plan de golpes por ronda.
+- `duel-tap {r,ms}`: cada teléfono manda solo su diferencia en ms (9999 = sin toque).
+- `duel-round {r,w,p,b}`: el juez avisa cada ronda (w: 1 = jugador del emisor, 2 = su rival, 0 = empate).
+- `duel-result {w}`: resultado final del juez.
+- `duel-aim {side}`: lado del globo.
+
+El globo del ganador llega como `game:hit` (shock + lob); el que lo recibe cancela el duelo (`duelAbort('hit')`) y no lo intercepta durante `lobGraceMs`. Si algo no llega: espera `netWaitMs` y usa su propio recuento; si no llega el globo, lo simula tras `hitWaitMs`. Se cancela en `netResume`, punto o fin de partido. Constantes en `frontend/src/logic/NetDuel.ts` (`NET_DUEL`). Prueba: `node tools/test-net-duel.mjs`. Apagar: `localStorage 'dev.netDuelOff'`.

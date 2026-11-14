@@ -149,12 +149,15 @@ export function registerSocketHandlers(io: Server) {
         const charge = typeof profile.charge === 'string' && ['classic', 'fire', 'energy', 'tulip'].includes(profile.charge) ? profile.charge : undefined;
         // estilo de color del personaje (solo cosmético): id corto en minúsculas; el cliente ignora los que no conoce
         const color = typeof profile.color === 'string' && /^[a-z0-9-]{1,16}$/.test(profile.color) && profile.color !== 'classic' ? profile.color : undefined;
+        // victorias totales (solo se muestran en la pantalla VS): entero entre 0 y 999999
+        const wins = Number.isFinite(Number(profile.wins)) ? Math.max(0, Math.min(999999, Math.floor(Number(profile.wins)))) : 0;
         const clean = {
           name: profile.name.slice(0, 16),
           level: Math.max(1, Math.floor(Number(profile.level) || 1)),
           skin: String(profile.skin ?? 'nxo').slice(0, 16),
           ...(charge ? { charge } : {}),
           ...(color ? { color } : {}),
+          ...(wins > 0 ? { wins } : {}),
           zoneStats: {
             strength: clampZone(rawZone.strength),
             speed: clampZone(rawZone.speed),

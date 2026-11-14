@@ -710,3 +710,20 @@ Ajustes en NetDuel.ts: muy frecuente -> bajar triggerDist/reachK; globo imposibl
 [Claude 13-11-2026] RANKED: el fin de temporada bajo el emblema pasa a una pildora (capsula oscura, borde del color de la liga, segmento de color con reloj blanco, "FIN DE TEMPORADA | 2d 06h").
 
 [Claude 13-11-2026] RANKED podio: los 3 bloques pegados (ancho = separacion de columnas, 86% de la columna), cara frontal oscura del color de la medalla, tapa 3D clara, base comun debajo y el numero en una medalla. Alturas 84/62/48.
+
+[Claude 13-11-2026] RANKED LIDERES (estilo de la referencia del usuario, con nuestros colores): top 3 en cards pegadas (1.o al centro y mas alto, con aura de rayos), insignia cuadrada con el numero en color de medalla, avatar con aro, nombre y monedas. Debajo 3 filas: 4.o, 5.o y TU fila seleccionada (halo dorado que respira, fondo dorado oscuro, "(TU)"); si estas en el top 5 va el 6.o.
+
+[Claude 13-11-2026] DUELO EN LA RED: no salia porque exigia a LOS DOS cerca de la red (el bot casi nunca sube). Ahora basta con que el que RECIBE este en la red (shouldStartDuel); en el cara a cara los dos suben a la red (NET_DUEL.netGap 60, con destello de DASH; en red se ancla al rival). Test actualizado (19 OK).
+
+[Claude 13-11-2026] NUEVA MECANICA "A LAS ESTRELLAS": si un personaje SIN RAQUETA (ULTI recibida) es alcanzado por un ESPECIAL (pelota de poder, no ULTI), sale volando al cielo girando y achicandose (MatchScene.skyLaunch, Actor.launched; renderActors no lo toca) y termina en un destello con "ting" (uiSound.skyTwinkleSound). Punto seguro para el que lanzo el ESPECIAL. Online: lo decide el telefono del que sale volando y avisa con la accion sky-launch (anadida a ActionKind en front y back); el otro solo lo muestra. La pelota se oculta hasta el punto siguiente (skyBallHidden); placeForServe restaura el dibujo.
+
+[Claude 13-11-2026] (1) Sonido ULTI de fuego: ulti-fuego.m4a dura 9,6 s (las otras 2-3 s); infernoSound.impact lo corta a 2,6 s con desvanecido (ULTI_SOUND_MAX_MS). Conviene recortar el archivo. (2) GLOBO DISPARADO: globo cargado al MAXIMO sale rapido y tenso a la esquina del fondo rival que marque el joystick (sin lado: lejos del rival); texto "GLOBO DISPARADO"; la camara se aleja un 16% mientras vuela (maxLob/maxLobK, vuelve al botar o devolverse); la pelota lleva brillo + rayos del maximo y conserva su estela amarilla de globo (Ball). Constantes MAX_LOB en MatchScene. Online: el rival ve el mismo alejamiento (hit con shock + lob).
+
+[Claude 13-11-2026] PROBADAS en el navegador (partido contra el bot, pasos de juego forzados por consola; window.__game solo en dev): "A LAS ESTRELLAS" OK (bot sin raqueta + ESPECIAL -> sale volando, gira, se achica, alpha 0, pelota oculta, punto 1-0 para el jugador, en el punto siguiente vuelve normal). "GLOBO DISPARADO" OK (izquierda bota en x~1094 y~270, derecha x~1095 y~552: dentro de la cancha, al fondo; vuelo ~1,1 s; camara 0,85 -> 0,71 y vuelve; pelota con brillo y rayos y estela amarilla). El bot a veces alcanza a devolverlo.
+
+
+=== DUELO RED (rediseño del duelo en la red) ===
+Hecho: NetDuel.ts reescrito, NetDuelFx (marcador 3 pelotas), uiSound (duel-hit/tick/win), MatchScene (duelStart..duelEnd, tickDuel), protocol 'duel-round' (front y back), test-net-duel.mjs (27 pruebas).
+Ajustar: triggerDist/reachK/forceAfterShots, introMs/hitMs/ringMs/lateMs, tieMs, botErr*, lob.slackS/inset, camZoom, lobGraceMs. Apagar: localStorage dev.netDuelOff.
+Verificado: headless contra bot y 2 navegadores online (gana A y gana B). NO probado en teléfonos reales.
+Sigue activo el modo temporal de pruebas del bot en la red (piezas listadas arriba).

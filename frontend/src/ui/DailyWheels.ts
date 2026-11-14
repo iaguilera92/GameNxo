@@ -20,6 +20,8 @@ export interface DailyWheelsOpts {
   onOpen: (index: number) => void;
   /** aviso breve (bloqueada / ya girada) */
   onToast: (msg: string) => void;
+  /** recién llegado del CARGANDO (primera vez en el menú): la cascada espera al fundido (INTRO_DELAY); si no, sale ya */
+  fromLoading?: boolean;
 }
 
 const MINI_R = 34;
@@ -102,8 +104,10 @@ export class DailyWheels extends Phaser.GameObjects.Container {
       if (this.intro) {
         const alpha = c.alpha;
         c.setScale(0).setAlpha(0);
-        this.scene.tweens.add({ targets: c, scale: 1, duration: 360, delay: INTRO_DELAY + 220 + i * 150, ease: 'Back.easeOut', easeParams: [2.2] });
-        this.scene.tweens.add({ targets: c, alpha, duration: 200, delay: INTRO_DELAY + 220 + i * 150 });
+        // la espera larga solo al llegar del CARGANDO (fundido); al volver de otra pantalla, la cascada sale enseguida
+        const d0 = (this.opts.fromLoading ? INTRO_DELAY + 220 : 80) + i * 150;
+        this.scene.tweens.add({ targets: c, scale: 1, duration: 360, delay: d0, ease: 'Back.easeOut', easeParams: [2.2] });
+        this.scene.tweens.add({ targets: c, alpha, duration: 200, delay: d0 });
       }
     });
     this.intro = false;

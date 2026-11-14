@@ -42,10 +42,11 @@ function sanitizeBall(b: unknown): BallWire | null {
   const x = num(b.x), y = num(b.y), z = num(b.z), vx = num(b.vx), vy = num(b.vy), vz = num(b.vz);
   if (x === null || y === null || z === null || vx === null || vy === null || vz === null) return null;
   const out: BallWire = { x, y, z, vx, vy, vz };
-  const damp = num(b.damp), fric = num(b.fric), ay = num(b.ay);
+  const damp = num(b.damp), fric = num(b.fric), ay = num(b.ay), g = num(b.g);
   if (damp !== null) out.damp = damp;
   if (fric !== null) out.fric = fric;
   if (ay !== null) out.ay = ay;
+  if (g !== null && g > 0) out.g = g;
   return out;
 }
 

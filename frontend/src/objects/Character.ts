@@ -584,6 +584,16 @@ export class Character extends Phaser.GameObjects.Container {
     return this.nxo?.serveRacket() ?? { dx: 28 * this.facing, z: 185 };
   }
 
+  /** ¡A LAS ESTRELLAS!: pose del pelotazo (ULTI completa, fila 2, frames 3-5) mientras sale volando. */
+  launchPose(): boolean {
+    return this.nxo?.launchPose() ?? false;
+  }
+
+  /** Reacción EXPRESS (DUELO RED): celebra / se lamenta acelerado. */
+  quickReact(won: boolean) {
+    this.nxo?.quickReact(won);
+  }
+
   /** Celebración de partido ganado. */
   victory() {
     this.nxo?.victory();

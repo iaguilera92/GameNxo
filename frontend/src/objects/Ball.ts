@@ -18,6 +18,8 @@ export interface BallState {
   fric?: number;
   /** aceleración lateral (saque con efecto): curva en el aire y 'patada' al botar */
   ay?: number;
+  /** gravedad propia de ESTE vuelo (el GLOBO DISPARADO sube mucho más alto en el mismo tiempo); por defecto GRAVITY. Vuelve a la normal al botar */
+  g?: number;
 }
 
 export type BallEvent = 'bounce' | 'net' | null;
@@ -30,12 +32,13 @@ export function stepBall(s: BallState, dt: number): BallEvent {
   const vy0 = s.vy;
   const vz0 = s.vz;
   const ay = s.ay ?? 0;
+  const G = s.g ?? GRAVITY;
   // parábola exacta en cada paso: la pelota sigue la misma trayectoria a cualquier FPS (la que calcula aimShot). Antes
   // (z con la velocidad del principio del paso) a FPS bajos volaba más y botaba más lejos de donde se apuntó.
   s.x += s.vx * dt;
   s.y += vy0 * dt + 0.5 * ay * dt * dt;
-  s.z += vz0 * dt - 0.5 * GRAVITY * dt * dt;
-  s.vz -= GRAVITY * dt;
+  s.z += vz0 * dt - 0.5 * G * dt * dt;
+  s.vz -= G * dt;
   if (ay) s.vy += ay * dt;
 
   // ¿Cruza la red por debajo de su altura?
@@ -52,14 +55,16 @@ export function stepBall(s: BallState, dt: number): BallEvent {
     // unidades más allá y un saque que tocaba la línea se cantaba falta. Rodando (ya en el suelo) no se retrocede.
     if (prevZ > 0) {
       // instante exacto del bote dentro del paso: prevZ + vz0·t − ½·g·t² = 0
-      const t = Math.min(dt, (vz0 + Math.sqrt(vz0 * vz0 + 2 * GRAVITY * prevZ)) / GRAVITY);
+      const t = Math.min(dt, (vz0 + Math.sqrt(vz0 * vz0 + 2 * G * prevZ)) / G);
       s.x = prevX + s.vx * t;
       s.y = prevY + vy0 * t + 0.5 * ay * t * t;
-      s.vz = vz0 - GRAVITY * t;
+      s.vz = vz0 - G * t;
       s.vy = vy0 + ay * t;
     }
     s.z = 0;
-    s.vz = -s.vz * (s.damp ?? BOUNCE_DAMP);
+    // tras un vuelo con gravedad propia (globo disparado) el bote es el de un globo normal: la velocidad de caída se reescala
+    s.vz = -s.vz * (s.damp ?? BOUNCE_DAMP) * (s.g ? GRAVITY / s.g : 1);
+    s.g = undefined;
     if (s.ay) {
       // el efecto se transforma en un bote abierto hacia el lado
       s.vy += s.ay * 0.35;
@@ -79,12 +84,17 @@ export function stepBall(s: BallState, dt: number): BallEvent {
  * bote en `target`, a una velocidad horizontal aproximada `speed`,
  * garantizando que pase la red con un margen.
  */
-export function aimShot(from: BallState, tx: number, ty: number, speed: number, netMargin = 18): void {
+/**
+ * `maxStretch`: cuánto puede alargarse el vuelo (× el tiempo base) para pasar la red. Sin tope, un golpe desde muy abajo
+ * acababa en un globo gigante; con tope (p. ej. el SAQUE), si no alcanza a pasar se va a la red, como en el tenis real.
+ */
+export function aimShot(from: BallState, tx: number, ty: number, speed: number, netMargin = 18, maxStretch = Infinity): void {
   const dx = tx - from.x;
   const dy = ty - from.y;
   const dist = Math.hypot(dx, dy);
   let T = Math.max(0.35, dist / speed);
-  for (let i = 0; i < 25; i++) {
+  const tMax = T * maxStretch;
+  for (let i = 0; i < 25 && T * 1.08 <= tMax; i++) {
     const vx = dx / T;
     const vz = (0.5 * GRAVITY * T * T - from.z) / T;
     const tn = (NET_X - from.x) / vx;
@@ -96,6 +106,7 @@ export function aimShot(from: BallState, tx: number, ty: number, speed: number, 
   from.damp = undefined;
   from.fric = undefined;
   from.ay = undefined;
+  from.g = undefined;
   from.vx = dx / T;
   from.vy = dy / T;
   from.vz = (0.5 * GRAVITY * T * T - from.z) / T;
@@ -246,6 +257,8 @@ export class Ball {
   private boostColor = 0xffffff;
   /** true = sin estela ni partículas de fuego propias (otro efecto dibuja la pelota, p. ej. INFERNO DRIVE) */
   quietFx = false;
+  /** giro extra del fieltro (rad/s) aunque la pelota esté quieta (DUELO RED: la pelota del aro gira en el sitio) */
+  spinExtra = 0;
 
   constructor(private scn: Phaser.Scene) {
     this.shadow = scn.add.ellipse(0, 0, 30, 12, 0x000000, 0.5);
@@ -411,7 +424,7 @@ export class Ball {
     this.sprite.setScale(scale * (1 + sq), scale * (1 - sq));
     // efecto: el fieltro gira según la velocidad (y el sentido) de la pelota
     const v = Math.hypot(this.s.vx, this.s.vy, this.s.vz);
-    this.felt.rotation += (Math.sign(this.s.vx || 1) * Math.min(v, 1600) * dt) / 70;
+    this.felt.rotation += (Math.sign(this.s.vx || 1) * Math.min(v, 1600) * dt) / 70 + this.spinExtra * dt;
     this.sprite.setDepth(ground.sy + 2);
     this.shadow.setDepth(1);
     this.trail.setDepth(ground.sy + 1);

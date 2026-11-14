@@ -6,7 +6,7 @@
 //
 //   1. INICIO (introMs): pausa con las dos miradas, viñeta, aviso "DUELO RED"; la cámara se acerca a la red.
 //   2. 3 RONDAS (siempre 3): peloteo automático de 2 o 3 golpes (hitMs cada uno) y la pelota se transforma en el ARO, que se
-//      cierra en ringMs. Cada uno toca el botón de golpe; gana la ronda quien toca más cerca del cierre (medido en ms con
+//      cierra en ringMsOf(ronda) (1100, 900, 700 ms). Cada uno toca el botón de golpe; gana la ronda quien toca más cerca del cierre (medido en ms con
 //      performance.now()). Diferencia ≤ tieMs = ronda empatada; sin toque = la pierde.
 //   3. GANA el que gane más rondas; empate → el que RECIBÍA la pelota cuando empezó.
 //   4. GLOBO DISPARADO del ganador (aimMs para elegir lado con el joystick) a la esquina del fondo, con un tiempo de vuelo
@@ -26,10 +26,10 @@ export type RoundWho = DuelWho | 'tie';
 
 export const NET_DUEL = {
   /**
-   * distancia máxima a la red del que RECIBE, como fracción de media cancha (≈ 117 u de 470). Basta con que el que recibe
-   * esté en la red: en el duelo los dos suben a la red.
+   * distancia máxima a la red de CADA UNO de los dos, como fracción de media cancha (≈ 117 u de 470). Los dos tienen que estar
+   * ya cerca de la red: nadie corre hacia ella para el duelo.
    */
-  triggerDist: 0.25,
+  triggerDist: 0.4, // (14-11-2026) 0,25 -> 0,4: costaba llegar tan pegado a la red (≈ 188 u de 470)
   /** en el duelo, los dos quedan a esta distancia de la red (unidades de cancha) */
   netGap: 60,
   /** la pelota debe estar a menos de HIT_RANGE × reachK del que la recibe ("a punto de llegar a su alcance") */
@@ -42,9 +42,11 @@ export const NET_DUEL = {
   introMs: 1200,
   /** RONDA: lo que tarda la pelota en llegar al primer golpeador, y cada golpe automático del peloteo */
   leadMs: 80,
+  /** en las rondas 2 y 3 el peloteo espera a que se decida la ronda anterior (lateMs + graceMs): así el golpe del GANADOR ya se sabe */
+  leadAfterMs: 210,
   hitMs: 230,
-  /** el aro se cierra en este tiempo (cámara lenta) */
-  ringMs: 1000,
+  /** el aro se cierra en este tiempo, por ronda (1, 2, 3): cada ronda más rápido (cámara lenta). Usar ringMsOf(ronda) */
+  ringMs: [1100, 900, 700] as readonly number[],
   /** un toque hasta tantos ms DESPUÉS del cierre todavía cuenta (más tarde = sin toque) */
   lateMs: 150,
   /** el juez (red) espera esto tras la ventana de toques el valor del rival antes de decidir la ronda */
@@ -64,6 +66,13 @@ export const NET_DUEL = {
   /** golpes del peloteo por ronda: 2 o 3 */
   rallyMin: 2,
   rallyMax: 3,
+  /** ronda (0 = la primera) cuyo peloteo es SIEMPRE de 3 golpes rápidos: el SHOW de antes del segundo aro */
+  showRound: 1,
+  /** SHOW del peloteo: los golpes cruzan la red de lado a lado (± esta distancia desde el centro, u de cancha) y en algunos golpes el que pega se ESTIRA (duelLungeHit): la pelota va más lejos (× lungeReach) y más baja, pero siempre con un sprite de GOLPE (nunca el de tirado en el suelo) */
+  showSpread: 85,
+  lungeReach: 1.35,
+  /** cuadro del resultado de cada ronda y del duelo (ms) */
+  boxMs: 1100,
   /** dos toques cuyos errores (en ms) difieren menos de esto empatan la ronda */
   tieMs: 5,
   /** nivel del bot (BotAI.d, 0..1): error de su toque en ms (a más nivel, más cerca del cierre) y probabilidad de no tocar (a nivel 0) */
@@ -78,8 +87,28 @@ export const NET_DUEL = {
   gazeOutMs: 200,
   /** viñeta de los lados (alfa máximo) */
   vignette: 0.42,
+  /** RONDA DECISIVA (1-1 antes de la tercera): viñeta más oscura, aviso grande (ms que se queda) y aro dorado */
+  vignetteDecisive: 0.78,
+  decisiveMs: 800,
+  /** destello del ganador de cada ronda: su primer golpe del peloteo siguiente (solo visual): la pelota sale más rápida (exponente de la curva), estela de su color y sonido más alto */
+  boostCurve: 2.4,
+  boostVol: 1,
+  boostTrailMs: 260,
+  /** indicador de precisión: verde hasta msGood, amarillo hasta msOk, rojo más lejos */
+  msGood: 30,
+  msOk: 90,
+  /** un toque antes de esta fracción del recorrido del aro es un FALLO (¡PRONTO!) */
+  earlyMin: 0.4,
+  /** online: ping (ms) a partir del cual se avisa 'DUELO CON RETRASO' (solo informativo) y cuánto se queda el aviso */
+  lagWarnMs: 180,
+  lagNoticeMs: 2600,
   /** cámara: cuánto se acerca a la red (+0,22 = 22 %), qué tan rápido entra / sale y cuánto sube el encuadre (px) */
-  camZoom: 0.22,
+  camZoom: 0.5,
+  /** PRESIÓN: el zoom se cierra otro tanto por cada ronda que pasa y el borde late (viñeta roja) cada vez más rápido */
+  camPress: 0.07,
+  /** el marcador principal se esconde al empezar el duelo (s⁻¹ de suavizado) y vuelve despacio al terminar */
+  hudOut: 7,
+  hudBack: 1.6,
   camRate: 4,
   camRelease: 3.5,
   camLift: 0,
@@ -89,7 +118,14 @@ export const NET_DUEL = {
    * GLOBO DISPARADO: margen a la esquina (unidades de cancha), colchón de tiempo (s) sobre lo que necesita el rival, reacción
    * del que defiende (s) y margen sobre la red de la trayectoria
    */
-  lob: { inset: 22, slackS: 0.15, reactS: 0.2, minS: 0.95, maxS: 2.4, margin: 60 },
+  // (14-11-2026) vuelo como el de un GLOBO NORMAL (~1-1,2 s): rápido aunque suba alto (lobApex)
+  lob: { inset: 22, slackS: 0.15, reactS: 0.2, minS: 1.0, maxS: 1.2, margin: 60 },
+  /** GLOBO DISPARADO del duelo: cuánto se aleja la cámara mientras vuela (0,32 = 32 %); el globo sube alto (minS: tiempo de vuelo mínimo) */
+  lobZoomOut: 0.12, // (14-11-2026) 0,38 alejaba demasiado: se veía poca imagen
+  /** altura que sube el GLOBO DISPARADO sobre el punto de golpe (u): ~el triple del de antes (~150); el tiempo de vuelo no cambia (gravedad propia del vuelo) */
+  lobApex: 420,
+  /** EFECTO del globo cargado al máximo (duelo y golpe normal): sale casi recto (esta fracción del desvío lateral) y se ABRE hacia su esquina del fondo con aceleración lateral, como el saque con efecto */
+  lobCurve: 0.15,
   /** tras salir el globo nadie lo alcanza durante este tiempo (ms): el que defiende está pegado a la red y el globo pasa por su alcance al salir */
   lobGraceMs: 450,
   /** estirada del BOT defensor: probabilidad = base + k × nivel (0..1); alcance y altura como LUNGE_RANGE / LUNGE_MAX_Z */
@@ -129,8 +165,8 @@ export function shouldStartDuel(c: DuelTriggerCtx): boolean {
   if (!c.rally || c.serveLock || c.used || c.busy || c.incapacitated || c.powerOrLob) return false;
   if (c.receiver === null) return false;
   const lim = NET_DUEL.triggerDist * c.halfLen;
-  // basta con que el que recibe esté en la red (el otro sube a la red durante el duelo)
-  if ((c.receiver === 'player' ? c.playerNetDist : c.botNetDist) > lim) return false;
+  // REGLA: los DOS ya están cerca de la red (nadie corre hacia ella para el duelo)
+  if (c.playerNetDist > lim || c.botNetDist > lim) return false;
   // la pelota a punto de llegar a su alcance; y si el peloteo ya es largo, sale igual (nunca se alarga)
   return c.ballDist <= c.hitRange * NET_DUEL.reachK || c.shots >= NET_DUEL.forceAfterShots;
 }
@@ -145,12 +181,14 @@ export interface RoundPlan {
   /** el aro empieza a cerrarse / se cierra */
   ringStart: number;
   close: number;
+  /** lo que tarda el aro de ESTA ronda en cerrarse (close - ringStart) */
+  ringMs: number;
 }
 
 /** Golpes del peloteo de cada ronda (2 o 3), sorteados con `rnd` () => [0,1). */
 export function rollPlan(rnd: () => number): number[] {
   const out: number[] = [];
-  for (let r = 0; r < NET_DUEL.rounds; r++) out.push(rnd() < 0.5 ? NET_DUEL.rallyMin : NET_DUEL.rallyMax);
+  for (let r = 0; r < NET_DUEL.rounds; r++) out.push(r === NET_DUEL.showRound ? NET_DUEL.rallyMax : rnd() < 0.5 ? NET_DUEL.rallyMin : NET_DUEL.rallyMax);
   return out;
 }
 
@@ -159,9 +197,22 @@ export function cleanPlan(plan: ArrayLike<number>): number[] {
   const out: number[] = [];
   for (let r = 0; r < NET_DUEL.rounds; r++) {
     const n = Math.floor(Number(plan[r]));
-    out.push(n >= NET_DUEL.rallyMax ? NET_DUEL.rallyMax : NET_DUEL.rallyMin);
+    out.push(r === NET_DUEL.showRound || n >= NET_DUEL.rallyMax ? NET_DUEL.rallyMax : NET_DUEL.rallyMin);
   }
   return out;
+}
+
+/**
+ * Lado (-1 / +1 = y menor / mayor) del golpe `g` del peloteo (0 = el primero del duelo; los golpes alternan entre los dos).
+ * Cada uno cambia de lado en cada golpe suyo y la pelota cruza la red en diagonal: A derecha, B izquierda, A izquierda, B derecha…
+ */
+export function duelHitSide(g: number): -1 | 1 {
+  return ((g >> 1) + (g & 1)) % 2 ? -1 : 1;
+}
+
+/** ¿El golpe `j` (0..) de la ronda `r` es una ESTIRADA? Show del peloteo: 2º golpe de las dos primeras rondas y 3º de la ronda del show. */
+export function duelLungeHit(r: number, j: number): boolean {
+  return (r < 2 && j === 1) || (r === NET_DUEL.showRound && j === 2);
 }
 
 /** Calendario de las 3 rondas seguidas (sin pausas: la siguiente empieza cuando se cierra el aro). `total` = cierre de la última. */
@@ -169,13 +220,15 @@ export function duelSchedule(plan: readonly number[]): { rounds: RoundPlan[]; to
   const rounds: RoundPlan[] = [];
   let t = 0;
   for (let r = 0; r < NET_DUEL.rounds; r++) {
-    const n = Math.max(NET_DUEL.rallyMin, Math.min(NET_DUEL.rallyMax, Math.floor(plan[r] ?? NET_DUEL.rallyMin)));
+    const n = r === NET_DUEL.showRound ? NET_DUEL.rallyMax : Math.max(NET_DUEL.rallyMin, Math.min(NET_DUEL.rallyMax, Math.floor(plan[r] ?? NET_DUEL.rallyMin)));
     const start = t;
     const hitAt: number[] = [];
-    for (let k = 0; k < n; k++) hitAt.push(start + NET_DUEL.leadMs + k * NET_DUEL.hitMs);
-    const ringStart = start + NET_DUEL.leadMs + n * NET_DUEL.hitMs;
-    const close = ringStart + NET_DUEL.ringMs;
-    rounds.push({ start, hitAt, ringStart, close });
+    const lead = r === 0 ? NET_DUEL.leadMs : NET_DUEL.leadAfterMs;
+    for (let k = 0; k < n; k++) hitAt.push(start + lead + k * NET_DUEL.hitMs);
+    const ringStart = start + lead + n * NET_DUEL.hitMs;
+    const ringMs = ringMsOf(r);
+    const close = ringStart + ringMs;
+    rounds.push({ start, hitAt, ringStart, close, ringMs });
     t = close;
   }
   return { rounds, total: t };
@@ -197,9 +250,33 @@ export function tapDiffMs(tapAt: number, closeAt: number): number {
   return tapAt - closeAt;
 }
 
+/** Duración del aro de la ronda `r` (0 = la primera): [1100, 900, 700] ms. */
+export function ringMsOf(r: number): number {
+  const a = NET_DUEL.ringMs;
+  return a[Math.max(0, Math.min(a.length - 1, Math.floor(r) || 0))] ?? a[0] ?? 1000;
+}
+
+/** ¿Es un toque DEMASIADO PRONTO (antes de earlyMin del recorrido del aro)? Cuenta como fallo: ¡PRONTO!, sin toque. */
+export function tapIsEarly(diffMs: number, ringMs: number): boolean {
+  return diffMs < -ringMs * (1 - NET_DUEL.earlyMin);
+}
+
+/** Color del indicador de precisión según los ms de error (sin importar si es antes o después del cierre). */
+export function msTier(diffMs: number): 'good' | 'ok' | 'bad' {
+  const a = Math.abs(diffMs);
+  return a <= NET_DUEL.msGood ? 'good' : a <= NET_DUEL.msOk ? 'ok' : 'bad';
+}
+
+/** ¿Ronda decisiva? Va 1-1 (cada uno ganó una; los empates no cuentan) antes de la tercera. */
+export function isDecisive(done: readonly (RoundWho | null)[]): boolean {
+  if (done.length < 2) return false;
+  const first = done.slice(0, 2);
+  return first.filter((w) => w === 'player').length === 1 && first.filter((w) => w === 'bot').length === 1;
+}
+
 /** ¿Cuenta un toque con ese error? Desde que empieza a cerrarse el aro hasta lateMs después del cierre. */
-export function tapInWindow(diffMs: number): boolean {
-  return diffMs >= -NET_DUEL.ringMs && diffMs <= NET_DUEL.lateMs;
+export function tapInWindow(diffMs: number, ringMs: number = ringMsOf(0)): boolean {
+  return diffMs >= -ringMs && diffMs <= NET_DUEL.lateMs;
 }
 
 /**
@@ -232,13 +309,13 @@ export function duelWinner(rounds: readonly RoundWho[], receiver: DuelWho): Duel
  * Toque del BOT: error en ms respecto al cierre (null = no toca). `level` = BotAI.d (0..1), `rnd` = () => [0,1).
  * La magnitud baja con el nivel; el signo sale al azar (algo más a menudo pronto que tarde).
  */
-export function botTapMs(level: number, rnd: () => number): number | null {
+export function botTapMs(level: number, rnd: () => number, ringMs: number = ringMsOf(0)): number | null {
   const lv = Math.max(0, Math.min(1, level));
   if (rnd() < NET_DUEL.botMissMax * (1 - lv)) return null;
   const mag = NET_DUEL.botErrMinMs + (NET_DUEL.botErrMaxMs - NET_DUEL.botErrMinMs) * (1 - lv);
   // suma de dos uniformes: casi siempre cerca de su error medio
   const e = ((rnd() + rnd()) / 2) * 2 * mag;
-  const err = Math.min(e, NET_DUEL.ringMs - 1);
+  const err = Math.min(e, ringMs * (1 - NET_DUEL.earlyMin), ringMs - 1) // el bot nunca toca PRONTO;
   const sign = rnd() < 0.6 ? -1 : 1;
   return Math.round(sign === 1 ? Math.min(err, NET_DUEL.lateMs) : -err);
 }

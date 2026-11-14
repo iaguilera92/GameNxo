@@ -106,6 +106,8 @@ export function openDailyLogin(scene: Phaser.Scene, onChange: () => void, onToas
   const cw = (pw - 52 - 3 * 12) / 4;
   const chh = 156;
   const rowY = (row: number) => -ph / 2 + 160 + chh / 2 + row * (chh + 16);
+  // reclamar el premio de HOY: lo usan el botón RECLAMAR y la tarjeta de hoy (tocar el premio también lo reclama)
+  let doClaim: (() => void) | null = null;
   LOGIN.rewards.forEach((r, i) => {
     const row = i < 4 ? 0 : 1;
     const col = row ? i - 4 : i;
@@ -171,6 +173,14 @@ export function openDailyLogin(scene: Phaser.Scene, onChange: () => void, onToas
       p.add(lost);
     } else if (today) {
       loops.push(scene.tweens.add({ targets: coin, scale: { from: 1, to: 1.12 }, duration: 600, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' }));
+      // tocar la tarjeta de hoy = RECLAMAR (igual que el botón)
+      const hit = scene.add.rectangle(cx, cy, cw, chh, 0xffffff, 0.001).setInteractive({ useHandCursor: true });
+      hit.on('pointerdown', (_p: Phaser.Input.Pointer, _x: number, _y: number, e: Phaser.Types.Input.EventData) => e.stopPropagation());
+      hit.on('pointerup', (_p: Phaser.Input.Pointer, _x: number, _y: number, e: Phaser.Types.Input.EventData) => {
+        e.stopPropagation();
+        doClaim?.();
+      });
+      p.add(hit);
     }
   });
   // las animaciones de las tarjetas se paran al cerrar
@@ -213,7 +223,10 @@ export function openDailyLogin(scene: Phaser.Scene, onChange: () => void, onToas
     p.add(arcadeButton(scene, 0, by, 310, 72, 'VUELVE MAÑANA', close, { palette: 'blue' }));
   } else {
     let claimBtn!: Phaser.GameObjects.Container;
-    claimBtn = arcadeButton(scene, 0, by, 330, 78, 'RECLAMAR', () => {
+    let claimed = false;
+    doClaim = () => {
+        if (claimed) return; // una sola vez (botón o tarjeta)
+        claimed = true;
         const res = claimLogin();
         onChange();
         if (!res.given) return;
@@ -230,7 +243,8 @@ export function openDailyLogin(scene: Phaser.Scene, onChange: () => void, onToas
           animateDouble();
           return true;
         }));
-      }, { palette: 'yellow' });
+      };
+    claimBtn = arcadeButton(scene, 0, by, 330, 78, 'RECLAMAR', () => doClaim?.(), { palette: 'yellow' });
     claimBtn.on('pointerdown', (_p: Phaser.Input.Pointer, _x: number, _y: number, event: Phaser.Types.Input.EventData) => event.stopPropagation());
     claimBtn.on('pointerup', (_p: Phaser.Input.Pointer, _x: number, _y: number, event: Phaser.Types.Input.EventData) => event.stopPropagation());
     p.add(claimBtn);

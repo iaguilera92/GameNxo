@@ -237,7 +237,7 @@ export class MenuScene extends Phaser.Scene {
     const cards = this.xpAt;
     const gain = this.xpGain;
     const share = (w: number) => (w < WAVES - 1 ? Math.floor(gain / WAVES) : gain - Math.floor(gain / WAVES) * (WAVES - 1));
-    sfx(this, 'recolectar-exp');
+    // (14-11-2026) el sonido suena UNA VEZ POR OLEADA (3 veces), cuando cada oleada sale hacia las cards (ver el bucle)
 
     // pantalla oscura; las cards de nivel y pase suben por encima para que resalten
     const dim = this.add.rectangle(0, 0, W, H, 0x02060f, 0).setOrigin(0).setDepth(190);
@@ -271,6 +271,7 @@ export class MenuScene extends Phaser.Scene {
       // sale la parte de esta oleada: el total baja
       this.time.delayedCall(t0, () => {
         if (!this.sys.isActive()) return;
+        sfx(this, 'recolectar-exp'); // un sonido por oleada
         remaining = Math.max(0, remaining - part);
         total.setText(`+${remaining}`);
         this.tweens.add({ targets: total, scale: { from: 1.18, to: 1 }, duration: 260, ease: 'Back.easeOut' });
@@ -361,9 +362,13 @@ export class MenuScene extends Phaser.Scene {
     syncWheels();
     // mismo ancho que la fila JUGAR + 2v2 (márgenes 26) y su misma forma inclinada
     const w = W - 52;
+    // primera vez en el menú (viene del CARGANDO): la cascada de ruletas espera al fundido; después, sin espera
+    const fromLoading = !this.registry.get('menu.entered');
+    this.registry.set('menu.entered', true);
     new DailyWheels(this, W / 2, playY - 54 - 18 - 52, w, {
       onOpen: (i) => openWheel(this, i),
       onToast: (m) => this.toast(m),
+      fromLoading,
     });
     const auto = wheelToPresent();
     if (auto >= 0) {

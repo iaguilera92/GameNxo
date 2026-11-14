@@ -119,6 +119,8 @@ export interface BallWire {
   fric?: number;
   /** aceleración lateral del saque con efecto (curva en el aire); el receptor la espeja */
   ay?: number;
+  /** gravedad propia de este vuelo (globo disparado); el receptor la usa tal cual */
+  g?: number;
 }
 
 /** Estado del propio jugador (coordenadas del emisor). */

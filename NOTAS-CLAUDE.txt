@@ -727,3 +727,90 @@ Hecho: NetDuel.ts reescrito, NetDuelFx (marcador 3 pelotas), uiSound (duel-hit/t
 Ajustar: triggerDist/reachK/forceAfterShots, introMs/hitMs/ringMs/lateMs, tieMs, botErr*, lob.slackS/inset, camZoom, lobGraceMs. Apagar: localStorage dev.netDuelOff.
 Verificado: headless contra bot y 2 navegadores online (gana A y gana B). NO probado en teléfonos reales.
 Sigue activo el modo temporal de pruebas del bot en la red (piezas listadas arriba).
+
+[Claude 14-11-2026] Menu EXP: recolectar-exp suena 3 veces, una por oleada (al salir cada oleada hacia las cards), en vez de una sola vez. OJO: el archivo dura 2,7 s y ya trae 3 pings: conviene recortarlo a un solo ping (~0,4 s) para que no se superpongan.
+
+[Claude 14-11-2026] Boton de PRUEBA (matraz morado, bajo AUTO; oculto en online): simula "ULTI + ESPECIAL" -> el rival recibe la ULTI (impacto, aturdido 2,6 s, raqueta al suelo) y 1,3 s despues sale tu ESPECIAL directo hacia el -> A LAS ESTRELLAS. MatchScene.makeTestButton / devSkyTest.
+
+[Claude 14-11-2026] ulti-fuego.m4a analizado: 9,5 s; ~1 s de silencio al inicio (sonaba tarde), el fuego aparece DOS veces (1 s y 5,3 s) y es mas fuerte (pico 0,71 vs ~0,5). InfernoFx: se reproduce desde 0,95 s (ULTI_SOUND_SEEK), volumen 0,8 y corte a 2,6 s. Recomendado recortar el archivo a 0,95-3,8 s.
+
+--- DUELO RED, ajuste (12-11-2026) ---
+Regla: el duelo solo sale si los DOS ya estan cerca de la red (triggerDist); nadie corre a la red para el duelo (se quito el dash de duelStart).
+Bot de prueba: sube a la red solo cuando termina serveLock (saque y su resto), ya no corre antes.
+Cuadro (showDuelBox) con el ganador de cada ronda y del duelo; el marcador principal (hud) se esconde y vuelve suave (hudOut/hudBack).
+Peloteo con sonido golpe-fuerte; ronda 2 siempre de 3 golpes (showRound); golpes de lado a lado (showSpread) y estiradas (duelLungeHit).
+Presion: camZoom 0.40 + camPress por ronda, borde rojo que late (createDuelPressure), sacudida al cerrar el aro.
+Verificado en headless contra bot (capturas). Online y telefonos reales: sin probar tras este ajuste.
+
+--- DUELO RED, segunda tanda de pulido (12-11-2026) ---
+Hecho (todo en NET_DUEL, logica pura en NetDuel.ts, test-net-duel.mjs = 35 pruebas):
+- ARO QUE SE ACELERA: ringMs = [1100, 900, 700] (ringMsOf(ronda)); cada RoundPlan trae su ringMs; la precision se mide contra el cierre de ESE aro. Rondas 2 y 3 esperan leadAfterMs (210) para que ya se sepa quien gano la anterior. Peor caso ~7,7 s (< maxMs 8000).
+- RONDA DECISIVA: isDecisive (1-1, los empates no cuentan) -> texto grande (decisiveMs 800, no alarga el duelo), viñeta mas oscura (vignetteDecisive) y aro dorado en la 3ª.
+- DESTELLO: primer golpe del ganador de la ronda anterior (si no fue empate): pelota mas rapida (boostCurve, solo visual), estela azul (tu) / roja (rival), destello en la raqueta y golpe-fuerte a boostVol. Si en red el aviso de la ronda llega tarde al no-juez, ese destello se omite.
+- INDICADOR: numero grande en ms sobre cada personaje (+/−), msTier: verde <= msGood 30, amarillo <= msOk 90, rojo mas lejos. En red sale al llegar el 'duel-tap' del rival (ahora lo reciben los dos telefonos; solo el juez lo guarda).
+- TOQUE FALLADO: antes de earlyMin (0,4) del recorrido = ¡PRONTO! en rojo, la pelota de esa ronda del marcador tiembla (score.shake) y cuenta como sin toque. Sin toque: ¡SIN TOQUE!. El bot nunca toca pronto.
+- AVISO DE CONEXION: online, si netRtt > lagWarnMs (180) al empezar: "DUELO CON RETRASO" bajo las 3 pelotas (naranja). Solo informativo.
+Verificado: headless contra el bot (PRONTO, ms de colores, decisiva con aro dorado, destello). SIN probar: online con 2 navegadores ni telefonos reales; el aviso de retraso solo por codigo.
+
+[Claude 14-11-2026] A LAS ESTRELLAS: quitado el texto sobre el personaje al golpearlo (queda el motivo del punto).
+
+[Claude 14-11-2026] DUELO RED: NET_DUEL.triggerDist 0,25 -> 0,4 (costaba llegar tan pegado a la red; test usa la constante, 35 OK). Boton de PRUEBA del duelo (red azul, bajo el de la ULTI; oculto en online): MatchScene.makeDuelTestButton / devDuelTest pone a los dos en la red con una volea llegando y llama duelStart.
+
+[Claude 14-11-2026] A LAS ESTRELLAS: gira mas rapido (4,5 vueltas, Cubic.easeOut); el que sale volando usa el pelotazo de la ULTI completa (ulti-hit, frames 3->5 y se congela en el 5: NxoActor.launchPose); el que hizo el punto hace la pose de victoria y el marcador de arriba se oculta durante el vuelo (vuelve en placeForServe). Packs sin ULTI completa (Mai rival, hoja antigua): usa el aturdido.
+
+[Claude 14-11-2026] (1) Ruletas del menu: la espera de 1 s (INTRO_DELAY) solo al llegar del CARGANDO (registry menu.entered); al volver de otra pantalla la cascada sale enseguida. (2) Nadie bota la pelota antes de sacar, tampoco contra el bot (setServeIdle siempre false); caminar sigue igual.
+
+--- DUELO RED, limpieza de textos (12-11-2026) ---
+Quitados: aviso lateral 'DUELO RED', cuadro de cada ronda, '¡DUELO GANADO!' sobre el personaje, cuadro final del duelo y 'ELIGE EL LADO DEL GLOBO'. Quedan: numero de ms (y ¡PRONTO! / ¡SIN TOQUE!), ¡RONDA DECISIVA!, ¡GLOBO DISPARADO! y (online con ping alto) DUELO CON RETRASO. Las 3 pelotas del marcador dicen quien gano cada ronda. showDuelBox sigue en fx/NetDuelFx.ts sin uso.
+
+[Claude 14-11-2026] Premio diario: tocar la tarjeta de HOY reclama el premio igual que el boton RECLAMAR (DailyLoginButton: doClaim compartido, una sola vez).
+
+[Claude 14-11-2026] Globo involuntario al subir a la red: el joystick de moverse (arriba = hacia la red) se tomaba como pedir globo. Ahora arriba / abajo MANTENIDO mas de SHOT_HOLD_MS (450 ms) sin cargar = golpe normal (MatchScene.shotFromJoystick, vertDir/vertSince). Globo/cortita: un toque arriba/abajo al golpear o apuntando mientras se carga (cargando cuenta como recien movido).
+
+[Claude 14-11-2026] DUELO RED, aro: la pelota queda QUIETA en la red (sin rebotar) y girando en el sitio (Ball.spinExtra); los dos personajes CONGELADOS (anims.pause) mientras el aro se cierra; se reanudan al cerrarse y en duelEnd (por si se corta).
+
+[Claude 14-11-2026] DUELO RED: reaccion EXPRESS al resolverse cada ronda (el ganador celebra point-won, el otro point-lost) a 2,4x (QUICK_REACT_SPEED en NxoActor.quickReact); el siguiente golpe del peloteo la corta. Empate: sin reaccion.
+
+--- TIENDA, fluidez (12-11-2026) ---
+ShopScene: quitada la mascara de geometria del scroll (stencil cada fotograma); la cabecera tapa el contenido con una copia recortada del fondo (headerCover, depth 10; la cabecera depth 11). Las tarjetas fuera de pantalla se ocultan (reg / cullCards) y sus efectos (borde brillante del Pase, destello de las ULTI, estela de EFECTO PELOTA) no se redibujan si estan ocultas; menos segmentos y chispas. build() ahora quita sus tweens (cardTweens + killTweensOf) y ya no se acumulan al pulsar USAR. Medido solo en Chrome headless (sin GPU): 8 de 26 tarjetas visibles arriba, tweens estables tras 5 build. No medido en telefono. Pendiente si sigue lenta: build() reconstruye toda la tienda en cada USAR/compra; portrait-mai (1130x1392) pesa en memoria GPU.
+
+[Claude 14-11-2026] REMATE + rival SIN RAQUETA: pulsar ESPECIAL durante el salto del remate lo cancela (cancelRemateForSmash: fin de camara lenta y aro, baja en 160 ms, este globo ya no rearma remate; en red manda remate-end grade cancel). El golpe sale como ESPECIAL -> A LAS ESTRELLAS. Con el rival con raqueta, el remate sigue como siempre.
+
+[Claude 14-11-2026] Boton de PRUEBA del REMATE DEL BOT (naranja, bajo el del duelo; oculto en online): devBotRemateTest pone el punto en juego, deja al bot en el centro de su campo y le tira tu GLOBO justo ahi; devForceBotRemate hace que lo remate seguro (camara lenta + aro).
+
+[Claude 14-11-2026] (1) MatchScene.ts estaba DANADO: las primeras 2870 lineas duplicadas al inicio (una escritura a medias). Las dos copias eran identicas en esa parte: se dejo solo la completa (7643 lineas; respaldo del archivo danado en el scratchpad de Claude). Los errores que quedan (duelLungeStart, busyUntil) son del duelo que Kiro tiene a medias. (2) A LAS ESTRELLAS con Mai rival (pack sin conectar): NxoActor.LAUNCH_ONLY carga solo su ulti-hit (mai-front-inferno) y launchPose lo usa (frames 3->5 congelado en el 5); resetPose devuelve ancla y escala.
+
+[Claude 14-11-2026] A LAS ESTRELLAS: el motivo del punto ahora dice "BUEN PUNTO!".
+
+[Claude 14-11-2026] Bot SIN RAQUETA: si tienes el ESPECIAL armado se queda quieto (no va por la raqueta) y si el ESPECIAL ya viene hacia el, corre hacia la pelota (un poco mas rapido) para recibirlo y salir volando (botFetchRacket).
+
+--- DUELO RED, anotacion 1 (12-11-2026) ---
+camZoom 0.5; miradas centradas entre los dos personajes (centerY = H/2 - 50); marcador de 3 pelotas mas grande (R 25) y mas abajo (y 180); sin estiradas al suelo: el peloteo usa SIEMPRE el sprite de golpe (volea), la estirada solo mueve mas lejos/mas bajo el contacto (se quito duelLungeStart/lungeLeadMs); globo del duelo alto (lob.minS 1.6 -> sube ~320 u) y camara que se aleja mas (lobZoomOut 0.32, maxLobWide), con el efecto de carga al maximo. La estirada real del que DEFIENDE el globo (botDuelLunge) sigue igual. Verificado en headless contra el bot.
+
+--- GLOBO DISPARADO: efecto y carga maxima (12-11-2026) ---
+El globo cargado al maximo (golpe normal y el del duelo) ahora lleva EFECTO: sale casi recto (NET_DUEL.lobCurve 0.15 del desvio) y se abre hacia su esquina del fondo con aceleracion lateral ay (curveLob; la misma del saque con efecto, viaja por red espejada), cae en la esquina y 'patea' al botar. En el duelo, el ganador muestra la animacion de CARGA AL MAXIMO mientras elige el lado (duelChargeFx: efecto de carga elegido o aura clasica; el bot, rivalChargeFx) y se apaga con el golpe. lob.minS 1.6 -> 1.3 (menos flotado). Verificado en headless contra el bot (ay -137, curva visible, camara alejada). Online sin probar.
+
+[Claude 14-11-2026] Sonido del saque tarde: ball-saque-1.m4a trae 0,32 s de silencio al inicio (ball-saque-2, 0,16 s). sfx() y el golpe de MatchScene saltan ese silencio (SFX_SEEK en fx/sfx.ts). Mejor recortar los archivos.
+
+--- GOLPE al soltar el joystick (12-11-2026) ---
+Si corrias hacia la red (joystick arriba/abajo mantenido > SHOT_HOLD_MS) y lo soltabas justo antes de pegar, shotDir() seguia usando la ultima direccion (250 ms) y salia un globo / semi globo. Ahora al soltar tras esa carrera se borra la ultima direccion (lastDirAt) y el golpe sale normal. Un toque corto arriba al golpear sigue dando globo. Sin probar en partida (solo tsc).
+
+[Claude 14-11-2026] Saque en globo gigante (bot / rival): aimShot alargaba el vuelo sin tope para pasar la red cuando el contacto era bajo. Nuevo parametro maxStretch; el saque usa SERVE_MAX_STRETCH 1,35 (si no pasa, va a la red = falta). Los demas golpes sin cambio.
+
+[Claude 14-11-2026] ATURDIDO: niebla de vision (fx/stunFog.ts): mientras el JUGADOR esta aturdido por ESPECIAL / ULTI, velo azulado difuso con grano sobre todo menos un circulo claro alrededor de su personaje (degradado radial en una imagen, sin shaders), entra y sale suave y late. Solo en el telefono del aturdido; se quita al empezar otro punto. MAX_ALPHA 0,6 y CLEAR 0,16 para ajustar.
+
+--- Globo cargado al maximo + joystick arriba (12-11-2026) ---
+Causa: en la red (pelota alta) o dentro del circulo de un globo, el REMATE automatico anulaba el globo pedido. Ahora cargando + joystick arriba (chargedLob) manda sobre el remate; sin joystick el remate sigue igual. MAX_LOB: margin 34 -> 100 (el globo pasa bien alto, apex ~145-155 u, sobre el alcance del rival 135) y zoomOut 0.16 -> 0.22 (la camara se aleja mas y vuelve sola). Probado en headless llamando a playerHit con joystick simulado (lob + efecto + maxLob). No probado con el dedo.
+
+[Claude 14-11-2026] Niebla del aturdido: sin las manchas (se veian circulos); degradado continuo mas fuerte hacia los bordes y DESENFOQUE real de la camara del juego (postFX blur, solo WebGL; el marcador y los botones van en otra camara y quedan nitidos). BLUR_MAX 2,4.
+
+[Claude 14-11-2026] ESPECIAL del jugador: sin joystick va al MEDIO; con izquierda / derecha, a ese lado (como la ULTI). Antes iba siempre a la esquina contraria al rival.
+
+--- Golpes sin globo con el rival subido (12-11-2026) ---
+DIRECT en MatchScene: si NO se pide globo (joystick neutro / de lado) y el rival esta a menos de 230 u de la red, flattenShot sube la velocidad hasta que el arco no pase de 100 u (el alcance del rival es 135). Con el rival atras no cambia nada. Probado en headless (apex max 100 con el rival en x 700; sin cambios con el rival en el fondo). Solo golpes del usuario; el bot no se toco.
+
+[Claude 14-11-2026] ULTI / ESPECIAL al medio sin joystick: usaban shotDir (ultima direccion de los 250 ms previos); la cinematica congela el reloj y esa direccion de antes (venia corriendo) seguia contando. Ahora el lado sale solo del joystick actual (inputVector).
+
+[Claude 14-11-2026] Niebla del aturdido: (1) se desvanece durante el ULTIMO SEGUNDO del aturdido (FADE_OUT_MS 1000). (2) El personaje aturdido queda NITIDO: camara extra "stun-sharp" (encima de la principal, bajo la interfaz) que dibuja solo su personaje; la principal (desenfocada) deja de dibujarlo (cameraFilter, ajustado despues de view/uiCamera en PRE_RENDER). Se crea al empezar y se quita al terminar. Sin probar en el navegador (el panel se cerro).
+
+[Claude 14-11-2026] DUELO RED, globo final: la camara se aleja menos (NET_DUEL.lobZoomOut 0,38 -> 0,12) y el globo vuela como uno normal (lob.minS/maxS 1,3-2,5 s -> 1,0-1,2 s) manteniendo su altura alta (lobApex 420). Al ser mas rapido, defenderlo cuesta mas (con DEFENSIVO se llega).

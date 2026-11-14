@@ -1,0 +1,3 @@
+
+--- GLOBO DISPARADO triple de alto (12-11-2026) ---
+BallState.g (gravedad propia del vuelo, vuelve a la normal al botar, bote reescalado) y NET_DUEL.lobApex 420: el globo cargado al maximo (golpe normal y duelo) sube ~470 u (antes ~150) en el MISMO tiempo de vuelo (~1,0-1,2 s) con highLob. g viaja en game:hit (frontend/backend protocol + guard.ts sanitizeBall, mirror lo conserva). Prediccion del remate y caida usan s.g. MAX_LOB.zoomOut 0.3 y lobZoomOut 0.38 (camara mas lejos). Probado en headless (stepBall): cae en la esquina elegida para usuario y bot, ambos lados. Online sin probar.

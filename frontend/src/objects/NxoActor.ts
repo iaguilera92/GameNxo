@@ -16,6 +16,7 @@ import maiSpecial from '../characters/mai-special.json';
 import maiMove from '../characters/mai-move.json';
 import maiExtra from '../characters/mai-extra.json';
 import maiInferno from '../characters/mai-inferno.json';
+import maiFInferno from '../characters/mai-front-inferno.json';
 import { runAnimRate } from '../logic/PlayerMotion';
 
 /**
@@ -241,7 +242,16 @@ const VICTORY_HOLD: Record<string, number> = { nxo: 3 };
  */
 const MAI_DEFEAT = { key: 'mai-front-end-defeat', file: 'assets/characters/mai-front-end/defeat.webp', w: 192, h: 128, fps: 10, stand: 118 };
 
+/**
+ * ¡A LAS ESTRELLAS! para personajes cuyo pack aún NO está conectado (Mai rival: hoja antigua): solo su clip del pelotazo
+ * de la ULTI completa (fila 2 de su hoja de la ULTI), para que salga volando con el sprite pedido (frames 3→5).
+ */
+const LAUNCH_ONLY: Partial<Record<SpriteCharId, { key: string; file: string; inf: InfCfg }>> = {
+  'mai-front': { key: 'mai-front-launch-hit', file: 'assets/characters/mai-front-inferno/ulti-hit.webp', inf: maiFInferno as unknown as InfCfg },
+};
+
 export function queueNxoSpriteLoads(load: Phaser.Loader.LoaderPlugin) {
+  for (const l of Object.values(LAUNCH_ONLY)) if (l && !load.textureManager.exists(l.key)) load.spritesheet(l.key, l.file, { frameWidth: l.inf.cell.w, frameHeight: l.inf.cell.h });
   if (!load.textureManager.exists(MAI_DEFEAT.key)) load.spritesheet(MAI_DEFEAT.key, MAI_DEFEAT.file, { frameWidth: MAI_DEFEAT.w, frameHeight: MAI_DEFEAT.h });
   if (skinMode() !== 'off') {
     for (const p of PACK_LIST) {
@@ -313,6 +323,7 @@ export function registerNxoAnims(scene: Phaser.Scene) {
     scene.anims.create({ key: k, frames: scene.anims.generateFrameNumbers(k, { start: 0, end: info.frames - 1 }), frameRate: info.fps, repeat });
   };
   mk(MAI_DEFEAT.key, { file: MAI_DEFEAT.file, frames: 8, fps: MAI_DEFEAT.fps, loop: false, scale: 1 } as AnimInfo, 0);
+  for (const l of Object.values(LAUNCH_ONLY)) if (l) mk(l.key, { file: l.file, frames: 9, fps: 14, loop: false, scale: 1 } as AnimInfo, 0);
   for (const p of PACK_LIST) {
     for (const a of Object.keys(p.move.animations) as MoveAnim[]) mk(moveKey(a, p.key), p.move.animations[a], 0);
     for (const [a, info] of extrasOf(p)) mk(extraKey(a, p.key), info, info.loop ? -1 : 0);
@@ -345,6 +356,8 @@ export function registerNxoAnims(scene: Phaser.Scene) {
  *   (hit-stop) â†’ seguimiento â†’ recuperaciÃ³n algo mÃ¡s lenta â†’ reposo.
  * El tiro cargado / SMASH (`power`) acelera mÃ¡s, se detiene mÃ¡s en el impacto y sigue mÃ¡s largo.
  */
+/** velocidad de las reacciones EXPRESS del DUELO RED (× fps del clip) */
+const QUICK_REACT_SPEED = 2.4;
 const SWING = {
   accel: 1.8, // velocidad de reproducciÃ³n hasta el impacto (normal; mÃ¡s lento = se ve el armado)
   accelPower: 3, // Ã­dem con potencia
@@ -422,6 +435,43 @@ export class NxoActor {
   private looseAt = -1;
   /** sin raqueta (ULTI recibida, raqueta en el suelo): reposo y carrera usan idle-nr / run-nr si la hoja los trae */
   private noRacket = false;
+  /** ¡A LAS ESTRELLAS!: frame (0-based) del clip ulti-hit en el que se congela mientras sale volando; -1 = nada */
+  private launchHold = -1;
+  /** ancla y escala de antes del clip del pelotazo de un pack sin conectar (las devuelve resetPose) */
+  private launchRestore: { ox: number; oy: number; sx: number; sy: number } | null = null;
+
+  /**
+   * ¡A LAS ESTRELLAS! (sale volando por un ESPECIAL sin raqueta): el pelotazo recibido de la ULTI completa (fila 2 de la
+   * hoja de la ULTI) desde el frame 3 hasta el 5, y se queda en el 5 mientras vuela girando. false = sin esa hoja.
+   */
+  launchPose(): boolean {
+    const only = LAUNCH_ONLY[this.id];
+    if ((!this.v2 || !this.ur('ulti-hit')) && only && this.scene.anims.exists(only.key)) {
+      // pack sin conectar (Mai rival): su clip del pelotazo con su ancla y escala; resetPose las devuelve
+      this.launchRestore = { ox: this.sprite.originX, oy: this.sprite.originY, sx: this.sprite.scaleX, sy: this.sprite.scaleY };
+      this.stopShake();
+      this.stopLean();
+      this.sprite.setFlipX(false);
+      this.state = 'stun';
+      this.looseAt = -1;
+      this.launchHold = 4;
+      this.sprite.anims.timeScale = 1;
+      this.sprite.setOrigin(only.inf.origin.x, only.inf.origin.y).setScale(CHAR_UNITS_H / only.inf.standHeight);
+      this.sprite.y = 0;
+      this.sprite.play({ key: only.key, startFrame: 2 });
+      return true;
+    }
+    if (!this.v2 || !this.ur('ulti-hit')) return false;
+    this.stopShake();
+    this.stopLean();
+    this.sprite.setFlipX(false);
+    this.state = 'stun';
+    this.looseAt = -1;
+    this.launchHold = 4;
+    this.sprite.anims.timeScale = 1;
+    this.playClip(ultiKey('ulti-hit', this.P.key), 2);
+    return true;
+  }
   /** recogiendo la raqueta (clip pickup): aviso al tomarla (frame pickupGrab) */
   private onGrab?: () => void;
   /** existe el clip de la ULTI completa `a` en este pack */
@@ -1049,6 +1099,16 @@ export class NxoActor {
   }
 
   /** Clips sueltos de la hoja nueva (intro, saludo, espera activa, caminarâ€¦): una vez y vuelve al reposo. */
+  /**
+   * Reacción EXPRESS (DUELO RED): celebra o se lamenta (point-won / point-lost) acelerado, para que entre en el peloteo
+   * en vivo sin frenar el juego. El siguiente golpe la corta.
+   */
+  quickReact(won: boolean) {
+    if (!this.v2 || this.state === 'victory' || this.state === 'stun' || this.noRacketClips) return;
+    this.emote(won ? 'point-won' : 'point-lost');
+    if (this.state === 'emote') this.sprite.anims.timeScale = QUICK_REACT_SPEED;
+  }
+
   emote(a: ExtraAnim) {
     if (!this.xr(a) || this.state === 'victory') return;
     if (this.noRacketClips) return; // las reacciones llevan raqueta: sin ella, se queda sin raqueta
@@ -1117,6 +1177,12 @@ export class NxoActor {
   }
   /** Vuelve a la pose neutra (nuevo punto: el jugador se recoloca). */
   resetPose() {
+    if (this.launchRestore) {
+      const r = this.launchRestore;
+      this.launchRestore = null;
+      this.sprite.anims.resume();
+      this.sprite.setOrigin(r.ox, r.oy).setScale(r.sx, r.sy);
+    }
     this.stopShake();
     this.stopLean();
     this.sprite.setFlipX(false);
@@ -1130,6 +1196,7 @@ export class NxoActor {
     this.recovering = false;
     this.dropLooseRacket();
     this.noRacket = false; // nuevo punto: la raqueta vuelve a la mano
+    this.launchHold = -1;
     this.onGrab = undefined;
     this.state = 'idle';
     this.sprite.anims.timeScale = 1;
@@ -1369,6 +1436,12 @@ export class NxoActor {
     }
     // INFERNO recibido: desde el frame de la mano vacÃ­a, la raqueta sale volando
     if (this.state === 'stun') {
+      // ¡A LAS ESTRELLAS!: el golpe recibido se congela en su frame (launchPose) mientras sale volando
+      if (this.launchHold >= 0 && frame >= this.launchHold) {
+        this.launchHold = -1;
+        this.sprite.anims.pause();
+        return;
+      }
       if (this.looseAt >= 0 && frame >= this.looseAt) {
         this.looseAt = -1;
         this.throwLooseRacket();

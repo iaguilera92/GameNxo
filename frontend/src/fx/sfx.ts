@@ -50,8 +50,17 @@ export function queueSfx(load: Phaser.Loader.LoaderPlugin) {
 
 /** Suena `key` una vez (si está cargado). */
 export function sfx(scene: Phaser.Scene, key: string, volume = 1) {
-  if (scene.cache.audio.exists(key)) scene.sound.play(key, { volume });
+  if (scene.cache.audio.exists(key)) scene.sound.play(key, { volume, seek: SFX_SEEK[key] ?? 0 });
 }
+
+/**
+ * Silencio al INICIO de algunos archivos (s, medido con el audio decodificado): se salta para que suenen justo con el golpe.
+ * ball-saque-1: el sonido empieza a los 0,32 s (se oía tarde) · ball-saque-2: a los 0,16 s.
+ */
+export const SFX_SEEK: Record<string, number> = {
+  'ball-saque-1': 0.3,
+  'ball-saque-2': 0.15,
+};
 
 /** Sonido del DASH: eléctrico si el ESPECIAL de quien lo hace es el de rayo. */
 export function dashSfx(smashEl?: string): string {

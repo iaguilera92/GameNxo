@@ -879,6 +879,10 @@ let chargeSnd: Phaser.Sound.BaseSound | null = null;
 /** Carga de energía (1 s ascendente), desplazamiento (silbido) e impacto (golpe grave). */
 /** largo máximo del sonido de golpe de la ULTI (ms): los archivos más largos se cortan con un desvanecido */
 const ULTI_SOUND_MAX_MS = 2600;
+/** inicio (s) del sonido dentro del archivo: se salta el silencio inicial */
+const ULTI_SOUND_SEEK: Record<string, number> = { 'ulti-fuego': 0.95 };
+/** volumen por archivo (el de fuego viene más fuerte que los otros) */
+const ULTI_SOUND_VOL: Record<string, number> = { 'ulti-fuego': 0.8 };
 
 export const infernoSound = {
   charge(scene: Phaser.Scene) {
@@ -910,8 +914,10 @@ export const infernoSound = {
     if (scene.cache.audio.exists(key)) {
       // (13-11-2026) ulti-fuego.m4a dura 9,6 s (las otras ~2-3 s): seguía sonando mucho después del golpe. Se corta a
       // ULTI_SOUND_MAX_MS con un desvanecido corto. Reloj real (la cinemática pausa el reloj de la escena).
-      const snd = scene.sound.add(key, { volume: 1 });
-      snd.play();
+      // ulti-fuego.m4a (14-11-2026): ~1 s de SILENCIO al inicio (sonaba tarde), el fuego REPETIDO dos veces (a los 1 y 5,3 s)
+      // y más fuerte que los otros. Se salta el silencio (ULTI_SOUND_SEEK) y se corta antes de la repetición.
+      const snd = scene.sound.add(key, { volume: ULTI_SOUND_VOL[key] ?? 1 });
+      snd.play({ seek: ULTI_SOUND_SEEK[key] ?? 0 });
       const fadeAt = ULTI_SOUND_MAX_MS - 400;
       window.setTimeout(() => {
         if (!snd.isPlaying) return;

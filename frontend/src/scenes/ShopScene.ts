@@ -1,7 +1,7 @@
 import { installTapSound } from '../fx/uiSound';
 import Phaser from 'phaser';
 import { FONT, restartOnResize, textStyle } from '../ui/theme';
-import { stadiumBg } from '../ui/ui';
+import { UI, stadiumBg } from '../ui/ui';
 import { arcadeButton } from '../ui/modeButtons';
 import { commit, getPlayer, onPlayerChange } from '../domain/playerStore';
 import { equipCharge, equipDefensive, equipInferno, equipSmash, equipStyle, purchase } from '../domain/operations';
@@ -88,6 +88,10 @@ export class ShopScene extends Phaser.Scene {
   private modal: Phaser.GameObjects.GameObject[] = [];
   /** desplazamiento vertical del contenido (la tienda es más alta que la pantalla) */
   private scrollY = 0;
+  /** tarjetas del contenido con su franja vertical: las que quedan fuera de pantalla se ocultan (no se dibujan ni redibujan sus efectos) */
+  private cull: { c: Phaser.GameObjects.Container; y0: number; y1: number }[] = [];
+  /** tweens de las tarjetas (objetivos que no son objetos de juego): se quitan al reconstruir para que no queden huérfanos */
+  private cardTweens: Phaser.Tweens.Tween[] = [];
   private maxScroll = 0;
   /** posición (en el contenido) de la sección REGALO GRATIS: destino de la flecha GRATIS */
   private giftY = 0;
@@ -129,6 +133,10 @@ export class ShopScene extends Phaser.Scene {
     ensureBallAnims(this);
 
     // ---------------------------------------------------------------- cabecera
+    // el contenido pasa por DEBAJO de la cabecera: una copia del fondo (recortada a la cabecera) lo tapa. Antes: máscara de geometría
+    // sobre todo el contenedor (stencil en cada fotograma, caro en el móvil).
+    this.headerCover(W);
+    const n0 = this.children.length;
     const headY = 64;
     this.backButton(54, headY, () => {
       this.cameras.main.fadeOut(180, 0, 0, 0);
@@ -138,6 +146,7 @@ export class ShopScene extends Phaser.Scene {
     const titleW = Math.min(250, Math.max(150, W - 250));
     this.add.image(W / 2, headY - 3, 'shop-title').setDisplaySize(titleW, titleW / 3);
     this.cashPill(W - 26, headY);
+    this.children.list.slice(n0).forEach((o) => (o as Phaser.GameObjects.GameObject & { setDepth(v: number): unknown }).setDepth(11)); // cabecera sobre la cubierta
 
     this.body = this.add.container(0, 0);
     this.build();
@@ -159,7 +168,19 @@ export class ShopScene extends Phaser.Scene {
   // ================================================================ contenido
   private build() {
     const W = this.scale.width;
+    // lo anterior se va entero: sus tweens también (los de objetos dentro de las tarjetas y los de objetos sueltos)
+    this.cardTweens.forEach((t) => t.remove());
+    this.cardTweens = [];
+    const dead: Phaser.GameObjects.GameObject[] = [];
+    const collect = (o: Phaser.GameObjects.GameObject) => {
+      dead.push(o);
+      (o as Phaser.GameObjects.Container).list?.forEach(collect);
+    };
+    this.body.list.forEach(collect);
+    if (dead.length) this.tweens.killTweensOf(dead);
     this.body.removeAll(true);
+    this.cull = [];
+    this.body.y = 0;
     let y = 150;
     // cada título lleva su línea; los de estilos y poderes, además, un (i) que abre su explicación (INFO)
     const titleGap = 44; // del título a sus tarjetas
@@ -172,6 +193,7 @@ export class ShopScene extends Phaser.Scene {
       this.sectionTitle(W, y, 'OFERTAS');
       y += titleGap;
       this.passOffer(30, y, W - 60, ch, syncSeason(getPlayer() as PlayerState).bp.premium);
+      this.reg(y, ch);
       y += ch + 52;
     }
 
@@ -181,14 +203,20 @@ export class ShopScene extends Phaser.Scene {
     const styles = SHOP_ITEMS.filter((i) => i.kind === 'style');
     const gap = 14;
     const cw = (W - 60 - gap * (styles.length - 1)) / styles.length;
-    styles.forEach((it, i) => this.styleCard(30 + i * (cw + gap), y, cw, ch, it));
+    styles.forEach((it, i) => {
+      this.styleCard(30 + i * (cw + gap), y, cw, ch, it);
+      this.reg(y, ch);
+    });
     y += ch + 52;
     // ---------------------------------------------------------------- cargando golpe (aro al cargar)
     this.sectionTitle(W, y, 'CARGANDO GOLPE', INFO.charge);
     y += titleGap;
     const charges = SHOP_ITEMS.filter((i) => i.kind === 'charge');
     const cwid = (W - 60 - gap * (charges.length - 1)) / charges.length;
-    charges.forEach((it, i) => this.chargeCard(30 + i * (cwid + gap), y, cwid, ch, it));
+    charges.forEach((it, i) => {
+      this.chargeCard(30 + i * (cwid + gap), y, cwid, ch, it);
+      this.reg(y, ch);
+    });
     y += ch + 52;
 
     // ---------------------------------------------------------------- poderes de la ULTI (antes INFERNO)
@@ -196,7 +224,10 @@ export class ShopScene extends Phaser.Scene {
     y += titleGap;
     const powers = SHOP_ITEMS.filter((i) => i.kind === 'inferno');
     const pw = (W - 60 - gap * (powers.length - 1)) / powers.length;
-    powers.forEach((it, i) => this.powerCard(30 + i * (pw + gap), y, pw, ch, it));
+    powers.forEach((it, i) => {
+      this.powerCard(30 + i * (pw + gap), y, pw, ch, it);
+      this.reg(y, ch);
+    });
     y += ch + 52;
 
     // ---------------------------------------------------------------- poderes del ESPECIAL y del DEFENSIVO
@@ -208,7 +239,11 @@ export class ShopScene extends Phaser.Scene {
     const smashW = (W - 60 - gap * (smashN - 1)) / smashN;
     const smashH = 270;
     this.smashCard(30, y, smashW, smashH, 'fire');
-    smashItems.forEach((it, i) => this.smashCard(30 + (i + 1) * (smashW + gap), y, smashW, smashH, it.id.split(':')[1] as SmashPower, it));
+    this.reg(y, smashH);
+    smashItems.forEach((it, i) => {
+      this.smashCard(30 + (i + 1) * (smashW + gap), y, smashW, smashH, it.id.split(':')[1] as SmashPower, it);
+      this.reg(y, smashH);
+    });
     y += smashH + 52;
     this.sectionTitle(W, y, 'PODERES DEFENSIVOS', INFO.defensive);
     y += titleGap;
@@ -219,6 +254,7 @@ export class ShopScene extends Phaser.Scene {
       const dx = 30 + i * (dw + gap);
       if (defs[i]) this.defensiveCard(dx, y, dw, dh, defs[i]);
       else this.soonCard(dx, y, dw, dh);
+      this.reg(y, dh);
     }
     y += dh + 52;
 
@@ -230,7 +266,11 @@ export class ShopScene extends Phaser.Scene {
     const packCols = 3;
     const packW = (W - 60 - gap * (packCols - 1)) / packCols;
     const packH = Math.round(packW * 0.92);
-    CASH_PACKS.forEach((p, i) => this.cashPackCard(30 + (i % packCols) * (packW + gap), y + Math.floor(i / packCols) * (packH + gap), packW, packH, p, i));
+    CASH_PACKS.forEach((p, i) => {
+      const py = y + Math.floor(i / packCols) * (packH + gap);
+      this.cashPackCard(30 + (i % packCols) * (packW + gap), py, packW, packH, p, i);
+      this.reg(py, packH);
+    });
     y += Math.ceil(CASH_PACKS.length / packCols) * (packH + gap) - gap;
     y += 52;
 
@@ -240,10 +280,29 @@ export class ShopScene extends Phaser.Scene {
     y += titleGap;
     const giftH = 190;
     this.giftCard(30, y, W - 60, giftH);
+    this.reg(y, giftH);
     y += giftH;
     this.maxScroll = Math.max(0, y + 36 - this.scale.height);
     this.scrollY = Math.min(this.scrollY, this.maxScroll);
     this.body.y = -this.scrollY;
+    this.cullCards();
+  }
+
+  /** Apunta la última tarjeta creada en el contenido con su franja vertical (para ocultarla fuera de pantalla). */
+  private reg(y0: number, h: number) {
+    const c = this.body.list[this.body.length - 1];
+    if (c instanceof Phaser.GameObjects.Container) this.cull.push({ c, y0, y1: y0 + h });
+  }
+
+  /** Oculta las tarjetas que quedan fuera de la pantalla (y por tanto sus efectos): solo se dibuja lo que se ve. */
+  private cullCards() {
+    const H = this.scale.height;
+    const top = this.scrollY + HEADER_H - 40;
+    const bottom = this.scrollY + H + 40;
+    for (const e of this.cull) {
+      const vis = e.y1 > top && e.y0 < bottom;
+      if (e.c.visible !== vis) e.c.setVisible(vis);
+    }
   }
 
   /** Envuelve un clic del contenido: se ignora si fue un arrastre (scroll), si el puntero está sobre la cabecera o hay un diálogo. */
@@ -259,6 +318,7 @@ export class ShopScene extends Phaser.Scene {
   private setScroll(v: number) {
     this.scrollY = Phaser.Math.Clamp(v, 0, this.maxScroll);
     this.body.y = -this.scrollY;
+    this.cullCards();
     // la flecha GRATIS se esconde al llegar abajo (ya se ve el regalo)
     if (this.freeArrow) this.freeArrow.setVisible(this.scrollY < Math.min(this.maxScroll, this.giftY - 200));
   }
@@ -376,11 +436,6 @@ export class ShopScene extends Phaser.Scene {
 
   /** Arrastrar o usar la rueda desplaza el contenido; la cabecera (volver, saldos) queda fija. */
   private setupScroll() {
-    const W = this.scale.width;
-    const H = this.scale.height;
-    const mg = this.make.graphics({}, false);
-    mg.fillRect(0, HEADER_H, W, H - HEADER_H);
-    this.body.setMask(mg.createGeometryMask());
     let down = false;
     let startY = 0;
     let startScroll = 0;
@@ -398,7 +453,18 @@ export class ShopScene extends Phaser.Scene {
     });
     this.input.on('pointerup', () => (down = false));
     this.input.on('wheel', (_p: unknown, _o: unknown, _dx: number, dy: number) => !this.modal.length && set(this.scrollY + dy));
-    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => mg.destroy());
+  }
+
+  /** Copia del fondo del estadio (con su velo) solo en la franja de la cabecera, por encima del contenido que se desplaza. */
+  private headerCover(W: number) {
+    const H = this.scale.height;
+    if (this.textures.exists('menu-bg')) {
+      const bg = this.add.image(W / 2, H / 2, 'menu-bg').setScrollFactor(0).setDepth(10);
+      const k = Math.max(W / bg.width, H / bg.height);
+      bg.setScale(k);
+      bg.setCrop(0, Math.max(0, (bg.height * k) / 2 / k - H / 2 / k), bg.width, HEADER_H / k);
+    } else this.add.rectangle(0, 0, W, HEADER_H, UI.navy).setOrigin(0).setDepth(10);
+    this.add.rectangle(0, 0, W, HEADER_H, UI.navy, 0.55).setOrigin(0).setDepth(10);
   }
 
   /**
@@ -449,12 +515,13 @@ export class ShopScene extends Phaser.Scene {
       duration: 2600,
       repeat: -1,
       onUpdate: () => {
+        if (!c.visible) return; // fuera de pantalla: no se redibuja
         edge.clear();
         for (const off of [0, per / 2]) {
-          for (let k = 0; k < 10; k++) {
-            const a = at(run.d + off - (k * trail) / 10);
-            const b = at(run.d + off - ((k + 1) * trail) / 10);
-            const f = 1 - k / 10;
+          for (let k = 0; k < 6; k++) {
+            const a = at(run.d + off - (k * trail) / 6);
+            const b = at(run.d + off - ((k + 1) * trail) / 6);
+            const f = 1 - k / 6;
             edge.lineStyle(6 * f + 2, 0xffffff, 0.85 * f).lineBetween(a.px, a.py, b.px, b.py);
           }
           const head = at(run.d + off);
@@ -462,6 +529,7 @@ export class ShopScene extends Phaser.Scene {
         }
       },
     });
+    this.cardTweens.push(edgeTw);
     c.once(Phaser.GameObjects.Events.DESTROY, () => edgeTw.remove());
 
     // premio mayor: MAI a la izquierda, de pie sobre el borde de abajo, con resplandor detrás
@@ -782,8 +850,9 @@ export class ShopScene extends Phaser.Scene {
     const st = { t: 0 };
     const pos = (t: number) => ({ x: cx - span / 2 + span * t, y: cy + 26 - Math.sin(t * Math.PI) * 52 });
     const draw = () => {
+      if (!c.visible) return; // fuera de pantalla: no se redibuja
       g.clear();
-      const n = 14;
+      const n = 9;
       for (let i = 1; i <= n; i++) {
         const a = pos(Math.max(0, st.t - (i / n) * 0.45));
         const b = pos(Math.max(0, st.t - ((i - 1) / n) * 0.45));
@@ -792,13 +861,13 @@ export class ShopScene extends Phaser.Scene {
       }
       const p = pos(st.t);
       ball.setPosition(p.x, p.y);
-      if (look.sparkle && Math.random() < 0.5 && st.t > 0.05) {
+      if (look.sparkle && Math.random() < 0.25 && st.t > 0.05) {
         const s = this.add.star(p.x + Phaser.Math.Between(-6, 6), p.y + Phaser.Math.Between(-6, 6), 4, 2, 6, 0xfff1b8).setBlendMode(Phaser.BlendModes.ADD);
         c.add(s);
         this.tweens.add({ targets: s, alpha: 0, scale: 0.2, angle: 160, y: s.y + 10, duration: 380, onComplete: () => s.destroy() });
       }
     };
-    this.tweens.add({ targets: st, t: 1, duration: 1100, delay: Phaser.Math.Between(0, 500), repeat: -1, repeatDelay: 450, ease: 'Sine.easeInOut', onUpdate: draw });
+    this.cardTweens.push(this.tweens.add({ targets: st, t: 1, duration: 1100, delay: Phaser.Math.Between(0, 500), repeat: -1, repeatDelay: 450, ease: 'Sine.easeInOut', onUpdate: draw }));
     draw();
   }
 
@@ -1006,6 +1075,7 @@ export class ShopScene extends Phaser.Scene {
           tw.remove();
           return;
         }
+        if (!c.visible) return; // fuera de pantalla: no se redibuja
         shine.clear();
         const bx = x - band - slant + st.t * (w + band + slant * 2);
         const quad = [
@@ -1018,6 +1088,7 @@ export class ShopScene extends Phaser.Scene {
         if (pts.length >= 3) shine.fillStyle(0xffffff, 0.2).fillPoints(pts, true);
       },
     });
+    this.cardTweens.push(tw);
     // chispas que titilan sobre la tarjeta
     for (let i = 0; i < 3; i++) {
       const sp = this.add

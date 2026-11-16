@@ -10,10 +10,12 @@ import { RankBadge, preloadRankBadges } from '../ui/RankBadge';
 import { showRankList } from '../ui/RankListDialog';
 import { arcadeButton, lockedModeButton } from '../ui/modeButtons';
 import { isDevMode } from '../domain/devMode';
+import { maybeShowTutorial } from '../ui/TutorialDialog';
 import { fitText } from '../ui/fitText';
 import { myLeague, myPosition, rankedState, syncRanked } from '../logic/Ranked';
 import { dailyLoginButton } from '../ui/DailyLoginButton';
 import { friendsButton } from '../ui/FriendsButton';
+import { chestButton } from '../ui/ChestButton';
 import { rankedPlayButton } from '../ui/PlayEntry';
 import { serverUrl } from '../net/config';
 import { getPlayer, onPlayerChange } from '../domain/playerStore';
@@ -26,7 +28,7 @@ import { openWheel, whenWheelReady } from './WheelScene';
 import { uiSound } from '../fx/uiSound';
 import { sfx } from '../fx/sfx';
 import { startIntroMusic } from '../fx/introMusic';
-import { markWheelPresented, syncWheels, wheelToPresent } from '../logic/Wheels';
+import { grantTestSpin, markWheelPresented, syncWheels, wheelToPresent } from '../logic/Wheels';
 
 /** ancho máximo del número en los contadores (entre el icono y el botón +) */
 /** ancho de los contadores de monedas / dinero y del texto de su cifra */
@@ -112,7 +114,9 @@ export class MenuScene extends Phaser.Scene {
     // Anclas fijas (funciona en pantallas muy altas como iPhone 16 Pro Max):
     const navH = this.textures.exists(NAV.key) ? this.navImageHeight(W) : 112; // barra inferior
     const navTop = H - navH;
-    const playY = navTop - 130; // botón JUGAR sobre la barra
+    // (15-11-2026) JUGAR, ruletas y cofre más abajo, cerca de la barra (antes −130). Va relativo al borde de la barra, así
+    // que en cualquier pantalla queda el mismo hueco (~34 px bajo JUGAR, contando su sombra) y nunca la toca.
+    const playY = navTop - 96; // botón JUGAR sobre la barra
     const feetY = playY - 175;  // pies del personaje sobre JUGAR
 
     // --- personaje (pies anclados; se apoya sobre un disco de luz)
@@ -166,11 +170,18 @@ export class MenuScene extends Phaser.Scene {
     // --- ruletas diarias (encima de JUGAR). Una ruleta recién ganada se abre sola UNA vez.
     const wheelOpened = this.dailyWheels(W, playY);
     // EXP de la partida: "+N EXP" y las barras de nivel y del pase se llenan; con ruleta, DESPUÉS de cerrarla
+    // TUTORIAL por nivel (domain/tutorial.ts; solo con el modo desarrollo apagado): DESPUÉS de la ruleta y de la presentación de la EXP
+    // (que dura ~6 s), para que el aviso de un nivel recién alcanzado no se pise con ellas
+    const tutorial = (delay: number) => this.time.delayedCall(delay, () => maybeShowTutorial(this));
     if (this.xpGain > 0) {
-      const play = () => this.playXpGain();
+      const play = () => {
+        this.playXpGain();
+        tutorial(6500);
+      };
       if (wheelOpened) this.time.delayedCall(700, () => whenWheelReady(this, (w) => w.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.time.delayedCall(250, play))));
       else this.time.delayedCall(550, play);
-    }
+    } else if (wheelOpened) this.time.delayedCall(700, () => whenWheelReady(this, (w) => w.events.once(Phaser.Scenes.Events.SHUTDOWN, () => tutorial(500))));
+    else tutorial(1600); // tras el fundido y la cascada de ruletas
 
     if (this.textures.exists(NAV.key)) this.navImage(W, H);
     else this.bottomBar(W, navTop, navH);
@@ -365,10 +376,24 @@ export class MenuScene extends Phaser.Scene {
     // primera vez en el menú (viene del CARGANDO): la cascada de ruletas espera al fundido; después, sin espera
     const fromLoading = !this.registry.get('menu.entered');
     this.registry.set('menu.entered', true);
+    // COFRE EVOLUTIVO (15-11-2026): card pequeña con la forma de RULETAS DIARIAS, justo encima a la derecha (ui/ChestButton.ts)
+    // solo si hay cofre (ganado en la ruleta); borde derecho alineado con el de la card de ruletas
+    const cw = 150;
+    const makeChest = () => chestButton(this, W - 26 - cw / 2, playY - 54 - 18 - 52 - 104 - 30, (m) => this.toast(m), cw, 104);
+    let chestCard = makeChest();
+    // recién ganado en la ruleta (se abre encima del menú): la card aparece sin reiniciar el menú
+    const offChest = onPlayerChange((s) => {
+      if (s.chest && !chestCard?.active) chestCard = makeChest();
+    });
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => offChest());
     new DailyWheels(this, W / 2, playY - 54 - 18 - 52, w, {
       onOpen: (i) => openWheel(this, i),
       onToast: (m) => this.toast(m),
       fromLoading,
+      onTest: () => {
+        const i = grantTestSpin();
+        if (i >= 0) openWheel(this, i, { bonus: true, test: true });
+      },
     });
     const auto = wheelToPresent();
     if (auto >= 0) {

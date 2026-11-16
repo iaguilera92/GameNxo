@@ -12,13 +12,14 @@
  *    no se puede cobrar dos veces.
  *  - Cambio de ciclo: los giros sin girar caducan; un premio ya decidido pero sin reclamar se entrega.
  */
-import { addCoins, addXp, grantItem } from './operations';
+import { addCash, addCoins, addXp, grantItem } from './operations';
+import { gainChest } from './chest';
 import type { OpResult } from './operations';
 import { type ItemId, type PlayerState, clonePlayer, owns } from './player';
-import { COSMETIC_CATALOG, WHEEL, type WheelSlot } from './wheelConfig';
-import { type WheelReward, type WheelSpin, type WheelState, newWheelState } from './wheelState';
+import { COSMETIC_CATALOG, WEIGHT_TOTAL, WHEEL, type WheelSlot } from './wheelConfig';
+import { type WheelReward, type WheelSpin, type WheelState, type WheelTier, newWheelState } from './wheelState';
 
-export type { WheelReward, WheelSpin, WheelState } from './wheelState';
+export type { WheelReward, WheelSpin, WheelState, WheelTier } from './wheelState';
 
 // ---------------------------------------------------------------- ciclo diario
 
@@ -120,7 +121,7 @@ export function syncCycle(s: PlayerState, now: number): PlayerState {
   // solo hacia delante (AAAA-MM-DD se compara como texto): una hora anterior nunca reabre ni reinicia
   if (s.wheel.cycle && cycle <= s.wheel.cycle) return s;
   let n = clonePlayer(s);
-  for (const sp of n.wheel.spins) if (sp.reward && !sp.claimed) n = applyReward(n, sp.reward).state;
+  for (const sp of n.wheel.spins) if (sp.reward && !sp.claimed) n = applyReward(n, sp.reward, now).state;
   const bonusSpins = n.wheel.bonusSpins;
   n.wheel = newWheelState(cycle);
   n.wheel.bonusSpins = bonusSpins;
@@ -171,7 +172,8 @@ export function markPresented(s: PlayerState, index: number, now: number): Wheel
 /** Resuelve el premio de un sector (épico: elige opción; cosmético: elige del catálogo). */
 export function resolvePrize(slot: WheelSlot, s: PlayerState, rng: Rng): WheelReward {
   const p = slot.prize;
-  if (p.kind === 'coins' || p.kind === 'xp') return { kind: p.kind, amount: p.amount };
+  if (p.kind === 'coins' || p.kind === 'xp' || p.kind === 'cash') return { kind: p.kind, amount: p.amount };
+  if (p.kind === 'chest') return { kind: 'chest' };
   if (p.kind === 'epic') {
     const o = pickWeighted(p.options, rng);
     return { kind: o.kind, amount: o.amount };
@@ -183,31 +185,80 @@ export function resolvePrize(slot: WheelSlot, s: PlayerState, rng: Rng): WheelRe
   return { kind: 'item', item: c.id, name: c.name };
 }
 
+/** Premio con el bonus del nivel de la ruleta (monedas, EXP y dinero; el cosmético y la compensación por repetido no cambian). */
+export function scaleReward(r: WheelReward, tier: WheelTier): WheelReward {
+  const pct = WHEEL.tiers.bonusPct[tier];
+  if (!pct || r.kind === 'item' || r.kind === 'chest') return r;
+  if (r.kind === 'coins' && r.duplicateOf !== undefined) return r;
+  return { ...r, amount: Math.round((r.amount * (100 + pct)) / 100) };
+}
+
+/** Tirada de UN toque: ¿sube la ruleta de nivel? (normal → dorada o épica; dorada → épica; la épica no sube más). */
+export function rollTier(tier: WheelTier, rng: Rng): WheelTier {
+  const up = WHEEL.tiers.upgrade;
+  const r = Math.floor(rng() * WEIGHT_TOTAL);
+  if (tier === 'normal') return r < up.normal.epic ? 'epic' : r < up.normal.epic + up.normal.gold ? 'gold' : 'normal';
+  if (tier === 'gold') return r < up.gold.epic ? 'epic' : 'gold';
+  return tier;
+}
+
 /**
- * Gira la ruleta `index`: decide (y guarda) el premio. Si ya estaba girada, devuelve el MISMO
- * resultado (pulsaciones repetidas / reconexión / app cerrada a mitad de la animación).
+ * Gira la ruleta `index`: decide (y guarda) el premio y la primera tirada de nivel (el 1.er toque). Si ya estaba girada,
+ * devuelve el MISMO resultado (pulsaciones repetidas / reconexión / app cerrada a mitad de la animación).
+ * `reward` es el premio FINAL (con el bonus del nivel); los toques siguientes llaman a `boost`.
  */
-export function spin(s: PlayerState, index: number, now: number, rng: Rng = secureRng, bonus = false): WheelResult<{ slot: WheelSlot; reward: WheelReward; repeated: boolean }> {
+export function spin(s: PlayerState, index: number, now: number, rng: Rng = secureRng, bonus = false, forceSlot?: string): WheelResult<{ slot: WheelSlot; reward: WheelReward; tier: WheelTier; repeated: boolean }> {
   const n = clonePlayer(syncCycle(s, now));
   const sp = (bonus ? n.wheel.bonusSpins : n.wheel.spins)[index];
   if (!sp) return fail('no_spin');
   if (sp.slot && sp.reward) {
     const slot = slotById(sp.slot);
     if (!slot) return fail('invalid');
-    return { ok: true, state: n, slot, reward: sp.reward, repeated: true };
+    return { ok: true, state: n, slot, reward: sp.reward, tier: sp.tier ?? 'normal', repeated: true };
   }
-  const slot = pickWeighted(WHEEL.slots, rng);
-  const reward = resolvePrize(slot, n, rng);
+  // forceSlot: solo la RULETA TEST (desarrollo) elige el sector para probar cada premio
+  const slot = (forceSlot && slotById(forceSlot)) || pickWeighted(WHEEL.slots, rng);
+  const base = resolvePrize(slot, n, rng);
+  const tier = rollTier('normal', rng);
+  const reward = scaleReward(base, tier);
   sp.slot = slot.id;
+  sp.base = base;
   sp.reward = reward;
+  sp.tier = tier;
+  sp.taps = 1;
   sp.presented = true;
-  return { ok: true, state: n, slot, reward, repeated: false };
+  return { ok: true, state: n, slot, reward, tier, repeated: false };
+}
+
+/**
+ * Un toque más sobre la ruleta ya girada (2.º a 4.º): tira una vez para subirla de nivel. Si sube, el premio se recalcula
+ * desde el premio base. El número de toques se guarda: no se puede tirar de más ni repetir una tirada. No hace nada si el
+ * premio ya se cobró, si no hay premio base (giro viejo) o si ya se usaron todos los toques.
+ */
+export function boost(s: PlayerState, index: number, now: number, rng: Rng = secureRng, bonus = false): WheelResult<{ reward: WheelReward; tier: WheelTier; upgraded: boolean }> {
+  const n = clonePlayer(syncCycle(s, now));
+  const sp = (bonus ? n.wheel.bonusSpins : n.wheel.spins)[index];
+  if (!sp || !sp.slot || !sp.reward) return fail('not_spun');
+  const tier = sp.tier ?? 'normal';
+  const taps = sp.taps ?? WHEEL.tiers.maxTaps;
+  if (sp.claimed || !sp.base || taps >= WHEEL.tiers.maxTaps) return { ok: true, state: n, reward: sp.reward, tier, upgraded: false };
+  sp.taps = taps + 1;
+  const next = rollTier(tier, rng);
+  if (next === tier) return { ok: true, state: n, reward: sp.reward, tier, upgraded: false };
+  sp.tier = next;
+  sp.reward = scaleReward(sp.base, next);
+  return { ok: true, state: n, reward: sp.reward, tier: next, upgraded: true };
 }
 
 /** Entrega un premio con las operaciones de siempre (monedas, XP, inventario). */
-function applyReward(s: PlayerState, r: WheelReward): { state: PlayerState; given: WheelReward } {
+function applyReward(s: PlayerState, r: WheelReward, now = Date.now()): { state: PlayerState; given: WheelReward } {
   let res: OpResult;
   let given = r;
+  if (r.kind === 'chest') {
+    // cofre: nuevo (2 días) o sube de nivel; si ya era ÉPICO, monedas (lo entregado queda como monedas)
+    const g = gainChest(s, now);
+    return { state: g.state, given: g.gain.kind === 'coins' ? { kind: 'coins', amount: g.gain.amount } : r };
+  }
   if (r.kind === 'item') {
     if (owns(s, r.item)) {
       // se consiguió entre el giro y el cobro (p. ej. comprado): política de duplicados
@@ -215,6 +266,7 @@ function applyReward(s: PlayerState, r: WheelReward): { state: PlayerState; give
       res = addCoins(s, WHEEL.duplicateCoins);
     } else res = grantItem(s, r.item);
   } else if (r.kind === 'xp') res = addXp(s, r.amount);
+  else if (r.kind === 'cash') res = addCash(s, r.amount);
   else res = addCoins(s, r.amount);
   return { state: res.ok ? res.state : s, given };
 }
@@ -226,7 +278,7 @@ export function claim(s: PlayerState, index: number, now: number, bonus = false)
   if (!sp0) return fail('no_spin');
   if (!sp0.reward) return fail('not_spun');
   if (sp0.claimed) return { ok: true, state: synced, given: null, already: true };
-  const { state, given } = applyReward(synced, sp0.reward);
+  const { state, given } = applyReward(synced, sp0.reward, now);
   const n = clonePlayer(state);
   const sp = (bonus ? n.wheel.bonusSpins : n.wheel.spins)[index];
   sp.claimed = true;
@@ -243,8 +295,8 @@ export function claimAdBonus(s: PlayerState, index: number, now: number, bonus =
   if (sp0.adBonusClaimed) return fail('already_bonus');
 
   // Un cosmético no se puede duplicar; entrega la compensación habitual en monedas.
-  const extra: WheelReward = sp0.reward.kind === 'item'
-    ? { kind: 'coins', amount: WHEEL.duplicateCoins, duplicateOf: sp0.reward.item }
+  const extra: WheelReward = sp0.reward.kind === 'item' || sp0.reward.kind === 'chest'
+    ? { kind: 'coins', amount: WHEEL.duplicateCoins, duplicateOf: sp0.reward.kind === 'item' ? sp0.reward.item : null }
     : sp0.reward;
   const applied = applyReward(synced, extra);
   const n = clonePlayer(applied.state);
@@ -289,11 +341,17 @@ export function sanitizeWheel(raw: unknown): WheelState {
       const o = x as Record<string, unknown>;
       const slot = typeof o.slot === 'string' && slotById(o.slot) ? o.slot : null;
       const reward = slot ? validReward(o.reward) : null;
+      const base = reward ? validReward(o.base) : null;
+      const tier: WheelTier = o.tier === 'gold' || o.tier === 'epic' ? o.tier : 'normal';
+      const taps = typeof o.taps === 'number' && Number.isInteger(o.taps) ? Math.min(WHEEL.tiers.maxTaps, Math.max(0, o.taps)) : undefined;
       into.push({
         index: into.length,
         matchId: typeof o.matchId === 'string' ? o.matchId : '',
         slot: reward ? slot : null,
         reward,
+        ...(base ? { base } : {}),
+        ...(reward && tier !== 'normal' ? { tier } : {}),
+        ...(reward && taps !== undefined ? { taps } : {}),
         claimed: !!o.claimed && !!reward,
         presented: !!o.presented,
         adBonusClaimed: !!o.adBonusClaimed,
@@ -315,6 +373,7 @@ function validReward(v: unknown): WheelReward | null {
     return { kind: 'coins', amount: amt, duplicateOf: typeof r.duplicateOf === 'string' ? (r.duplicateOf as ItemId) : null };
   }
   if (r.kind === 'xp' && amt) return { kind: 'xp', amount: amt };
+  if (r.kind === 'cash' && amt) return { kind: 'cash', amount: amt };
   if (r.kind === 'item' && typeof r.item === 'string' && COSMETIC_CATALOG.some((c) => c.id === r.item))
     return { kind: 'item', item: r.item as ItemId, name: typeof r.name === 'string' ? r.name : '' };
   return null;

@@ -18,7 +18,7 @@ const GUST = [0xe0ffe8, 0x9cf0b0, 0xffffff] as const;
 const kill = (o: Phaser.GameObjects.GameObject) => () => o.destroy();
 
 /** Rayo en zigzag (con `branches` ramas cortas) sobre un Graphics: halo azul, cuerpo celeste y núcleo blanco. */
-function zap(g: Phaser.GameObjects.Graphics, x0: number, y0: number, x1: number, y1: number, jag: number, w: number, branches = 0, alpha = 1) {
+export function zap(g: Phaser.GameObjects.Graphics, x0: number, y0: number, x1: number, y1: number, jag: number, w: number, branches = 0, alpha = 1) {
   const n = 7;
   const dx = x1 - x0;
   const dy = y1 - y0;
@@ -49,7 +49,7 @@ function zap(g: Phaser.GameObjects.Graphics, x0: number, y0: number, x1: number,
 }
 
 /** Redibuja `draw(p)` cada `every` ms durante `ms` (parpadeo eléctrico) y luego destruye el Graphics. */
-function flicker(scene: Phaser.Scene, g: Phaser.GameObjects.Graphics, ms: number, every: number, draw: (p: number) => void) {
+export function flicker(scene: Phaser.Scene, g: Phaser.GameObjects.Graphics, ms: number, every: number, draw: (p: number) => void) {
   const t0 = scene.time.now;
   const step = () => {
     if (!g.active) return;
@@ -518,4 +518,155 @@ export function lightningDashFlash(scene: Phaser.Scene, ax: number, ay: number, 
   step();
   scene.events.on('update', step);
   scene.events.once('shutdown', () => scene.events.off('update', step));
+}
+
+// ---------------------------------------------------------------- HIELO (ESPECIAL)
+const ICE = { white: 0xffffff, pale: 0xd8f6ff, mid: 0x8fdcff, deep: 0x4aa8ff } as const;
+
+/**
+ * (14-11-2026) ESPECIAL de HIELO alcanza a un personaje: CRISTALES de hielo que brotan del golpe (picos que crecen y se
+ * quiebran), escarcha que se abre en el suelo, esquirlas disparadas, bruma fría y copos que caen despacio.
+ */
+export function iceBlast(scene: Phaser.Scene, x: number, y: number, s0: number, D: number) {
+  const s = s0 * 1.2;
+  const ADD = Phaser.BlendModes.ADD;
+  const flash = softGlow(scene, x, y, ICE.white, 140 * s, 140 * s, D + 3);
+  scene.tweens.add({ targets: flash, scale: flash.scale * 1.6, alpha: 0, duration: 110, ease: 'Quad.easeOut', onComplete: kill(flash) });
+  // bruma fría
+  const mist = softGlow(scene, x, y, ICE.mid, 170 * s, 140 * s, D);
+  scene.tweens.add({ targets: mist, scale: mist.scale * 2.2, alpha: 0, duration: 620, ease: 'Cubic.easeOut', onComplete: kill(mist) });
+  // CRISTALES: picos alargados que brotan hacia fuera, se quedan un instante y se quiebran
+  const n = 9;
+  for (let i = 0; i < n; i++) {
+    const a = (i / n) * Math.PI * 2 + FB(-0.2, 0.2);
+    const L = FB(85, 135) * s;
+    const w = FB(18, 28) * s;
+    const g = scene.add.graphics({ x, y }).setDepth(D + 2).setRotation(a);
+    g.fillStyle(pick([ICE.pale, ICE.mid, ICE.white]), 0.92).fillPoints([{ x: 0, y: -w / 2 }, { x: L, y: 0 }, { x: 0, y: w / 2 }, { x: -w * 0.4, y: 0 }], true);
+    g.fillStyle(ICE.white, 0.85).fillPoints([{ x: 0, y: -w * 0.18 }, { x: L * 0.85, y: 0 }, { x: 0, y: w * 0.05 }], true); // brillo del filo
+    g.lineStyle(1.5 * s, ICE.deep, 0.9).strokePoints([{ x: 0, y: -w / 2 }, { x: L, y: 0 }, { x: 0, y: w / 2 }], false);
+    g.setScale(0.1, 0.4);
+    scene.tweens.add({ targets: g, scaleX: 1, scaleY: 1, duration: 110, ease: 'Back.easeOut' });
+    scene.tweens.add({ targets: g, alpha: 0, scaleX: 1.15, delay: 260 + i * 8, duration: 160, ease: 'Quad.easeIn', onComplete: kill(g) });
+  }
+  // escarcha en anillo (dos aros que se abren)
+  for (let i = 0; i < 2; i++) {
+    const ring = scene.add.ellipse(x, y, 50 * s, 42 * s).setStrokeStyle(5 * s, i ? ICE.mid : ICE.pale, 1).setDepth(D).setBlendMode(ADD);
+    scene.tweens.add({ targets: ring, scale: 4.4, alpha: 0, delay: i * 80, duration: 380, ease: 'Cubic.easeOut', onComplete: kill(ring) });
+  }
+  // esquirlas que salen disparadas al quebrarse los cristales
+  scene.time.delayedCall(250, () => {
+    for (let i = 0; i < 14; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const d = FB(80, 170) * s;
+      const L = FB(6, 11) * s;
+      const sh = scene.add.graphics({ x, y }).setDepth(D + 2).setRotation(a);
+      sh.fillStyle(pick([ICE.white, ICE.pale, ICE.mid]), 1).fillPoints([{ x: L, y: 0 }, { x: 0, y: -L * 0.35 }, { x: -L * 0.6, y: 0 }, { x: 0, y: L * 0.35 }], true);
+      scene.tweens.add({ targets: sh, x: x + Math.cos(a) * d, y: y + Math.sin(a) * d * 0.75 + 30 * s, rotation: a + FB(-6, 6), alpha: 0, duration: IB(380, 560), ease: 'Cubic.easeOut', onComplete: kill(sh) });
+    }
+  });
+  // copos de nieve que caen despacio
+  for (let i = 0; i < 8; i++) {
+    const r = FB(4, 7) * s;
+    const f = scene.add.graphics({ x: x + FB(-70, 70) * s, y: y + FB(-60, 10) * s }).setDepth(D + 1).setBlendMode(ADD).setAlpha(0);
+    f.lineStyle(1.6 * s, ICE.white, 1);
+    for (let k = 0; k < 3; k++) {
+      const a = (k * Math.PI) / 3;
+      f.lineBetween(-Math.cos(a) * r, -Math.sin(a) * r, Math.cos(a) * r, Math.sin(a) * r);
+    }
+    scene.tweens.add({ targets: f, alpha: { from: 1, to: 0 }, y: f.y + FB(40, 80) * s, x: f.x + FB(-20, 20) * s, angle: FB(-180, 180), delay: IB(150, 350), duration: IB(700, 1000), ease: 'Sine.easeIn', onComplete: kill(f) });
+  }
+  burstSparks(scene, x, y, s, [ICE.white, ICE.pale, ICE.mid], 10, D);
+}
+
+// ---------------------------------------------------------------- SOMBRA (ESPECIAL)
+/**
+ * (14-11-2026) ESPECIAL de SOMBRA alcanza a un personaje: una esfera NEGRA se abre de golpe y se traga la luz, tentáculos de
+ * sombra que salen disparados, aro morado y humo negro que se disipa.
+ */
+export function shadowBlast(scene: Phaser.Scene, x: number, y: number, s0: number, D: number) {
+  const s = s0 * 1.2;
+  const ADD = Phaser.BlendModes.ADD;
+  const flash = softGlow(scene, x, y, 0xd0a8ff, 130 * s, 130 * s, D + 3);
+  scene.tweens.add({ targets: flash, scale: flash.scale * 1.5, alpha: 0, duration: 100, ease: 'Quad.easeOut', onComplete: kill(flash) });
+  // esfera negra que se abre y se cierra (implosión)
+  const orb = scene.add.circle(x, y, 30 * s, 0x0a0410, 0.92).setDepth(D + 1).setScale(0.3);
+  const rim = scene.add.circle(x, y, 30 * s, 0x000000, 0).setStrokeStyle(4 * s, 0x9b4dff, 1).setDepth(D + 2).setBlendMode(ADD).setScale(0.3);
+  scene.tweens.add({ targets: [orb, rim], scale: 1.6, duration: 160, ease: 'Cubic.easeOut' });
+  scene.tweens.add({ targets: [orb, rim], scale: 0.1, alpha: 0, delay: 260, duration: 200, ease: 'Back.easeIn', onComplete: () => { orb.destroy(); rim.destroy(); } });
+  // tentáculos de sombra
+  for (let i = 0; i < 10; i++) {
+    const a = (i / 10) * Math.PI * 2 + FB(-0.2, 0.2);
+    const L = FB(70, 130) * s;
+    const g = scene.add.graphics({ x, y }).setDepth(D + 1).setRotation(a);
+    const pts: { x: number; y: number }[] = [];
+    for (let j = 0; j <= 8; j++) {
+      const u = j / 8;
+      pts.push({ x: u * L, y: Math.sin(u * 6 + i) * 8 * s * u });
+    }
+    g.lineStyle(7 * s, 0x0a0410, 0.85).strokePoints(pts, false);
+    g.lineStyle(2 * s, 0xb57aff, 0.9).strokePoints(pts, false);
+    g.setScale(0.15, 1);
+    scene.tweens.add({ targets: g, scaleX: 1, duration: 140, ease: 'Cubic.easeOut' });
+    scene.tweens.add({ targets: g, alpha: 0, delay: 200, duration: 220, onComplete: kill(g) });
+  }
+  // aro morado
+  for (let i = 0; i < 2; i++) {
+    const ring = scene.add.ellipse(x, y, 50 * s, 42 * s).setStrokeStyle(5 * s, i ? 0x7a2fd6 : 0xd0a8ff, 1).setDepth(D).setBlendMode(ADD);
+    scene.tweens.add({ targets: ring, scale: 4.2, alpha: 0, delay: i * 80, duration: 380, ease: 'Cubic.easeOut', onComplete: kill(ring) });
+  }
+  // humo negro que se disipa
+  for (let i = 0; i < 8; i++) {
+    const a = Math.random() * Math.PI * 2;
+    const r = FB(20, 50) * s;
+    const p = scene.add.circle(x, y, FB(14, 24) * s, pick([0x0a0410, 0x1a0630, 0x2c1640]), 0.8).setDepth(D);
+    scene.tweens.add({ targets: p, x: x + Math.cos(a) * r * 2, y: y + Math.sin(a) * r * 1.5 - 20 * s, scale: 2.2, alpha: 0, delay: 120, duration: IB(500, 750), ease: 'Cubic.easeOut', onComplete: kill(p) });
+  }
+  burstSparks(scene, x, y, s, [0xffffff, 0xd0a8ff, 0x9b4dff], 10, D);
+}
+
+// ---------------------------------------------------------------- LUZ (ESPECIAL)
+/**
+ * (12-11-2026) ESPECIAL de LUZ alcanza a un personaje (antes ESTRELLA): un fogonazo blanco que deslumbra, haces de luz que
+ * salen disparados en todas direcciones, una columna de luz que sube, dos aros dorados y motas de luz que flotan hacia arriba.
+ * Sin estrellas.
+ */
+export function lightBlast(scene: Phaser.Scene, x: number, y: number, s0: number, D: number) {
+  const s = s0 * 1.2;
+  const ADD = Phaser.BlendModes.ADD;
+  // fogonazo: blanco enorme y muy breve + núcleo que se abre
+  const flash = softGlow(scene, x, y, 0xffffff, 200 * s, 200 * s, D + 3);
+  scene.tweens.add({ targets: flash, scale: flash.scale * 1.8, alpha: 0, duration: 140, ease: 'Quad.easeOut', onComplete: kill(flash) });
+  const core = softGlow(scene, x, y, 0xfff0b0, 120 * s, 120 * s, D + 2);
+  scene.tweens.add({ targets: core, scale: core.scale * 2.6, alpha: 0, duration: 340, ease: 'Cubic.easeOut', onComplete: kill(core) });
+  // haces de luz: triángulos finos que se estiran desde el centro
+  const beams = scene.add.graphics({ x, y }).setDepth(D + 1).setBlendMode(ADD);
+  const n = 14;
+  for (let i = 0; i < n; i++) {
+    const a = (i / n) * Math.PI * 2 + FB(-0.1, 0.1);
+    const L = (i % 2 ? FB(90, 130) : FB(140, 190)) * s;
+    const w = i % 2 ? 0.07 : 0.05;
+    beams.fillStyle(i % 2 ? 0xfff0b0 : 0xffffff, 0.9).fillTriangle(0, 0, Math.cos(a - w) * L, Math.sin(a - w) * L * 0.85, Math.cos(a + w) * L, Math.sin(a + w) * L * 0.85);
+  }
+  beams.setScale(0.35);
+  scene.tweens.add({ targets: beams, scale: 1.15, duration: 160, ease: 'Cubic.easeOut' });
+  scene.tweens.add({ targets: beams, alpha: 0, delay: 120, duration: 260, onComplete: kill(beams) });
+  // columna de luz que sube
+  const col = scene.add.rectangle(x, y - 60 * s, 34 * s, 150 * s, 0xfffbe0, 0.7).setDepth(D).setBlendMode(ADD);
+  scene.tweens.add({ targets: col, scaleX: 0.15, scaleY: 1.9, y: y - 140 * s, alpha: 0, duration: 380, ease: 'Quad.easeOut', onComplete: kill(col) });
+  // dos aros dorados
+  for (let i = 0; i < 2; i++) {
+    const ring = scene.add.ellipse(x, y, 50 * s, 42 * s).setStrokeStyle((5 - i * 2) * s, i ? 0xffffff : 0xfff0b0, 1).setDepth(D).setBlendMode(ADD);
+    scene.tweens.add({ targets: ring, scale: 4.4 + i * 1.4, alpha: 0, delay: i * 80, duration: 380, ease: 'Cubic.easeOut', onComplete: kill(ring) });
+  }
+  // motas de luz: salen y flotan hacia arriba apagándose
+  for (let i = 0; i < 18; i++) {
+    const a = FB(0, Math.PI * 2);
+    const d = FB(40, 130) * s;
+    const m = scene.add.circle(x, y, FB(3, 6) * s, pick([0xffffff, 0xfffbe0, 0xfff0b0, 0xcfe9ff]), 1).setDepth(D + 2).setBlendMode(ADD);
+    const tx = x + Math.cos(a) * d;
+    const ty = y + Math.sin(a) * d * 0.8;
+    scene.tweens.add({ targets: m, x: tx, y: ty, duration: 240, ease: 'Cubic.easeOut' });
+    scene.tweens.add({ targets: m, y: ty - FB(40, 90) * s, alpha: 0, scale: 0.3, delay: 240, duration: IB(450, 750), ease: 'Sine.easeOut', onComplete: kill(m) });
+  }
 }

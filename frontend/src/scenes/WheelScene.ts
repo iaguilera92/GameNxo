@@ -1,10 +1,12 @@
 import Phaser from 'phaser';
 import { FONT, restartOnResize } from '../ui/theme';
-import { GOLD, NAVY, SECTOR, addSectorContent, drawSlotIcon, drawWheelFace, isSpecial, sectorCenter } from '../ui/wheelArt';
+import { GOLD, NAVY, SECTOR, TIER_LOOK, addSectorContent, drawSlotIcon, drawWheelFace, ensureTierTexture, isSpecial, sectorCenter } from '../ui/wheelArt';
 import { WHEEL, type WheelSlot } from '../domain/wheelConfig';
-import type { WheelReward } from '../domain/wheelState';
+import type { WheelReward, WheelTier } from '../domain/wheelState';
 import { slotById } from '../domain/dailyWheel';
-import { claimWheel, claimWheelAdBonus, spinWheel, wheelSpin } from '../logic/Wheels';
+import { CHEST, formatChestTime } from '../domain/chest';
+import { getPlayer } from '../domain/playerStore';
+import { boostWheel, claimWheel, claimWheelAdBonus, spinWheel, wheelSpin } from '../logic/Wheels';
 import { wheelClaim, wheelStart, wheelTick, wheelWin } from '../fx/wheelSound';
 import { canShowRewardedAds, showRewarded } from '../ads/ads';
 import { arcadeButton } from '../ui/modeButtons';
@@ -21,10 +23,12 @@ import { arcadeButton } from '../ui/modeButtons';
 export interface WheelSceneData {
   index: number;
   bonus?: boolean;
+  /** RULETA TEST (solo desarrollo): giro extra con selector de premio (los premios SÍ se entregan) */
+  test?: boolean;
 }
 
 /** Toques máximos y, por número de toques, vueltas completas y duración (ms) del giro. Solo visual. */
-const MAX_TAPS = 4;
+const MAX_TAPS = WHEEL.tiers.maxTaps;
 const SPIN_TURNS = [0, 5, 7, 9, 11];
 const SPIN_MS = [0, 3400, 4000, 4700, 5500];
 const BG_KEY = 'wheel-bg';
@@ -40,6 +44,10 @@ export class WheelScene extends Phaser.Scene {
   static readonly KEY = 'Wheel';
   private index = 0;
   private bonus = false;
+  private test = false;
+  /** RULETA TEST: sector elegido (undefined = al azar) */
+  private force?: string;
+  private picker?: Phaser.GameObjects.Container;
   private wheel!: Phaser.GameObjects.Container;
   private pointer!: Phaser.GameObjects.Container;
   private cx = 0;
@@ -65,6 +73,11 @@ export class WheelScene extends Phaser.Scene {
   /** radio exterior de la ruleta (marco incluido): coloca título, botones y tarjeta */
   private outerR = 0;
   private frameGlow?: Phaser.GameObjects.Image;
+  /** marco fijo (imagen) y cara de sectores: cambian de color cuando la ruleta sube de nivel */
+  private frameImg?: Phaser.GameObjects.Image;
+  private face?: Phaser.GameObjects.Graphics;
+  /** nivel actual de la ruleta (normal / dorada / épica): lo decide domain/dailyWheel, aquí solo se muestra */
+  private tier: WheelTier = 'normal';
 
   constructor() {
     super(WheelScene.KEY);
@@ -77,6 +90,9 @@ export class WheelScene extends Phaser.Scene {
   init(data: WheelSceneData) {
     this.index = data?.index ?? 0;
     this.bonus = data?.bonus === true;
+    this.test = data?.test === true;
+    this.force = undefined;
+    this.picker = undefined;
     this.busy = false;
     this.phase = 'idle';
     this.taps = 0;
@@ -87,6 +103,9 @@ export class WheelScene extends Phaser.Scene {
     this.keep = new Set();
     this.hint = undefined;
     this.frameGlow = undefined;
+    this.frameImg = undefined;
+    this.face = undefined;
+    this.tier = 'normal';
     this.blinkEv = undefined;
   }
 
@@ -110,18 +129,63 @@ export class WheelScene extends Phaser.Scene {
     this.title(W);
     this.buildWheel();
     this.closeBtn = this.closeButton(W);
+    // las texturas teñidas del marco pesan (tamaño² × 4 bytes): se quitan al cerrar la ruleta
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      for (const k of [`${FRAME.key}-gold`, `${FRAME.key}-epic`]) if (this.textures.exists(k)) this.textures.remove(k);
+    });
 
     const sp = wheelSpin(this.index, this.bonus);
     const slot = sp?.slot ? slotById(sp.slot) : undefined;
     if (sp?.reward && slot) {
       // ya girada (cerrada antes de cobrar / app cerrada a mitad): se muestra el premio directamente
       this.phase = 'result';
+      this.tier = sp.tier ?? 'normal';
       this.wheel.setRotation(this.restAngle(WHEEL.slots.indexOf(slot)));
       this.time.delayedCall(60, () => this.reveal(slot, sp.reward!, sp.claimed, !sp.claimed));
     } else {
       this.presentIn();
       this.tapHint(W);
+      if (this.test) this.testPicker(W, H);
     }
+  }
+
+  /**
+   * RULETA TEST: selector del premio (◀ AL AZAR ▶ recorre los 10 sectores) para ver cada uno y cómo se refleja en la cuenta.
+   * Tocarlo no gira la ruleta; desaparece al girar.
+   */
+  private testPicker(W: number, H: number) {
+    const opts: (WheelSlot | undefined)[] = [undefined, ...WHEEL.slots];
+    let i = 0;
+    const c = this.add.container(W / 2, H - 70).setDepth(60);
+    const bg = this.add.graphics();
+    bg.fillStyle(0x073e59, 1).fillRoundedRect(-240, -34, 480, 68, 20);
+    bg.lineStyle(3, 0x45e7ff, 1).strokeRoundedRect(-240, -34, 480, 68, 20);
+    const txt = this.add.text(0, 0, '', { fontFamily: FONT, fontSize: '24px', color: '#d8fbff', stroke: '#053044', strokeThickness: 5 }).setOrigin(0.5);
+    const name = (sl?: WheelSlot) => {
+      if (!sl) return 'PREMIO: AL AZAR';
+      const p = sl.prize;
+      const what = p.kind === 'coins' ? 'MONEDAS' : p.kind === 'xp' ? 'EXP' : p.kind === 'cash' ? 'DINERO' : '';
+      return `PREMIO: ${sl.label}${what ? ' ' + what : ''}`;
+    };
+    const arrows = this.add.text(0, 0, '◀                              ▶', { fontFamily: FONT, fontSize: '30px', color: '#45e7ff' }).setOrigin(0.5);
+    c.add([bg, txt, arrows]);
+    const paint = () => {
+      this.force = opts[i]?.id;
+      txt.setText(name(opts[i]));
+    };
+    paint();
+    const stop = (_p: Phaser.Input.Pointer, _x: number, _y: number, e: Phaser.Types.Input.EventData) => e.stopPropagation();
+    for (const dir of [-1, 1]) {
+      const z = this.add.zone(dir * 120, 0, 240, 68).setInteractive({ useHandCursor: true });
+      z.on('pointerdown', stop);
+      z.on('pointerup', (p: Phaser.Input.Pointer, x: number, y: number, e: Phaser.Types.Input.EventData) => {
+        stop(p, x, y, e);
+        i = (i + dir + opts.length) % opts.length;
+        paint();
+      });
+      c.add(z);
+    }
+    this.picker = c;
   }
 
   // ---------------------------------------------------------------- montaje
@@ -201,11 +265,11 @@ export class WheelScene extends Phaser.Scene {
   private title(W: number) {
     const y = this.cy - this.outerR - 88;
     const t = this.add
-      .text(W / 2, y, 'RULETA DIARIA', { fontFamily: FONT, fontSize: '52px', color: '#ffd23f', stroke: '#0a1638', strokeThickness: 10 })
+      .text(W / 2, y, this.test ? 'RULETA TEST' : 'RULETA DIARIA', { fontFamily: FONT, fontSize: '52px', color: '#ffd23f', stroke: '#0a1638', strokeThickness: 10 })
       .setOrigin(0.5)
       .setShadow(0, 6, '#0a1638', 0, true, true);
     const sub = this.add
-      .text(W / 2, y + 46, `${this.index + 1} / ${WHEEL.perDay}  ·  ¡GANASTE UN GIRO!`, { fontFamily: FONT, fontSize: '22px', color: '#cfe0ff', stroke: '#0a1638', strokeThickness: 5 })
+      .text(W / 2, y + 46, this.test ? 'PRUEBA · LOS PREMIOS SÍ SE ENTREGAN' : `${this.index + 1} / ${WHEEL.perDay}  ·  ¡GANASTE UN GIRO!`, { fontFamily: FONT, fontSize: '22px', color: '#cfe0ff', stroke: '#0a1638', strokeThickness: 5 })
       .setOrigin(0.5)
       .setLetterSpacing(1);
     t.setScale(0.4).setAlpha(0);
@@ -237,6 +301,7 @@ export class WheelScene extends Phaser.Scene {
     this.wheel = this.add.container(cx, cy);
     const face = this.add.graphics();
     drawWheelFace(face, R, true);
+    this.face = face;
     this.wheel.add(face);
     // brillo de los sectores especiales
     WHEEL.slots.forEach((s, i) => {
@@ -292,6 +357,7 @@ export class WheelScene extends Phaser.Scene {
     this.wheel = this.add.container(cx, cy);
     const face = this.add.graphics();
     drawWheelFace(face, R + 6, true); // un poco bajo el aro: sin huecos en el borde
+    this.face = face;
     this.wheel.add(face);
     WHEEL.slots.forEach((s, i) => {
       if (!isSpecial(s)) return;
@@ -306,7 +372,7 @@ export class WheelScene extends Phaser.Scene {
     addSectorContent(this, this.wheel, R * 0.97);
     // marco fijo (indicador y centro incluidos) + copia aditiva para el parpadeo de las luces
     const d = FRAME.size * scale;
-    this.add.image(cx, cy, FRAME.key).setDisplaySize(d, d);
+    this.frameImg = this.add.image(cx, cy, FRAME.key).setDisplaySize(d, d);
     this.frameGlow = this.add.image(cx, cy, FRAME.key).setDisplaySize(d, d).setBlendMode(Phaser.BlendModes.ADD).setAlpha(0);
     this.blinkEv = this.time.addEvent({ delay: 90, loop: true, callback: () => this.blink() });
   }
@@ -359,9 +425,12 @@ export class WheelScene extends Phaser.Scene {
     if (this.taps >= MAX_TAPS) return;
     if (this.phase === 'idle') {
       // 1) el premio se decide y se guarda ANTES de animar (aleatorio seguro y ponderado)
-      const res = spinWheel(this.index, this.bonus);
+      const res = spinWheel(this.index, this.bonus, this.test ? this.force : undefined);
       if (!res) return this.close();
+      this.picker?.destroy();
+      this.picker = undefined;
       this.res = { slot: res.slot, reward: res.reward };
+      this.tier = 'normal';
       this.jitter = (Math.random() - 0.5) * SECTOR * 0.6; // solo visual, dentro del mismo sector
       this.phase = 'spin';
       this.busy = true;
@@ -370,10 +439,59 @@ export class WheelScene extends Phaser.Scene {
       this.wheel.setScale(1).setAlpha(1); // por si se tocó durante la entrada de la ruleta
       wheelStart(this);
       this.lastSector = Math.floor((this.wheel.rotation + SECTOR / 2) / SECTOR);
+      // la 1.ª tirada de nivel ya viene con el giro: si la ruleta nace dorada o épica, se transforma al instante
+      if (res.tier !== 'normal') this.applyTier(res.tier, true);
+    } else {
+      // toques 2.º a 4.º: cada uno tira una vez para subir la ruleta de nivel (decide y guarda domain/dailyWheel)
+      const up = boostWheel(this.index, this.bonus);
+      if (up?.upgraded && this.res) {
+        this.res.reward = up.reward;
+        this.applyTier(up.tier, true);
+      }
     }
     this.taps++;
     this.tapFx(p);
     this.spinTo();
+  }
+
+  /**
+   * La ruleta sube de nivel: cambia el color de los sectores y del marco (filtro de color), con destello y aviso.
+   * Solo es visual; los premios ya los recalculó domain/dailyWheel.
+   */
+  private applyTier(tier: WheelTier, animate: boolean) {
+    if (tier === this.tier && animate) return;
+    this.tier = tier;
+    const look = TIER_LOOK[tier];
+    if (this.face) {
+      this.face.clear();
+      drawWheelFace(this.face, this.framed ? this.R + 6 : this.R, true, tier);
+    }
+    if (this.frameImg) {
+      const key = ensureTierTexture(this, FRAME.key, tier);
+      this.frameImg.setTexture(key);
+      this.frameGlow?.setTexture(key);
+    }
+    if (!animate || tier === 'normal') return;
+    const W = this.scale.width;
+    wheelWin(this, tier === 'epic');
+    this.cameras.main.flash(tier === 'epic' ? 320 : 220, tier === 'epic' ? 190 : 255, tier === 'epic' ? 140 : 215, tier === 'epic' ? 255 : 110);
+    const ring = this.add.circle(this.cx, this.cy, this.R * 0.4, 0xffffff, 0).setStrokeStyle(10, look.glow, 1).setBlendMode(Phaser.BlendModes.ADD).setDepth(40);
+    this.tweens.add({ targets: ring, scale: 4.2, alpha: 0, duration: 650, ease: 'Cubic.easeOut', onComplete: () => ring.destroy() });
+    for (let i = 0; i < 22; i++) {
+      const a = (i / 22) * Math.PI * 2;
+      const dist = Phaser.Math.FloatBetween(this.R * 0.6, this.R * 1.5);
+      const st = this.add.star(this.cx, this.cy, 5, 4, 11, Phaser.Utils.Array.GetRandom([look.glow, 0xffffff, look.line[1]]), 1).setBlendMode(Phaser.BlendModes.ADD).setDepth(40);
+      this.tweens.add({ targets: st, x: this.cx + Math.cos(a) * dist, y: this.cy + Math.sin(a) * dist, angle: 300, alpha: 0, scale: 0.3, duration: Phaser.Math.Between(500, 850), ease: 'Cubic.easeOut', onComplete: () => st.destroy() });
+    }
+    const banner = this.add
+      .text(W / 2, this.cy - this.outerR - 40, `${look.title}\n+${WHEEL.tiers.bonusPct[tier]}% EN LOS PREMIOS`, { fontFamily: FONT, fontSize: '40px', color: '#ffffff', stroke: tier === 'epic' ? '#5a1fc0' : '#8a4b00', strokeThickness: 10, align: 'center' })
+      .setOrigin(0.5)
+      .setLineSpacing(2)
+      .setDepth(41)
+      .setScale(0);
+    if (banner.width > W - 40) banner.setFontSize(Math.floor((40 * (W - 40)) / banner.width));
+    this.tweens.add({ targets: banner, scale: 1, duration: 380, ease: 'Back.easeOut' });
+    this.tweens.add({ targets: banner, alpha: 0, delay: 1500, duration: 400, onComplete: () => banner.destroy() });
   }
 
   private tapFx(p: Phaser.Input.Pointer) {
@@ -518,17 +636,27 @@ export class WheelScene extends Phaser.Scene {
     }
     const t0 = 180;
     // 3) resplandor + icono que aparece con rebote
-    const glow = this.add.image(cx, cy, GLOW_KEY).setTint(special ? 0xff9bd8 : 0xffd23f).setBlendMode(Phaser.BlendModes.ADD).setAlpha(0).setScale(0.5);
+    const glow = this.add.image(cx, cy, GLOW_KEY).setTint(this.tier !== 'normal' && !special ? TIER_LOOK[this.tier].glow : special ? 0xff9bd8 : 0xffd23f).setBlendMode(Phaser.BlendModes.ADD).setAlpha(0).setScale(0.5);
     this.tweens.add({ targets: glow, alpha: 0.95, scale: 4.2, delay: t0, duration: 520, ease: 'Cubic.easeOut' });
     this.tweens.add({ targets: glow, scale: 4.6, alpha: 0.75, delay: t0 + 520, duration: 900, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
     const icon = this.add.graphics({ x: cx, y: cy });
-    const iconSlot = reward.kind === 'coins' && slot.prize.kind !== 'coins' ? WHEEL.slots.find((s) => s.prize.kind === 'coins')! : reward.kind === 'xp' && slot.prize.kind !== 'xp' ? WHEEL.slots.find((s) => s.prize.kind === 'xp')! : reward.kind === 'item' ? WHEEL.slots.find((s) => s.prize.kind === 'cosmetic')! : slot;
+    const iconSlot = reward.kind === 'coins' && slot.prize.kind !== 'coins' ? WHEEL.slots.find((s) => s.prize.kind === 'coins')! : reward.kind === 'xp' && slot.prize.kind !== 'xp' ? WHEEL.slots.find((s) => s.prize.kind === 'xp')! : reward.kind === 'cash' && slot.prize.kind !== 'cash' ? WHEEL.slots.find((s) => s.prize.kind === 'cash')! : reward.kind === 'item' ? WHEEL.slots.find((s) => s.prize.kind === 'cosmetic')! : reward.kind === 'chest' ? WHEEL.slots.find((s) => s.prize.kind === 'chest')! : slot;
     drawSlotIcon(icon, iconSlot, Math.min(150, W * 0.2));
     icon.setScale(0).setAngle(-25);
     this.tweens.add({ targets: icon, scale: 1, angle: 0, delay: t0, duration: 560, ease: 'Back.easeOut' });
     this.tweens.add({ targets: icon, y: cy - 10, delay: t0 + 600, duration: 1100, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
     if (celebrate) this.time.delayedCall(t0 + 120, () => this.burst(cx, cy, special));
     if (special) this.specialCelebration();
+    if (this.tier !== 'normal') {
+      const look = TIER_LOOK[this.tier];
+      const tag = this.add
+        .text(cx, H * 0.075, `${look.title}  +${WHEEL.tiers.bonusPct[this.tier]}%`, { fontFamily: FONT, fontSize: '34px', color: look.text, stroke: '#0a1638', strokeThickness: 9 })
+        .setOrigin(0.5)
+        .setAlpha(0)
+        .setLetterSpacing(2);
+      if (tag.width > W - 30) tag.setFontSize(Math.floor((34 * (W - 30)) / tag.width));
+      this.tweens.add({ targets: tag, alpha: 1, delay: t0 + 200, duration: 350 });
+    }
 
     // 4) cantidad debajo (cuenta hacia arriba) y etiqueta
     const n = (v: number) => v.toLocaleString('es-CL');
@@ -536,25 +664,32 @@ export class WheelScene extends Phaser.Scene {
     let small: string;
     let note = '';
     let target = 0;
+    // COFRE EVOLUTIVO (domain/chest.ts): nuevo o evolucionado (el cobro ya lo aplicó: se lee su estado)
+    const chest = reward.kind === 'chest' ? getPlayer().chest : undefined;
     if (reward.kind === 'item') {
       big = `¡${reward.name.toUpperCase()}!`;
       small = 'NUEVO COSMÉTICO';
+    } else if (reward.kind === 'chest') {
+      big = `¡${CHEST.names[chest?.level ?? 0]}!`;
+      small = (chest?.level ?? 0) > 0 ? '¡EVOLUCIONÓ!' : 'SE ABRE EN 2 DÍAS';
+      note = chest ? `Se abre en ${formatChestTime(chest.readyAt - Date.now())} · búscalo en el menú` : '';
     } else {
       target = reward.amount;
       big = `+${n(target)}`;
-      small = reward.kind === 'xp' ? 'EXP' : 'MONEDAS';
+      small = reward.kind === 'xp' ? 'EXP' : reward.kind === 'cash' ? 'DINERO' : 'MONEDAS';
       if (reward.kind === 'coins' && reward.duplicateOf !== undefined) note = reward.duplicateOf ? 'Ya tenías ese cosmético: compensación' : 'Ya tienes todos los cosméticos: compensación';
     }
     const ty = cy + Math.min(150, W * 0.2) + 90;
-    const amount = this.add.text(cx, ty, reward.kind === 'item' ? big : '+0', { fontFamily: FONT, fontSize: reward.kind === 'item' ? '60px' : '110px', color: special ? '#ffd23f' : '#ffffff', stroke: '#0a1638', strokeThickness: 14 }).setOrigin(0.5).setAlpha(0).setScale(0.4);
+    const textOnly = reward.kind === 'item' || reward.kind === 'chest';
+    const amount = this.add.text(cx, ty, textOnly ? big : '+0', { fontFamily: FONT, fontSize: textOnly ? '60px' : '110px', color: special ? '#ffd23f' : '#ffffff', stroke: '#0a1638', strokeThickness: 14 }).setOrigin(0.5).setAlpha(0).setScale(0.4);
     if (amount.width > W - 60) amount.setFontSize(Math.floor((parseInt(String(amount.style.fontSize), 10) * (W - 60)) / amount.width));
     amount.setShadow(0, 8, '#0a1638', 0, true, true);
     this.tweens.add({ targets: amount, alpha: 1, scale: 1, delay: t0 + 300, duration: 420, ease: 'Back.easeOut' });
-    if (reward.kind !== 'item') {
+    if (!textOnly) {
       const c = { v: 0 };
       this.tweens.add({ targets: c, v: target, delay: t0 + 360, duration: 800, ease: 'Cubic.easeOut', onUpdate: () => amount.setText(`+${n(Math.round(c.v))}`), onComplete: () => amount.setText(big) });
     }
-    const label = this.add.text(cx, ty + (reward.kind === 'item' ? 56 : 84), small, { fontFamily: FONT, fontSize: '40px', color: '#ffd23f', stroke: '#0a1638', strokeThickness: 9 }).setOrigin(0.5).setAlpha(0).setLetterSpacing(3);
+    const label = this.add.text(cx, ty + (textOnly ? 56 : 84), small, { fontFamily: FONT, fontSize: '40px', color: '#ffd23f', stroke: '#0a1638', strokeThickness: 9 }).setOrigin(0.5).setAlpha(0).setLetterSpacing(3);
     this.tweens.add({ targets: label, alpha: 1, delay: t0 + 620, duration: 300 });
     if (note) {
       const nt = this.add.text(cx, label.y + 48, note, { fontFamily: FONT, fontSize: '22px', color: '#cfe0ff', stroke: '#0a1638', strokeThickness: 5 }).setOrigin(0.5).setAlpha(0);
@@ -566,7 +701,7 @@ export class WheelScene extends Phaser.Scene {
     // si el anuncio falla, avisa y el premio queda igual.
     // Completar el anuncio entrega otra vez el mismo premio (domain/dailyWheel.claimAdBonus).
     const savedSpin = wheelSpin(this.index, this.bonus);
-    if (reward.kind !== 'item' && savedSpin?.claimed && !savedSpin.adBonusClaimed && canShowRewardedAds()) {
+    if (!textOnly && savedSpin?.claimed && !savedSpin.adBonusClaimed && canShowRewardedAds()) {
       const bx = cx;
       const by = label.y + (note ? 118 : 92);
       let busy = false;
@@ -581,7 +716,7 @@ export class WheelScene extends Phaser.Scene {
           if (!this.scene.isActive()) return;
           this.canContinue = couldContinue || this.canContinue;
           const extra = earned ? claimWheelAdBonus(this.index, this.bonus) : null;
-          if (!extra || extra.kind === 'item') {
+          if (!extra || extra.kind === 'item' || extra.kind === 'chest') {
             busy = false;
             x2.setInteractive({ useHandCursor: true });
             // un solo aviso aunque se pulse varias veces
@@ -679,9 +814,9 @@ export class WheelScene extends Phaser.Scene {
  * de un fotograma (p. ej. desde el tween de un botón) no la crea hasta el siguiente. Quien necesite la escena (sus eventos)
  * debe esperarla: whenWheelReady.
  */
-export function openWheel(scene: Phaser.Scene, index: number): WheelScene | null {
+export function openWheel(scene: Phaser.Scene, index: number, extra?: Omit<WheelSceneData, 'index'>): WheelScene | null {
   const key = WheelScene.KEY;
-  const data: WheelSceneData = { index };
+  const data: WheelSceneData = { index, ...extra };
   if (scene.scene.get(key)) scene.scene.launch(key, data);
   else scene.scene.add(key, WheelScene, true, data);
   scene.scene.bringToTop(key);

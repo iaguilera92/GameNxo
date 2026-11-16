@@ -66,10 +66,51 @@ export function drawJumpIcon(g: Phaser.GameObjects.Graphics, R: number) {
   g.fillStyle(0xffffff).fillTriangle(tri[0], tri[1], tri[2], tri[3], tri[4], tri[5]);
 }
 
-/** Icono de un poder del DEFENSIVO que no es el DASH (DESTELLO, SOMBRA, SUPERSALTO). */
+/** Icono del poder VOLTERETA: flecha circular (la vuelta) alrededor de una silueta pequeña. */
+export function drawFlipIcon(g: Phaser.GameObjects.Graphics, R: number) {
+  const cy = -R * 0.04;
+  const arc = (w: number, col: number) => g.lineStyle(w, col).beginPath().arc(0, cy, R * 0.56, Math.PI * 0.2, Math.PI * 1.78).strokePath();
+  arc(R * 0.2 + 6, C.outline);
+  arc(R * 0.2, 0xffffff);
+  // punta de flecha tangente al final del arco
+  const a1 = Math.PI * 1.78;
+  const ex = Math.cos(a1) * R * 0.56;
+  const ey = cy + Math.sin(a1) * R * 0.56;
+  const dx = -Math.sin(a1);
+  const dy = Math.cos(a1);
+  const tip = (L: number, W: number) => [
+    new Phaser.Math.Vector2(ex + dx * L, ey + dy * L),
+    new Phaser.Math.Vector2(ex - dy * W, ey + dx * W),
+    new Phaser.Math.Vector2(ex + dy * W, ey - dx * W),
+  ];
+  g.fillStyle(C.outline).fillPoints(tip(R * 0.46, R * 0.34), true);
+  g.fillStyle(0xffffff).fillPoints(tip(R * 0.34, R * 0.24), true);
+  // silueta en el centro
+  g.fillStyle(C.outline).fillCircle(0, -R * 0.2, R * 0.19);
+  g.fillStyle(0xffffff).fillCircle(0, -R * 0.2, R * 0.13);
+  g.fillStyle(C.outline).fillRoundedRect(-R * 0.17, -R * 0.02, R * 0.34, R * 0.4, R * 0.1);
+  g.fillStyle(0xffffff).fillRoundedRect(-R * 0.12, R * 0.03, R * 0.24, R * 0.3, R * 0.07);
+}
+
+/** Icono del poder PATINAJE: bota con cuchilla y, detrás, las rayas azules del camino de hielo. */
+export function drawSkateIcon(g: Phaser.GameObjects.Graphics, R: number) {
+  for (let i = 0; i < 3; i++) g.lineStyle(R * 0.1, 0x9fe6ff, 0.95 - i * 0.25).lineBetween(-R * 0.9, R * (0.28 + i * 0.15), -R * 0.25, R * (0.28 + i * 0.15));
+  const boot = [-0.12, -0.62, 0.3, -0.62, 0.32, -0.06, 0.66, 0.1, 0.66, 0.34, -0.12, 0.34].map((v) => v * R);
+  const grow = (k: number) => boot.map((v, i) => (i % 2 ? v * k - R * 0.1 * (k - 1) : v * k));
+  g.fillStyle(C.outline).fillPoints(pts(grow(1.14)), true);
+  g.fillStyle(0xffffff).fillPoints(pts(boot), true);
+  g.fillStyle(0xbfe9ff).fillRect(-R * 0.1, -R * 0.4, R * 0.36, R * 0.1);
+  g.lineStyle(R * 0.14 + 4, C.outline).lineBetween(-R * 0.2, R * 0.5, R * 0.74, R * 0.5);
+  g.lineStyle(R * 0.1, 0xbfe9ff).lineBetween(-R * 0.2, R * 0.5, R * 0.74, R * 0.5);
+  g.lineStyle(R * 0.06, C.outline).lineBetween(0, R * 0.34, 0, R * 0.46).lineBetween(R * 0.5, R * 0.34, R * 0.5, R * 0.46);
+}
+
+/** Icono de un poder del DEFENSIVO que no es el DASH (DESTELLO, SOMBRA, SUPERSALTO, VOLTERETA, PATINAJE). */
 export function drawDefensiveIcon(g: Phaser.GameObjects.Graphics, id: string, R: number) {
   if (id === 'shadow') drawShadowIcon(g, R);
   else if (id === 'jump') drawJumpIcon(g, R);
+  else if (id === 'flip') drawFlipIcon(g, R);
+  else if (id === 'skate') drawSkateIcon(g, R);
   else drawBlinkIcon(g, R);
 }
 

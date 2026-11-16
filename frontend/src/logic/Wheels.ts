@@ -1,7 +1,7 @@
 import { commit, getPlayer } from '../domain/playerStore';
 import { gameClock } from '../domain/timeSource';
 import * as wheel from '../domain/dailyWheel';
-import type { WheelReward } from '../domain/wheelState';
+import type { WheelReward, WheelTier } from '../domain/wheelState';
 import type { WheelSlot } from '../domain/wheelConfig';
 
 /**
@@ -39,9 +39,15 @@ export function markWheelPresented(index: number) {
 }
 
 /** Decide (o recupera) el resultado del giro. */
-export function spinWheel(index: number, bonus = false): { slot: WheelSlot; reward: WheelReward; repeated: boolean } | null {
-  const res = commit((s) => wheel.spin(s, index, now(), undefined, bonus));
-  return res.ok ? { slot: res.slot, reward: res.reward, repeated: res.repeated } : null;
+export function spinWheel(index: number, bonus = false, forceSlot?: string): { slot: WheelSlot; reward: WheelReward; tier: WheelTier; repeated: boolean } | null {
+  const res = commit((s) => wheel.spin(s, index, now(), undefined, bonus, forceSlot));
+  return res.ok ? { slot: res.slot, reward: res.reward, tier: res.tier, repeated: res.repeated } : null;
+}
+
+/** Un toque más (2.º a 4.º): tira para subir la ruleta de nivel. `reward` y `tier` son los vigentes tras la tirada. */
+export function boostWheel(index: number, bonus = false): { reward: WheelReward; tier: WheelTier; upgraded: boolean } | null {
+  const res = commit((s) => wheel.boost(s, index, now(), undefined, bonus));
+  return res.ok ? { reward: res.reward, tier: res.tier, upgraded: res.upgraded } : null;
 }
 
 /** Cobra el premio (idempotente). `given` = lo entregado (null si ya estaba cobrado). */
@@ -66,6 +72,19 @@ export function grantBattlePassSpin(season: string) {
   const res = commit((s) => {
     const current = wheel.syncCycle(s as never, now());
     const granted = wheel.grantBonusSpin(current as never, id);
+    return { ok: true as const, state: granted.state, index: granted.index };
+  });
+  return res.ok ? res.index : -1;
+}
+
+/**
+ * RULETA TEST (solo desarrollo, como el DÍA TEST del premio diario): un giro extra sin límite para ver cómo sale cada premio
+ * y cómo se refleja en la cuenta (monedas, EXP, dinero, cosmético, COFRE en el menú). Los premios SÍ se entregan.
+ */
+export function grantTestSpin() {
+  const res = commit((s) => {
+    const current = wheel.syncCycle(s as never, now());
+    const granted = wheel.grantBonusSpin(current as never, `test:${now()}`);
     return { ok: true as const, state: granted.state, index: granted.index };
   });
   return res.ok ? res.index : -1;

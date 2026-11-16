@@ -30,18 +30,20 @@ export const KNOCKBACK_DIST = 110; // en profundidad de cancha
 
 // Progresión
 export const MAX_LEVEL = 20;
-export const XP_WIN = 190; // (12-11-2026) sube para compensar la ruleta con poca XP: mismo ritmo de niveles del casual
-export const XP_LOSS = 80;
+/** (14-11-2026, usuario) UNA VICTORIA = UN NIVEL; perder, medio nivel (2 derrotas = 1 nivel); abandonar, un tercio de lo de perder. */
+export const XP_WIN = 190;
+export const XP_LOSS = XP_WIN / 2;
+export const XP_SURRENDER = Math.round(XP_LOSS / 3);
 /** Monedas por partido: victoria / derrota (pocas). Rendirse no da monedas (evita farmear rindiéndose). */
 export const COINS_WIN = 50;
 export const COINS_LOSS = 10;
 export const COINS_SURRENDER = 0;
 /**
- * XP necesaria para pasar del nivel `lvl` al siguiente. Los primeros niveles son rápidos (DEFENSIVO, ESPECIAL y ULTI en la
- * primera semana, domain/unlocks.ts) y cada nivel pide 120 más: 22.420 XP del 1 al 20 (antes 100 + 50 por nivel = 10.450).
- * Ver docs/ECONOMIA.md.
+ * XP necesaria para pasar del nivel `lvl` al siguiente. (14-11-2026, usuario) Es la de UNA VICTORIA en todos los niveles: así se sube rápido
+ * (el tutorial por nivel, domain/tutorial.ts, va abriendo habilidades) y la XP de una derrota es medio nivel. Antes: 100 + 120 por nivel
+ * (22.420 XP del 1 al 20). Ver docs/ECONOMIA.md.
  */
-export const xpToNext = (lvl: number) => 100 + (lvl - 1) * 120;
+export const xpToNext = (_lvl: number) => XP_WIN;
 
 // Cancha en coordenadas lógicas (x = largo: jugador en x pequeños, rival en x grandes;
 // y = ancho). La vista vertical en perspectiva se calcula en src/view/projection.ts.

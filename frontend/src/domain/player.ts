@@ -36,7 +36,8 @@ export interface LoginState {
 }
 export const newLoginState = (): LoginState => ({ last: '', streak: 0, adBonusDay: '', week: '', days: [] });
 
-export type StyleId = 'classic' | 'red' | 'green' | 'gold' | 'pink';
+/** Efectos de pelota (estelas). `classic` = POR DEFECTO (sin estela). Los ids no se cambian nunca. */
+export type StyleId = 'classic' | 'red' | 'green' | 'gold' | 'pink' | 'rainbow' | 'ember' | 'frost' | 'tulip' | 'hearts' | 'stars' | 'neon' | 'smoke';
 export type ItemKind = 'ability' | 'skin' | 'style' | 'inferno' | 'charge' | 'defensive' | 'smash' | 'emote' | 'color';
 /** Id único de ítem: `<tipo>:<id>` (ej. 'ability:wall', 'skin:mai'). Los `emote:` solo se ganan en el Pase de Batalla. */
 export type ItemId = `ability:${AbilityId}` | `skin:${SkinId}` | `style:${StyleId}` | `inferno:${InfernoPower}` | `charge:${ChargeFxId}` | `defensive:${DefensivePower}` | `smash:${SmashPower}` | `emote:${EmoteKind}` | `color:${CharColorId}`;
@@ -56,6 +57,8 @@ export interface Loadout {
   /** ESTILO DE COLOR del personaje (domain/charColors.ts); sin elegir = clásico */
   color?: CharColorId;
 }
+
+import type { ChestState } from './chest';
 
 export interface PlayerState {
   version: typeof PLAYER_SCHEMA_VERSION;
@@ -78,6 +81,12 @@ export interface PlayerState {
   zone: ZoneProgress;
   /** REGALO GRATIS de la Tienda: ciclo (día) en que se recogió por última vez (domain/shopGift.ts) */
   giftDay?: string;
+  /** TUTORIAL por nivel: ids de los avisos ya vistos (domain/tutorial.ts). Va con la cuenta. */
+  tutorial?: string[];
+  /** COFRE EVOLUTIVO de la ruleta (domain/chest.ts); sin cofre = undefined */
+  chest?: ChestState;
+  /** MAESTRÍAS: puntos por personaje (id de skin). Se ganan al ganar partidos, desde el nivel 20 de la cuenta (domain/characterPassives.ts). Sin puntos = undefined */
+  mastery?: Record<string, number>;
 }
 
 export const itemId = {
@@ -124,5 +133,5 @@ export function owns(s: PlayerState, id: ItemId) {
 
 /** Copia profunda (las operaciones nunca mutan el estado recibido). */
 export function clonePlayer(s: PlayerState): PlayerState {
-  return { ...s, owned: [...s.owned], equipped: { ...s.equipped, abilities: [...s.equipped.abilities] }, wheel: cloneWheel(s.wheel), bp: cloneBattlePass(s.bp), ranked: cloneRanked(s.ranked), login: { ...s.login, days: [...(s.login.days ?? [])] }, zone: cloneZoneProgress(s.zone) };
+  return { ...s, owned: [...s.owned], equipped: { ...s.equipped, abilities: [...s.equipped.abilities] }, wheel: cloneWheel(s.wheel), bp: cloneBattlePass(s.bp), ranked: cloneRanked(s.ranked), login: { ...s.login, days: [...(s.login.days ?? [])] }, zone: cloneZoneProgress(s.zone), ...(s.tutorial ? { tutorial: [...s.tutorial] } : {}), ...(s.chest ? { chest: { ...s.chest } } : {}), ...(s.mastery ? { mastery: { ...s.mastery } } : {}) };
 }

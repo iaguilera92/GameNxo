@@ -4,7 +4,79 @@ Contrato de las hojas de sprites. Léelo antes de tocar una imagen de `frontend/
 herramientas `frontend/tools/build-moves.mjs` / `build-ulti.mjs` / `characters.mjs` o las tiras de `frontend/public/assets/characters/`.
 Si cambias una hoja, una fila o una herramienta, actualiza este documento en el mismo cambio.
 
-Última actualización: 12-11-2026.
+Última actualización: 14-11-2026 (sprites en alta, ver ★ abajo).
+
+## ★ NUEVO (14-11-2026): sprites en ALTA, UNA IMAGEN POR ANIMACIÓN — LEER PRIMERO (Kiro, Claude)
+
+**Decisión del usuario ("que se vea bien en la cancha, lo mejor posible"):** todos los personajes se redibujan en alta,
+empezando por NXO de espaldas. Ya **no** se pide la hoja entera de 8 × 8 en una imagen: en 1536 × 1024 con 8 filas el
+personaje mide ~110-120 px y el teléfono lo agranda 3-4 veces, así que se ve borroso.
+
+- **Formato nuevo:** cada **fila** de las hojas de siempre (= una animación, 8 frames) es **una imagen de 1536 × 1024**, con
+  los 8 frames en **2 filas × 4 columnas** (orden de lectura). El personaje sale de ~300 px. Las animaciones, sus nombres,
+  el orden de los frames y los frames clave son los MISMOS de `ROWS_NXO` (§5): no cambia nada del juego.
+- **Archivos:** `frontend/public/personajes/<Personaje>/jugador/<clip>.png` (p. ej. `Nxo/jugador/forehand.png`). Fondo verde croma
+  `#00FF00` liso; vista de espaldas para el jugador.
+- **Herramienta:** `node tools/build-hd.mjs <pack>` (p. ej. `nxo`). Croma, recorte por casilla, escala y suelo común; escribe las
+  tiras de siempre en `assets/characters/<pack>-v2/` y en los JSON del pack solo cambia `cell`, `origin` y `standHeight`.
+  **Se puede ir de a poco:** las animaciones sin imagen HD se reaprovechan de la tira actual (agrandada).
+- **Tamaño final:** el personaje de pie queda en **190 px** (`--stand=N`; antes 115). El juego escala por `standHeight`, así
+  que se ve del mismo tamaño pero nítido. **Memoria:** cada tira ocupa ~2,7 veces más en la GPU; no subir de ~200.
+- **Regla de los golpes (usuario, 14-11-2026):** las poses de ESPERA y de CARGA (las que el juego congela) van SOLO con el
+  personaje: sin humo, polvo, destellos ni líneas de movimiento. Los efectos, solo en el swing y el contacto.
+- **`serveRacket.normal` de NXO espaldas = dx 22, z 159** (14-11-2026, medido sobre `serve.webp` HD, frame 5: centro del aro
+  rojo; el salto dibujado ya va incluido en z, así que `serveJump` no lo duplica). `spin` = dx −4, z 158 (`nxo-golpes-6`,
+  pies en el suelo: el salto del saque con efecto lo pone el código, `JUMP_ARC`).
+- Si un JSON necesita un ajuste a mano (p. ej. `holdForehand`), `build-hd` lo respeta (no toca esos campos); `build-moves` sí
+  los pisaría.
+- **Celda POR ANIMACIÓN (14-11-2026):** `build-hd` recorta cada tira a lo que dibuja y escribe `cell` y `origin` en la
+  entrada de esa animación del JSON (el grupo conserva los del reposo). `NxoActor` los usa (`loadStrip` / `ORIGIN_OF`).
+  NXO de espaldas bajó de ~119 MB a ~51 MB de memoria gráfica con la hoja 1 en HD. No volver a una celda común.
+- **`build-moves.mjs` sigue para las hojas 8 × 8 de siempre** (y ahora también acepta hojas grandes: `--stand`, por defecto
+  170). No mezclar: si un pack ya pasó a `build-hd`, correr `build-moves` encima lo devuelve a las hojas viejas.
+- **Prompts:** `docs/PROMPTS-NXO-ESPALDAS-HD.md` (bloque común + uno por animación).
+- Al cambiar `serve`, `serve-spin` o `serve-bounce` hay que volver a medir `serveRacket` y `BOUNCE` (§5); la herramienta avisa.
+- **Reestructuración (usuario, 14-11-2026): se prefiere la CALIDAD** aunque `personajes/<Personaje>/jugador/` se llene de imágenes
+  (una por animación; ~27 por vista). Las hojas viejas `pj-<id>-1..4.png` quedan solo como referencia para ChatGPT.
+- **Carpeta y nombres (usuario, 14-11-2026):** las imágenes nuevas del jugador van en `personajes/<Personaje>/jugador/` con el
+  nombre `<pack>-<hoja>-<n>.png`, donde `n` es el número de la animación entre las que SE HACEN de esa hoja, **en orden y sin
+  huecos** (las filas ⛔ no cuentan). Hoja 1 = `movimientos`: `nxo-movimientos-1` idle · `-2` run · `-3` runstop · `-4`
+  victory · `-5` brake-turn · `-6` dash · `-7` defeat · `-8` walk · `-9` dive-right · `-10` dive-left · `-11`
+  recover-right · `-12` recover-left (walk y las estiradas son de las hojas 4 y 3, pero el usuario las cuenta como movimiento;
+  en su hoja original NO se cuentan: `APPEND` en `tools/build-hd.mjs`). Hoja 2 = `golpes`: `-1` forehand · `-2` backhand ·
+  `-3` forehand-power · `-4` backhand-power · `-5` serve · `-6` serve-spin · `-7` smash · `-8` smash-power. Hoja 3 =
+  `reacciones`: `-1` stunned · `-2` point-won · `-3` point-lost. Hoja 4 = `extras`: `-1` **walk-intro** (caminata lenta de la ENTRADA al partido, clip nuevo;
+  `build-hd` lo crea en `nxo-extra.json`; `NxoActor.runKey` lo usa durante `walkFor`) · `-2` inferno-hit · `-3` volley.
+  **`serve-toss` (lanzamiento) = `golpes-9`** (usuario: es parte del saque; `APPEND` en `build-hd`).
+  **Pero NXO espaldas ya NO lo usa (14-11-2026):** `ownToss: false` en `PACKS.nxo` (NxoActor): el lanzamiento es el principio
+  del propio saque (frames 1-3 de `serve`/`serve-spin`, se detiene en el trofeo hasta golpear). `golpes-9` no hace falta.
+  **`serve-bounce` (bote antes de sacar) DESCARTADO (usuario, 14-11-2026):** NXO espaldas tiene `bounce: null` (espera en reposo, como Mai). También vale `<clip>.png`. Las hojas viejas de la carpeta NO se tocan
+  (el usuario las borra al terminar).
+- **Hecho:** `Nxo/jugador/idle.png` (hoja 1 fila 1) instalada el 14-11-2026; NXO de espaldas quedó con `standHeight` 190 y celda
+  374 × 242 (el resto de sus clips, de la tira vieja agrandada hasta tener su imagen nueva).
+- **ULTI en alta (14-11-2026):** `node tools/build-hd.mjs nxo --ulti`. Una imagen VERTICAL de 1024 × 1536 por animación, rejilla
+  3 × 3 (9 frames): `nxo-ulti-1` inferno-swing · `-2` ulti-hit · `-3` ulti-stun · `-4` idle-nr · `-5` run-nr · `-6` pickup, en
+  `personajes/Nxo/jugador/`. Salida en `assets/characters/nxo-inferno/` con celda COMÚN (así la carga `NxoActor`); los frames
+  clave del JSON (`hold`, `preStrike`, `strikeFrom`, `impact`, `pickupGrab`) no cambian.
+- **Rival de frente en alta (14-11-2026, Claude: NXO rival; Kiro: Mai):** `node tools/build-hd.mjs nxo-front` (y `--ulti`). Imágenes
+  en `personajes/Nxo/rival/hd/` con prefijo `nxo-rival-` (`nxo-rival-movimientos-1`, `nxo-rival-golpes-1`, `nxo-rival-ulti-1`…),
+  misma numeración que el de espaldas. Alto final por defecto 150 (el rival se ve más chico al fondo). Raqueta en su mano derecha
+  = a la IZQUIERDA de la imagen.
+- **⛔ FILAS QUE NO SE HACEN (no se piden a ChatGPT ni se dibujan; decisión del usuario 14-11-2026):**
+
+  | Hoja | Fila | Animación | Motivo |
+  |---|---|---|---|
+  | 1 | 6 | `run-left` | no se reproduce (se voltea `run`); solo es marca del getter `v2` |
+  | 3 | 8 | `wait` | sin uso |
+  | 4 | 6 | `dropshot` | sin uso (el DROP SHOT 0 usa el golpe normal) |
+  | 4 | 7 | `intro` | sin uso |
+  | 4 | 8 | `greet` | sin uso |
+  | 4 | 1 | `serve-bounce` | descartado en HD (14-11-2026): NXO espera el saque en reposo (`bounce: null`) |
+
+- **NO crear sprites que no se usen.** Solo se generan en HD las animaciones que el juego reproduce. Hoy **no se piden**:
+  `wait`, `dropshot`, `intro`, `greet` (ningún código las reproduce) y `run-left` (no se reproduce: solo sirve de marca
+  en el getter `v2` de `NxoActor.ts`, que mira si existe). `build-hd` las deja con su tira actual. Antes de pedir una animación
+  nueva o usar una de estas, conectarla en el código en el mismo cambio y actualizar esta lista.
 
 ## 0. Reglas para las IA (resumen; el detalle está en las secciones siguientes)
 
@@ -520,6 +592,7 @@ Anotado el 12-11-2026. Ninguna de estas hojas se instala hasta que cumpla el con
 
 Por confirmar (puede no requerir redibujar):
 - **Mai rival, hoja 1, fila 2 (`run`):** según la §6, corre hacia la izquierda de la imagen igual que `run-left` (el contrato pide `run` hacia la derecha). Pedir esa fila otra vez o espejarla (con la raqueta en la otra mano, como en el rival NXO).
+- **Mai rival, ULTI, fila 2 (ulti-hit, frame 2) - corregido (12-11-2026):** la hoja traía la raqueta dibujada en el suelo a los pies de Mai; la escena ya dibuja la raqueta suelta (MatchScene.loseRacket), así que se veía doble. Se borró esa raqueta de pj-mai-rival-ulti.png (solo ese frame; la hoja original está en _temp/respaldo_oficial/Mai/rival/pj-mai-rival-ulti.antes-raqueta-suelo.png) y se regeneró con node tools/build-ulti.mjs mai-front (la celda pasó de 160 a 159 px de ancho). Regla para hojas nuevas: en ulti-hit la mano queda vacía desde el frame 3 y NO se dibuja la raqueta en el suelo (la pone el juego).
 - **Mai rival, hoja 2:** en derecha y rev�s la raqueta cruza al lado derecho de la imagen en el impacto (frames 6 y 7). Comprobar que es el lado correcto para el rival.
 - **Mai rival, hoja 4:** las filas 1 y 2 no se distinguen bien como bote y lanzamiento del saque.
 

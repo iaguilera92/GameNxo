@@ -47,6 +47,15 @@ export class StunFog {
    */
   private sharp: Phaser.Cameras.Scene2D.Camera | null = null;
 
+  /** otros objetos que se ven NÍTIDOS sobre la niebla (el texto ¡ATURDIDO!) mientras existan */
+  private keep = new Set<Phaser.GameObjects.GameObject>();
+
+  /** (14-11-2026) `o` se ve nítido y por encima del velo (sin desenfoque) hasta que se destruya. */
+  keepSharp(o: Phaser.GameObjects.GameObject) {
+    this.keep.add(o);
+    o.once(Phaser.GameObjects.Events.DESTROY, () => this.keep.delete(o));
+  }
+
   constructor(private scene: Phaser.Scene, private target: () => Phaser.GameObjects.GameObject) {
     ensureTexture(scene);
     // por encima de la cancha y los personajes, bajo la interfaz (botones y marcador van en profundidades ≥ 5000)
@@ -62,7 +71,7 @@ export class StunFog {
     const main = this.scene.cameras.main;
     const t = this.target();
     for (const o of this.scene.children.list) {
-      if (o === t) o.cameraFilter = (o.cameraFilter | main.id) & ~sh.id; // ni la principal ni la de interfaz: la nítida
+      if (o === t || this.keep.has(o)) o.cameraFilter = (o.cameraFilter | main.id) & ~sh.id; // ni la principal ni la de interfaz: la nítida
       else o.cameraFilter |= sh.id;
     }
   }

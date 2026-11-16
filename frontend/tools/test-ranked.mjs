@@ -228,6 +228,7 @@ test('migración v4 → versión actual y datos corruptos', () => {
 
 test('la Tienda cobra DINERO, no monedas', () => {
   const s = newPlayer();
+  s.level = 10; // el estilo (EFECTO PELOTA) se compra desde su nivel de desbloqueo (domain/unlocks.ts)
   s.coins = 99_999;
   s.gems = 0;
   assert.equal(purchase(s, 'style:red').error, 'not_enough_cash');

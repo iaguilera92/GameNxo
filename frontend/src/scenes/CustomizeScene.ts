@@ -22,18 +22,22 @@ import { commit, getPlayer } from '../domain/playerStore';
 import { equipStyle, upgradeZoneStat } from '../domain/operations';
 import type { StyleId } from '../domain/player';
 import { STYLE_LOOK, styleLook } from '../ui/styleLook';
+import { createTrailPreview, drawTrailStatic } from '../fx/ballTrailFx';
 import { rankedState } from '../logic/Ranked';
 import { LEAGUE_ORDER } from '../domain/rankedConfig';
-import { ZONE_STAT_KEYS, ZONE_STAT_MAX, type ZoneStatKey } from '../domain/zoneProgress';
+import { ZONE_STAT_KEYS, ZONE_STAT_MAX, type ZoneStatKey, zoneStatsOf } from '../domain/zoneProgress';
 import { INFERNO_POWERS, infernoOwned, infernoPowerDef, type InfernoPower } from '../domain/infernoPowers';
 import { addBallPreview, ensureBallAnims, queueInfernoArt } from '../fx/InfernoFx';
 import { type PowerSlot, openPowerDialog } from '../ui/PowerDialog';
 import { SMASH_POWERS, type SmashPower, smashOwned, smashPowerDef, smashPowerOf } from '../domain/smashPowers';
+import { itemRarity } from '../domain/shopCatalog';
 import { elementTexture } from '../ui/AbilityButton';
 import { CHARGE_FX, type ChargeFxId, chargeFxOf, chargeFxOwned } from '../domain/chargeFx';
 import { chargePreview, queueChargeFxArt } from '../fx/chargeFx';
 import { INFERNO } from '../logic/InfernoDrive';
 import { ZONE } from '../logic/Zone';
+import { MASTERY, masteryProgress, passiveOf } from '../domain/characterPassives';
+import { drawPassiveIcon, openPassiveDialog, skinName } from '../ui/passiveInfo';
 
 /** Arte de los botones de habilidad. `box` = círculo visible en px de la imagen (sin margen transparente). */
 const ABILITY_ART: Partial<Record<AbilityId, { key: string; file: string; w: number; h: number; box: { x0: number; y0: number; x1: number; y1: number } }>> = {
@@ -48,7 +52,7 @@ const NEON = 0x3a7bff;
 const GRID_GAP = 12;
 /** Columna de la cuadrícula: izquierda (0) o derecha (1). Mismos márgenes que el resto de la pantalla (30 px). */
 /** nombre de cada EFECTO PELOTA (estela; ui/styleLook.ts) */
-const STYLE_NAME: Record<string, string> = { classic: 'CLÁSICO', red: 'ROJO', pink: 'ROSADO', green: 'VERDE', gold: 'ORO' };
+const STYLE_NAME: Record<string, string> = { classic: 'POR DEFECTO', red: 'ROJO', pink: 'ROSADO', green: 'VERDE', gold: 'ORO', rainbow: 'ARCOÍRIS', ember: 'BRASAS', frost: 'HIELO', tulip: 'TULIPANES', hearts: 'CORAZONES', stars: 'ESTRELLAS', neon: 'NEÓN', smoke: 'HUMO' };
 
 /**
  * Frame 'trim' de una imagen: solo su contenido (sin el margen transparente). Se mide una vez y queda en la textura;
@@ -205,7 +209,7 @@ export class CustomizeScene extends Phaser.Scene {
     // fila 2 las dos habilidades equipadas (DASH | SMASH), fila 3 INFERNO | ZONA
     // (11-11-2026) arriba una fila de 4 cosméticos (ESTILOS · EFECTO PELOTA · CARGANDO GOLPE · MASCOTAS) y debajo el título
     // HABILIDADES con DEFENSIVO | ESPECIAL y ULTI | ZONA
-    const L = { gapHero: 14, level: 78, gapA: 22, cosmetic: 136, cosToTitle: 30, titleToCard: 28, ability: 104, abilityGap: GRID_GAP, gapFeatures: GRID_GAP, features: 270, gapC: 18, play: 0, bottom: 52 };
+    const L = { gapHero: 14, level: 78, gapA: 22, passive: 60, gapP: 10, cosmetic: 136, cosToTitle: 30, titleToCard: 28, ability: 104, abilityGap: GRID_GAP, gapFeatures: GRID_GAP, features: 270, gapC: 18, play: 0, bottom: 52 };
     // NIVEL MÁXIMO: sin tarjeta de nivel en la lista (sale como pastilla pequeña sobre el nombre, en la vitrina) y todo su
     // alto se reparte entre las dos filas de tarjetas de habilidades (el resto del reparto no cambia)
     const maxed = p.level >= MAX_LEVEL;
@@ -216,7 +220,7 @@ export class CustomizeScene extends Phaser.Scene {
       L.ability += Math.floor(freed / 2);
     }
     const below =
-      L.gapHero + L.level + L.gapA + L.cosmetic + L.cosToTitle + L.titleToCard + L.ability + L.gapFeatures + L.features + L.gapC + L.play + L.bottom;
+      L.gapHero + L.level + L.gapA + L.passive + L.gapP + L.cosmetic + L.cosToTitle + L.titleToCard + L.ability + L.gapFeatures + L.features + L.gapC + L.play + L.bottom;
     const free = H - TOP - below;
     let heroH = Phaser.Math.Clamp(free, 240, 392);
     let spare = Math.max(0, free - heroH);
@@ -241,6 +245,10 @@ export class CustomizeScene extends Phaser.Scene {
     let y = feetY + L.gapHero;
     if (!maxed) this.levelCard(W, y, p.level, levelProgress(p));
     y += L.level + L.gapA;
+
+    // ---------------------------------------------------------------- PASIVA del personaje (barra de maestría, docs/MAESTRIAS.md)
+    this.masteryBar(W, y, L.passive, p.skin);
+    y += L.passive + L.gapP;
 
     // ---------------------------------------------------------------- cosméticos (4 columnas)
     const rowC = y;
@@ -512,6 +520,61 @@ ${unlockLabel(key)}`, { fontFamily: FONT, fontSize: '16px', color: '#ffd23f', st
     if (!goldReached) this.lockOverlay(mc.x, y, mc.w, h, 'LIGA ORO', 'Mascotas: se desbloquean al llegar a la LIGA ORO');
   }
 
+  /**
+   * PASIVA del personaje elegido (docs/MAESTRIAS.md): barra fina sobre las 4 tarjetas de cosméticos con el nombre de la pasiva, el nivel de
+   * maestría, el % que da y el progreso hacia el siguiente nivel. Antes del nivel 20 de la cuenta no se suman maestrías (se avisa en la
+   * propia barra). Tocarla (o el icono i) abre el detalle.
+   */
+  private masteryBar(W: number, y: number, h: number, skin: string) {
+    const def = passiveOf(skin);
+    if (!def) return; // personaje sin pasiva: no hay barra
+    const pl = getProfile();
+    const pr = masteryProgress(pl.masteryPoints);
+    const locked = pl.level < MASTERY.unlockLevel;
+    const x = 30;
+    const w = W - 60;
+    this.cardRects.passive = { x, y, w, h };
+    const g = this.add.graphics();
+    g.fillStyle(0x000000, 0.35).fillRoundedRect(x + 2, y + 4, w, h, 16);
+    g.fillStyle(NAVY, 0.94).fillRoundedRect(x, y, w, h, 16);
+    g.fillStyle(def.color, 0.1).fillRoundedRect(x + 3, y + 3, w - 6, h * 0.45, { tl: 13, tr: 13, bl: 0, br: 0 });
+    g.lineStyle(2.5, def.color, 0.9).strokeRoundedRect(x, y, w, h, 16);
+    // medalla con el icono de la pasiva
+    const bx = x + 34;
+    const by = y + h / 2;
+    g.fillStyle(0x07152f, 1).fillCircle(bx, by, 22).lineStyle(2.5, def.color, 1).strokeCircle(bx, by, 22);
+    const ic = this.add.graphics({ x: bx, y: by });
+    drawPassiveIcon(ic, def.id, 12, def.color);
+    const cx0 = x + 70;
+    const cx1 = x + w - 60;
+    const cw = cx1 - cx0;
+    // fila de arriba: pasiva · personaje, y a la derecha el nivel y el % que da
+    const name = this.add.text(cx0, y + 17, `${def.name} · ${skinName(skin).toUpperCase()}`, { fontFamily: FONT, fontSize: '16px', color: def.css, stroke: '#061431', strokeThickness: 3 }).setOrigin(0, 0.5).setLetterSpacing(1);
+    const lvl = this.add.text(cx1, y + 17, `NIV ${pr.level}  ·  +${pr.level} %`, { fontFamily: FONT, fontSize: '16px', color: pr.max ? '#ffd23f' : '#ffffff', stroke: '#061431', strokeThickness: 3 }).setOrigin(1, 0.5);
+    if (name.width > cw - lvl.width - 14) name.setScale((cw - lvl.width - 14) / name.width);
+    // barra de progreso al siguiente nivel
+    const bh = 15;
+    const bary = y + h - 18;
+    const bar = this.add.graphics();
+    bar.fillStyle(0x04132e, 1).fillRoundedRect(cx0, bary - bh / 2, cw, bh, bh / 2);
+    bar.lineStyle(1.5, 0x2c3d66, 1).strokeRoundedRect(cx0, bary - bh / 2, cw, bh, bh / 2);
+    const fw = locked ? 0 : pr.max ? cw : pr.into > 0 ? Math.max(bh, cw * pr.frac) : 0;
+    if (fw > 0) {
+      bar.fillStyle(pr.max ? 0xffc42e : def.color, 1).fillRoundedRect(cx0, bary - bh / 2, fw, bh, bh / 2);
+      bar.fillStyle(0xffffff, 0.4).fillRoundedRect(cx0 + 4, bary - bh / 2 + 2, Math.max(0, fw - 8), 4, 2);
+    }
+    const label = locked ? `SE ACTIVA EN EL NIVEL ${MASTERY.unlockLevel} DE TU CUENTA` : pr.max ? 'NIVEL MÁXIMO' : `${pr.into} / ${pr.need}  MAESTRÍAS`;
+    const lab = this.add.text(cx0 + cw / 2, bary, label, { fontFamily: FONT, fontSize: '11px', color: locked ? '#b9c6e6' : '#ffffff', stroke: '#061431', strokeThickness: 3 }).setOrigin(0.5);
+    if (lab.width > cw - 16) lab.setScale((cw - 16) / lab.width);
+    if (locked) {
+      // sin maestrías hasta el nivel 20: todo algo apagado
+      for (const o of [ic, name, lvl, bar]) o.setAlpha(0.7);
+    }
+    const hit = this.add.zone(x + (w - 56) / 2, y + h / 2, w - 56, h).setInteractive({ useHandCursor: true });
+    hit.on('pointerup', () => openPassiveDialog(this, skin, { points: pl.masteryPoints }));
+    this.infoButton(x + w - 30, y + h / 2, () => openPassiveDialog(this, skin, { points: pl.masteryPoints }));
+  }
+
   /** Tarjeta pequeña (1/4 de ancho): solo su imagen, centrada y ajustada al cuadro. */
   private miniCard(col: { x: number; w: number }, y: number, h: number, color: number, key: string, onTap: () => void, size = 1, id?: string) {
     const { x, w } = col;
@@ -547,26 +610,29 @@ ${unlockLabel(key)}`, { fontFamily: FONT, fontSize: '16px', color: '#ffd23f', st
     const p = getPlayer();
     const cur = (p.equipped.style ?? 'classic') as StyleId;
     const ids = Object.keys(STYLE_LOOK) as StyleId[];
+    // televisión: la pelota cruza dejando el efecto en movimiento; hueco: miniatura estática (13 animaciones a la vez no hacen falta)
     const preview = (x: number, y: number, size: number, id: StyleId) => {
+      const c = this.add.container(x, y);
+      const pv = createTrailPreview(this, 0, 0, size * 2.4, styleLook(id), size / 130);
+      c.add(pv.objects);
+      c.once(Phaser.GameObjects.Events.DESTROY, () => pv.tween.remove());
+      return c;
+    };
+    const thumb = (x: number, y: number, size: number, id: StyleId) => {
       const g = this.add.graphics({ x, y });
-      const r = size * 0.32;
-      const lk = styleLook(id);
-      for (let i = 0; i < 4; i++) g.lineStyle(r * (0.5 - i * 0.1), lk.trail, 0.95 - i * 0.22).lineBetween(-r * 2.2, r * (0.9 - i * 0.1), -r * 0.2, r * 0.1);
-      g.fillStyle(0x0a1638).fillCircle(r * 0.3, 0, r * 1.05);
-      g.fillStyle(0xd7f53a).fillCircle(r * 0.3, 0, r * 0.86);
-      g.lineStyle(r * 0.14, 0xffffff, 0.95).beginPath().arc(r * 0.3 - r * 0.9, 0, r * 0.8, -0.85, 0.85).strokePath();
-      if (lk.sparkle) for (let i = 0; i < 4; i++) g.fillStyle(0xfff6c8, 1).fillCircle(-r * (0.6 + i * 0.4), r * (0.2 * ((i % 2) * 2 - 1)), r * 0.12);
+      drawTrailStatic(g, size * 0.3, styleLook(id));
       return g;
     };
     const slots: PowerSlot[] = ids.map((id) => ({
       name: STYLE_NAME[id] ?? id.toUpperCase(),
       desc: STYLE_LOOK[id].perk,
       owned: id === 'classic' || p.owned.includes(`style:${id}` as never),
+      rarity: itemRarity(`style:${id}`),
       equipped: id === cur,
       preview: (x, y, size) => preview(x, y, size, id),
+      thumb: (x, y, size) => thumb(x, y, size, id),
       onEquip: () => commit((st) => equipStyle(st, id)),
-    }));
-    openPowerDialog(this, {
+    }));    openPowerDialog(this, {
       title: 'EFECTO PELOTA',
       color: styleLook(cur).color,
       slots,
@@ -769,6 +835,9 @@ ${unlockLabel(key)}`, { fontFamily: FONT, fontSize: '16px', color: '#ffd23f', st
       this.infoButton(item.x + w - 26, top + 35, () => this.zoneInfoDialog());
       {
         const zone = getPlayer().zone;
+        // la ZONA es POR PERSONAJE: aquí se ven y suben los atributos del personaje elegido (los Rayos son de la cuenta)
+        const zoneSkin = getProfile().skin;
+        const zoneLevels = zoneStatsOf(zone, zoneSkin);
         // Rayos sin gastar: aviso dorado que late para que se usen (sin Rayos no se muestra nada)
         if (zone.rays > 0) {
           const pill = this.add.container(item.x + w / 2, top + 78);
@@ -786,7 +855,7 @@ ${unlockLabel(key)}`, { fontFamily: FONT, fontSize: '16px', color: '#ffd23f', st
         }
         const labels: Record<ZoneStatKey, string> = { strength: 'FUERZA', speed: 'VELOCIDAD', precision: 'PRECISIÓN', agility: 'AGILIDAD', resistance: 'RESISTENCIA' };
         ZONE_STAT_KEYS.forEach((key, index) => {
-          const level = zone.stats[key];
+          const level = zoneLevels[key];
           const cy = top + 112 + index * 34;
           // fila: nombre | barra | n/20 | botón +, con aire entre columnas
           const lab = this.add.text(item.x + 14, cy, labels[key], { fontFamily: FONT, fontSize: '12px', color: '#e5f8ff' }).setOrigin(0, 0.5);
@@ -811,7 +880,7 @@ ${unlockLabel(key)}`, { fontFamily: FONT, fontSize: '16px', color: '#ffd23f', st
           if (enabled) this.tweens.add({ targets: plus, scale: { from: 1, to: 1.18 }, duration: 600, delay: index * 90, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
           const hit = this.add.zone(plusX, cy, 40, 32).setInteractive({ useHandCursor: true });
           hit.on('pointerup', () => {
-            const result = commit((state) => upgradeZoneStat(state, key));
+            const result = commit((state) => upgradeZoneStat(state, key, zoneSkin));
             if (!result.ok) return this.toast(result.error === 'not_enough_rays' ? 'Gana Rayos en las recompensas semanales de Ranked' : 'Este atributo ya llegó al 20%');
             this.scene.restart();
           });
@@ -854,6 +923,8 @@ ${unlockLabel(key)}`, { fontFamily: FONT, fontSize: '16px', color: '#ffd23f', st
       'En Zona eres más rápido, golpeas más fuerte, llegas más lejos y resistes el ESPECIAL rival.',
       '',
       'RAYOS: los ganas jugando (Pase de Batalla y recompensas semanales de Ranked). Cada Rayo sube un atributo un 1 % mientras estás en Zona, hasta un 20 %. ¡Úsalos con los botones +!',
+      '',
+      'La ZONA es POR PERSONAJE: los Rayos son de tu cuenta, pero cada atributo sube solo en el personaje que tengas elegido. Cambia de personaje para mejorar el otro.',
     ].join('\n');
     const body = this.add.text(0, 0, text, { fontFamily: FONT, fontSize: '19px', color: '#dbe5ff', align: 'center', lineSpacing: 4, wordWrap: { width: pw - 60 } }).setOrigin(0.5, 0);
     const ph = 100 + body.height + 120;
@@ -1050,6 +1121,7 @@ ${unlockLabel(key)}`, { fontFamily: FONT, fontSize: '16px', color: '#ffd23f', st
       name: d.name,
       desc: `${d.ball}. ${d.desc}`,
       owned: infernoOwned(p.owned, d.id, p.equipped.skin),
+      rarity: itemRarity(`inferno:${d.id}`),
       equipped: d.id === cur,
       preview: (ix, iy, size) => this.ballIcon(d.id, ix, iy, size, true),
       thumb: (ix, iy, size) => this.ballIcon(d.id, ix, iy, size, false),
@@ -1175,6 +1247,7 @@ ${unlockLabel(key)}`, { fontFamily: FONT, fontSize: '16px', color: '#ffd23f', st
       name: d.name,
       desc: d.desc,
       owned: smashOwned(p.owned, d.id),
+      rarity: itemRarity(`smash:${d.id}`),
       equipped: d.id === cur,
       preview: (ix, iy, size) => this.abilityIcon(a, ix, iy, size, d.id),
       onEquip: () => setSmash(d.id),
@@ -1201,6 +1274,7 @@ ${unlockLabel(key)}`, { fontFamily: FONT, fontSize: '16px', color: '#ffd23f', st
       name: d.name,
       desc: d.desc,
       owned: defensiveOwned(p.owned, d.id),
+      rarity: itemRarity(`defensive:${d.id}`),
       equipped: d.id === cur,
       preview:
         d.id === 'dash'
@@ -1255,6 +1329,7 @@ ${unlockLabel(key)}`, { fontFamily: FONT, fontSize: '16px', color: '#ffd23f', st
       name: d.name,
       desc: d.desc,
       owned: chargeFxOwned(p.owned, d.id, skin),
+      rarity: itemRarity(`charge:${d.id}`),
       equipped: d.id === cur,
       preview: (x, y, size) => this.chargePreview(d.id, x, y, size),
       thumb: (x, y, size) => this.chargePreview(d.id, x, y + 18, size * 1.1),

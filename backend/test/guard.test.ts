@@ -99,3 +99,10 @@ test('marcas de tiempo del cliente: no se recortan (crecen todo el partido)', ()
   assert.equal(sanitizeHit({ ...hit, t: 3_600_000 })!.t, 3_600_000);
   assert.equal(sanitizeState({ t: -5, x: 1, y: 2 })!.t, 0);
 });
+
+test('sanitizeHit: DROP SHOT 0 (ball.back) pasa solo si es positivo y razonable', () => {
+  assert.equal(sanitizeHit({ ...hit, ball: { ...ball, back: 1 } })?.ball.back, 1);
+  assert.equal(sanitizeHit({ ...hit, ball: { ...ball, back: -1 } })?.ball.back, undefined);
+  assert.equal(sanitizeHit({ ...hit, ball: { ...ball, back: 99 } })?.ball.back, undefined);
+  assert.equal(sanitizeHit({ ...hit, ball: { ...ball, back: 'x' } })?.ball.back, undefined);
+});

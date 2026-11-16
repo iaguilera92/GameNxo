@@ -4,7 +4,8 @@ import { FONT, restartOnResize, textStyle } from '../ui/theme';
 import { UI, stadiumBg } from '../ui/ui';
 import { arcadeButton } from '../ui/modeButtons';
 import { commit, getPlayer, onPlayerChange } from '../domain/playerStore';
-import { equipCharge, equipDefensive, equipInferno, equipSmash, equipStyle, purchase } from '../domain/operations';
+import { equipCharge, equipDefensive, equipInferno, equipSmash, equipStyle } from '../domain/operations';
+import { offersChangeIn, purchaseOffered, shopOffers } from '../domain/shopRotation';
 import { type SmashPower, smashOwned, smashPowerDef, smashPowerOf } from '../domain/smashPowers';
 import { BUTTON_ART, queueButtonArt } from '../ui/buttonArt';
 import { elementTexture } from '../ui/AbilityButton';
@@ -14,14 +15,16 @@ import { BP_SEASON, syncSeason } from '../domain/battlePass';
 import { bpSeasonInfo } from '../domain/battlePassConfig';
 import type { PlayerState } from '../domain/player';
 import { drawCashIcon } from './BattlePassScene';
-import { type ItemId, type StyleId, owns } from '../domain/player';
-import { CASH_PACKS, SHOP_ITEMS, clpLabel, type CashPack, type ShopItem } from '../domain/shopCatalog';
+import { type ItemId, type ItemKind, type StyleId, owns } from '../domain/player';
+import { drawRarityFrame } from '../ui/rarity';
+import { CASH_PACKS, SHOP_ITEMS, clpLabel, type CashPack, type ItemRarity, type ShopItem } from '../domain/shopCatalog';
 import { addBallPreview, ensureBallAnims, queueInfernoArt } from '../fx/InfernoFx';
 import { infernoPowerDef, type InfernoPower } from '../domain/infernoPowers';
 import { type ChargeFxId, chargeFxDef, chargeFxOf, chargeFxOwned } from '../domain/chargeFx';
 import { chargePreview, queueChargeFxArt } from '../fx/chargeFx';
 import { fitText } from '../ui/fitText';
 import { styleLook } from '../ui/styleLook';
+import { createTrailPreview } from '../fx/ballTrailFx';
 import { DASH_COOLDOWN, SMASH_COOLDOWN } from '../config';
 import { INFERNO } from '../logic/InfernoDrive';
 import { claimShopGift, shopGiftStatus } from '../logic/Ranked';
@@ -51,23 +54,23 @@ const ULTI_BOT = '#2a0c63';
 const INFO = {
   style: {
     title: 'EFECTO PELOTA',
-    text: 'Cambia el color de la estela que deja la pelota en tus golpes normales y el destello de tu raqueta al golpear.\n\nEs solo visual: no cambia la velocidad ni la fuerza. Puedes equiparlo aquí o en PERSONAJE.',
+    text: 'Cambia el color de la estela que deja la pelota en tus golpes normales y el destello de tu raqueta al golpear.\n\nEs solo visual: no cambia la velocidad ni la fuerza. Puedes equiparlo aquí o en PERSONAJE.\n\nDesliza hacia la derecha para ver todos.',
   },
   charge: {
     title: 'CARGANDO GOLPE',
-    text: 'Es el aro que aparece bajo tus pies mientras cargas un golpe y que crece con tu potencia.\n\nEs solo visual. Nxo trae el de fuego y Mai el de tulipán.',
+    text: 'Es el aro que aparece bajo tus pies mientras cargas un golpe y que crece con tu potencia.\n\nEs solo visual. Nxo trae el de fuego y Mai el de tulipán.\n\nLa Tienda muestra 3 a la vez y cambia la selección cada 12 horas (si no hay otros, ves los que haya).',
   },
   ulti: {
     title: 'PODERES ULTI',
-    text: `La ULTI se carga al ganar ${INFERNO.pointsToCharge} puntos. Al lanzarla, tu golpe sale como una bola de poder.\n\nCada poder cambia el elemento de esa bola y sus efectos. El de fuego es gratis.`,
+    text: `La ULTI se carga al ganar ${INFERNO.pointsToCharge} puntos. Al lanzarla, tu golpe sale como una bola de poder.\n\nCada poder cambia el elemento de esa bola y sus efectos. El de fuego es gratis.\n\nLa Tienda muestra 3 a la vez y cambia la selección cada 24 horas.`,
   },
   special: {
     title: 'PODERES ESPECIALES',
-    text: `El ESPECIAL es tu remate (SMASH) y se recarga cada ${SMASH_COOLDOWN} segundos. Si el rival toca la pelota, sale despedido.\n\nCada poder cambia cómo se ve. El de fuego es gratis.`,
+    text: `El ESPECIAL es tu remate (SMASH) y se recarga cada ${SMASH_COOLDOWN} segundos. Si el rival toca la pelota, sale despedido.\n\nCada poder cambia cómo se ve. El de fuego es gratis.\n\nLa Tienda muestra 3 a la vez y cambia la selección cada 12 horas.`,
   },
   defensive: {
     title: 'PODERES DEFENSIVOS',
-    text: `El DEFENSIVO te ayuda a llegar a pelotas lejanas y se recarga cada ${DASH_COOLDOWN} segundos.\n\nCada poder cambia lo que hace: el DASH (gratis) es un sprint hasta la pelota y el DESTELLO te teletransporta y devuelves con un revés.`,
+    text: `El DEFENSIVO te ayuda a llegar a pelotas lejanas y se recarga cada ${DASH_COOLDOWN} segundos.\n\nCada poder cambia lo que hace: el DASH (gratis) es un sprint hasta la pelota, el DESTELLO te teletransporta, la SOMBRA cambia tu lugar con un clon, el SUPERSALTO salta hasta ella, la VOLTERETA llega con dos volteretas y el PATINAJE patina dejando un camino de hielo. Todos devuelven asegurado y se recargan igual.\n\nLa Tienda muestra 3 a la vez y cambia la selección cada 12 horas.`,
   },
 } as const;
 type Info = (typeof INFO)[keyof typeof INFO];
@@ -79,7 +82,9 @@ const ERRORS: Record<string, string> = {
   level_too_low: 'Necesitas más nivel',
   already_owned: 'Ya lo tienes',
   not_available: 'Próximamente',
+  real_money_only: 'Solo con dinero real',
   not_found: 'Artículo no disponible',
+  not_in_shop: 'Ya no está en la Tienda (cambió la selección)',
 };
 
 export class ShopScene extends Phaser.Scene {
@@ -98,6 +103,13 @@ export class ShopScene extends Phaser.Scene {
   private freeArrow?: Phaser.GameObjects.Container;
   private giftTimer?: Phaser.Time.TimerEvent;
   private dragMoved = false;
+  /** filas que se deslizan hacia los lados (EFECTO PELOTA): el contenedor con sus tarjetas, su franja vertical y cuánto puede correr a la izquierda */
+  private strips: { c: Phaser.GameObjects.Container; y0: number; y1: number; max: number; bar: Phaser.GameObjects.Graphics }[] = [];
+  /** dónde estaba la fila al reconstruir la Tienda (para que no salte al comprar) */
+  private stripX = 0;
+  /** cuenta atrás de las categorías que rotan y lo que mostraban al dibujarse (si cambia, se reconstruye) */
+  private rotLabels: { t: Phaser.GameObjects.Text; kind: ItemKind }[] = [];
+  private rotSig = '';
 
   constructor() {
     super('Shop');
@@ -149,7 +161,11 @@ export class ShopScene extends Phaser.Scene {
     this.children.list.slice(n0).forEach((o) => (o as Phaser.GameObjects.GameObject & { setDepth(v: number): unknown }).setDepth(11)); // cabecera sobre la cubierta
 
     this.body = this.add.container(0, 0);
+    this.stripX = 0;
+    this.strips = [];
     this.build();
+    // cuenta atrás de lo que rota y cambio de selección (3 a la vez; CARGANDO / ESPECIAL / DEFENSIVO cada 12 h, ULTI cada 24 h)
+    this.time.addEvent({ delay: 1000, loop: true, callback: () => this.tickRotation() });
     this.setupScroll();
     this.makeFreeArrow();
     // viene del + del dinero: tras el fundido, el contenido baja con el scroll (animado) hasta la sección DINERO
@@ -171,6 +187,7 @@ export class ShopScene extends Phaser.Scene {
     // lo anterior se va entero: sus tweens también (los de objetos dentro de las tarjetas y los de objetos sueltos)
     this.cardTweens.forEach((t) => t.remove());
     this.cardTweens = [];
+    if (this.strips.length) this.stripX = this.strips[0].c.x; // la fila de EFECTO PELOTA no salta al reconstruir (comprar, cambio de selección)
     const dead: Phaser.GameObjects.GameObject[] = [];
     const collect = (o: Phaser.GameObjects.GameObject) => {
       dead.push(o);
@@ -197,67 +214,91 @@ export class ShopScene extends Phaser.Scene {
       y += ch + 52;
     }
 
+    // lo que rota (CARGANDO GOLPE, ESPECIAL, DEFENSIVO cada 12 h; ULTI cada 24 h): 3 a la vez, igual para todos (domain/shopRotation.ts)
+    const now = Date.now();
+    this.rotLabels = [];
+    this.rotSig = this.rotationSignature(now);
+    this.strips = [];
+    const gap = 14;
+    // 3 tarjetas por fila: si hay menos (no hay otros que mostrar), quedan centradas
+    const cols3 = (n: number) => {
+      const w = (W - 60 - gap * 2) / 3;
+      const x0 = 30 + (W - 60 - (n * w + (n - 1) * gap)) / 2;
+      return { w, x: (i: number) => x0 + i * (w + gap) };
+    };
+
     // ---------------------------------------------------------------- efecto pelota (estela de los golpes)
     this.sectionTitle(W, y, 'EFECTO PELOTA', INFO.style);
     y += titleGap;
+    // todos los efectos en UNA fila que se desliza hacia la derecha: 4 a la vista y el siguiente asoma por el borde
     const styles = SHOP_ITEMS.filter((i) => i.kind === 'style');
-    const gap = 14;
-    const cw = (W - 60 - gap * (styles.length - 1)) / styles.length;
+    const styleCols = 4;
+    const cw = (W - 60 - gap * (styleCols - 1)) / styleCols;
+    const strip = this.add.container(0, 0);
+    this.body.add(strip);
     styles.forEach((it, i) => {
       this.styleCard(30 + i * (cw + gap), y, cw, ch, it);
-      this.reg(y, ch);
+      const card = this.body.list[this.body.length - 1]; // styleCard la añadió al contenido: pasa a la fila deslizable
+      this.body.remove(card);
+      strip.add(card);
     });
+    const stripMax = Math.max(0, styles.length * (cw + gap) - gap - (W - 60));
+    const stripBar = this.add.graphics();
+    this.body.add(stripBar);
+    strip.x = Phaser.Math.Clamp(this.stripX, -stripMax, 0);
+    this.strips.push({ c: strip, y0: y, y1: y + ch, max: stripMax, bar: stripBar });
+    this.cull.push({ c: strip, y0: y, y1: y + ch });
+    this.drawStripBar(this.strips[0], W);
     y += ch + 52;
+
     // ---------------------------------------------------------------- cargando golpe (aro al cargar)
     this.sectionTitle(W, y, 'CARGANDO GOLPE', INFO.charge);
+    this.rotationLabel(W, y, 'charge', now);
     y += titleGap;
-    const charges = SHOP_ITEMS.filter((i) => i.kind === 'charge');
-    const cwid = (W - 60 - gap * (charges.length - 1)) / charges.length;
+    const charges = shopOffers('charge', now);
+    const cc = cols3(charges.length);
     charges.forEach((it, i) => {
-      this.chargeCard(30 + i * (cwid + gap), y, cwid, ch, it);
+      this.chargeCard(cc.x(i), y, cc.w, ch, it);
       this.reg(y, ch);
     });
     y += ch + 52;
 
     // ---------------------------------------------------------------- poderes de la ULTI (antes INFERNO)
     this.sectionTitle(W, y, 'PODERES ULTI', INFO.ulti);
+    this.rotationLabel(W, y, 'inferno', now);
     y += titleGap;
-    const powers = SHOP_ITEMS.filter((i) => i.kind === 'inferno');
-    const pw = (W - 60 - gap * (powers.length - 1)) / powers.length;
+    const powers = shopOffers('inferno', now);
+    const pc = cols3(powers.length);
     powers.forEach((it, i) => {
-      this.powerCard(30 + i * (pw + gap), y, pw, ch, it);
+      this.powerCard(pc.x(i), y, pc.w, ch, it);
       this.reg(y, ch);
     });
     y += ch + 52;
 
     // ---------------------------------------------------------------- poderes del ESPECIAL y del DEFENSIVO
     this.sectionTitle(W, y, 'PODERES ESPECIALES', INFO.special);
+    this.rotationLabel(W, y, 'smash', now);
     y += titleGap;
-    // FUEGO (incluido) + los de la Tienda (hielo, viento, rayo), en una fila como los de la Ulti
-    const smashItems = SHOP_ITEMS.filter((i) => i.kind === 'smash');
-    const smashN = smashItems.length + 1;
-    const smashW = (W - 60 - gap * (smashN - 1)) / smashN;
+    // 3 a la vez (el FUEGO es gratis y no entra en la rotación: se elige en PERSONALIZAR)
+    const smashItems = shopOffers('smash', now);
+    const sc = cols3(smashItems.length);
     const smashH = 270;
-    this.smashCard(30, y, smashW, smashH, 'fire');
-    this.reg(y, smashH);
     smashItems.forEach((it, i) => {
-      this.smashCard(30 + (i + 1) * (smashW + gap), y, smashW, smashH, it.id.split(':')[1] as SmashPower, it);
+      this.smashCard(sc.x(i), y, sc.w, smashH, it.id.split(':')[1] as SmashPower, it);
       this.reg(y, smashH);
     });
     y += smashH + 52;
     this.sectionTitle(W, y, 'PODERES DEFENSIVOS', INFO.defensive);
+    this.rotationLabel(W, y, 'defensive', now);
     y += titleGap;
-    const defs = SHOP_ITEMS.filter((i) => i.kind === 'defensive');
-    const dw = (W - 60 - gap * 2) / 3;
+    const defs = shopOffers('defensive', now);
+    const dc = cols3(defs.length);
     const dh = 270;
-    for (let i = 0; i < 3; i++) {
-      const dx = 30 + i * (dw + gap);
-      if (defs[i]) this.defensiveCard(dx, y, dw, dh, defs[i]);
-      else this.soonCard(dx, y, dw, dh);
+    defs.forEach((it, i) => {
+      this.defensiveCard(dc.x(i), y, dc.w, dh, it);
       this.reg(y, dh);
-    }
+    });
     y += dh + 52;
-
     // ---------------------------------------------------------------- dinero (se compra con CLP)
     this.cashY = y;
     this.sectionTitle(W, y, 'DINERO');
@@ -288,6 +329,53 @@ export class ShopScene extends Phaser.Scene {
     this.cullCards();
   }
 
+  /** Qué muestra ahora cada categoría que rota (para saber si hay que reconstruir la Tienda al cambiar). */
+  private rotationSignature(now: number) {
+    return (['charge', 'inferno', 'smash', 'defensive'] as ItemKind[]).map((k) => shopOffers(k, now).map((i) => i.id).join(',')).join('|');
+  }
+
+  /** "NUEVOS EN 04:12:09" bajo el título de una categoría que rota (si no hay otros que mostrar, no sale). */
+  private rotationLabel(W: number, y: number, kind: ItemKind, now: number) {
+    const ms = offersChangeIn(kind, now);
+    if (ms === null) return;
+    const t = this.add.text(W / 2, y + 27, '', { fontFamily: FONT, fontSize: '13px', color: '#9fb4e0' }).setOrigin(0.5).setLetterSpacing(1);
+    this.body.add(t);
+    this.rotLabels.push({ t, kind });
+    this.setRotationText(t, ms);
+  }
+
+  private setRotationText(t: Phaser.GameObjects.Text, ms: number) {
+    const s = Math.max(0, Math.ceil(ms / 1000));
+    const two = (n: number) => String(n).padStart(2, '0');
+    t.setText(`NUEVOS EN ${two(Math.floor(s / 3600))}:${two(Math.floor((s % 3600) / 60))}:${two(s % 60)}`);
+  }
+
+  /** Una vez por segundo: cuenta atrás de las categorías que rotan; si cambió la selección, se dibuja la nueva. */
+  private tickRotation() {
+    if (!this.sys.isActive()) return;
+    const now = Date.now();
+    if (this.rotationSignature(now) !== this.rotSig) {
+      this.build();
+      return;
+    }
+    for (const l of this.rotLabels) {
+      const ms = offersChangeIn(l.kind, now);
+      if (ms !== null) this.setRotationText(l.t, ms);
+    }
+  }
+
+  /** Barrita bajo la fila deslizable: dónde está la parte que se ve (y que hay más a la derecha). */
+  private drawStripBar(s: { c: Phaser.GameObjects.Container; y0: number; y1: number; max: number; bar: Phaser.GameObjects.Graphics }, W: number) {
+    const g = s.bar.clear();
+    if (s.max <= 0) return;
+    const x0 = 30;
+    const w = W - 60;
+    const y = s.y1 + 18;
+    const thumb = w * (w / (w + s.max));
+    const tx = x0 + (w - thumb) * (-s.c.x / s.max);
+    g.fillStyle(0xffffff, 0.12).fillRoundedRect(x0, y, w, 5, 2.5);
+    g.fillStyle(0x6fb2ff, 0.9).fillRoundedRect(tx, y, thumb, 5, 2.5);
+  }
   /** Apunta la última tarjeta creada en el contenido con su franja vertical (para ocultarla fuera de pantalla). */
   private reg(y0: number, h: number) {
     const c = this.body.list[this.body.length - 1];
@@ -437,22 +525,48 @@ export class ShopScene extends Phaser.Scene {
   /** Arrastrar o usar la rueda desplaza el contenido; la cabecera (volver, saldos) queda fija. */
   private setupScroll() {
     let down = false;
+    let startX = 0;
     let startY = 0;
     let startScroll = 0;
+    /** fila deslizable bajo el dedo al empezar y su posición; el eje (horizontal / vertical) se decide al primer movimiento claro */
+    let strip: (typeof this.strips)[number] | null = null;
+    let startStripX = 0;
+    let axis: 'h' | 'v' | null = null;
     const set = (v: number) => this.setScroll(v);
     this.input.on('pointerdown', (p: Phaser.Input.Pointer) => {
       this.dragMoved = false;
       down = p.y >= HEADER_H && !this.modal.length;
+      startX = p.x;
       startY = p.y;
       startScroll = this.scrollY;
+      axis = null;
+      // ¿empezó sobre una fila que se desliza? (su franja está en el contenido: se pasa a pantalla con el scroll vertical)
+      strip = down ? this.strips.find((s) => s.max > 0 && p.y >= s.y0 - this.scrollY && p.y <= s.y1 - this.scrollY) ?? null : null;
+      startStripX = strip?.c.x ?? 0;
     });
     this.input.on('pointermove', (p: Phaser.Input.Pointer) => {
       if (!down || !p.isDown) return;
-      if (Math.abs(p.y - startY) > 10) this.dragMoved = true;
-      if (this.dragMoved) set(startScroll - (p.y - startY));
+      const dx = p.x - startX;
+      const dy = p.y - startY;
+      if (axis === null && (Math.abs(dx) > 10 || Math.abs(dy) > 10)) axis = strip && Math.abs(dx) > Math.abs(dy) ? 'h' : 'v';
+      if (axis === 'h' && strip) {
+        this.dragMoved = true;
+        strip.c.x = Phaser.Math.Clamp(startStripX + dx, -strip.max, 0);
+        this.drawStripBar(strip, this.scale.width);
+      } else if (axis === 'v') {
+        this.dragMoved = true;
+        set(startScroll - dy);
+      }
     });
     this.input.on('pointerup', () => (down = false));
-    this.input.on('wheel', (_p: unknown, _o: unknown, _dx: number, dy: number) => !this.modal.length && set(this.scrollY + dy));
+    this.input.on('wheel', (p: Phaser.Input.Pointer, _o: unknown, dx: number, dy: number) => {
+      if (this.modal.length) return;
+      const s = this.strips.find((q) => q.max > 0 && p.y >= q.y0 - this.scrollY && p.y <= q.y1 - this.scrollY);
+      if (s && Math.abs(dx) > Math.abs(dy)) {
+        s.c.x = Phaser.Math.Clamp(s.c.x - dx, -s.max, 0); // rueda horizontal (ratón, trackpad) sobre la fila
+        this.drawStripBar(s, this.scale.width);
+      } else set(this.scrollY + dy);
+    });
   }
 
   /** Copia del fondo del estadio (con su velo) solo en la franja de la cabecera, por encima del contenido que se desplaza. */
@@ -599,7 +713,7 @@ export class ShopScene extends Phaser.Scene {
     const lowLevel = s.level < it.minLevel;
     const c = this.add.container(0, 0);
     this.body.add(c);
-    c.add(this.card(x, y, w, h, { line: equipped ? 0xffffff : has ? NEON : it.id === 'style:gold' ? GOLD : 0x2c3d66, glow: equipped || it.id === 'style:gold' ? 0.3 : 0 }));
+    c.add(this.card(x, y, w, h, { line: equipped ? 0xffffff : has ? NEON : it.id === 'style:gold' ? GOLD : 0x2c3d66, glow: equipped || it.id === 'style:gold' ? 0.3 : 0, rarity: it.rarity }));
 
     // vista previa: la pelota con la estela de ese estilo, en movimiento (así se verán tus golpes)
     const sx = x + w / 2;
@@ -613,9 +727,15 @@ export class ShopScene extends Phaser.Scene {
     // botón inferior (dinero del juego) y, debajo, el precio en dinero real
     const by = y + h - 64;
     const bw = w - 24;
-    if (!has) c.add(this.clpTag(sx, y + h - 22, bw, it.clp));
+    if (!has && it.available && !it.realMoneyOnly) c.add(this.clpTag(sx, y + h - 22, bw, it.clp));
     if (equipped) {
       c.add(this.pill(sx, by, bw, 'EN USO', 0x1f6b35, '#9fe8a0'));
+    } else if (!has && !it.available) {
+      // sin rareza decidida: se ve el efecto pero aún no se vende
+      c.add(this.pill(sx, by, bw, 'PRÓXIMAMENTE', 0x24365f, '#9fb4e0'));
+    } else if (!has && it.realMoneyOnly) {
+      // ÉPICA / LEGENDARIA: solo con dinero real (el pago llega con la pasarela)
+      c.add(arcadeButton(this, sx, by, bw, 48, clpLabel(it.clp), this.tap(() => this.toast(lowLevel ? `Necesitas nivel ${it.minLevel}` : 'El pago con dinero real (CLP) llega pronto')), { palette: 'green', disabled: lowLevel }));
     } else if (has) {
       const b = arcadeButton(this, sx, by, bw, 48, 'USAR', this.tap(() => {
         commit((st) => equipStyle(st, id));
@@ -647,9 +767,12 @@ export class ShopScene extends Phaser.Scene {
     c.add(desc);
     const by = y + h - 64;
     const bw = w - 24;
-    if (!has) c.add(this.clpTag(sx, y + h - 22, bw, it.clp));
+    // las ULTIS solo se pagan con dinero real: el botón principal es el precio en CLP (sin precio en dinero virtual)
+    if (!has && !it.realMoneyOnly) c.add(this.clpTag(sx, y + h - 22, bw, it.clp));
     if (equipped) c.add(this.pill(sx, by, bw, 'EN USO', 0x1f6b35, '#9fe8a0'));
-    else if (has) {
+    else if (!has && it.realMoneyOnly) {
+      c.add(arcadeButton(this, sx, by, bw, 48, clpLabel(it.clp), this.tap(() => this.toast(s.level < it.minLevel ? `Necesitas nivel ${it.minLevel}` : 'El pago con dinero real (CLP) llega pronto')), { palette: 'green', disabled: s.level < it.minLevel }));
+    } else if (has) {
       c.add(
         arcadeButton(this, sx, by, bw, 48, 'USAR', this.tap(() => {
           commit((st) => equipInferno(st, power));
@@ -668,7 +791,7 @@ export class ShopScene extends Phaser.Scene {
     const equipped = smashPowerOf(s.equipped.smash) === id;
     const c = this.add.container(0, 0);
     this.body.add(c);
-    c.add(this.card(x, y, w, h, { line: equipped ? 0xffffff : has ? def.color : 0x2c3d66, glow: equipped || has ? 0.3 : 0.1 }));
+    c.add(this.card(x, y, w, h, { line: equipped ? 0xffffff : has ? def.color : 0x2c3d66, glow: equipped || has ? 0.3 : 0.1, rarity: it?.rarity }));
     const sx = x + w / 2;
     const key = BUTTON_ART.smash.key;
     if (this.textures.exists(key)) c.add(this.add.image(sx, y + 66, elementTexture(this, key, id) ?? key).setDisplaySize(84, 84));
@@ -703,7 +826,7 @@ export class ShopScene extends Phaser.Scene {
     const equipped = defensivePowerOf(s.equipped.defensive) === id;
     const c = this.add.container(0, 0);
     this.body.add(c);
-    c.add(this.card(x, y, w, h, { line: equipped ? 0xffffff : has ? def.color : 0x2c3d66, glow: equipped || has ? 0.3 : 0.1 }));
+    c.add(this.card(x, y, w, h, { line: equipped ? 0xffffff : has ? def.color : 0x2c3d66, glow: equipped || has ? 0.3 : 0.1, rarity: it?.rarity }));
     const sx = x + w / 2;
     const ic = this.add.graphics({ x: sx, y: y + 66 });
     drawDisc(ic, 36, def.color, 0x1b3a6b);
@@ -737,16 +860,19 @@ export class ShopScene extends Phaser.Scene {
     const equipped = chargeFxOf(s.equipped.charge, skin) === id;
     const c = this.add.container(0, 0);
     this.body.add(c);
-    c.add(this.card(x, y, w, h, { line: equipped ? 0xffffff : has ? def.color : 0x2c3d66, glow: equipped || has ? 0.3 : 0.1 }));
+    c.add(this.card(x, y, w, h, { line: equipped ? 0xffffff : has ? def.color : 0x2c3d66, glow: equipped || has ? 0.3 : 0.1, rarity: it?.rarity }));
     const sx = x + w / 2;
     c.add(chargePreview(this, id, sx, y + 128, Math.min(w - 10, 170)));
     c.add(this.add.text(sx, y + 166, def.name, { fontFamily: FONT, fontSize: '24px', color: def.css }).setOrigin(0.5));
     c.add(this.add.text(sx, y + 190, has && !bought ? 'DE TU PERSONAJE' : has ? 'COMPRADO' : def.desc, { fontFamily: FONT, fontSize: '13px', color: has ? '#9fe8a0' : '#9fb4e0', align: 'center', wordWrap: { width: w - 16 } }).setOrigin(0.5, 0));
     const by = y + h - 64;
     const bw = w - 24;
-    if (!has) c.add(this.clpTag(sx, y + h - 22, bw, it.clp));
+    // la rareza ÉPICA / LEGENDARIA solo se paga con dinero real: el botón principal es el precio en CLP (sin precio en dinero virtual)
+    if (!has && !it.realMoneyOnly) c.add(this.clpTag(sx, y + h - 22, bw, it.clp));
     if (equipped) c.add(this.pill(sx, by, bw, 'EN USO', 0x1f6b35, '#9fe8a0'));
-    else if (has) {
+    else if (!has && it.realMoneyOnly) {
+      c.add(arcadeButton(this, sx, by, bw, 48, clpLabel(it.clp), this.tap(() => this.toast('El pago con dinero real (CLP) llega pronto')), { palette: 'green' }));
+    } else if (has) {
       c.add(
         arcadeButton(this, sx, by, bw, 48, 'USAR', this.tap(() => {
           commit((st) => equipCharge(st, id));
@@ -828,52 +954,26 @@ export class ShopScene extends Phaser.Scene {
     c.add(hit);
   }
 
-  /** Pelota que cruza la tarjeta dejando la estela del estilo (chispas en Oro). Se repite sola. */
+  /** Pelota que cruza la tarjeta dejando la estela del efecto (fx/ballTrailFx.ts: cinta, partículas y chispas del Oro). Se repite sola. */
   private trailPreview(c: Phaser.GameObjects.Container, cx: number, cy: number, span: number, id: StyleId) {
-    const look = styleLook(id);
-    // trayectoria tenue de fondo (la tarjeta nunca queda vacía)
-    const ghost = this.add.graphics();
-    ghost.lineStyle(4, look.trail, 0.18).beginPath();
-    for (let i = 0; i <= 20; i++) {
-      const t = i / 20;
-      const px = cx - span / 2 + span * t;
-      const py = cy + 26 - Math.sin(t * Math.PI) * 52;
-      if (i === 0) ghost.moveTo(px, py);
-      else ghost.lineTo(px, py);
-    }
-    ghost.strokePath();
-    c.add(ghost);
-    const g = this.add.graphics();
-    const ball = this.add.container(0, 0);
-    ball.add([this.add.circle(0, 0, 12, 0x0a1638), this.add.circle(0, 0, 9, 0xd7f53a), this.add.circle(-3, -3, 3, 0xffffff, 0.75)]);
-    c.add([g, ball]);
-    const st = { t: 0 };
-    const pos = (t: number) => ({ x: cx - span / 2 + span * t, y: cy + 26 - Math.sin(t * Math.PI) * 52 });
-    const draw = () => {
-      if (!c.visible) return; // fuera de pantalla: no se redibuja
-      g.clear();
-      const n = 9;
-      for (let i = 1; i <= n; i++) {
-        const a = pos(Math.max(0, st.t - (i / n) * 0.45));
-        const b = pos(Math.max(0, st.t - ((i - 1) / n) * 0.45));
-        const k = 1 - i / n;
-        g.lineStyle(3 + k * 14, look.trail, k * 0.75).lineBetween(a.x, a.y, b.x, b.y);
-      }
-      const p = pos(st.t);
-      ball.setPosition(p.x, p.y);
-      if (look.sparkle && Math.random() < 0.25 && st.t > 0.05) {
-        const s = this.add.star(p.x + Phaser.Math.Between(-6, 6), p.y + Phaser.Math.Between(-6, 6), 4, 2, 6, 0xfff1b8).setBlendMode(Phaser.BlendModes.ADD);
-        c.add(s);
-        this.tweens.add({ targets: s, alpha: 0, scale: 0.2, angle: 160, y: s.y + 10, duration: 380, onComplete: () => s.destroy() });
-      }
+    // solo se anima mientras se ve: la tarjeta visible, su fila visible y dentro de la pantalla a lo ancho (la fila se desliza)
+    const onScreen = () => {
+      if (!c.visible) return false;
+      const par = c.parentContainer;
+      if (par && !par.visible) return false;
+      const wx = (par?.x ?? 0) + cx;
+      return wx > -span && wx < this.scale.width + span;
     };
-    this.cardTweens.push(this.tweens.add({ targets: st, t: 1, duration: 1100, delay: Phaser.Math.Between(0, 500), repeat: -1, repeatDelay: 450, ease: 'Sine.easeInOut', onUpdate: draw }));
-    draw();
+    const pv = createTrailPreview(this, cx, cy, span, styleLook(id), 1, onScreen);
+    c.add(pv.objects);
+    this.cardTweens.push(pv.tween);
+    c.once(Phaser.GameObjects.Events.DESTROY, () => pv.tween.remove());
   }
 
   // ================================================================ compra
   private confirmBuy(it: ShopItem) {
     const s = getPlayer();
+    if (it.realMoneyOnly) return this.toast('Solo con dinero real (CLP): llega pronto');
     if (s.level < it.minLevel) return this.toast(`Necesitas nivel ${it.minLevel}`);
     if (s.gems < it.price) return this.toast(`Te faltan ${(it.price - s.gems).toLocaleString('es-CL')} de dinero`);
     const W = this.scale.width;
@@ -910,8 +1010,11 @@ export class ShopScene extends Phaser.Scene {
   }
 
   private buy(id: ItemId) {
-    const res = commit((s) => purchase(s, id));
-    if (!res.ok) return this.toast(ERRORS[res.error] ?? 'No se pudo comprar');
+    const res = commit((s) => purchaseOffered(s, id));
+    if (!res.ok) {
+      if (res.error === 'not_in_shop') this.build(); // la selección cambió mientras tanto: se dibuja la nueva
+      return this.toast(ERRORS[res.error] ?? 'No se pudo comprar');
+    }
     this.celebrate();
     this.build();
   }
@@ -1162,14 +1265,15 @@ export class ShopScene extends Phaser.Scene {
   }
 
   /** Panel con el lenguaje del menú (igual que PERSONAJE). */
-  private card(x: number, y: number, w: number, h: number, opts: { line?: number; glow?: number; r?: number } = {}) {
-    const { line = NEON, glow = 0.18, r = 20 } = opts;
+  private card(x: number, y: number, w: number, h: number, opts: { line?: number; glow?: number; r?: number; rarity?: ItemRarity } = {}) {
+    const { line = NEON, glow = 0.18, r = 20, rarity } = opts;
     const g = this.add.graphics();
     g.fillStyle(0x000000, 0.35).fillRoundedRect(x + 3, y + 5, w, h, r);
     if (glow) g.lineStyle(8, line, glow).strokeRoundedRect(x, y, w, h, r);
     g.fillStyle(NAVY, 0.94).fillRoundedRect(x, y, w, h, r);
     g.fillStyle(0x1b2d5c, 0.45).fillRoundedRect(x + 3, y + 3, w - 6, Math.min(h * 0.45, 40), { tl: r - 3, tr: r - 3, bl: 0, br: 0 });
     g.lineStyle(3, line, 1).strokeRoundedRect(x, y, w, h, r);
+    if (rarity) drawRarityFrame(g, x, y, w, h, r, rarity); // el marco de su rareza va encima del borde (ui/rarity.ts)
     return g;
   }
 

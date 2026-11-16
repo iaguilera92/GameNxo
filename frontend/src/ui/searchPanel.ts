@@ -47,9 +47,9 @@ export function rankedSearchPanel(scene: Phaser.Scene, opts: { bet: number | nul
   g.fillStyle(bet > 1 ? 0xff4f5e : 0xffc42e, 1).fillRoundedRect(left + 2, py - 16, rw - 4, 32, 16);
   g.fillStyle(0xffffff, 0.35).fillRoundedRect(left + 12, py - 13, rw - 24, 8, 4);
   objs.push(g);
-  // texto a la izquierda y el icono a la derecha, los dos dentro de la cinta
-  const iconX = left + PAD + ribbonTxt.width + GAP + IC;
-  ribbonTxt.setX(left + PAD + ribbonTxt.width / 2);
+  // (15-11-2026) icono a la IZQUIERDA y el texto a su derecha, los dos dentro de la cinta
+  const iconX = left + PAD + IC;
+  ribbonTxt.setX(left + PAD + 2 * IC + GAP + ribbonTxt.width / 2);
   objs.push(ribbonTxt);
   objs.push(infoIcon(scene, iconX, py, IC, undefined, { onOpen: onInfoOpen, onClose: onInfoClose }));  // casillas (más grandes y notorias; el PREMIO late para llamar la atención)
   const bw = (pw - 44) / 2;
@@ -102,7 +102,7 @@ function unrankedPanel(scene: Phaser.Scene, W: number, py: number, onInfoOpen: (
   objs.push(scene.add.text(W / 2, py, 'AMISTOSO', { fontFamily: FONT, fontSize: '18px', color: '#1a2033' }).setOrigin(0.5).setLetterSpacing(2));
   const t = scene.add.text(W / 2, py + 50, 'Juegas sin apostar: no ganas monedas de apuesta', { fontFamily: FONT, fontSize: '18px', color: '#cfd8ee' }).setOrigin(0.5);
   objs.push(t);
-  objs.push(infoIcon(scene, W / 2 + t.width / 2 + 24, py + 50, 14, undefined, { onOpen: onInfoOpen, onClose: onInfoClose, unranked: true }));
+  objs.push(infoIcon(scene, W / 2 - t.width / 2 - 24, py + 50, 14, undefined, { onOpen: onInfoOpen, onClose: onInfoClose, unranked: true })); // (15-11-2026) a la izquierda
   const bw = (pw - 48) / 2;
   const by = py + 128;
   const box = (cx: number, lab: string, val: string) => {

@@ -9,7 +9,8 @@ import type { SkinId } from '../characters/skins';
 import { type ItemId, type PlayerState, type StyleId, clonePlayer, itemId, owns } from './player';
 import { shopItem } from './shopCatalog';
 import { bpAddXpInPlace } from './battlePassConfig';
-import { ZONE_STAT_MAX, type ZoneStatKey } from './zoneProgress';
+import { ZONE_STAT_MAX, type ZoneStatKey, zoneStatsOf } from './zoneProgress';
+import { MASTERY, MASTERY_MAX_POINTS, passiveOf } from './characterPassives';
 import { type InfernoPower, infernoOwned, isInfernoPower } from './infernoPowers';
 import { type ChargeFxId, chargeFxOwned, isChargeFx } from './chargeFx';
 import { type CharColorId, charColorOwned, isCharColor } from './charColors';
@@ -21,11 +22,13 @@ export type OpError =
   | 'not_enough_coins'
   | 'not_found'
   | 'not_available'
+  | 'not_in_shop'
   | 'level_too_low'
   | 'already_owned'
   | 'not_owned'
   | 'duplicate_ability'
   | 'not_enough_cash'
+  | 'real_money_only'
   | 'not_enough_rays'
   | 'stat_maxed';
 
@@ -70,6 +73,22 @@ export function levelProgress(p: { level: number; xp: number }) {
 
 // ---------------------------------------------------------------- monedas
 
+/** Marca un aviso del tutorial como visto (idempotente). */
+export function markTutorialSeen(s: PlayerState, id: string): OpResult {
+  if (s.tutorial?.includes(id)) return { ok: true, state: s };
+  const n = clonePlayer(s);
+  n.tutorial = [...(n.tutorial ?? []), id];
+  return { ok: true, state: n };
+}
+
+/** Suma DINERO virtual (billetes, gems): premios de la ruleta, del pase, etc. */
+export function addCash(s: PlayerState, amount: number): OpResult {
+  if (!Number.isInteger(amount) || amount < 0) return fail('invalid_amount');
+  const n = clonePlayer(s);
+  n.gems += amount;
+  return { ok: true, state: n };
+}
+
 export function addCoins(s: PlayerState, amount: number): OpResult {
   if (!Number.isInteger(amount) || amount < 0) return fail('invalid_amount');
   const n = clonePlayer(s);
@@ -85,14 +104,31 @@ export function spendCoins(s: PlayerState, amount: number): OpResult {
   return { ok: true, state: n };
 }
 
-/** Gasta 1 Rayo para mejorar exactamente 1% un atributo de Zona, hasta 20 niveles. */
-export function upgradeZoneStat(s: PlayerState, stat: ZoneStatKey): OpResult {
+/**
+ * Gasta 1 Rayo para mejorar exactamente 1% un atributo de Zona de un PERSONAJE (skin; por defecto el equipado), hasta 20 niveles.
+ * Los Rayos son de la cuenta; los atributos, de cada personaje (docs/MAESTRIAS.md).
+ */
+export function upgradeZoneStat(s: PlayerState, stat: ZoneStatKey, skin: string = s.equipped.skin): OpResult {
   if (s.zone.rays < 1) return fail('not_enough_rays');
-  if (s.zone.stats[stat] >= ZONE_STAT_MAX) return fail('stat_maxed');
+  if (zoneStatsOf(s.zone, skin)[stat] >= ZONE_STAT_MAX) return fail('stat_maxed');
   const n = clonePlayer(s);
   n.zone.rays -= 1;
-  n.zone.stats[stat] += 1;
+  const cur = zoneStatsOf(n.zone, skin);
+  cur[stat] += 1;
+  n.zone.stats[skin] = cur;
   return { ok: true, state: n };
+}
+
+/**
+ * MAESTRÍA: suma 1 punto al personaje skin por un partido GANADO (docs/MAESTRIAS.md). Solo cuenta desde el nivel 20 de la cuenta y hasta el
+ * nivel máximo de maestría; antes devuelve ok sin cambios (gained = 0). Solo personajes con pasiva.
+ */
+export function awardMastery(s: PlayerState, skin: string): OpResult<{ gained: number; before: number; after: number }> {
+  const before = s.mastery?.[skin] ?? 0;
+  if (!passiveOf(skin) || s.level < MASTERY.unlockLevel || before >= MASTERY_MAX_POINTS) return { ok: true, state: s, gained: 0, before, after: before };
+  const n = clonePlayer(s);
+  n.mastery = { ...(n.mastery ?? {}), [skin]: before + 1 };
+  return { ok: true, state: n, gained: 1, before, after: before + 1 };
 }
 
 // ---------------------------------------------------------------- tienda / inventario
@@ -102,6 +138,7 @@ export function purchase(s: PlayerState, id: ItemId): OpResult {
   const item = shopItem(id);
   if (!item) return fail('not_found');
   if (!item.available) return fail('not_available');
+  if (item.realMoneyOnly) return fail('real_money_only'); // solo con dinero real (CLP, aún sin pasarela de pago)
   if (s.level < item.minLevel) return fail('level_too_low');
   // la Tienda cobra DINERO: las monedas son la moneda competitiva (Ranked)
   if (!Number.isInteger(item.price) || item.price < 0) return fail('invalid_amount');

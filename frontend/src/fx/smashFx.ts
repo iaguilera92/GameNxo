@@ -22,6 +22,8 @@ export interface SmashLook {
   burst: number;
   blast: { flash: number; core: number; ring: number; lines: [number, number]; sparks: number[]; shards?: number[] };
   ring: number;
+  /** aspecto de la cinemática (los poderes que no existen en la ULTI; si no, se usa INFERNO_LOOK[el].cine) */
+  cine?: Pick<CineProfile, 'colors' | 'aura' | 'rayStyle' | 'flashTint'>;
 }
 
 export const SMASH_LOOK: Record<SmashPower, SmashLook> = {
@@ -35,7 +37,8 @@ export const SMASH_LOOK: Record<SmashPower, SmashLook> = {
     },
     aura: { col: 0xb44bff, hot: 0xff6ae6, core: 0xffffff },
     burst: 0xff8a1e,
-    blast: { flash: 0xffffff, core: 0xfff4c2, ring: 0xffd23f, lines: [0xffffff, 0xffd23f], sparks: [0xffffff, 0xfff1b8, 0xffd23f] },
+    // (12-11-2026) impacto de FUEGO: naranja y amarillo (antes blanco y dorado) + las llamas de infernoBlast en ImpactFx
+    blast: { flash: 0xfff6c8, core: 0xffb44a, ring: 0xff7a1a, lines: [0xffd23f, 0xff7a1a], sparks: [0xfff1b8, 0xffb020, 0xff5a12] },
     ring: 0xff9a2e,
   },
   ice: {
@@ -63,8 +66,9 @@ export const SMASH_LOOK: Record<SmashPower, SmashLook> = {
     // torbellino: ráfagas verdes claras que flotan un poco (no suben como el fuego ni caen como la escarcha)
     ball: { core: 0xd8ffe6, trail: 0x5fd68a, flames: [0xffffff, 0xc8ffd8, 0x7ff0a8, 0x2fbf6a], rise: 0.35, shards: false },
     smoke: {
-      normal: { colors: [0xe0ffe9, 0xb4f5c8, 0x86e3a6], alpha: 0.5 },
-      strong: { colors: [0xf0fff4, 0xc8ffd8, 0x8ff0b0, 0x3fd68a], alpha: 0.6 },
+      // (14-11-2026) poco humo: el viento se reconoce por su torbellino y ráfagas (fx/smashElementFx.ts)
+      normal: { colors: [0xe0ffe9, 0xb4f5c8, 0x86e3a6], alpha: 0.18 },
+      strong: { colors: [0xf0fff4, 0xc8ffd8, 0x8ff0b0, 0x3fd68a], alpha: 0.24 },
       sparks: [0xffffff, 0xb8ff9a, 0x5fd16f],
       additive: false,
     },
@@ -77,8 +81,9 @@ export const SMASH_LOOK: Record<SmashPower, SmashLook> = {
     // electricidad: chispas en estrella (shards) amarillas y azules que saltan sin subir; bruma azul pálida
     ball: { core: 0xfffbe0, trail: 0xffe14a, flames: [0xffffff, 0xfff36b, 0x7fc8ff, 0x2f6bff], rise: 0, shards: true },
     smoke: {
-      normal: { colors: [0xdfe9ff, 0xaec8ff, 0x7fa6ff], alpha: 0.5 },
-      strong: { colors: [0xf4f8ff, 0xc8dcff, 0x8fb4ff, 0x3a7bff], alpha: 0.6 },
+      // (14-11-2026) casi sin bruma: el rayo se reconoce por sus descargas (fx/smashElementFx.ts)
+      normal: { colors: [0xdfe9ff, 0xaec8ff, 0x7fa6ff], alpha: 0.15 },
+      strong: { colors: [0xf4f8ff, 0xc8dcff, 0x8fb4ff, 0x3a7bff], alpha: 0.2 },
       sparks: [0xffffff, 0xfff36b, 0x5aa8ff],
       additive: false,
     },
@@ -94,6 +99,52 @@ export const SMASH_LOOK: Record<SmashPower, SmashLook> = {
     },
     ring: 0xffe14a,
   },
+  // (14-11-2026) SOMBRA: esfera oscura con llamas moradas que suben y humo negro denso
+  shadow: {
+    ball: { core: 0x2a0a4a, trail: 0x7a2fd6, flames: [0x1a0630, 0x4a1a8a, 0x9b4dff, 0xd0a8ff], rise: 0.7, shards: false },
+    smoke: {
+      normal: { colors: [0x120818, 0x1e0f2a, 0x2c1640], alpha: 0.82 },
+      strong: { colors: [0x08040c, 0x140a1e, 0x22123a, 0x3a1a5e], alpha: 0.88 },
+      sparks: [0xd0a8ff, 0x9b4dff, 0xffffff],
+      additive: false,
+    },
+    aura: { col: 0x4a1a8a, hot: 0x9b4dff, core: 0xe8d8ff },
+    burst: 0x9b4dff,
+    blast: { flash: 0xe8d8ff, core: 0x9b4dff, ring: 0x7a2fd6, lines: [0xd0a8ff, 0x4a1a8a], sparks: [0xffffff, 0xd0a8ff, 0x9b4dff] },
+    ring: 0x9b4dff,
+    cine: {
+      colors: { core: 0xe8d8ff, gold: 0x9b4dff, hot: 0x2a0a4a, cyan: 0x7a2fd6 },
+      aura: [
+        [1.3, 0x1a0630, 0.3],
+        [1.08, 0x4a1a8a, 0.28],
+        [0.86, 0x9b4dff, 0.22],
+      ],
+      flashTint: 0xd0a8ff,
+    },
+  },
+  // (12-11-2026) LUZ (antes ESTRELLA): esfera de luz blanca con halo dorado; deja motas de luz y casi no echa humo
+  light: {
+    ball: { core: 0xffffff, trail: 0xfff0b0, flames: [0xffffff, 0xfffbe0, 0xfff1a0, 0xcfe9ff], rise: 0.1, shards: false },
+    smoke: {
+      normal: { colors: [0xfff6d8, 0xffe6a0, 0xffd27a], alpha: 0.15 },
+      strong: { colors: [0xfffbe8, 0xfff0b8, 0xffdc8a, 0xffc0e0], alpha: 0.2 },
+      sparks: [0xffffff, 0xfff1a0, 0xffd23f],
+      additive: false,
+    },
+    aura: { col: 0xffb020, hot: 0xfff1a0, core: 0xffffff },
+    burst: 0xffd23f,
+    blast: { flash: 0xffffff, core: 0xfff6c8, ring: 0xffd23f, lines: [0xffffff, 0xffd23f], sparks: [0xffffff, 0xfff1a0, 0xffd23f], shards: [0xffffff, 0xfff1a0, 0xffd23f, 0xff9ad8] },
+    ring: 0xffc83a,
+    cine: {
+      colors: { core: 0xffffff, gold: 0xffd23f, hot: 0xffb020, cyan: 0xfff1a0 },
+      aura: [
+        [1.3, 0xffb020, 0.22],
+        [1.08, 0xffd23f, 0.24],
+        [0.86, 0xfff6c8, 0.24],
+      ],
+      flashTint: 0xfffbe0,
+    },
+  },
 };
 
 const CINES: Partial<Record<SmashPower, CineProfile>> = {};
@@ -102,7 +153,8 @@ export function smashCine(el: SmashPower): CineProfile {
   if (el === 'fire') return SMASH_CINE;
   let p = CINES[el];
   if (!p) {
-    p = { ...SMASH_CINE, ...INFERNO_LOOK[el].cine };
+    const own = SMASH_LOOK[el].cine ?? INFERNO_LOOK[el as Exclude<SmashPower, 'shadow' | 'light'>].cine;
+    p = { ...SMASH_CINE, ...own };
     CINES[el] = p;
   }
   return p;

@@ -1,7 +1,9 @@
-﻿import Phaser from 'phaser';
+import Phaser from 'phaser';
 import { FONT, textStyle } from './theme';
 import { type ArcadePalette, arcadeButton } from './modeButtons';
 import { sfx } from '../fx/sfx';
+import { RARITY_LABEL, type ItemRarity } from '../domain/shopCatalog';
+import { RARITY_STYLE, drawRarityFrame } from './rarity';
 
 /** Cuántos huecos muestra el diálogo: 2 filas × 5. */
 export const POWER_SLOTS = 10;
@@ -22,6 +24,8 @@ export interface PowerSlot {
   preview: IconFactory;
   /** dibujo pequeño del hueco; sin él se usa `preview` */
   thumb?: IconFactory;
+  /** rareza del poder: su marco en el hueco (ausente = sin marco: gratis o sin clasificar) */
+  rarity?: ItemRarity;
   /** equipar este hueco (solo si lo tiene); el diálogo marca el cambio y llama a `onClose({ changed })` al cerrar */
   onEquip?: () => void;
 }
@@ -88,7 +92,10 @@ export function openPowerDialog(scene: Phaser.Scene, opts: PowerDialogOpts) {
   const px = 30;
   const tvH = 330;
   const slot = Math.floor((pw - 40 - (COLS - 1) * 10) / COLS);
-  const gridH = slot * 2 + 12;
+  // 2 filas de 5 como mínimo; con más poderes (EFECTO PELOTA tiene 13) se añaden filas
+  const ROWS = Math.max(2, Math.ceil(slots.length / COLS));
+  const TOTAL = ROWS * COLS;
+  const gridH = slot * ROWS + 12 * (ROWS - 1);
   /** franja bajo la televisión para el botón de acción (EQUIPAR / EQUIPADO / IR A LA TIENDA) */
   const ACT_H = 124;
   const ph = 70 + tvH + ACT_H + gridH + 26;
@@ -253,7 +260,11 @@ export function openPowerDialog(scene: Phaser.Scene, opts: PowerDialogOpts) {
       g.clear();
       if (on) g.fillStyle(color, 0.18).fillRoundedRect(cx - slot / 2 - 4, cy - slot / 2 - 4, slot + 8, slot + 8, 20);
       g.fillStyle(s?.owned ? 0x10224d : 0x08122b, 1).fillRoundedRect(cx - slot / 2, cy - slot / 2, slot, slot, 16);
-      g.lineStyle(on || s?.equipped ? 4 : 2, s?.equipped ? color : on ? 0x6f86bd : 0x24365f, 1).strokeRoundedRect(cx - slot / 2, cy - slot / 2, slot, slot, 16);
+      if (s?.rarity) {
+        // el marco de su rareza; lo equipado se marca con un aro exterior del color del diálogo
+        drawRarityFrame(g, cx - slot / 2, cy - slot / 2, slot, slot, 16, s.rarity);
+        if (s.equipped) g.lineStyle(3, color, 1).strokeRoundedRect(cx - slot / 2 - 5, cy - slot / 2 - 5, slot + 10, slot + 10, 20);
+      } else g.lineStyle(on || s?.equipped ? 4 : 2, s?.equipped ? color : on ? 0x6f86bd : 0x24365f, 1).strokeRoundedRect(cx - slot / 2, cy - slot / 2, slot, slot, 16);
     });
 
   const show = (i: number) => {
@@ -349,12 +360,23 @@ export function openPowerDialog(scene: Phaser.Scene, opts: PowerDialogOpts) {
       drawLock(lk, 96, 0xaebfe6);
       screen.add(lk);
       screen.add(scene.add.text(sx + sw / 2, sy + 182, 'BLOQUEADO', { ...textStyle(26), color: '#aebfe6' }).setOrigin(0.5));
-      screen.add(scene.add.text(sx + sw / 2, sy + 214, `Hueco ${i + 1} de ${POWER_SLOTS}. Aún no disponible.`, { fontFamily: FONT, fontSize: '14px', color: '#7f93bf', align: 'center', wordWrap: { width: sw - 40 } }).setOrigin(0.5, 0));
+      screen.add(scene.add.text(sx + sw / 2, sy + 214, `Hueco ${i + 1} de ${TOTAL}. Aún no disponible.`, { fontFamily: FONT, fontSize: '14px', color: '#7f93bf', align: 'center', wordWrap: { width: sw - 40 } }).setOrigin(0.5, 0));
     }
-  };
+    // etiqueta de RAREZA en la esquina superior derecha de la pantalla (solo los poderes con rareza)
+    if (s?.rarity) {
+      const RS = RARITY_STYLE[s.rarity];
+      const lab = scene.add.text(0, 0, RARITY_LABEL[s.rarity], { fontFamily: FONT, fontSize: '16px', color: '#' + RS.light.toString(16).padStart(6, '0') }).setOrigin(0.5).setLetterSpacing(2);
+      const pw2 = lab.width + 28;
+      const ph2 = 30;
+      const pill = scene.add.graphics();
+      pill.fillStyle(0x040a1a, 0.9).fillRoundedRect(-pw2 / 2, -ph2 / 2, pw2, ph2, 15);
+      pill.lineStyle(2.5, RS.main, 1).strokeRoundedRect(-pw2 / 2, -ph2 / 2, pw2, ph2, 15);
+      const tag2 = scene.add.container(sx + sw - 16 - pw2 / 2, sy + 16 + ph2 / 2, [pill, lab]);
+      screen.add(tag2);
+    }  };
 
   // ---------------------------------------------------------------- huecos (2 filas × 5)
-  for (let i = 0; i < POWER_SLOTS; i++) {
+  for (let i = 0; i < TOTAL; i++) {
     const cx = cellX(i);
     const cy = cellY(i);
     const s = slots[i];

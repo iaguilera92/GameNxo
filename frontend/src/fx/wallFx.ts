@@ -1,13 +1,15 @@
 import Phaser from 'phaser';
-import type { InfernoElement } from './InfernoFx';
+import type { FxElement } from './InfernoFx';
 
 /** Colores del choque de una pelota con poder según su elemento (destello y onda). */
-const POWER_WALL: Record<InfernoElement, { hot: number; ring: number }> = {
+const POWER_WALL: Record<FxElement, { hot: number; ring: number }> = {
   fire: { hot: 0xffb347, ring: 0xff7a1e },
   ice: { hot: 0xbff0ff, ring: 0x4aa8ff },
   wind: { hot: 0xd8ffe0, ring: 0x3fd68a },
   lightning: { hot: 0xfff36b, ring: 0x3a7bff },
   tulip: { hot: 0xffd0e6, ring: 0xff6fae },
+  shadow: { hot: 0xd0a8ff, ring: 0x7a2fd6 },
+  light: { hot: 0xffffff, ring: 0xfff0b0 },
 };
 
 /**
@@ -33,7 +35,7 @@ export class WallFx {
    * (x, y) de pantalla del contacto; k = escala de perspectiva en la pared; depth = por delante de la pared.
    * `el`: poder de la bola que choca (ESPECIAL o ULTI): sus colores y su choque propio (elementHit).
    */
-  impact(kind: 'pad' | 'fence', x: number, y: number, k: number, depth: number, power: boolean, el: InfernoElement = 'fire') {
+  impact(kind: 'pad' | 'fence', x: number, y: number, k: number, depth: number, power: boolean, el: FxElement = 'fire') {
     const sc = this.scene;
     const hot = power ? POWER_WALL[el].hot : 0xffffff;
     const ring = power ? POWER_WALL[el].ring : kind === 'pad' ? 0xffe066 : 0xbfe8ff;
@@ -79,7 +81,7 @@ export class WallFx {
    *   viento   remolino que se abre + hojas y ráfagas a los lados
    *   tulipán  pétalos que caen
    */
-  private elementHit(el: InfernoElement, x: number, y: number, k: number, depth: number) {
+  private elementHit(el: FxElement, x: number, y: number, k: number, depth: number) {
     const sc = this.scene;
     const ADD = Phaser.BlendModes.ADD;
     const R = (a: number, b: number) => a + Math.random() * (b - a);
@@ -179,7 +181,7 @@ export class WallFx {
 }
 
 /** Sonido propio del poder al chocar: chasquido eléctrico (rayo), tintineo (hielo) o ráfaga (viento). */
-function elementSound(scene: Phaser.Scene, el: InfernoElement) {
+function elementSound(scene: Phaser.Scene, el: FxElement) {
   const ctx = (scene.sound as Phaser.Sound.WebAudioSoundManager)?.context as AudioContext | undefined;
   if (!ctx || ctx.state !== 'running' || (el !== 'lightning' && el !== 'ice' && el !== 'wind')) return;
   const now = ctx.currentTime;

@@ -28,13 +28,15 @@ export interface Ambiente {
   wallTopY: number;
   fenceTopY: number;
   surface: Surface;
+  /** color medio de la fila de arriba de la imagen (cielo que la continúa al alejar la cámara) */
+  sky?: number;
 }
 
 /** Ambientes panorámicos optimizados en WebP, cargados aleatoriamente al iniciar cada partido. */
 export const AMBIENTES: Ambiente[] = [
-  { key: 'ambiente-1', file: 'ambiente-1.webp', w: 1536, h: 1024, wallBottomY: 318, wallTopY: 265, fenceTopY: 205, surface: 'hard' },
-  { key: 'ambiente-2', file: 'ambiente-2.webp', w: 1536, h: 1024, wallBottomY: 345, wallTopY: 268, fenceTopY: 196, surface: 'clay' },
-  { key: 'ambiente-3', file: 'ambiente-3.webp', w: 1536, h: 1024, wallBottomY: 418, wallTopY: 359, fenceTopY: 222, surface: 'hard' },
+  { key: 'ambiente-1', file: 'ambiente-1.webp', w: 1536, h: 1024, wallBottomY: 318, wallTopY: 265, fenceTopY: 205, surface: 'hard', sky: 0x031d6b },
+  { key: 'ambiente-2', file: 'ambiente-2.webp', w: 1536, h: 1024, wallBottomY: 345, wallTopY: 268, fenceTopY: 196, surface: 'clay', sky: 0x0c2e35 },
+  { key: 'ambiente-3', file: 'ambiente-3.webp', w: 1536, h: 1024, wallBottomY: 418, wallTopY: 359, fenceTopY: 222, surface: 'hard', sky: 0x143d7e },
 ];
 
 /** y en pantalla donde debe quedar el muro del fondo (un poco por detrás de la cancha) */
@@ -95,7 +97,10 @@ export function drawCourtView(scene: Phaser.Scene, preferred?: string | null): D
   const imgBottom = top + amb.h * s;
   // Relleno común bajo el escenario. La transición encima suaviza el borde inferior de cada imagen.
   scene.add.rectangle(-1000, imgBottom - 4, VIEW.W + 2000, Math.max(0, H - imgBottom) + 440, SHARED_FOOTER).setOrigin(0).setDepth(-21);
-  scene.add.image(VIEW.W / 2, top, amb.key).setOrigin(0.5, 0).setScale(s).setDepth(-20);
+  // '__BASE' explícito: los recortes del cielo (extendTop) se añaden como frames de esta misma textura y Phaser cambia su
+  // primer frame al añadir uno: sin esto, desde el 2º partido el estadio se dibujaba con la franja de 3 px (todo negro)
+  scene.add.image(VIEW.W / 2, top, amb.key, '__BASE').setOrigin(0.5, 0).setScale(s).setDepth(-20);
+  extendTop(scene, amb, top, s);
   const fade = scene.add.graphics().setDepth(-19);
   fade.fillGradientStyle(SHARED_FOOTER, SHARED_FOOTER, SHARED_FOOTER, SHARED_FOOTER, 0, 0, 1, 1)
     .fillRect(-1000, imgBottom - 220, VIEW.W + 2000, 270);
@@ -113,6 +118,39 @@ export function drawCourtView(scene: Phaser.Scene, preferred?: string | null): D
   g.destroy();
   return { wallAtY: WALL_AT_Y, padPx: (amb.wallBottomY - amb.wallTopY) * s, fencePx: (amb.wallBottomY - amb.fenceTopY) * s, key: amb.key };
 }
+
+/**
+ * (14-11-2026) CIELO sobre la imagen del ambiente: al alejar la cámara (globo) se veía una franja negra arriba. Se estira la
+ * fila de arriba de la imagen hacia arriba (continúa sus colores) y se funde con el color medio de esa fila, que cubre el resto.
+ */
+function extendTop(scene: Phaser.Scene, amb: Ambiente, top: number, s: number) {
+  // (15-11-2026) sin estirar filas/columnas de la imagen: estirar 3 px dejaba LÍNEAS (rayas) arriba y a los lados al alejar la
+  // cámara. Ahora: color liso del cielo de cada ambiente y un degradado que se funde DENTRO del borde de la imagen (sin corte).
+  const avg = amb.sky ?? 0x0b1530;
+  const W0 = -1500;
+  const WW = VIEW.W + 3000;
+  scene.add.rectangle(W0, top + 2, WW, 2200, avg).setOrigin(0, 1).setDepth(-22);
+  const fade = scene.add.graphics().setDepth(-19);
+  fade.fillGradientStyle(avg, avg, avg, avg, 1, 1, 0, 0).fillRect(W0, top - 2, WW, SKY_BLEND);
+  // COSTADOS: fondo oscuro liso fuera de la imagen y un degradado que entra en su borde
+  const iw = amb.w * s;
+  const ih = amb.h * s;
+  const left = VIEW.W / 2 - iw / 2;
+  const dark = 0x050b1c;
+  for (const side of [-1, 1] as const) {
+    const edge = side < 0 ? left : left + iw;
+    scene.add.rectangle(side < 0 ? edge - 1500 : edge, top, 1500, ih + 600, dark).setOrigin(0, 0).setDepth(-22);
+    const v = scene.add.graphics().setDepth(-19);
+    const x0 = side < 0 ? edge - 2 : edge - SIDE_BLEND + 2;
+    const a0 = side < 0 ? 1 : 0;
+    const a1 = side < 0 ? 0 : 1;
+    v.fillGradientStyle(dark, dark, dark, dark, a0, a1, a0, a1).fillRect(x0, top, SIDE_BLEND, ih);
+  }
+}
+/** cuánto entra el degradado del cielo / de los costados en el borde de la imagen (px de mundo) */
+const SKY_BLEND = 90;
+const SIDE_BLEND = 70;
+
 
 // ================================================================ utilidades de dibujo
 

@@ -1,6 +1,6 @@
 import { Capacitor } from '@capacitor/core';
 
-export type AdPlacement = 'match_victory' | 'wheel_reward_bonus' | 'daily_reward' | 'daily_reward_bonus';
+export type AdPlacement = 'match_victory' | 'wheel_reward_bonus' | 'daily_reward' | 'daily_reward_bonus' | 'chest_open_now';
 export interface AdsProvider {
   showInterstitial(options: { placement: AdPlacement; adUnitId: string }): Promise<void>;
   /** `true` solo cuando el SDK confirma que el usuario completó el anuncio recompensado. */

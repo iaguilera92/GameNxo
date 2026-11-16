@@ -12,11 +12,14 @@ import { EMOTES } from './emotes';
 import { sanitizeRanked } from './ranked';
 import { sanitizeLogin } from './dailyLogin';
 import { sanitizeZoneProgress } from './zoneProgress';
+import { sanitizeMastery } from './characterPassives';
 import { isInfernoPower } from './infernoPowers';
 import { chargeFxOwned, isChargeFx } from './chargeFx';
 import { CHAR_COLOR_LIST, charColorOwned, isCharColor } from './charColors';
 import { isSmashPower, smashOwned } from './smashPowers';
 import { defensiveOwned, isDefensivePower } from './defensivePowers';
+import { isTutorialId } from './tutorial';
+import { sanitizeChest } from './chest';
 
 /** Todos los ítems que existen (los demás ids guardados se descartan). */
 // Mai deja de ser inicial para quedar como gran premio del nivel 30; se conserva en perfiles antiguos.
@@ -52,6 +55,13 @@ export function migratePlayer(raw: unknown, starter: StarterSkin = 'nxo'): Playe
     s.login = sanitizeLogin(r.login);
   }
   if (version >= 7) s.zone = sanitizeZoneProgress(r.zone);
+  // MAESTRÍAS por personaje (domain/characterPassives.ts): solo personajes con pasiva y puntos válidos
+  const mastery = sanitizeMastery(r.mastery);
+  if (mastery) s.mastery = mastery;
+  // tutorial por nivel: solo ids de avisos que existen
+  if (Array.isArray(r.tutorial)) s.tutorial = [...new Set(r.tutorial.filter(isTutorialId))];
+  const chest = sanitizeChest(r.chest); // cofre evolutivo de la ruleta (domain/chest.ts)
+  if (chest) s.chest = chest;
   if (typeof r.giftDay === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(r.giftDay)) s.giftDay = r.giftDay; // regalo gratis de la Tienda
 
   s.name = str(r.name, s.name);
@@ -61,7 +71,9 @@ export function migratePlayer(raw: unknown, starter: StarterSkin = 'nxo'): Playe
   if (isV2) {
     s.coins = Math.max(0, Math.floor(num(r.coins, s.coins)));
     s.gems = Math.max(0, Math.floor(num(r.gems, 0)));
-    const owned = Array.isArray(r.owned) ? r.owned.filter((x): x is ItemId => typeof x === 'string' && KNOWN_ITEMS.has(x)) : [];
+    // (12-11-2026) el especial ESTRELLA pasó a llamarse LUZ: se conserva lo comprado y lo equipado
+    const renamed = Array.isArray(r.owned) ? r.owned.map((x) => (x === 'smash:star' ? 'smash:light' : x)) : [];
+    const owned = renamed.filter((x): x is ItemId => typeof x === 'string' && KNOWN_ITEMS.has(x));
     s.owned = [...new Set<ItemId>([...STARTER_ITEMS, ...owned])];
   }
   // premios del pase ya reclamados que hoy son cosméticos (la tabla cambió): se entregan
@@ -82,7 +94,8 @@ export function migratePlayer(raw: unknown, starter: StarterSkin = 'nxo'): Playe
     // efecto de carga elegido: solo si lo tiene (clásico, el de su personaje o comprado)
     if (isChargeFx(eq.charge) && chargeFxOwned(s.owned, eq.charge, s.equipped.skin)) s.equipped.charge = eq.charge;
     // poder del ESPECIAL (SMASH) elegido: solo si lo tiene
-    if (isSmashPower(eq.smash) && smashOwned(s.owned, eq.smash)) s.equipped.smash = eq.smash;
+    const smashId = eq.smash === 'star' ? 'light' : eq.smash;
+    if (isSmashPower(smashId) && smashOwned(s.owned, smashId)) s.equipped.smash = smashId;
     // estilo de color del personaje: solo si lo tiene (el clásico es de todos)
     if (isCharColor(eq.color) && charColorOwned(s.owned, eq.color)) s.equipped.color = eq.color;
     // poder del defensivo elegido: solo si lo tiene (el DASH es de todos)

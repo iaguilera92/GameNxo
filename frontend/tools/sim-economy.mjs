@@ -39,7 +39,7 @@ export async function load(url, ctx, next) {
   const r = await next(url, ctx);
   const x = ${JSON.stringify(XP_PROPOSED)};
   if (x && url.endsWith('/src/config.ts')) {
-    const src = String(r.source).replace(/(xpToNext = \\(lvl: number\\) => )[^;]+;/, '$1' + x);
+    const src = String(r.source).replace(/(xpToNext = \\((?:_lvl|lvl): number\\) => )[^;]+;/, '$1' + x);
     return { ...r, source: src };
   }
   return r;
@@ -56,6 +56,8 @@ const L = await import('../src/domain/dailyLogin.ts');
 const BP = await import('../src/domain/battlePass.ts');
 const SHOP = await import('../src/domain/shopCatalog.ts');
 const Z = await import('../src/domain/zoneProgress.ts');
+// la ZONA es por personaje (15-11-2026): el simulador juega con Nxo
+const zs = (st) => Z.zoneStatsOf(st.zone, 'nxo');
 const U = await import('../src/domain/unlocks.ts');
 const TS = await import('../src/domain/timeSource.ts');
 const CFG = await import('../src/config.ts');
@@ -267,6 +269,11 @@ function simulate(profileKey, seed) {
             const sp = W.spin(s, rw.unlocked, now, rnd);
             if (sp.ok) {
               s = sp.state;
+              // el jugador toca la ruleta las 4 veces (cada toque tira para subirla de nivel: dorada +15 %, épica +20 %)
+              for (let k = 1; k < WC.WHEEL.tiers.maxTaps; k++) {
+                const b = W.boost(s, rw.unlocked, now, rnd);
+                if (b.ok) s = b.state;
+              }
               const lvl0 = s.level;
               const c = W.claim(s, rw.unlocked, now);
               if (c.ok && c.given) {
@@ -305,13 +312,13 @@ function simulate(profileKey, seed) {
       }
       // ZONA: los Rayos se gastan en cuanto se desbloquea
       if (U.isUnlocked('zone', s.level))
-        for (const k of Z.ZONE_STAT_KEYS) while (s.zone.rays > 0 && s.zone.stats[k] < Z.ZONE_STAT_MAX && s.zone.stats[k] <= Math.min(...Z.ZONE_STAT_KEYS.map((q) => s.zone.stats[q]))) book('ZONA', OPS.upgradeZoneStat(s, k).state);
+        for (const k of Z.ZONE_STAT_KEYS) while (s.zone.rays > 0 && zs(s)[k] < Z.ZONE_STAT_MAX && zs(s)[k] <= Math.min(...Z.ZONE_STAT_KEYS.map((q) => zs(s)[q]))) book('ZONA', OPS.upgradeZoneStat(s, k, 'nxo').state);
       // tienda: el más barato que alcance
       let again = true;
       while (again) {
         again = false;
         for (const it of SHOP_BY_PRICE) {
-          if (P.owns(s, it.id) || s.level < it.minLevel || s.gems < it.price) continue;
+          if (P.owns(s, it.id) || it.realMoneyOnly || s.level < it.minLevel || s.gems < it.price) continue;
           const r = OPS.purchase(s, it.id);
           if (r.ok) {
             book('tienda', r.state);
@@ -324,7 +331,7 @@ function simulate(profileKey, seed) {
       }
     }
     if (brokeToday) brokeDays++;
-    if (allOwnedDay == null && SHOP.SHOP_ITEMS.every((it) => P.owns(s, it.id))) allOwnedDay = day + 1;
+    if (allOwnedDay == null && SHOP.SHOP_ITEMS.filter((it) => !it.realMoneyOnly).every((it) => P.owns(s, it.id))) allOwnedDay = day + 1;
     if (passDay == null && BP.bpLevel(s.bp.xp).level >= BP.BP_TIERS) passDay = day + 1;
     {
       const id = BP.BP_SEASON.month;
@@ -336,10 +343,10 @@ function simulate(profileKey, seed) {
     }
     // dinero ganado total (para "cuándo podría comprar cada ítem ahorrando solo para él")
     const earned = Object.entries(led.gems).filter(([k, v]) => v > 0 && k !== 'tienda').reduce((a, [, v]) => a + v, 0);
-    for (const it of SHOP.SHOP_ITEMS) if (earned >= it.price) firstAffordDay[it.id] ??= day + 1;
+    for (const it of SHOP.SHOP_ITEMS) if (!it.realMoneyOnly && earned >= it.price) firstAffordDay[it.id] ??= day + 1;
     for (const [, lvl] of UNLOCK_AT) if (s.level >= lvl && levelDay[lvl] === day + 1) events.push(day + 1);
     if ([7, 14, 30, 60, DAYS].includes(day + 1))
-      balances[day + 1] = { coins: s.coins, gems: s.gems, level: s.level, pass: BP.bpLevel(s.bp.xp).level, league: s.ranked.league, rays: s.zone.rays, zone: Z.ZONE_STAT_KEYS.reduce((a, k) => a + s.zone.stats[k], 0) };
+      balances[day + 1] = { coins: s.coins, gems: s.gems, level: s.level, pass: BP.bpLevel(s.bp.xp).level, league: s.ranked.league, rays: s.zone.rays, zone: Z.ZONE_STAT_KEYS.reduce((a, k) => a + zs(s)[k], 0) };
   }
   const evDays = [...new Set(events)].sort((a, b) => a - b);
   const gaps = evDays.map((d, i) => d - (i ? evDays[i - 1] : 0));
@@ -412,14 +419,30 @@ const ev = WC.WHEEL.slots.reduce((acc, sl) => {
   const p = sl.weight / 10000;
   if (sl.prize.kind === 'coins') acc.coins += p * sl.prize.amount;
   if (sl.prize.kind === 'xp') acc.xp += p * sl.prize.amount;
+  if (sl.prize.kind === 'cash') acc.cash += p * sl.prize.amount;
   if (sl.prize.kind === 'epic') {
     const tw = sl.prize.options.reduce((a, o) => a + o.weight, 0);
     for (const o of sl.prize.options) acc[o.kind] += (p * o.weight * o.amount) / tw;
   }
   if (sl.prize.kind === 'cosmetic') acc.cos += p;
   return acc;
-}, { coins: 0, xp: 0, cos: 0 });
-console.log(`Ruleta (valor esperado por giro): ${fmt(ev.coins)} monedas · ${fmt(ev.xp)} XP · cosmético ${(ev.cos * 100).toFixed(0)} %`);
+}, { coins: 0, xp: 0, cos: 0, cash: 0 });
+console.log(`Ruleta (valor esperado por giro): ${fmt(ev.coins)} monedas · ${fmt(ev.xp)} XP · ${ev.cash.toFixed(2)} de dinero · cosmético ${(ev.cos * 100).toFixed(0)} %`);
+{
+  // niveles de la ruleta tras los 4 toques: normal / dorada / épica y cuánto suben los premios de media
+  const up = WC.WHEEL.tiers.upgrade;
+  let d = { normal: 1, gold: 0, epic: 0 };
+  for (let k = 0; k < WC.WHEEL.tiers.maxTaps; k++) {
+    d = {
+      normal: d.normal * (1 - (up.normal.gold + up.normal.epic) / 10000),
+      gold: d.gold * (1 - up.gold.epic / 10000) + d.normal * (up.normal.gold / 10000),
+      epic: d.epic + d.gold * (up.gold.epic / 10000) + d.normal * (up.normal.epic / 10000),
+    };
+  }
+  const bp = WC.WHEEL.tiers.bonusPct;
+  const mult = 1 + (d.gold * bp.gold + d.epic * bp.epic) / 100;
+  console.log(`Niveles de la ruleta con ${WC.WHEEL.tiers.maxTaps} toques: normal ${(d.normal * 100).toFixed(0)} % · dorada ${(d.gold * 100).toFixed(0)} % · épica ${(d.epic * 100).toFixed(0)} % → premios ×${mult.toFixed(3)} de media`);
+}
 {
   const lr = L.LOGIN.rewards;
   const six = lr.slice(0, -1);

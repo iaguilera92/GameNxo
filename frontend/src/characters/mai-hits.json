@@ -2,25 +2,25 @@
   "source": "pj-mai-2.png (fila 1-7)",
   "view": "back",
   "cell": {
-    "w": 212,
-    "h": 150
+    "w": 152,
+    "h": 225
   },
   "origin": {
     "x": 0.5,
-    "y": 0.93333
+    "y": 0.98222
   },
-  "standHeight": 112,
+  "standHeight": 190,
   "hold": 1,
   "serveWait": 2,
   "smashStart": 2,
   "serveRacket": {
     "normal": {
-      "dx": 12,
-      "z": 128
+      "dx": 18,
+      "z": 168
     },
     "spin": {
       "dx": 20,
-      "z": 146
+      "z": 160
     }
   },
   "holdForehand": 1,
@@ -32,42 +32,90 @@
       "frames": 8,
       "fps": 15,
       "loop": false,
-      "impact": 6
+      "impact": 6,
+      "cell": {
+        "w": 218,
+        "h": 216
+      },
+      "origin": {
+        "x": 0.5,
+        "y": 0.98148
+      }
     },
     "backhand": {
       "file": "backhand.webp",
       "frames": 8,
       "fps": 15,
       "loop": false,
-      "impact": 5
+      "impact": 5,
+      "cell": {
+        "w": 180,
+        "h": 213
+      },
+      "origin": {
+        "x": 0.5,
+        "y": 0.98122
+      }
     },
     "forehand-power": {
       "file": "forehand-power.webp",
       "frames": 8,
       "fps": 15,
       "loop": false,
-      "impact": 5
+      "impact": 5,
+      "cell": {
+        "w": 290,
+        "h": 225
+      },
+      "origin": {
+        "x": 0.5,
+        "y": 0.98222
+      }
     },
     "backhand-power": {
       "file": "backhand-power.webp",
       "frames": 8,
       "fps": 15,
       "loop": false,
-      "impact": 5
+      "impact": 5,
+      "cell": {
+        "w": 188,
+        "h": 212
+      },
+      "origin": {
+        "x": 0.5,
+        "y": 0.98113
+      }
     },
     "serve": {
       "file": "serve.webp",
       "frames": 8,
       "fps": 12,
       "loop": false,
-      "impact": 4
+      "impact": 4,
+      "cell": {
+        "w": 184,
+        "h": 249
+      },
+      "origin": {
+        "x": 0.5,
+        "y": 0.98394
+      }
     },
     "smash": {
       "file": "smash.webp",
       "frames": 8,
       "fps": 14,
       "loop": false,
-      "impact": 4
+      "impact": 4,
+      "cell": {
+        "w": 186,
+        "h": 250
+      },
+      "origin": {
+        "x": 0.5,
+        "y": 0.984
+      }
     }
   }
 }

@@ -121,6 +121,17 @@ const TULIPBALL_ART: BallArt = {
 
 /** Elemento de la bola del INFERNO = el poder que eligió el jugador (domain/infernoPowers.ts). */
 export type InfernoElement = InfernoPower;
+/** Elemento de CUALQUIER bola de poder: los de la ULTI más los que solo existen en el ESPECIAL (sombra, estrella). */
+export type FxElement = InfernoElement | 'shadow' | 'light';
+/** Colores del destello de golpe de los poderes que solo tiene el ESPECIAL (los demás, INFERNO_LOOK[el].hit). */
+const EXTRA_HIT: Record<'shadow' | 'light', { ring: number; star: number; flash: [number, number, number] }> = {
+  shadow: { ring: 0x9b4dff, star: 0xd0a8ff, flash: [170, 110, 255] },
+  light: { ring: 0xfff0b0, star: 0xffffff, flash: [255, 250, 220] },
+};
+/** Destello de golpe de un poder (ULTI o ESPECIAL). */
+export function hitLookOf(el: FxElement = 'fire') {
+  return el === 'shadow' || el === 'light' ? EXTRA_HIT[el] : INFERNO_LOOK[el].hit;
+}
 export const BALL_ART: Record<InfernoElement, BallArt> = { fire: FIREBALL_ART, ice: ICEBALL_ART, wind: WINDBALL_ART, lightning: LIGHTNINGBALL_ART, tulip: TULIPBALL_ART };
 
 /** Tamaño en pantalla [ancho, alto] de una bola de alto `h` (las cuadradas, h × h). */

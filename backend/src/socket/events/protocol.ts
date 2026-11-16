@@ -121,6 +121,8 @@ export interface BallWire {
   ay?: number;
   /** gravedad propia de este vuelo (globo disparado); el receptor la usa tal cual */
   g?: number;
+  /** DROP SHOT 0: efecto hacia atrás (al botar vuelve sobre la red); el receptor lo usa tal cual */
+  back?: number;
 }
 
 /** Estado del propio jugador (coordenadas del emisor). */
@@ -182,7 +184,7 @@ export interface HitMsg {
  *  smash-armed / smash-disarmed el emisor arma / consume su SMASH (aura en el rival)
  *  smash-cine                   empieza la cinemática del SMASH del emisor (data: x, y, overhead, ms)
  *  inferno-cine                 empieza la cinemática del INFERNO del emisor (data: x, y, tx, ty, ms, power)
- *  defensive                    SOMBRA / SUPERSALTO / DESTELLO / teletransporte del emisor (data: kind = shadow | jump | blink | warp, x, y, tx, ty, ms | out, in, delay)
+ *  defensive                    SOMBRA / SUPERSALTO / VOLTERETA / PATINAJE / DESTELLO / teletransporte del emisor (data: kind = shadow | jump | flip | skate | blink | warp, x, y, tx, ty, ms | out, in, delay)
  *  racket                       raqueta del emisor tras recibir la ULTI (data: lost = true + x, y donde cae · lost = false: la recogió)
  *  timing                       nota del golpe del emisor (data: grade = perfect | good | early | late, streak, ms)
  *  lunge                        el emisor empieza su ESTIRADA (data: side, x, y, tx, ty, ms)

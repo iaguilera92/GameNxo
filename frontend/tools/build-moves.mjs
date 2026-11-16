@@ -337,6 +337,18 @@ for (const [name, as] of Object.entries(SCALE_AS)) {
 }
 console.log('escala por fila:', Object.fromEntries(Object.entries(rowScale).map(([n, v]) => [n, +v.toFixed(3)])));
 
+// (14-11-2026) TAMAÑO FINAL FIJO: las hojas nuevas llegan en ALTA (agrandadas con un upscaler, p. ej. ×2-4). El personaje de pie
+// queda en STAND_MAX px como mucho (más nítido que los ~115 de antes sin gastar demasiada memoria en el teléfono; cada tira
+// ocupa ancho × alto × 4 bytes en la GPU). Las hojas chicas de siempre no se agrandan (factor 1). `--stand=N` lo cambia.
+const STAND_ARG = process.argv.find((a) => a.startsWith('--stand='));
+const STAND_MAX = STAND_ARG ? Number(STAND_ARG.split('=')[1]) : 170;
+const FINAL = Math.min(1, STAND_MAX / STAND_SRC);
+if (FINAL < 1) {
+  for (const n of Object.keys(rowScale)) rowScale[n] *= FINAL;
+  for (const list of Object.values(frames)) for (const f of list) f.sc *= FINAL;
+  console.log(`hoja en alta: de ${Math.round(STAND_SRC)} px de pie a ${STAND_MAX} (×${FINAL.toFixed(3)})`);
+}
+
 // celda de salida: cabe todo (con el ancla en el suelo y en el centro de la celda original)
 let L = 0, R = 0, T = 0, B = 0;
 for (const list of Object.values(frames))
@@ -389,7 +401,7 @@ for (const [name, list] of Object.entries(frames)) {
 }
 
 // ------------------------------------------------------------------ JSON
-const STAND_H = Math.round(STAND_SRC);
+const STAND_H = Math.round(STAND_SRC * FINAL);
 const origin = { x: 0.5, y: +(AY / OH).toFixed(5) };
 const cell = { w: OW, h: OH };
 const src = (s, r) => `${SRC_NAME(s)} (fila ${r})`;

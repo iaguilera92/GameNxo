@@ -90,6 +90,8 @@ const JUMP_H = CHAR_UNITS_H * 0.22;
 
 /** al empezar a moverse camina este tiempo (ms) y luego corre (hojas nuevas) */
 const WALK_MS = 500;
+/** caminata lenta de la ENTRADA al partido (sprites HD, `<pack>-extras-1`); no todos los packs la traen */
+const WALK_INTRO = 'walk-intro' as ExtraAnim;
 
 type State = 'idle' | 'run' | 'runstop' | 'hold' | 'swing' | 'serve' | 'victory' | 'turn' | 'sprint' | 'land' | 'inferno' | 'dive' | 'stun' | 'emote' | 'remate' | 'pickup';
 
@@ -100,7 +102,19 @@ const CFGS = SHEETS;
 const IDS = SHEET_IDS;
 export const NXO_ANIMS = Object.keys(SHEETS.nxo.animations) as NxoAnim[];
 const spriteKey = (id: SpriteCharId, a: NxoAnim) => `${id}-${a}`;
-type AnimInfo = { file: string; frames: number; fps: number; loop: boolean; impact?: number; scale?: number };
+type AnimInfo = { file: string; frames: number; fps: number; loop: boolean; impact?: number; scale?: number; cell?: { w: number; h: number }; origin?: { x: number; y: number } };
+/**
+ * (14-11-2026) CELDA POR ANIMACIÓN (sprites en alta, tools/build-hd.mjs): cada tira puede traer su propia celda y ancla
+ * (`cell` / `origin` en su entrada del JSON) en vez de la del grupo. Ahorra mucha memoria: una tira de reposo no paga el
+ * ancho de una estirada. Aquí se guarda el ancla de cada textura cargada con celda propia.
+ */
+const ORIGIN_OF = new Map<string, { x: number; y: number }>();
+/** carga una tira con su celda (la propia de la animación o la del grupo) y recuerda su ancla propia */
+function loadStrip(load: Phaser.Loader.LoaderPlugin, key: string, url: string, info: AnimInfo, group: { cell: { w: number; h: number } }) {
+  const c = info.cell ?? group.cell;
+  if (info.origin) ORIGIN_OF.set(key, info.origin);
+  load.spritesheet(key, url, { frameWidth: c.w, frameHeight: c.h });
+}
 const A = (id: SpriteCharId) => CFGS[id].animations as Record<NxoAnim, AnimInfo>;
 
 /**
@@ -201,19 +215,26 @@ type Pack = {
    * usa solo su clip de la hoja 2: empieza en el frame 3 (pelota en el aire), espera ahí y al soltar va del 4 al final
    */
   noToss?: boolean;
+  /**
+   * (14-11-2026) false = NO usa su clip `serve-toss`: el lanzamiento es el principio del propio saque (frames 1-3 de
+   * `serve` / `serve-spin`), que se detiene en el trofeo hasta golpear. Sin salto entre lanzamiento y golpe.
+   */
+  ownToss?: boolean;
   /** ULTI (hoja de 6 x 9, build-ulti.mjs) y su carpeta */
   inf: InfCfg;
   infDir: string;
 };
 const PACKS = {
-  nxo: { dir: V2_DIR, key: 'nxo', hits: HITS, special: SPECIAL, move: MOVE, extra: EXTRA, bounce: BOUNCE, inf: INF, infDir: 'nxo-inferno' },
+  // (14-11-2026) sin bote antes de sacar (el usuario lo descartó en los sprites HD): espera en reposo, como Mai
+  // (14-11-2026) lanzamiento = principio del saque HD (`golpes-5` / `-6`), no `serve-toss` (`golpes-9`): decisión del usuario
+  nxo: { dir: V2_DIR, key: 'nxo', hits: HITS, special: SPECIAL, move: MOVE, extra: EXTRA, bounce: null, ownToss: false, inf: INF, infDir: 'nxo-inferno' },
   'nxo-front': {
     dir: 'nxo-front-v2',
     key: 'nxof',
     hits: nxoFHits as typeof HITS,
     special: nxoFSpecial as typeof SPECIAL,
     move: nxoFMove as typeof MOVE,
-    extra: nxoFExtra as typeof EXTRA,
+    extra: nxoFExtra as ExtraCfg,
     bounce: BOUNCE_FRONT,
     noToss: true, // su hoja 4 fila 2 es un golpe de derecha, no el lanzamiento (ver Pack.noToss)
     inf: nxoFInferno as InfCfg,
@@ -256,20 +277,20 @@ export function queueNxoSpriteLoads(load: Phaser.Loader.LoaderPlugin) {
   if (skinMode() !== 'off') {
     for (const p of PACK_LIST) {
       for (const a of Object.keys(p.move.animations) as MoveAnim[]) {
-        load.spritesheet(moveKey(a, p.key), `assets/characters/${p.dir}/${p.move.animations[a].file}`, { frameWidth: p.move.cell.w, frameHeight: p.move.cell.h });
+        loadStrip(load, moveKey(a, p.key), `assets/characters/${p.dir}/${p.move.animations[a].file}`, p.move.animations[a], p.move);
       }
       for (const [a, info] of extrasOf(p)) {
-        load.spritesheet(extraKey(a, p.key), `assets/characters/${p.dir}/${info.file}`, { frameWidth: p.extra.cell.w, frameHeight: p.extra.cell.h });
+        loadStrip(load, extraKey(a, p.key), `assets/characters/${p.dir}/${info.file}`, info, p.extra);
       }
     }
   }
   if (skinMode() !== 'off') {
     for (const p of PACK_LIST) {
-      load.spritesheet(infernoKey(p.key), `assets/characters/${p.infDir}/${p.inf.animations['inferno-swing'].file}`, { frameWidth: p.inf.cell.w, frameHeight: p.inf.cell.h });
+      loadStrip(load, infernoKey(p.key), `assets/characters/${p.infDir}/${p.inf.animations['inferno-swing'].file}`, p.inf.animations['inferno-swing'], p.inf);
       // clips de la ULTI completa (solo los packs cuya hoja los trae)
       for (const a of ULTI_ANIMS) {
         const info = p.inf.animations[a];
-        if (info) load.spritesheet(ultiKey(a, p.key), `assets/characters/${p.infDir}/${info.file}`, { frameWidth: p.inf.cell.w, frameHeight: p.inf.cell.h });
+        if (info) loadStrip(load, ultiKey(a, p.key), `assets/characters/${p.infDir}/${info.file}`, info, p.inf);
       }
     }
   }
@@ -281,15 +302,15 @@ function queueBaseLoads(load: Phaser.Loader.LoaderPlugin) {
   for (const id of IDS) {
     const c = CFGS[id];
     for (const a of NXO_ANIMS) {
-      load.spritesheet(spriteKey(id, a), `assets/characters/${sheetDir(id)}/${A(id)[a].file}`, { frameWidth: c.cell.w, frameHeight: c.cell.h });
+      loadStrip(load, spriteKey(id, a), `assets/characters/${sheetDir(id)}/${A(id)[a].file}`, A(id)[a], c);
     }
   }
   for (const p of PACK_LIST) {
     for (const a of HIT_ANIMS) {
-      load.spritesheet(hitKey(a, p.key), `assets/characters/${p.dir}/${p.hits.animations[a].file}`, { frameWidth: p.hits.cell.w, frameHeight: p.hits.cell.h });
+      loadStrip(load, hitKey(a, p.key), `assets/characters/${p.dir}/${p.hits.animations[a].file}`, p.hits.animations[a], p.hits);
     }
     for (const a of Object.keys(p.special.animations) as SpecialAnim[]) {
-      load.spritesheet(specialKey(a, p.key), `assets/characters/${p.dir}/${p.special.animations[a].file}`, { frameWidth: p.special.cell.w, frameHeight: p.special.cell.h });
+      loadStrip(load, specialKey(a, p.key), `assets/characters/${p.dir}/${p.special.animations[a].file}`, p.special.animations[a], p.special);
     }
   }
 }
@@ -544,7 +565,8 @@ export class NxoActor {
   /** ajusta ancla y escala del sprite a la hoja de `key` (los pies quedan siempre en (0,0) y al mismo alto) */
   private fitTo(key: string) {
     const g = this.geoOf(key);
-    this.sprite.setOrigin(g.origin.x, g.origin.y);
+    const o = ORIGIN_OF.get(key) ?? g.origin; // celda propia de la animación (si la trae)
+    this.sprite.setOrigin(o.x, o.y);
     // retoque por animaciÃ³n (p. ej. smash potenciado dibujado mÃ¡s chico: `scale` en su JSON)
     const k = key === this.sk('smash-power') ? (this.P.special.animations['smash-power'].scale ?? 1) : 1;
     this.sprite.setScale((CHAR_UNITS_H / g.standHeight) * k);
@@ -581,7 +603,8 @@ export class NxoActor {
     this.hits = !!this.pk && this.pk.hits.standHeight === this.cfg.standHeight && hitsReady(scene, this.pk);
     this.sprite = scene.add.sprite(0, 0, this.k('idle'), 0);
     // el ancla de la celda es (centro del cuerpo, suelo): los pies quedan en (0,0) del Character
-    this.sprite.setOrigin(this.cfg.origin.x, this.cfg.origin.y).setScale(CHAR_UNITS_H / this.cfg.standHeight);
+    const o0 = ORIGIN_OF.get(this.k('idle')) ?? this.cfg.origin;
+    this.sprite.setOrigin(o0.x, o0.y).setScale(CHAR_UNITS_H / this.cfg.standHeight);
     parent.add(this.sprite);
     this.swoosh = scene.add.graphics().setVisible(false);
     parent.add(this.swoosh);
@@ -841,7 +864,7 @@ export class NxoActor {
     this.serveIdle = false;
     // la pelota ya va hacia arriba: el brazo llega rÃ¡pido a la pose de lanzamiento (frame serveWait)
     this.sprite.anims.timeScale = SERVE_TOSS_SPEED;
-    if (this.v2 && this.xr('serve-toss') && !this.P.noToss) {
+    if (this.v2 && this.xr('serve-toss') && !this.P.noToss && this.P.ownToss !== false) {
       // hojas nuevas: lanzamiento propio (brazo sube, raqueta atrÃ¡s); queda en su Ãºltimo frame hasta soltar
       this.tossing = true;
       this.playClip(this.xk('serve-toss'));
@@ -1061,7 +1084,7 @@ export class NxoActor {
     const cfg = CFGS[frontId];
     const mk = (k: string, g: { origin: { x: number; y: number }; standHeight: number }): EndClip | null => {
       const a = this.scene.anims.get(k);
-      return a && this.scene.textures.exists(k) ? { key: k, last: a.frames.length - 1, origin: g.origin, standHeight: g.standHeight } : null;
+      return a && this.scene.textures.exists(k) ? { key: k, last: a.frames.length - 1, origin: ORIGIN_OF.get(k) ?? g.origin, standHeight: g.standHeight } : null;
     };
     const idle = mk(spriteKey(frontId, 'idle'), cfg);
     if (!idle) return null;
@@ -1231,12 +1254,12 @@ export class NxoActor {
     if (this.moving && !this.charging) {
       if (this.state !== 'run') {
         // arranca caminando (WALK_MS) y luego corre; viniendo del DASH, corre directamente
-        this.runStartAt = this.skipWalk ? this.scene.time.now - WALK_MS : this.scene.time.now;
+        this.runStartAt = this.skipWalk ? this.scene.time.now - this.walkMs() : this.scene.time.now;
         this.skipWalk = false;
         this.enter('run');
         // pasar a la carrera al cumplirse el tiempo (setMoving no se llama en cada fotograma)
         this.walkTimer?.remove();
-        this.walkTimer = this.scene.time.delayedCall(WALK_MS + 10, () => {
+        this.walkTimer = this.scene.time.delayedCall(this.walkMs() + 10, () => {
           if (this.state === 'run' && this.sprite.anims.currentAnim?.key === this.xk('walk')) this.enter('run');
         });
       }
@@ -1302,11 +1325,22 @@ export class NxoActor {
     this.walkUntil = this.scene.time.now + ms;
   }
 
+  /**
+   * (14-11-2026) Cuánto dura el ARRANQUE antes de correr: lo que dura su clip `walk` (NXO HD: saltitos de ajuste de
+   * tenista, 8 frames a 40 fps = 0,2 s, una sola vez), como mucho WALK_MS.
+   */
+  private walkMs() {
+    const w = this.P.extra.animations.walk;
+    return w && !w.loop ? Math.min(WALK_MS, (w.frames / w.fps) * 1000) : WALK_MS;
+  }
+
   private runKey() {
     // sin raqueta: carrera sin raqueta (dibujada hacia la derecha; enter / setMoving la voltean hacia la izquierda)
     if (this.noRacketClips) return ultiKey('run-nr', this.P.key);
     const now = this.scene.time.now;
-    if (this.v2 && this.xr('walk') && (now - this.runStartAt < WALK_MS || now < this.walkUntil)) return this.xk('walk');
+    // (14-11-2026) ENTRADA a la cancha: caminata lenta y tranquila propia (`walk-intro`, sprites HD) si el pack la trae
+    if (this.v2 && now < this.walkUntil && this.xr(WALK_INTRO)) return this.xk(WALK_INTRO);
+    if (this.v2 && this.xr('walk') && (now - this.runStartAt < this.walkMs() || now < this.walkUntil)) return this.xk('walk');
     return this.k('run');
   }
 

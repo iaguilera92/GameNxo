@@ -2,7 +2,8 @@ import type { AbilityId } from './Abilities';
 import { getPlayer, commit } from '../domain/playerStore';
 import * as ops from '../domain/operations';
 import type { SkinId } from '../characters/skins';
-import type { ZoneStatLevels } from '../domain/zoneProgress';
+import { type ZoneStatLevels, zoneStatsOf } from '../domain/zoneProgress';
+import { type PassiveId, passiveOf, passiveValue } from '../domain/characterPassives';
 import { type InfernoPower, infernoPowerOf } from '../domain/infernoPowers';
 import { type ChargeFxId, chargeFxOf } from '../domain/chargeFx';
 import { type SmashPower, smashPowerOf } from '../domain/smashPowers';
@@ -21,7 +22,12 @@ export interface Profile {
   abilities: [AbilityId, AbilityId]; // habilidad 1 y 2 equipadas
   /** personaje elegido (id de skin del catálogo) */
   skin: string;
+  /** atributos de ZONA del personaje elegido (la ZONA es por personaje: domain/zoneProgress.ts) */
   zoneStats: ZoneStatLevels;
+  /** PASIVA del personaje elegido y su valor (0,01 … 0,10 según su maestría; 0 si no tiene pasiva): domain/characterPassives.ts */
+  passive: { id: PassiveId | null; value: number };
+  /** puntos de maestría del personaje elegido */
+  masteryPoints: number;
   /** poder del INFERNO en uso: el elegido o, sin elegir, el del personaje (domain/infernoPowers.ts) */
   inferno: InfernoPower;
   /** efecto de CARGA en uso: el elegido o, sin elegir, el del personaje (domain/chargeFx.ts) */
@@ -51,7 +57,9 @@ export function getProfile(): Profile {
     style: s.equipped.style,
     abilities: [...s.equipped.abilities] as [AbilityId, AbilityId],
     skin,
-    zoneStats: { ...s.zone.stats },
+    zoneStats: zoneStatsOf(s.zone, skin),
+    passive: { id: passiveOf(skin)?.id ?? null, value: passiveOf(skin) ? passiveValue(s.mastery?.[skin] ?? 0) : 0 },
+    masteryPoints: s.mastery?.[skin] ?? 0,
     inferno: infernoPowerOf(s.equipped.inferno, skin),
     charge: chargeFxOf(s.equipped.charge, skin),
     smash: smashPowerOf(s.equipped.smash),

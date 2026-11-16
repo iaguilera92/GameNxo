@@ -2,14 +2,14 @@
   "source": "pj-mai-2.png (fila 8)",
   "view": "back",
   "cell": {
-    "w": 212,
-    "h": 150
+    "w": 152,
+    "h": 225
   },
   "origin": {
     "x": 0.5,
-    "y": 0.93333
+    "y": 0.98222
   },
-  "standHeight": 112,
+  "standHeight": 190,
   "start": 2,
   "animations": {
     "smash-power": {
@@ -18,7 +18,15 @@
       "fps": 14,
       "loop": false,
       "impact": 4,
-      "scale": 1
+      "scale": 1,
+      "cell": {
+        "w": 274,
+        "h": 248
+      },
+      "origin": {
+        "x": 0.5,
+        "y": 0.96371
+      }
     }
   }
 }

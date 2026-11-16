@@ -18,7 +18,7 @@ import { SHOP_ITEMS } from './shopCatalog';
 import { EMOTES } from './emotes';
 import { CHAR_COLOR_LIST } from './charColors';
 
-/** Con qué modo arranca la app cuando el jugador aún no ha elegido. 	rue mientras se prueba; ponlo en alse para publicar. */
+/** Con qué modo arranca la app cuando el jugador aún no ha elegido. true mientras se prueba; ponlo en false para publicar. */
 export const DEV_MODE_DEFAULT = true;
 export const DEV_LEVEL = MAX_LEVEL;
 /** dinero de pruebas del perfil de desarrollo (para poder comprar el Pase Premium u otros ítems de dinero) */

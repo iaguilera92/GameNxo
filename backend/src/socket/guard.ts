@@ -47,6 +47,8 @@ function sanitizeBall(b: unknown): BallWire | null {
   if (fric !== null) out.fric = fric;
   if (ay !== null) out.ay = ay;
   if (g !== null && g > 0) out.g = g;
+  const back = num(b.back);
+  if (back !== null && back > 0 && back <= 3) out.back = back;
   return out;
 }
 

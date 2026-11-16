@@ -2,14 +2,14 @@
   "source": "pj-nxo-rival-ulti.png (6 filas x 9: ULTI completa)",
   "view": "front",
   "cell": {
-    "w": 183,
-    "h": 180
+    "w": 156,
+    "h": 169
   },
   "origin": {
-    "x": 0.49727,
-    "y": 0.94444
+    "x": 0.5,
+    "y": 0.97633
   },
-  "standHeight": 140,
+  "standHeight": 150,
   "cols": 3,
   "hold": 4,
   "preStrike": 5,
@@ -20,40 +20,88 @@
   "animations": {
     "inferno-swing": {
       "file": "inferno-swing.webp",
-      "frames": 9,
+      "frames": 8,
       "fps": 15,
       "loop": false,
-      "impact": 6
+      "impact": 6,
+      "cell": {
+        "w": 156,
+        "h": 169
+      },
+      "origin": {
+        "x": 0.5,
+        "y": 0.97633
+      }
     },
     "ulti-hit": {
       "file": "ulti-hit.webp",
-      "frames": 9,
+      "frames": 8,
       "fps": 14,
-      "loop": false
+      "loop": false,
+      "cell": {
+        "w": 168,
+        "h": 173
+      },
+      "origin": {
+        "x": 0.5,
+        "y": 0.97688
+      }
     },
     "ulti-stun": {
       "file": "ulti-stun.webp",
-      "frames": 9,
+      "frames": 8,
       "fps": 12,
-      "loop": true
+      "loop": true,
+      "cell": {
+        "w": 146,
+        "h": 188
+      },
+      "origin": {
+        "x": 0.5,
+        "y": 0.97872
+      }
     },
     "idle-nr": {
       "file": "idle-nr.webp",
-      "frames": 9,
+      "frames": 8,
       "fps": 8,
-      "loop": true
+      "loop": true,
+      "cell": {
+        "w": 106,
+        "h": 169
+      },
+      "origin": {
+        "x": 0.5,
+        "y": 0.97633
+      }
     },
     "run-nr": {
       "file": "run-nr.webp",
-      "frames": 9,
+      "frames": 8,
       "fps": 14,
-      "loop": true
+      "loop": true,
+      "cell": {
+        "w": 110,
+        "h": 170
+      },
+      "origin": {
+        "x": 0.5,
+        "y": 0.97647
+      }
     },
     "pickup": {
       "file": "pickup.webp",
-      "frames": 9,
+      "frames": 8,
       "fps": 14,
-      "loop": false
+      "loop": false,
+      "cell": {
+        "w": 112,
+        "h": 161
+      },
+      "origin": {
+        "x": 0.5,
+        "y": 0.97516
+      }
     }
   }
 }

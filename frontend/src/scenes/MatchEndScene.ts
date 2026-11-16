@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import { FONT } from '../ui/theme';
-import { COINS_LOSS, COINS_SURRENDER, COINS_WIN, XP_LOSS, XP_WIN, xpToNext, MAX_LEVEL } from '../config';
+import { COINS_LOSS, COINS_SURRENDER, COINS_WIN, XP_LOSS, XP_SURRENDER, XP_WIN, xpToNext, MAX_LEVEL } from '../config';
 import { addCoins, addXp, getProfile } from '../logic/Profile';
 import { applyCharColor } from '../fx/CharColorFx';
 import { sfx } from '../fx/sfx';
@@ -12,7 +12,10 @@ import { markWheelPresented, recordMatchWin, wheelToPresent, wheelStatuses } fro
 import { openWheel, whenWheelReady } from './WheelScene';
 import { drawWheelFace, drawXpIcon } from '../ui/wheelArt';
 import { WHEEL } from '../domain/wheelConfig';
-import { getPlayer } from '../domain/playerStore';
+import { commit, getPlayer } from '../domain/playerStore';
+import { awardMastery } from '../domain/operations';
+import { masteryLevel, passiveOf } from '../domain/characterPassives';
+import { drawPassiveIcon, skinName } from '../ui/passiveInfo';
 import { myLeague, myPosition, rankedState, settleCurrentRanked } from '../logic/Ranked';
 import { matchStakes } from '../domain/rankedConfig';
 import { isDevMode } from '../domain/devMode';
@@ -254,6 +257,17 @@ export class MatchEndScene extends Phaser.Scene {
       if (win) recordWin(wstore._matchId); // victorias totales (se muestran en la pantalla VS)
     }
 
+    // MAESTRÍA (docs/MAESTRIAS.md): 1 punto por partido GANADO con este personaje (usuario, contra el bot y online), una sola vez por partida y solo
+    // desde el nivel 20 de la cuenta (awardMastery lo decide: antes devuelve 0 y no se muestra nada)
+    const mstore = d as MatchEndData & { _mastery?: { skin: string; before: number; after: number } | null };
+    if (win && !d.surrendered && mstore._mastery === undefined) {
+      const skin = getProfile().skin;
+      const res = commit((st) => awardMastery(st, skin));
+      mstore._mastery = res.ok && res.gained > 0 ? { skin, before: res.before, after: res.after } : null;
+    }
+    this.mastery = mstore._mastery ?? null;
+    this.mrow = this.mastery ? 44 : 0;
+
     // oscurecido ligero (el partido sigue visible)
     const dim = this.add.rectangle(0, 0, W, H, 0x02060f, 0).setOrigin(0);
     this.tweens.add({ targets: dim, fillAlpha: win ? 0.28 : 0.38, duration: 500 });
@@ -268,7 +282,7 @@ export class MatchEndScene extends Phaser.Scene {
     this.banner(W, win);
     const btnH = 84;
     const btnY = H - 26 - btnH / 2;
-    const panelH = 108 + 16 + CARD_H + 22 + (this.duel() ? RANKED_H : 0);
+    const panelH = 108 + 16 + CARD_H + 22 + this.mrow + (this.duel() ? RANKED_H : 0);
     const panelTop = btnY - btnH / 2 - 14 - panelH;
     this.resultPanel(W, panelTop, panelH);
     this.buttons(W, btnY, btnH);
@@ -283,17 +297,17 @@ export class MatchEndScene extends Phaser.Scene {
     const y = 182; // corona + VICTORIA / DERROTA + nombre del ganador: 32 px más abajo (antes 150)
     const c = this.add.container(cx, y);
 
+    // (15-11-2026) sin los rayos giratorios: AURA dorada suave detrás de la insignia y del título (late despacio)
+    const aura = (ax: number, ay: number, w: number, h: number) => {
+      const g = this.add.graphics({ x: ax, y: ay }).setBlendMode(Phaser.BlendModes.ADD);
+      for (let i = 6; i >= 1; i--) g.fillStyle(GOLD, 0.05).fillEllipse(0, 0, (w * i) / 6, (h * i) / 6);
+      c.add(g);
+      this.tweens.add({ targets: g, scale: { from: 0.94, to: 1.08 }, alpha: { from: 0.75, to: 1 }, duration: 1300, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
+      return g;
+    };
     if (win) {
-      // rayos dorados giratorios detrás
-      const rays = this.add.graphics().setBlendMode(Phaser.BlendModes.ADD);
-      for (let i = 0; i < 16; i++) {
-        const a = (i / 16) * Math.PI * 2;
-        const a2 = a + Math.PI / 22;
-        const r = i % 2 ? 190 : 250;
-        rays.fillStyle(GOLD, i % 2 ? 0.12 : 0.2).fillTriangle(0, 0, Math.cos(a) * r, Math.sin(a) * r, Math.cos(a2) * r, Math.sin(a2) * r);
-      }
-      c.add(rays);
-      this.tweens.add({ targets: rays, angle: 360, duration: 14000, repeat: -1 });
+      aura(0, -92, 190, 190); // la insignia (círculo de arriba)
+      aura(0, 0, Math.min(W - 40, 560), 170); // el texto VICTORIA
     }
 
     // insignia: corona (victoria) o trofeo apagado (derrota)
@@ -401,7 +415,7 @@ export class MatchEndScene extends Phaser.Scene {
     // --- recompensas (se aplican UNA vez por partida; las reglas de siempre)
     //   XP: victoria XP_WIN, derrota/rendición XP_LOSS · monedas: COINS_WIN / COINS_LOSS / COINS_SURRENDER
     const store = d as MatchEndData & { _xp?: ReturnType<typeof addXp>; _coins?: ReturnType<typeof addCoins> };
-    const gained = d.win ? XP_WIN : XP_LOSS;
+    const gained = d.surrendered ? XP_SURRENDER : d.win ? XP_WIN : XP_LOSS; // rendirse da un tercio de lo de perder (14-11-2026)
     if (!store._xp) {
       store._xp = addXp(gained);
       // el MENÚ, al volver, muestra "+N EXP" y llena las barras de nivel y del pase (después de la ruleta, si se abre)
@@ -412,7 +426,8 @@ export class MatchEndScene extends Phaser.Scene {
 
     // --- duelo de apuestas: Ranked (con la apuesta real) o, en desarrollo, el partido online (de prueba)
     const duel = this.duel();
-    if (duel) this.rankedDuel(c, w, sepY + 16 + CARD_H + 20, duel);
+    if (this.mastery) this.masteryRow(c, w, sepY + 16 + CARD_H + 6, this.mastery);
+    if (duel) this.rankedDuel(c, w, sepY + 16 + CARD_H + 20 + this.mrow, duel);
     if (d.ranked?.promotedTo) this.levelUp(W / 2, top - 26, 0, '¡ASCENSO DE LIGA!');
 
     // entrada: sube desde abajo junto con los botones
@@ -806,16 +821,16 @@ export class MatchEndScene extends Phaser.Scene {
       const moved = won ? rivalStake : entry;
       vs.setText(won ? '◀' : '▶').setColor(won ? '#9fe8a0' : '#ff9aa3').setFontSize(30);
       this.tweens.add({ targets: vs, scale: { from: 1.5, to: 1 }, duration: 300, ease: 'Back.easeOut' });
-      // monedas que vuelan de un cuadro al otro: un chorro de ~40 durante 3 s (lo que dura el sonido), llegando una tras otra
+      // monedas que vuelan de un cuadro al otro: un chorro de ~70 durante 3 s (lo que dura el sonido), llegando una tras otra
       sfx(this, 'recolectar-monedas');
       const TOTAL = 3000; // ms de todo el traspaso
       const FLY = 700; // ms que tarda cada moneda en cruzar
-      const n = 40;
+      const n = 70; // (14-11-2026) más monedas y algo más grandes (antes 40, 8-12 px)
       const gapMs = (TOTAL - FLY) / n;
       let pulse: Phaser.Tweens.Tween | null = null;
       for (let i = 0; i < n; i++) {
         const cg = this.add.graphics();
-        drawCoin(cg, Phaser.Math.Between(8, 12));
+        drawCoin(cg, Phaser.Math.Between(10, 15));
         const sx = from.bc.x + colR + Phaser.Math.Between(-14, 14);
         const sy = by + Phaser.Math.Between(-22, 22);
         const ex = to.bc.x + colR + Phaser.Math.Between(-10, 10);
@@ -874,6 +889,42 @@ export class MatchEndScene extends Phaser.Scene {
     });
   }
 
+  /** maestría ganada en este partido (null = ninguna) y el alto que añade al panel */
+  private mastery: { skin: string; before: number; after: number } | null = null;
+  private mrow = 0;
+
+  /**
+   * Fila "+1 MAESTRÍA" bajo las tres recompensas: icono de la pasiva, el personaje y cuánto falta para el siguiente nivel. Si sube de
+   * nivel, el texto es dorado y dice el nivel y el % nuevos (docs/MAESTRIAS.md).
+   */
+  private masteryRow(c: Phaser.GameObjects.Container, w: number, y: number, m: { skin: string; before: number; after: number }) {
+    const def = passiveOf(m.skin);
+    if (!def) return;
+    const before = masteryLevel(m.before);
+    const after = masteryLevel(m.after);
+    const up = after > before;
+    const rw = w - 40;
+    const row = this.add.container(0, y + 17).setAlpha(0).setScale(0.9);
+    const g = this.add.graphics();
+    g.fillStyle(0x07152f, 0.95).fillRoundedRect(-rw / 2, -17, rw, 34, 17);
+    g.lineStyle(2, up ? 0xffd23f : def.color, 1).strokeRoundedRect(-rw / 2, -17, rw, 34, 17);
+    row.add(g);
+    const ic = this.add.graphics({ x: -rw / 2 + 22, y: 0 });
+    drawPassiveIcon(ic, def.id, 10, def.color);
+    row.add(ic);
+    const text = up ? `¡${def.name} NIVEL ${after}!  +${after} %` : `+1 MAESTRÍA  ·  ${def.name} · ${skinName(m.skin).toUpperCase()}`;
+    const t = this.add.text(-rw / 2 + 44, 0, text, { fontFamily: FONT, fontSize: '16px', color: up ? '#ffd23f' : '#ffffff', stroke: '#061431', strokeThickness: 3 }).setOrigin(0, 0.5).setLetterSpacing(1);
+    fitText(t, rw - 60);
+    row.add(t);
+    c.add(row);
+    // entra después de las tres recompensas; al subir de nivel, destello
+    this.time.delayedCall(1700, () => {
+      if (!row.scene) return;
+      this.tweens.add({ targets: row, alpha: 1, scale: 1, duration: 320, ease: 'Back.easeOut' });
+      if (up) sfx(this, 'equipar');
+    });
+  }
+
   /** Celebración breve: texto dorado con destello. */
   private levelUp(x: number, y: number, level: number, text?: string) {
     const t = this.add
@@ -909,13 +960,10 @@ export class MatchEndScene extends Phaser.Scene {
     // arriba el ambiente (la imagen) se queda sin alto: se oscurece como abajo, con un degradado largo y suave
     // (varias franjas con caída curva: sin corte seco). Más alto cuanto más sube el mapa.
     const hTop = Math.min(620, shift + 340);
+    // (15-11-2026) un solo degradado (antes 32 franjas: se veían como RAYAS horizontales arriba)
     const shade = this.add.graphics().setDepth(-5).setAlpha(0);
-    const N = 32;
-    const sh = hTop / N;
-    for (let k = 0; k < N; k++) {
-      const a = Math.pow(1 - (k + 0.5) / N, 1.7); // 1 arriba → 0 abajo, cae despacio al final
-      shade.fillStyle(0x050d22, a).fillRect(0, k * sh, this.scale.width, sh + 1);
-    }
+    const sc = 0x050d22;
+    shade.fillGradientStyle(sc, sc, sc, sc, 1, 1, 0, 0).fillRect(0, 0, this.scale.width, hTop);
     this.tweens.add({ targets: shade, alpha: 1, duration: 1400, ease: 'Sine.easeInOut' });
   }
   // ---------------------------------------------------------------- botones

@@ -11,6 +11,8 @@ import { type ChargeFxId, chargeFxDef } from '../domain/chargeFx';
 import type { EmoteKind } from '../domain/emotes';
 import { EMOTE_TEXTURE, queueEmoteArt } from '../ui/Emotes';
 import { styleLook } from '../ui/styleLook';
+import { passiveOf } from '../domain/characterPassives';
+import { drawPassiveIcon, openPassiveDialog } from '../ui/passiveInfo';
 import { CHAR_COLOR_LIST } from '../domain/charColors';
 
 /**
@@ -338,7 +340,9 @@ export class BattlePassScene extends Phaser.Scene {
     const cx = prem ? x + 34 + (w - 34) / 2 : x + (w - 34) / 2;
     const cy = h / 2;
 
-    if (row === BP_TIERS && reward.kind === 'character' && this.textures.exists('portrait-mai')) this.characterCell(c, cx, cy, w - 50, h, prem, reward);
+    // el personaje del Pase explica su PASIVA (franja de arriba con el icono i); su zona táctil debe quedar encima de la celda entera (más abajo)
+    let passiveZone: Phaser.GameObjects.Zone | null = null;
+    if (row === BP_TIERS && reward.kind === 'character' && this.textures.exists('portrait-mai')) passiveZone = this.characterCell(c, cx, cy, w - 50, h, prem, reward);
     else {
       const iy = cy - 22;
       if (ready) {
@@ -399,16 +403,17 @@ export class BattlePassScene extends Phaser.Scene {
       else this.claim(track, row, cx, c.y + cy + this.list.y);
     });
     c.add(hit);
+    if (passiveZone) c.bringToTop(passiveZone); // la celda entera reclama, salvo la franja de la pasiva
   }
 
   /**
    * Celda del último nivel (el personaje nuevo): el personaje a casi todo el alto, con rayos de luz y un resplandor
    * detrás, destellos que titilan, su nombre debajo y una etiqueta (GRATIS / ESTILO ORO). (cx, cy) = centro de la celda.
    */
-  private characterCell(c: Phaser.GameObjects.Container, cx: number, cy: number, w: number, h: number, prem: boolean, reward: Extract<BpReward, { kind: 'character' }>) {
+  private characterCell(c: Phaser.GameObjects.Container, cx: number, cy: number, w: number, h: number, prem: boolean, reward: Extract<BpReward, { kind: 'character' }>): Phaser.GameObjects.Zone | null {
     const accent = prem ? 0xfff1b8 : 0x8fd8ff;
     const box = { x0: 118, y0: 4, x1: 1070, y1: 1356 }; // caja visible de mai_portrait.png (1130 × 1392), como en characters/portrait.ts
-    const vh = h * 0.66;
+    const vh = h * 0.58; // un poco más chico que antes: arriba queda sitio para la PASIVA del personaje
     const vw = ((box.x1 - box.x0) / (box.y1 - box.y0)) * vh;
     const feetY = cy + h * 0.24;
 
@@ -446,6 +451,31 @@ export class BattlePassScene extends Phaser.Scene {
     const tagText = this.add.text(0, tagY, reward.style ? '★ ESTILO ORO' : 'PERSONAJE NUEVO', { fontFamily: FONT, fontSize: '15px', color: prem ? '#3b2600' : '#ffffff' }).setOrigin(0.5);
     fitText(tagText, tagW - 12);
     cell.add(tagText);
+
+    // PASIVA del personaje (docs/MAESTRIAS.md): franja arriba con su nombre, una frase breve y un icono (i) que abre el detalle
+    const def = passiveOf(reward.skin);
+    if (!def) return null;
+    const top = -h / 2 + 8;
+    const pw = Math.min(w - 16, 320);
+    const pg = this.add.graphics();
+    pg.fillStyle(0x06122e, 0.92).fillRoundedRect(-pw / 2, top, pw, 30, 15);
+    pg.lineStyle(2, def.color, 1).strokeRoundedRect(-pw / 2, top, pw, 30, 15);
+    const pic = this.add.graphics({ x: -pw / 2 + 18, y: top + 15 });
+    drawPassiveIcon(pic, def.id, 8, def.color);
+    const ptxt = this.add.text(-pw / 2 + 36, top + 15, `PASIVA · ${def.name}`, { fontFamily: FONT, fontSize: '15px', color: def.css, stroke: '#061431', strokeThickness: 3 }).setOrigin(0, 0.5).setLetterSpacing(1);
+    fitText(ptxt, pw - 36 - 40);
+    const info = this.add.graphics({ x: pw / 2 - 18, y: top + 15 });
+    info.fillStyle(0x10224d, 1).fillCircle(0, 0, 11).lineStyle(2, 0xffffff, 0.9).strokeCircle(0, 0, 11);
+    const itxt = this.add.text(pw / 2 - 18, top + 16, 'i', { fontFamily: FONT, fontSize: '16px', color: '#ffffff' }).setOrigin(0.5);
+    const short = this.add.text(0, top + 40, def.short, { fontFamily: FONT, fontSize: '13px', color: '#e6f0ff', align: 'center', stroke: '#061431', strokeThickness: 3, wordWrap: { width: w - 24 } }).setOrigin(0.5, 0);
+    cell.add([pg, pic, ptxt, info, itxt, short]);
+    const zone = this.add.zone(0, top + 15, pw, 34).setInteractive({ useHandCursor: true });
+    zone.on('pointerup', (p: Phaser.Input.Pointer) => {
+      if (this.moved > 12 || p.y < this.listTop) return; // la máscara no recorta los toques: solo dentro de la zona visible de la lista
+      openPassiveDialog(this, reward.skin);
+    });
+    cell.add(zone);
+    return zone;
   }
 
   /** Rayos de luz (cuñas alternas) desde (cx, cy), recortados al rectángulo de la tarjeta (centrada en 0,0, con 4 px de margen). */

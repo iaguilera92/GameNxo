@@ -611,15 +611,15 @@ Lo que antes estaba disperso en las notas de arriba, en un solo lugar. Detalle c
    - Limpieza de codigo sin uso en src/ y herramientas (no hecha todavia).
    - Probar en partido: Mai (WebP + ULTI), Nxo con la hoja 2 nueva, y recompilar el APK.
 
-(Kiro, 12-11-2026) PENDIENTE DE ARTE (a hacer despues, detalle en docs �8): redibujar hoja 3 de Mai espaldas, hoja 4 de Mai espaldas (8 columnas + bote/lanzamiento) y hoja 3 de Mai rival (una animacion por fila). Por confirmar: hoja 2 y filas 1-2 de la hoja 4 de Mai rival. Hasta entonces Mai rival sigue con su hoja antigua y no se procesa su pack.
+(Kiro, 12-11-2026) PENDIENTE DE ARTE (a hacer despues, detalle en docs �8): redibujar hoja 3 de Mai espaldas, hoja 4 de Mai espaldas (8 columnas + bote/lanzamiento) y hoja 3 de Mai rival (una animacion por fila). Por confirmar: hoja 2 y filas 1-2 de la hoja 4 de Mai rival. Hasta entonces Mai rival sigue con su hoja antigua y no se procesa su pack.
 
-(Kiro, 12-11-2026) Reglas de sprites actualizadas: .kiro/steering/sprites.md y docs �0 (reglas 7-10) ahora fijan los 2 builds genericos + characters.mjs, el contrato unico y los pasos para un personaje nuevo o un cambio de sprites.
+(Kiro, 12-11-2026) Reglas de sprites actualizadas: .kiro/steering/sprites.md y docs �0 (reglas 7-10) ahora fijan los 2 builds genericos + characters.mjs, el contrato unico y los pasos para un personaje nuevo o un cambio de sprites.
 
 (Kiro, 12-11-2026) Limpieza de codigo: borradas 15 exportaciones sin ningun uso (en src, tools ni backend): playerDisplayName, slotColors, lockBadge, rewardText, DEFAULT_SKIN, cycleSkin, MONTHS_ES, tossHeight, playButton, SHOP_PREVIEW, GAME_NAME, STUN_DURATION, EMOTE_NAME, isEmote. Se dejaron a proposito (API de dominio o funcion en espera, sin uso hoy): spendCoins, equipAbility, setPlayerRepository, grantBattlePassSpin, battlePassSpinIndex, onSettingsChange. 150+ exportaciones mas solo se usan dentro de su propio archivo o en tests (tipos/helpers): no se tocaron. tsc (con --noUnusedLocals), build y test-*.mjs pasan.
 
-(Kiro, 12-11-2026) APLICADA la AUDITORIA-SPRITES-KIRO.md (puntos 1-5 y 'Menor'; el 6 queda documentado como contrato en docs �3, sin mover valores al registro): tools/image-out.mjs (saveWebp/pngToWebp/webpToPng: convierte a archivo temporal, comprueba que el WebP mida lo mismo que el PNG y que no sea vacio, timeout de 2 min, error claro); build-moves/build-ulti lo usan, comprueban que existan las hojas, 'all' sigue y resume fallos, errores con fail() sin volcado de Node; build-moves: sin keepMain muerto, sin rama PNG, flipX por hoja; convert-image.mjs: puerto al azar y taskkill del arbol de Chrome (un Chrome huerfano en el puerto fijo 9341 podia devolver su pagina de error: salio una imagen de dinosaurio en los botones); build-inferno-ball/power-ball/trail-ball/charge-fx/paloma/nxo-sprites/end-poses/make-button-sprites ahora salen en WebP (assets/ui/btn-*.webp, buttonArt.ts al dia); NxoActor deduce el rival como <id>-front; docs (arbol, patrones de nombres, ULTI solo rejilla, regla 9 con la lista exacta de lo manual, tabla de herramientas, valores fijos), README, vite.config, comentarios. VERIFICADO: regenerado todo (build-ulti all + build-moves all): 138 archivos (tiras + JSON) identicos a la linea base; tsc --noUnusedLocals, build y test-*.mjs pasan. Los otros builds (paloma, charge-energy, tulipan) se corrieron y dan las mismas medidas. NO se corrieron build-inferno-ball ni build-power-ball (sus fuentes estan en Descargas, no en el repo). PENDIENTE DE DECISION: _temp/ en .gitignore; si mai-front-inferno/ sale del APK hasta conectar el pack.
+(Kiro, 12-11-2026) APLICADA la AUDITORIA-SPRITES-KIRO.md (puntos 1-5 y 'Menor'; el 6 queda documentado como contrato en docs �3, sin mover valores al registro): tools/image-out.mjs (saveWebp/pngToWebp/webpToPng: convierte a archivo temporal, comprueba que el WebP mida lo mismo que el PNG y que no sea vacio, timeout de 2 min, error claro); build-moves/build-ulti lo usan, comprueban que existan las hojas, 'all' sigue y resume fallos, errores con fail() sin volcado de Node; build-moves: sin keepMain muerto, sin rama PNG, flipX por hoja; convert-image.mjs: puerto al azar y taskkill del arbol de Chrome (un Chrome huerfano en el puerto fijo 9341 podia devolver su pagina de error: salio una imagen de dinosaurio en los botones); build-inferno-ball/power-ball/trail-ball/charge-fx/paloma/nxo-sprites/end-poses/make-button-sprites ahora salen en WebP (assets/ui/btn-*.webp, buttonArt.ts al dia); NxoActor deduce el rival como <id>-front; docs (arbol, patrones de nombres, ULTI solo rejilla, regla 9 con la lista exacta de lo manual, tabla de herramientas, valores fijos), README, vite.config, comentarios. VERIFICADO: regenerado todo (build-ulti all + build-moves all): 138 archivos (tiras + JSON) identicos a la linea base; tsc --noUnusedLocals, build y test-*.mjs pasan. Los otros builds (paloma, charge-energy, tulipan) se corrieron y dan las mismas medidas. NO se corrieron build-inferno-ball ni build-power-ball (sus fuentes estan en Descargas, no en el repo). PENDIENTE DE DECISION: _temp/ en .gitignore; si mai-front-inferno/ sale del APK hasta conectar el pack.
 
-(Kiro, 12-11-2026) PARTIDO: (1) fx/matchFinale.ts: el subtitulo 'JUEGO, SET Y PARTIDO' sale por JUEGO -> SET -> �PARTIDO! una tras otra (cada una con golpe y sonido; WORD_GAP_MS 430; SEQ_MS 900 retrasa marcador, cifra, corona y sello; MATCH_FINALE_MS 3200 -> 4100). Mismo camino para usuario, bot y rival online (pointTo -> playMatchFinale). La opcion 'note' (sin uso) se quito. (2) MatchEndScene.banner: y 150 -> 182 (corona, VICTORIA/DERROTA y nombre del ganador). (3) EMPUJON LEVE por golpe cargado al maximo (no cortita, globo, remate, SMASH ni ULTI): logic/PowerImpact.ts MAX_PUSH {dist 48, ms 240, stunS 0.2}; MatchScene.maxPushOn / maxPush() / netRemoteBump(); accion de red nueva 'bump' (frontend/backend protocol.ts, docs/MULTIJUGADOR.md). Solo aplica a: bot recibiendo el golpe del usuario, usuario recibiendo el golpe cargado del rival ONLINE (lo decide y mueve su telefono, avisa 'bump'). El bot NO carga golpes, asi que nunca empuja al usuario. tsc frontend+backend OK; NO probado en partido.
+(Kiro, 12-11-2026) PARTIDO: (1) fx/matchFinale.ts: el subtitulo 'JUEGO, SET Y PARTIDO' sale por JUEGO -> SET -> �PARTIDO! una tras otra (cada una con golpe y sonido; WORD_GAP_MS 430; SEQ_MS 900 retrasa marcador, cifra, corona y sello; MATCH_FINALE_MS 3200 -> 4100). Mismo camino para usuario, bot y rival online (pointTo -> playMatchFinale). La opcion 'note' (sin uso) se quito. (2) MatchEndScene.banner: y 150 -> 182 (corona, VICTORIA/DERROTA y nombre del ganador). (3) EMPUJON LEVE por golpe cargado al maximo (no cortita, globo, remate, SMASH ni ULTI): logic/PowerImpact.ts MAX_PUSH {dist 48, ms 240, stunS 0.2}; MatchScene.maxPushOn / maxPush() / netRemoteBump(); accion de red nueva 'bump' (frontend/backend protocol.ts, docs/MULTIJUGADOR.md). Solo aplica a: bot recibiendo el golpe del usuario, usuario recibiendo el golpe cargado del rival ONLINE (lo decide y mueve su telefono, avisa 'bump'). El bot NO carga golpes, asi que nunca empuja al usuario. tsc frontend+backend OK; NO probado en partido.
 
 [Claude 13-11-2026] FLUIDEZ ONLINE (del log b03dc90c: Mai iPhone vs Nxo; red OK: 58-60 fps, ping ~120 ms):
  - Numero de punto en los estados (StateMsg.pt = 2*puntos jugados + 1 si ya se coloco para el saque; Score.played).
@@ -633,7 +633,7 @@ Lo que antes estaba disperso en las notas de arriba, en un solo lugar. Detalle c
  - Entrada online: el rival parte del borde de su lado (sin el salto de ~140 px al empezar).
  - Log: durante las cinematicas no se registran 'flu' ni 'no-state' (eran los falsos 2 fps y cortes de 1-2 s).
 
-(Kiro, 12-11-2026) matchFinale.ts SIMPLIFICADO (pedido: solo textos): sin sello '�PARTIDO GANADO!', sin confeti, ceniza, fanfarria ni notas tristes (funciones borradas). Abajo (cy+150): si ganas, UNA linea 'JUEGO, SET Y PARTIDO!' que aparece por partes (JUEGO, / SET / Y PARTIDO!) con golpe de camara y tono; si pierdes, 'PARTIDO PERDIDO' con fundido simple. Se quito SEQ_MS: el final vuelve a durar 3200 ms. Marcador y corona vuelven a sus tiempos (0,35 s). Mismo camino para usuario, bot y rival online.
+(Kiro, 12-11-2026) matchFinale.ts SIMPLIFICADO (pedido: solo textos): sin sello '�PARTIDO GANADO!', sin confeti, ceniza, fanfarria ni notas tristes (funciones borradas). Abajo (cy+150): si ganas, UNA linea 'JUEGO, SET Y PARTIDO!' que aparece por partes (JUEGO, / SET / Y PARTIDO!) con golpe de camara y tono; si pierdes, 'PARTIDO PERDIDO' con fundido simple. Se quito SEQ_MS: el final vuelve a durar 3200 ms. Marcador y corona vuelven a sus tiempos (0,35 s). Mismo camino para usuario, bot y rival online.
 [Claude 13-11-2026] FLUIDEZ ONLINE, 2.a pasada (log 200099bf, Nxo vs Nxo): el "volver corriendo" tras el saque ya no aparece.
  - Entrada online: ahora el rival camina AQUI (tween local como contra el bot) y durante 'entering' se ignoran sus
    estados; al terminar se ancla en su saque. (El anclaje al borde de la 1.a pasada lo hacia saltar mas: cada telefono
@@ -649,7 +649,7 @@ Lo que antes estaba disperso en las notas de arriba, en un solo lugar. Detalle c
 
 [Claude 13-11-2026] REMATE (smash del circulo): salto 85 -> 120 (REMATE.jump; jugador, bot y rival en red). Ya no se desplaza hacia la pelota: cae donde salto, con una deriva minima con el joystick (REMATE.drift: 40 u/s, max 14 u). El bot tambien salta en el sitio.
 
-[Claude 13-11-2026] REMATE golpe al aire: texto "�MUY PRONTO!" (antes "�AL AIRE!", tambien el que ve el rival). No se le puede pegar a la pelota hasta que bote (remateWhiffBlock en checkHits); sin red la pelota cae REMATE.whiffBack (45 u) mas atras, dentro de la cancha. En red la pelota no se toca (la simula el rival).
+[Claude 13-11-2026] REMATE golpe al aire: texto "�MUY PRONTO!" (antes "�AL AIRE!", tambien el que ve el rival). No se le puede pegar a la pelota hasta que bote (remateWhiffBlock en checkHits); sin red la pelota cae REMATE.whiffBack (45 u) mas atras, dentro de la cancha. En red la pelota no se toca (la simula el rival).
 
 [Claude 13-11-2026] Tiempo de saque: la cuenta atras va ahora en el AVISO LATERAL (donde sale DOBLE FALTA; fx/sideNotice.ts createServeCountdown): "SACA EN 5..1", fondo negro y borde naranja (5-4), borde rojo (3-2), todo rojo (1); se queda mientras dura y sale al sacar. Quitado el aviso en la card TU del marcador (ScoreBoard.setServeAlert). La pildora "SACA EN n" del marcador sigue.
 
@@ -703,7 +703,7 @@ Ajustes en NetDuel.ts: muy frecuente -> bajar triggerDist/reachK; globo imposibl
 
 [Claude 13-11-2026] RANKED: quitada la linea "LA SEMANA TERMINA EL DOMINGO"; en su lugar un temporizador chico a la izquierda del emblema ("TEMPORADA TERMINA EN 2d 06h", con relojito). Monedas y barra suben 22 px. Separacion uniforme GAP entre todas las secciones (barra, placas con su medallon, recompensa semanal, lideres, paneles); el alto extra de pantallas altas ya no se reparte entre bloques (queda al final).
 
-[Claude 13-11-2026] RANKED: el temporizador pasa a la cinta de RECOMPENSA SEMANAL ("TERMINA EN 2d 06h", con reloj; "LISTA! �" delante si ya cumple). Quitada la caja junto al emblema.
+[Claude 13-11-2026] RANKED: el temporizador pasa a la cinta de RECOMPENSA SEMANAL ("TERMINA EN 2d 06h", con reloj; "LISTA! �" delante si ya cumple). Quitada la caja junto al emblema.
 
 [Claude 13-11-2026] RANKED: bajo el emblema ya no va el nombre de la liga (el emblema lo trae); en su lugar "(reloj) TEMPORADA TERMINA EN 2d 06h". La cinta de la recompensa semanal vuelve a "EN CURSO" / "LISTA!".
 
@@ -814,3 +814,378 @@ DIRECT en MatchScene: si NO se pide globo (joystick neutro / de lado) y el rival
 [Claude 14-11-2026] Niebla del aturdido: (1) se desvanece durante el ULTIMO SEGUNDO del aturdido (FADE_OUT_MS 1000). (2) El personaje aturdido queda NITIDO: camara extra "stun-sharp" (encima de la principal, bajo la interfaz) que dibuja solo su personaje; la principal (desenfocada) deja de dibujarlo (cameraFilter, ajustado despues de view/uiCamera en PRE_RENDER). Se crea al empezar y se quita al terminar. Sin probar en el navegador (el panel se cerro).
 
 [Claude 14-11-2026] DUELO RED, globo final: la camara se aleja menos (NET_DUEL.lobZoomOut 0,38 -> 0,12) y el globo vuela como uno normal (lob.minS/maxS 1,3-2,5 s -> 1,0-1,2 s) manteniendo su altura alta (lobApex 420). Al ser mas rapido, defenderlo cuesta mas (con DEFENSIVO se llega).
+
+(14-11-2026) Claude: globo gigante del bot cerca de la red. aimShot alargaba el vuelo sin tope para pasar la red (apex ~700, 2,4 s). MatchScene BOT_LOB_MAX_STRETCH 1.3 en applyBotShot; BotBrain: lob x0.1 si botX-NET_X<160.
+
+(14-11-2026) Claude: Duelo Red: ms del rival sobre su cabeza, el tuyo bajo tus pies (duelMsPos). Marcador de 3 pelotas redisenado (volumen, aro dorado en la ronda en juego, cuadro con reflejo y brillo que recorre el borde como el Pase).
+
+(14-11-2026) Claude: texto GLOBO DISPARADO -> "GLOBO!". CourtView.extendTop: estira fila de arriba y columnas laterales del ambiente + color medio, para que al alejar la camara no se vea negro. Fallback de cancha horneado desde y -700.
+
+(14-11-2026) Claude: texto ATURDIDO del jugador nitido sobre la niebla (StunFog.keepSharp), 38px y dura 1,8 s.
+
+(14-11-2026) Claude: JUEGO SET Y PARTIDO: hideMatchUi() funde y desactiva toda la UI con scrollFactor 0 (marcador, joystick, botones, rendirse, emojis) antes de playMatchFinale.
+
+(14-11-2026) Claude: MatchEndScene traspaso de monedas: 70 (antes 40), tam 10-15.
+
+(14-11-2026) Claude: ESPECIALES hielo/viento/rayo con forma propia en vuelo: fx/smashElementFx.ts (copo+caparazon+esquirlas / torbellino+rafagas / descargas+arco+chispas). Humo de viento y rayo bajado (alpha 0.18/0.15). Impactos sin cambios.
+
+(14-11-2026) Claude: impacto del ESPECIAL por elemento (ImpactFx.powerImpactFx): hielo = iceBlast nuevo (cristales que brotan y se quiebran, escarcha, esquirlas, copos); viento = windBlast x0.75; rayo = lightningBlast x0.75 (los de la ULTI, con su sonido). Fuego igual.
+
+--- GLOBO DISPARADO triple de alto (12-11-2026) ---
+BallState.g (gravedad propia del vuelo, vuelve a la normal al botar, bote reescalado) y NET_DUEL.lobApex 420: el globo cargado al maximo (golpe normal y duelo) sube ~470 u (antes ~150) en el MISMO tiempo de vuelo (~1,0-1,2 s) con highLob. g viaja en game:hit (frontend/backend protocol + guard.ts sanitizeBall, mirror lo conserva). Prediccion del remate y caida usan s.g. MAX_LOB.zoomOut 0.3 y lobZoomOut 0.38 (camara mas lejos). Probado en headless (stepBall): cae en la esquina elegida para usuario y bot, ambos lados. Online sin probar.
+
+--- Mai rival: raqueta doble en el aturdido de la ULTI (12-11-2026) ---
+Causa: en pj-mai-rival-ulti.png, fila 2 (ulti-hit) frame 2, Mai traia la raqueta dibujada en el suelo y el juego dibuja ademas la raqueta suelta. Borrada esa raqueta de la hoja (respaldo en _temp/respaldo_oficial/Mai/rival/), regenerado mai-front-inferno (build-ulti mai-front; celda 160->159 px). Nxo y Mai de espaldas ya estaban bien. Documentado en docs/COMO-TRABAJAR-SPRITES-MOVIMIENTOS.md. Pendiente: ver en partida con Mai de rival (solo vi las tiras); npm run build NO se corrio.
+
+(14-11-2026) Claude: DROP SHOT 0 = cortita cargada al MAXIMO (abajo / abajo-lado): BallState.back -> al botar en campo rival vuelve sobre la red (Ball.stepBall, DROP_ZERO) y handleBounce da el punto al que la tiro ("DROP SHOT 0"). Solo se salva tocandola antes del bote. Efecto ventilador DropZeroFx + dropZeroBounceFx (fx/smashElementFx.ts). Online: BallWire.back (front+back protocol, guard sanitizeBall + test). REQUIERE REDESPLEGAR BACKEND. El bot no lo usa.
+
+(14-11-2026) Claude: el BOT tambien tira DROP SHOT 0 (BotBrain STRAT.dropZero: calidad>=0.75, 40% de sus dejadas x min(1,0.4+abil.smash)); applyBotShot pone s.back.
+
+--- A LAS ESTRELLAS: sin estrellas y mas impacto (12-11-2026) ---
+skyLaunch: al salir volando se ocultan las estrellas del aturdido (dizzy / dizzyP, playerDizzy) y la niebla del jugador; renderActors no las vuelve a mostrar con launched; el efecto de aturdido de RAYO / VIENTO (ultiStunOn) se corta con launched. Impacto: dos explosiones (1,25x y 1,9x a los 80 ms), onda electrica (shockFx), sonido electricidad, destello blanco de pantalla y sacudida 0,045 x 480 ms (antes 0,02 x 260). Probado en headless llamando a skyLaunch (sin estrellas, explosion grande). En red el rival lo ve igual por 'sky-launch'. No probado con el dedo.
+
+(14-11-2026) Claude: 2 ESPECIALES nuevos en la Tienda: SOMBRA (smash:shadow 60 / 1990 CLP) y ESTRELLA (smash:star 60 / 1990 CLP). smashPowers, shopCatalog, SMASH_LOOK (+cine propio), AbilityButton ELEMENT_FILTER, smashElementFx drawShadow/drawStar (capa dark NORMAL), elementImpactFx shadowBlast/starBlast, FxElement (InfernoFx) + hitLookOf, wallFx POWER_WALL. Tienda: especiales en filas de 3.
+
+--- DEFENSIVOS nuevos: VOLTERETA y PATINAJE (12-11-2026) ---
+Dos poderes mas del DEFENSIVO (ids flip y skate), mismas reglas que SOMBRA / SUPERSALTO (te dejan en el punto, devolucion asegurada por dashHit, misma recarga DASH_COOLDOWN): solo cambia el movimiento, como una skin. Sin sprites nuevos.
+- VOLTERETA: dos volteretas laterales en arco (giro del dibujo sobre su centro = Actor.spin, 2 saltos que tocan el suelo con polvo en 0,5), cae agachado (Actor.squat) y devuelve con revés (dashHit.blink).
+- PATINAJE: sale rapido y se desliza (skateEase), cuerpo inclinado, pose de sprint, y deja un CAMINO DE HIELO (fx/iceTrailFx.ts: IceTrail + iceSprayFx; se queda 0,9 s y se derrite en 1,1 s; solo visual).
+- Numeros en logic/DefensiveMoves.ts (FLIP, SKATE, flipPose, skateEase) con tools/test-defensive-moves.mjs (7 pruebas). Dominio: defensivePowers.ts, shopCatalog.ts (.490 / 50 como los otros), icons.ts (drawFlipIcon, drawSkateIcon). Tienda: PODERES DEFENSIVOS pasa a 2 filas de 3. ECONOMIA.md: +2 filas, total tienda 735 -> 835 (los dias de 'toda la tienda' del documento NO se recalcularon).
+- Red: aviso 'defensive' con kind flip / skate (mismo formato x,y,tx,ty,ms); el rival lo reproduce en netRemoteDefensive / netBotFlyTick / netEndBotFly. El backend lo deja pasar (sanitizeAction generico); solo se actualizaron los comentarios de protocol.ts.
+- El BOT no usa estos dos (su kit es dash / destello).
+- Verificado en headless: jugador (volteretas, hielo, devolucion asegurada, giro vuelve a 0) y rival simulado llamando a netRemoteDefensive + netBotFlyTick. SIN probar: online con 2 navegadores, telefonos reales, sonido propio (usan dash-jump / dash-destello), compra / equipar desde la Tienda y Personaje en pantalla.
+
+(14-11-2026) Claude: SPRITES HD. docs/PROMPTS-NXO-ESPALDAS-HD.md (prompts ChatGPT: 1 imagen por animacion, 2x4 frames, 1536x1024, estilo 3D cartoon movil conservando el diseno de NXO). tools/build-hd.mjs <pack> [--stand=170]: lee public/personajes/<dir>/hd/<clip>.png, croma, recorta, escala y reescribe las tiras <pack>-v2 + cell/origin/standHeight de los JSON; los clips sin HD se reaprovechan agrandados. Probado con imagenes falsas y RESTAURADO todo como estaba. Memoria: tira ~2,3 MB (antes 1 MB).
+
+(14-11-2026) Claude: DECISION sprites en alta = UNA IMAGEN POR ANIMACION (2x4 frames, 1536x1024, verde croma, espaldas), no la hoja 8x8 (quedaba en ~110 px). build-hd.mjs --stand=190 por defecto. build-moves tambien acepta hojas grandes (--stand, def 170). Nota para Kiro en docs/COMO-TRABAJAR-SPRITES-MOVIMIENTOS.md (seccion estrella). Prompts con el diseno real de NXO: docs/PROMPTS-NXO-ESPALDAS-HD.md.
+
+(14-11-2026) Claude: reestructuracion sprites HD anotada para Kiro (docs/COMO-TRABAJAR...): calidad > cantidad de imagenes; NO generar sprites sin uso: wait, dropshot, intro, greet, run-left (este ultimo solo es marca del getter v2 en NxoActor). Prompts los marcan NO PEDIR.
+
+(14-11-2026) Claude: FILAS QUE NO SE HACEN (usuario): hoja1 fila6 run-left, hoja3 fila8 wait, hoja4 fila6 dropshot, hoja4 fila7 intro, hoja4 fila8 greet. Usuario NO quiere prompts de ChatGPT todavia.
+
+(14-11-2026) Claude: carpeta nueva personajes/Nxo/jugador/ (imagenes HD del jugador, nombre = clip). build-hd la usa para vista back y borra las lineas negras de la rejilla (clearGridLines). INSTALADO idle HD (hoja1 fila1): nxo standHeight 190, celda 374x242; resto de clips nxo = tira vieja agrandada. Verificado en cancha.
+
+--- Quitado el boton de PRUEBA del globo (12-11-2026) ---
+MatchScene: borrados makeRemateTestButton, devBotRemateTest, remateTestBtn y devForceBotRemate (el bot sigue decidiendo solo si remata el globo). Quedan los botones de prueba de ULTI+ESPECIAL y del DUELO RED bajo AUTO.
+
+(14-11-2026) Claude: nombres HD = <pack>-<hoja>-<fila>.png (hoja1=movimientos, ej nxo-movimientos-2.png). build-hd hdFile/SHEET_NAME.
+
+(14-11-2026) Claude: INSTALADO run HD (nxo-movimientos-2). build-hd ahora escala cada clip HD para que mida lo mismo que su tira actual (alto mediano, medH) -> carreras/estiradas no se agrandan. nxo celda 380x249, stand 190.
+
+(14-11-2026) Claude: INSTALADO runstop HD (nxo-movimientos-3). nxo celda 386x256.
+
+(14-11-2026) Claude: INSTALADO victory HD (nxo-movimientos-4; frame 4 = pose congelada). nxo celda 392x263.
+
+(12-11-2026) PODERES MÁS VISTOSOS, tanda 1: DASH y DESTELLO. src/fx/dashFx.ts: burst() con destello blanco, 2 anillos, 10 rayas de velocidad
+en el suelo y 8 de polvo; acepta color (DESTELLO = cian 0x45d9ff, en los 3 sitios: usuario, bot y rival online, que usan el mismo método).
+streak(): 14 haces con punta brillante. tools/test-dash.mjs: la escena simulada ahora tiene graphics. tsc OK, test-dash 12 OK.
+
+(12-11-2026) PODERES MÁS VISTOSOS, tanda 2: ESPECIAL DE FUEGO. fx/smashElementFx.ts: drawFire (lenguas rojo/naranja/amarillo que se agitan detrás de
+la pelota, resplandor y brasas que suben; potenciado = 5 lenguas más largas); antes el fuego no dibujaba nada ahí. fx/smashFx.ts: colores del impacto
+de fuego en naranja/amarillo (antes blanco y dorado). fx/ImpactFx.ts: el impacto del especial de fuego suma infernoBlast a escala 0,5 (la ULTI usa 1,0).
+Aplica igual a usuario, bot y rival online (la pelota y powerImpactFx son comunes). tsc OK.
+
+(12-11-2026) PODERES MÁS VISTOSOS, tanda 3: SOMBRA y SUPERSALTO (defensivos). MatchScene: shadowSmokeFx (humo negro + jirones morados en el cambio de
+lugar, con un temblor corto), shadowTrailPuff (humo que deja el clon al correr), jumpTakeoffFx (anillo y columna de luz al despegar),
+jumpCrackFx (grietas, destello y trozos de cancha al caer; el temblor sube de 0,007 a 0,011 el tuyo y de 0,004 a 0,007 el del rival).
+Usuario y rival online usan los mismos métodos (el bot no usa defensivos de tienda). shadowRun y netBotFly tienen un campo nuevo `puff`.
+tsc OK; test-dash 12, test-defensive-moves 7, test-net-duel 35.
+
+(14-11-2026) Claude: INSTALADOS brake-turn (fila5; frames 6-8 con raqueta en mano IZQUIERDA, pedir repetir) y dash (llego como nxo-movimientos-6.png, renombrado a -7: la fila 6 run-left NO se hace). nxo celda 404x277.
+
+(14-11-2026) Claude: NOMBRES HD sin huecos: <pack>-<hoja>-<n>, n = orden entre las animaciones que se hacen (hoja1: 1 idle,2 run,3 runstop,4 victory,5 brake-turn,6 dash,7 defeat). Renombrado dash 7->6. build-hd: SKIP + hdFile.
+
+(12-11-2026) ESPECIAL ESTRELLA -> LUZ. El id pasa de 'star' a 'light' (smashPowers, smash:light en shopCatalog, SMASH_LOOK, AbilityButton, InfernoFx FxElement/EXTRA_HIT,
+wallFx, ImpactFx, ShopScene comentario). Nombre LUZ / "SMASH DE LUZ", mismo precio (60 / 1990 CLP). domain/migrate.ts convierte lo guardado:
+'smash:star' -> 'smash:light' y equipped.smash 'star' -> 'light'. En vuelo (smashElementFx.drawLight): halo en capas, 8 haces de luz que giran, destello en cruz, 2 aros
+que se abren y motas de luz que flotan (sin estrellas; se quitó starShape). Impacto: elementImpactFx.lightBlast (fogonazo, 14 haces, columna de luz, 2 aros, 18 motas).
+Usuario, bot (si equipara el especial) y rival online comparten estos métodos; un cliente viejo que mande 'star' cae en fuego. tsc OK; tests dash/defensive/net-duel/ranked OK.
+
+(14-11-2026) Claude: HOJA 1 (movimientos) NXO espaldas COMPLETA en HD (defeat = nxo-movimientos-7). Pendiente: repetir brake-turn (raqueta mano izq frames 6-8). OJO memoria: celda comun 410x284 -> ~3,7 MB por tira x 32 = ~119 MB solo NXO espaldas. Mejora futura: celda por clip (cada tira con su propio tamano) en build-hd + JSON por clip.
+
+(12-11-2026) PODERES MÁS VISTOSOS, tanda 4: ESPECIALES de HIELO, VIENTO, RAYO y SOMBRA (y de paso fuego y luz). fx/smashElementFx.ts: tabla GLOW por poder;
+drawGroundGlow (charco de luz del color del poder en el suelo bajo la pelota, más tenue cuanto más alta; la SOMBRA lo hace oscuro con borde morado) y drawComet
+(cola de cometa afinada con las posiciones recientes; no en fuego, que ya lleva sus lenguas). Los impactos de hielo/viento/rayo/sombra ya eran elaborados (elementImpactFx)
+y no se tocaron. La pelota es común: usuario, bot y rival online lo ven igual. tsc OK.
+
+(14-11-2026) Claude: OPTIMIZACION memoria sprites: celda por animacion (AnimInfo.cell/origin, NxoActor loadStrip + ORIGIN_OF; build-hd cellOf). NXO espaldas 119 MB -> 51 MB. Verificado: pies alineados entre clips.
+
+(12-11-2026) IMPACTOS DEL ESPECIAL reforzados (ImpactFx.smashAftermath, dentro de powerImpactFx; sirve a los 4 puntos que lo llaman: golpeas al bot, el bot te golpea, el rival online, A LAS ESTRELLAS):
+destello de pantalla del color del poder (el rayo ya lo traía), 2 aros de choque pegados al suelo, resplandor sobre el cuerpo ~0,7 s y marca propia en el suelo: quemadura + brasas (fuego),
+escarcha con grietas (hielo), líneas de aire hacia los lados (viento), charco negro con borde morado y motas (sombra), mancha de luz (luz), arcos a ras de suelo (rayo). elementImpactFx exporta zap y flicker.
+Pies estimados como y + 52*s (el impacto llega al centro del cuerpo). tsc OK (un error pasajero en characters/sheets.ts era de la conversión HD en curso, ya no sale).
+
+(14-11-2026) Claude: hoja 2 HD = nxo-golpes-1..8 (forehand, backhand, forehand-power, backhand-power, serve, serve-spin, smash, smash-power). SHEET_NAME 2 golpes.
+
+(12-11-2026) AVISO PARA CLAUDE: VIENE UNA BASE DE DATOS CON CUENTAS (lo comprado y lo equipado por usuario: ESPECIAL, DEFENSIVO, ULTI, carga, color). Lee docs/BASE-DE-DATOS.md antes de
+tocar poderes, tienda, perfil o el protocolo del partido (tambien esta en .kiro/steering/base-de-datos.md y en el README). Reglas: el id de un poder NO se cambia nunca (nombre visible aparte;
+si hay que renombrar, migracion en domain/migrate.ts, como smash:star -> smash:light); lo que se guarda va en domain/ sin Phaser; el servidor valida las compras con domain/operations.ts
+y no se fia del cliente. Pendiente antes de la base: registro unico por poder (hoy su aspecto esta en ~8 archivos), sonidos propios por ESPECIAL y DEFENSIVO (hoy ninguno / 4 compartidos),
+efectos de los defensivos fuera de MatchScene, contrato de datos del servidor. Motor de base de datos y login NO estan decididos: preguntar al dueño.
+
+(14-11-2026) Claude: INSTALADO walk HD como nxo-movimientos-8 (APPEND en build-hd; en hoja 4 no cuenta). Sprites viejos que aun se ven: pose de espera/carga y golpes (hoja 2).
+
+(12-11-2026) REVISION MODO DESARROLLO APAGADO (jugador de nivel 1): migratePlayer(null) da nivel 1, 5.000 monedas, 0 dinero, owned = ability:dash, ability:smash, skin:nxo, style:classic, todos los desbloqueos de unlocks.ts en false (Ranked desde nivel 1 por decision anterior). 
+Hueco encontrado y corregido: la Tienda vendia 19 de 21 items desde el nivel 1 (poderes de ESPECIAL, DEFENSIVO, ULTI, cargas y estilos que aun no se pueden usar). shopCatalog.ts ahora toma el nivel de unlocks.ts por tipo
+(defensive 2, smash 4, inferno 6, charge 12, style 10) y conserva el propio si es mayor; el cambio es solo ahi (UNLOCK_LEVEL se sigue tocando en unlocks.ts). tools/test-ranked.mjs: la prueba "la Tienda cobra DINERO" pone nivel 10.
+docs/ECONOMIA.md seccion 6 lo explica. Comentario de devMode.ts reparado (true/false se habian roto). DEV_MODE_DEFAULT sigue en true (la app arranca en modo desarrollo; se apaga en AJUSTES).
+NO hay tutorial todavia: al subir de nivel se desbloquea sin aviso (el boton sale con candado y "NIVEL n"). Pendiente: tutorial por nivel.
+
+(14-11-2026) Claude: INSTALADO forehand HD (nxo-golpes-1). holdForehand 1->3 en nxo-hits.json (frames 2-3 traian raqueta a la izquierda). Memoria nxo 50,6 MB.
+
+(14-11-2026) Claude: forehand HD REPETIDO (nxo-golpes-1 v2, raqueta a la derecha) instalado; holdForehand vuelve a 1 (frame 2). Regla: poses de espera/carga sin efectos.
+
+(14-11-2026) Claude: INSTALADO backhand HD (nxo-golpes-2).
+
+(14-11-2026) Claude: walk HD reemplazado (nxo-movimientos-8 nuevo) + INSTALADO forehand-power (nxo-golpes-3).
+
+(14-11-2026) Claude: INSTALADO backhand-power HD (nxo-golpes-4).
+
+(12-11-2026) POLVO AL CORRER: MatchScene.runDust (llamado desde renderActors): una nube pequena en los pies cada ~55 unidades recorridas a mas de 140 u/s, con 90 ms minimos entre nubes, empujada hacia atras. Se mide con la posicion de cada actor, asi vale igual para usuario, bot y rival online, y tambien en el DASH. No suelta en el aire (lift), desaparecido, girando (spin), warp<1, launched, fuera de 'rally', ni cuando la posicion salta (>60 u o >0,2 s). Actor.dust guarda su estado. No esta en el sprite: el polvo dibujado en la hoja de correr no hace falta.
+Sprite de correr (nxo-movimientos-2) pendiente: la hoja nueva de ChatGPT tenia frames 4 y 8 con los dos pies en el aire (se ve que salta al repetir): pedir fase de vuelo corta, sin recoger las dos piernas.
+
+(14-11-2026) Claude: INSTALADO serve HD (nxo-golpes-5, repetido con trofeo+salto). serveRacket.normal nxo = dx 22, z 159 (antes -25/147). Pendiente: serve-bounce y serve-toss (hoja 4) siguen viejos.
+
+(12-11-2026) PARA CLAUDE: INSTALAR run HD = nxo-movimientos-2 (hoja nueva ya puesta por el usuario, 14-11 17:50, 1536x1024). Revisada por Kiro: sin saltos entre frames (4 y 8 = paso corto en tijera, 8 enlaza con 1), la raqueta se mueve con la zancada
+(baja en el 2, sube en el 3-4), sin polvo ni pelota. Detalle menor: la fila de abajo repite las poses de la de arriba (ciclo de 4 poses dos veces); no es problema. Kiro NO la instalo para no pisar el build-hd en curso.
+El polvo de la carrera ya lo hace el juego (MatchScene.runDust), no hace falta en la hoja. Despues de instalarla, Kiro revisa en partida el paso walk -> run, el volteo y el polvo.
+
+(14-11-2026) Claude: run HD reemplazado (nxo-movimientos-2 nuevo, 17:50).
+
+(14-11-2026) Claude: INSTALADO serve-spin HD (nxo-golpes-6). serveRacket.spin nxo = dx -4, z 158.
+
+(14-11-2026) Claude: forehand-power HD reemplazado (nxo-golpes-3 nuevo). El usuario ira reemplazando filas que vea flojas; seguir con las faltantes.
+
+(14-11-2026) Claude: backhand-power HD reemplazado (nxo-golpes-4 nuevo).
+
+(14-11-2026) Claude: INSTALADO smash HD (nxo-golpes-7).
+
+(14-11-2026) Claude: INSTALADO smash-power HD (nxo-golpes-8). HOJA 2 (golpes) NXO espaldas COMPLETA.
+
+(14-11-2026) Kiro, a peticion del usuario: NOMBRES DE LAS HOJAS 3 Y 4. SHEET_NAME en tools/build-hd.mjs = { 1 movimientos, 2 golpes, 3 reacciones, 4 extras } (solo esa linea y su comentario; sin tocar mas de la herramienta).
+Hoja 3 `reacciones`: nxo-reacciones-1 dive-right, -2 dive-left, -3 recover-right, -4 recover-left, -5 stunned, -6 point-won, -7 point-lost (wait no se hace).
+Hoja 4 `extras`: nxo-extras-1 serve-bounce, -2 serve-toss, -3 inferno-hit, -4 volley (walk va en movimientos-8; dropshot, intro y greet no se hacen). Documentado en docs/COMO-TRABAJAR-SPRITES-MOVIMIENTOS.md.
+
+(14-11-2026) Claude: idle HD reemplazado (nxo-movimientos-1 nuevo, raqueta delante a 2 manos).
+
+(14-11-2026) Claude: nombres finales HD: movimientos 1-12 (8 walk, 9 dive-right, 10 dive-left, 11 recover-right, 12 recover-left), golpes 1-8, reacciones 1-3 (stunned, point-won, point-lost), extras 1-4 (serve-bounce, serve-toss, inferno-hit, volley).
+
+(14-11-2026) Claude: INSTALADO dive-right HD (nxo-movimientos-9). build-hd: suelo POR FILA de la imagen (punto mas bajo de cada fila) en vez de mediana; reinstalado todo. Verificado dive-right y smash-power.
+
+=================================================================================================================
+PENDIENTE ALTA PRIORIDAD (usuario, 14-11-2026) - PARA CLAUDE: MEMORIA DE TEXTURAS HD
+Cada animacion HD que se instala sube la memoria de GPU del personaje (NXO ya ocupa 50,6 MB y faltan clips, MAI y los rivales de frente, con SOMBRA/VOLTERETA que clonan al personaje).
+En telefonos modestos puede cerrar la app. Hacer ahora, mientras se instalan los sprites: (1) medir MB por personaje y vista (cell w x h x frames x 4 por JSON), (2) fijar un TOPE de celda (propuesta ~200 px de personaje; la celda justa),
+(3) descargar texturas que no se usan en el partido o cargarlas por demanda, (4) probar en un telefono de gama baja. Lo trabaja Claude; Kiro revisa los efectos del juego despues.
+=================================================================================================================
+
+(14-11-2026) RAREZAS Y ULTIS: tipo ItemRarity (normal, especial, epica, legendaria) en domain/shopCatalog.ts; ShopItem.rarity (opcional: ausente = sin clasificar) y ShopItem.realMoneyOnly. TODAS las ULTIS (inferno:*) = rarity especial + realMoneyOnly: operations.purchase las rechaza con 'real_money_only';
+ShopScene.powerCard muestra su precio en CLP como boton principal (verde; aun sin pasarela de pago: avisa 'llega pronto'); tools/sim-economy.mjs ya no las compra ni las cuenta. Quien ya las tenia las conserva. El resto de items sigue sin rareza: decision pendiente del usuario
+(y la de que items basicos se compran con dinero virtual; ver conversacion: unos 6 basicos hasta el nivel 20, ruleta con dinero, items no basicos solo CLP). tsc OK, test-ranked 16 OK.
+
+(14-11-2026) Claude: INSTALADOS dive-left (nxo-movimientos-10, 3er intento, raqueta derecha cruzada) y recover-right (nxo-movimientos-11).
+
+(14-11-2026) MARCOS DE RAREZA (Kiro, usuario): ui/rarity.ts (RARITY_STYLE + drawRarityFrame, solo Graphics estaticos) = normal plata 3px / especial cian 4px + linea interior + brillo / epica morado 5px / legendaria dorado 6px + tachuelas. Sin texto de rareza.
+Tienda: ShopScene.card() acepta `rarity` (estilo, ESPECIAL, DEFENSIVO, CARGA pasan it.rarity) y powerCard (ULTI) dibuja el marco sobre su fondo. Personalizacion: PowerSlot.rarity (PowerDialog) pinta el marco de cada hueco; CustomizeScene lo rellena con itemRarity(`<tipo>:<id>`) (domain/shopCatalog.ts) en los dialogos de ULTI, ESPECIAL y DEFENSIVO.
+Lo equipado en el dialogo se marca con un aro exterior del color del dialogo. Sin rareza (FUEGO, DASH, estilos, cargando golpe) = sin marco. tsc OK, test-ranked 16 OK. No probado en pantalla.
+
+(14-11-2026) Claude: build-hd: piezas sueltas (estelas/polvo) van al cuerpo mas cercano por distancia real de pixeles (no por casilla). Arreglada estela de dive-left frame 4.
+
+(14-11-2026) Claude: INSTALADO recover-left (nxo-movimientos-12). Movimientos 1-12 NXO espaldas completos.
+
+(14-11-2026) Kiro, a peticion del usuario: (1) en la Tienda las ULTIS ya NO llevan marco de rareza (ShopScene.powerCard); siguen con rareza especial y solo dinero real. (2) PowerDialog (dialogos de equipar de Personalizacion): en la pantalla del poder seleccionado, esquina superior derecha, una etiqueta con el nombre de la rareza (RARITY_LABEL: NORMAL / ESPECIAL / EPICA / LEGENDARIA) con el color de su marco. Solo en poderes con rareza. tsc OK.
+
+(14-11-2026) Claude: INSTALADO stunned (nxo-reacciones-1).
+
+(14-11-2026) Claude: INSTALADO point-won (nxo-reacciones-2).
+
+(14-11-2026) RAREZA DE CARGANDO GOLPE (Kiro): charge:fire normal, charge:energy especial, charge:tulip epica (propuesta de Kiro aceptada por omision; el usuario dijo que los cargando llevan normal/especial/epica/legendaria; la legendaria queda reservada sin item).
+Se ven en la tarjeta de la Tienda y en el dialogo de equipar (PowerSlot.rarity en CustomizeScene). ESTILOS (efecto pelota): SIN rareza por decision del usuario hasta nuevo aviso (idea futura: 2 normales sin marco y un legendario oculto; no implementada).
+
+(14-11-2026) Claude: INSTALADO point-lost (nxo-reacciones-3). Reacciones 1-3 completas.
+
+(14-11-2026) Claude: serve-bounce DESCARTADO (nxo bounce:null, espera en reposo). extras-1 = walk-intro (clip NUEVO, caminata lenta de entrada; build-hd NEW_CLIPS lo crea en nxo-extra.json; NxoActor.runKey lo usa con walkFor). extras: 1 walk-intro, 2 serve-toss, 3 inferno-hit, 4 volley.
+
+(14-11-2026) Claude: INSTALADOS walk-intro (nxo-extras-1, clip nuevo creado en nxo-extra.json) y serve-toss (= nxo-golpes-9). extras ahora: 1 walk-intro, 2 inferno-hit, 3 volley.
+
+(14-11-2026) DINERO VIRTUAL Y RULETA (Kiro, decision del usuario): (1) shopCatalog: epica y legendaria + ULTIS = realMoneyOnly (charge:tulip pasa a solo CLP); normal y especial (no ULTIS) se compran con dinero virtual = 11 items / 590 de dinero. ShopScene.chargeCard muestra el CLP como boton principal cuando es solo dinero real.
+(2) RULETA con DINERO: WheelReward/WheelPrize 'cash' (wheelState, wheelConfig, dailyWheel: resolvePrize/applyReward/validReward, operations.addCash). Sectores d1 (1, 27%) y d5 (5, 3%) reemplazan a c10 y x10; c50 sube a 31% y x25 a 10% (monedas y XP por giro quedan igual; dinero ~0,4/giro). UI: wheelArt.drawSlotIcon dibuja billetes y el sector dice DINERO; WheelScene muestra '+N DINERO'. El anuncio x2 lo duplica como los demas.
+(3) tools/sim-economy.mjs: imprime el dinero esperado de la ruleta. Resultado 20 semillas: casual 274 de dinero en 60 dias (~6 items hasta el nivel 20, dia 57), regular ~5 hasta el nivel 20 (dia 22) y los 11 hacia el dia 50, intenso los 11 hacia el dia 36. docs/ECONOMIA.md actualizado (secciones 4 y 8). tsc OK, test-ranked 16 OK. Pantallas no probadas (ruleta con dinero, tarjeta de carga Tulipan).
+
+(14-11-2026) Claude: INSTALADOS inferno-hit (nxo-extras-2) y volley (nxo-extras-3). NXO ESPALDAS COMPLETO EN HD (todas las animaciones usadas). Pendiente opcional: repetir brake-turn (raqueta mano izq).
+
+(14-11-2026) Claude: build-hd --ulti: ULTI en HD, imagen vertical 1024x1536 3x3 (9 frames), nxo-ulti-1..6 (inferno-swing, ulti-hit, ulti-stun, idle-nr, run-nr, pickup), celda comun en nxo-inferno.json.
+
+(14-11-2026) Claude: ULTI HD: INSTALADO ulti-hit (nxo-ulti-2, 3x3). build-hd acepta 2x4 (8 frames) o 3x3 (9) segun formato de la imagen; framesOld lee rejillas (ULTI vieja era 3x3 en la textura); ULTI con celda por tira (NxoActor carga inferno/ulti con loadStrip). nxo-inferno standHeight 190, ~9,5 MB.
+
+(14-11-2026) BOT SIN GLOBOS (Kiro, usuario): BotBrain.planShot: el peso del globo es 0 siempre (antes 0,04-1,0 segun donde estuviera el jugador y +0,1..0,6 cuando iba apurado). El bot ya no elige 'lob'. Siguen: el globo de la defensa del DUELO RED (botDuelLunge) y la devolucion debil tras recibir un ESPECIAL/ULTI (son mecanicas, no decision del bot).
+Saque del bot: MatchScene.noLobServeSpeed sube su velocidad hasta que la altura maxima no pase BOT_SERVE_MAX_APEX = 280 (medido con la geometria real: perfecto ~232, normal 1o ~247, normal 2o ~290, flojo 1o ~284, flojo 2o ~342). Solo el saque del bot ('player' no cambia: un saque flojo suyo sigue siendo castigo). No se encontro un globo "real" en el saque con esos numeros: si sigue pasando, pedir cual (1o/2o, con efecto) y reproducirlo. tsc OK; test-dash, defensive-moves y net-duel OK.
+
+(14-11-2026) Claude: INSTALADO inferno-swing (nxo-ulti-1) pero con fallas: frame 5 (hold) raqueta a la izquierda y polera manga corta; pedir repetir.
+
+(14-11-2026) Claude: INSTALADO idle-nr (nxo-ulti-4, 2x4 = 8 frames).
+
+(14-11-2026) Claude: INSTALADO ulti-stun (nxo-ulti-3).
+
+(14-11-2026) Claude: ulti-stun reemplazado (nxo-ulti-3 v2; ojo: polera manga corta).
+
+(14-11-2026) Claude: inferno-swing reemplazado (nxo-ulti-1 v2). Frame 5 sigue con raqueta a la izquierda -> nxo-inferno.json hold 4->3 (frame 4, raqueta armada arriba a la derecha); preStrike/strikeFrom 5, impact 6 sin cambios. Polera manga corta.
+
+(14-11-2026) Claude: build-hd: piezas mas anchas que 1,25 casillas (fuego que une 2 frames) se cortan por los bordes de casilla; tiras > 4096 px se acomodan en varias filas de textura. inferno-swing v2 instalado limpio (hold=3).
+
+(14-11-2026) Claude: INSTALADO run-nr (nxo-ulti-5).
+
+(14-11-2026) TUTORIAL POR NIVEL + XP (Kiro, usuario). Tutorial: domain/tutorial.ts (TUTORIAL_STEPS, 20 pasos, ids estables), PlayerState.tutorial?: string[] (avisos vistos; clonePlayer, migrate y operations.markTutorialSeen), ui/TutorialDialog.ts (openTutorialDialog, maybeShowTutorial), enganchado en MenuScene.create tras la ruleta y la presentacion de la EXP. Solo con isDevMode() apagado. Doc: docs/TUTORIAL.md.
+XP: config.ts XP_WIN 190 = un nivel; XP_LOSS = 95 (medio nivel); XP_SURRENDER = 32 (un tercio de perder; MatchEndScene usa d.surrendered); xpToNext PLANA = XP_WIN en todos los niveles (antes 100+120/nivel). Simulado (20 semillas): nivel 20 el dia 9 (casual), 4 (regular), 2 (intenso); el pase mensual se completa en 2-8 dias.
+CONSECUENCIA A VIGILAR: el dinero y los premios dependen de los dias, no del nivel; los ~6 items virtuales que se pensaron "hasta el nivel 20" llegan hacia el dia 45-57 (casual). Y los rivales suben de nivel a la par (rivalLevelFor). Si es demasiado rapido, hacer la curva mas lenta desde el nivel 10 (ver docs/ECONOMIA.md seccion 6). tsc OK. NO probado en pantalla (aviso de tutorial).
+
+(14-11-2026) Claude: INSTALADOS inferno-swing v3 (nxo-ulti-1, chaqueta manga larga, hold=3) y pickup (nxo-ulti-6). ULTI NXO espaldas COMPLETA en HD (~7 MB). NXO espaldas 100% HD.
+
+(14-11-2026) Claude: brake-turn corregido (nxo-movimientos-5 v2, raqueta mano derecha en los 8 frames).
+
+(14-11-2026) Claude: backhand reemplazado (nxo-golpes-2 v2, basado en el reves cargado, menos potencia).
+
+(14-11-2026) Claude: NXO saque sin serve-toss: Pack.ownToss=false (NxoActor) -> el saque se reproduce desde su frame 1 y se detiene en el trofeo (frame 3) hasta serveRelease. golpes-9 queda sin uso.
+
+(14-11-2026) PARA CLAUDE (Kiro revisó, a pedido del usuario): RAQUETA "CORTADA" EN EL IDLE (nxo-movimientos-1). No es el recorte: la tira idle.webp (celda 134x237) NO toca el borde de ninguna celda (x max 129 de 133). La causa es que ChatGPT pinta el CORDAJE de la raqueta VERDOSO (muestras en nxo-movimientos-1.png: (125,240,148), (205,250,224), (82,175,81); 70 de 110 puntos de la red son verdosos) y el croma de build-hd lo borra: la red queda TRANSPARENTE y en la cancha se ve el fondo azul a traves, como si la raqueta estuviera incompleta.
+PEDIDO: en build-hd, quitar solo el verde saturado de fondo (G muy alto con R y B bajos, o conectado al borde de la casilla) y NO borrar el verde palido dentro de la raqueta; ahi hacer despill (pasarlo a blanco / gris claro) en vez de transparente. Revisar tambien run, walk y las demas hojas ya instaladas por el mismo defecto. Kiro/usuario: se anade al prompt "cordaje BLANCO, ningun tono verde".
+
+(14-11-2026) Claude: ARRANQUE: nxo-movimientos-8 = pasos de ajuste/split-step mirando a la red (reemplaza walk). nxo-extra.json walk fps 24, loop false; NxoActor.walkMs() = duracion del clip walk si no es bucle (<= WALK_MS) -> ~0,33 s y luego corre. golpes-9 sin uso (se reemplazara por otra cosa).
+
+(14-11-2026) Kiro, a peticion del usuario: MAI DE ESPALDAS EN HD (el usuario hace NXO de frente con Claude; Kiro y el usuario empiezan con Mai de espaldas). Kit de prompts: docs/PROMPTS-MAI-ESPALDAS-HD.md (bloque comun + una animacion por prompt, ya con los prompts afinados de NXO: idle a dos manos, walk/run con poses, golpes cargados, reves cargado a dos manos, remate con carga). Imagenes en frontend/public/personajes/Mai/jugador/ con nombres mai-movimientos-1..12, mai-golpes-1..9, mai-reacciones-1..3, mai-extras-1..3 (igual que NXO). ULTI de Mai: otra tanda.
+Detalles de Mai que importan a build-hd: cordaje de la raqueta DORADO-AMARILLO (no verde, para que el croma no lo borre; ver la nota del cordaje verdoso de NXO), falda y pelo largo (piezas sueltas que se mueven: cuidar la asignacion de piezas al cuerpo mas cercano), sin bote del saque (bounce null), MAI_LEGACY_MOVES desaparece al pasar a HD. Kiro revisa cada imagen; la instalacion con build-hd la hace Claude cuando termine con NXO de frente.
+
+(14-11-2026) Claude: arranque mas rapido: walk nxo 40 fps -> 0,2 s antes de correr (fps en nxo-extra.json; build-hd lo respeta).
+
+(14-11-2026) Claude: entrada al partido mas lenta: entranceWalk empieza al 60% del camino (ENTRANCE_FROM) y ease Linear (antes desde el borde con Sine.easeOut); misma duracion 1,7 s.
+
+(14-11-2026) Claude: ulti-stun v3 instalado (nxo-ulti-3 con la chaqueta correcta). Usuario: Kiro migra Mai; Claude sigue con NXO de frente (rival, pack nxo-front).
+
+(14-11-2026) Claude: build-hd listo para nxo-front: carpeta personajes/Nxo/rival/hd/, prefijo nxo-rival-, stand 150 por defecto en vista front.
+
+(14-11-2026) Claude: walk-intro reemplazado (nxo-extras-1 v2).
+
+(14-11-2026) Claude: INSTALADO nxo-front idle HD (nxo-rival-movimientos-1). nxo-front stand 150, ~31 MB.
+
+(15-11-2026) Claude: INSTALADO nxo-front run HD (nxo-rival-movimientos-2).
+
+(15-11-2026) Claude: INSTALADO nxo-front runstop HD (nxo-rival-movimientos-3).
+(15-11-2026) Kiro: MAI de espaldas idle HD INSTALADO (mai-movimientos-1; el usuario lo guardo como mai-rival-movimientos-1 y se renombro: el prefijo de la vista back es mai-). build-hd mai: stand 190, ~50 MB todas las tiras mai-v2; reescribe las 30 tiras y los 5 JSON mai-*. Tarda ~5 min y NO se debe interrumpir (deja tiras y JSON desfasados; si pasa: git checkout de public/assets/characters/mai-v2). Mai segun cordaje: revisar que la raqueta no quede transparente.
+
+(15-11-2026) Claude: INSTALADO nxo-front victory HD (nxo-rival-movimientos-4).
+
+(15-11-2026) Claude: INSTALADO nxo-front brake-turn HD (nxo-rival-movimientos-5).
+
+(15-11-2026) Claude: INSTALADO nxo-front dash HD (nxo-rival-movimientos-6).
+(15-11-2026) Kiro: MAI run HD instalado (mai-movimientos-2, v2 en tres cuartos de espaldas, cordaje dorado). HD de MAI: idle, run. ~50 MB.
+
+(15-11-2026) Claude: INSTALADO nxo-front defeat HD (nxo-rival-movimientos-7).
+
+(15-11-2026) Claude: INSTALADO nxo-front walk HD (nxo-rival-movimientos-8, saltitos); walk 40 fps sin bucle = 0,2 s antes de correr (como el jugador).
+(15-11-2026) Kiro: MAI runstop HD instalado (mai-movimientos-3). HD de MAI: idle, run, runstop. ~49.7 MB.
+
+(15-11-2026) Claude: INSTALADO nxo-front dive-right HD (nxo-rival-movimientos-9).
+
+(15-11-2026) Claude: INSTALADO nxo-front dive-left HD (nxo-rival-movimientos-10).
+(15-11-2026) Kiro: MAI victory HD instalado (mai-movimientos-4). HD de MAI: idle, run, runstop, victory. ~49.2 MB.
+
+(15-11-2026) Claude: INSTALADO nxo-front recover-right HD (nxo-rival-movimientos-11).
+
+(15-11-2026) Claude: INSTALADO nxo-front recover-left HD (nxo-rival-movimientos-12). Movimientos rival 1-12 completos.
+
+(15-11-2026) Claude: INSTALADO nxo-front forehand HD (nxo-rival-golpes-1).
+(15-11-2026) Kiro: mai-movimientos-5 llego equivocado (era otra victoria, no brake-turn); se movio a Mai/Old sprites y se regenero mai-v2 desde git con las HD buenas (idle, run, runstop, victory). AVISO build-hd: relee las tiras ya generadas como base de los clips sin HD; si se instala una imagen mala hay que git checkout de mai-v2 y de los mai-*.json antes de regenerar.
+(15-11-2026) Kiro: MAI brake-turn HD instalado (mai-movimientos-5 v2). HD de MAI: idle, run, runstop, victory, brake-turn. ~49.1 MB.
+
+(15-11-2026) Claude: INSTALADO nxo-front forehand-power HD (nxo-rival-golpes-3). nxo-rival-golpes-2 (reves) fallo: pedir de nuevo.
+(15-11-2026) Kiro: MAI dash HD instalado (mai-movimientos-6). HD de MAI: idle, run, runstop, victory, brake-turn, dash. ~48.8 MB.
+(15-11-2026) Kiro: MAI defeat HD instalado (mai-movimientos-7). HD de MAI: idle, run, runstop, victory, brake-turn, dash, defeat. ~48.5 MB. AVISO: en defeat frames 1-3 el cordaje salio amarillo-verdoso y el croma lo deja medio transparente (frames 4-8 dorados, bien). Pendiente: repetir la imagen con cordaje dorado, o que build-hd conserve el amarillo-lima.
+
+(15-11-2026) Claude: nxo-front backhand HD reemplazado (nxo-rival-golpes-2 v2, brazo derecho cruzado).
+
+(15-11-2026) Claude: INSTALADO nxo-front backhand-power HD (nxo-rival-golpes-4). build-hd falla a veces en la 1a pasada (conversion), repetir.
+(15-11-2026) Kiro: MAI walk HD instalado (mai-movimientos-8). HD de MAI: idle, run, runstop, victory, brake-turn, dash, defeat, walk. ~47.8 MB.
+
+(15-11-2026) Claude: INSTALADO nxo-front serve HD (nxo-rival-golpes-5). serveRacket.normal nxo-front = dx 16, z 158 (antes -10/148). nxo-front sigue con noToss (arranca en trofeo frame 3).
+
+(15-11-2026) Claude: INSTALADO nxo-front serve-spin HD (nxo-rival-golpes-6). serveRacket.spin nxo-front = dx 7, z 158.
+(15-11-2026) Kiro: MAI dive-right HD instalado (mai-movimientos-9). HD de MAI: idle, run, runstop, victory, brake-turn, dash, defeat, dive-right, walk. ~49.5 MB.
+
+(15-11-2026) Claude: INSTALADO nxo-front smash HD (nxo-rival-golpes-7).
+
+(15-11-2026) Claude: INSTALADO nxo-front smash-power HD (nxo-rival-golpes-8). Golpes rival 1-8 completos (golpes-9/serve-toss no se usa: noToss).
+(15-11-2026) Kiro: MAI dive-left HD instalado (mai-movimientos-10 v2, personaje mas chico por el ancho de la estirada). HD de MAI: idle, run, runstop, victory, brake-turn, dash, defeat, dive-right, dive-left, walk. ~50.2 MB.
+
+(15-11-2026) Claude: FIX fondo negro desde el 2o partido: CourtView anadia frames (top-strip...) a la textura del ambiente y Phaser cambiaba su firstFrame -> la imagen salia como franja de 3 px. Ahora frame __BASE explicito; cielo con color fijo por ambiente (sky) sin getPixel. FIX bot pelotas altas: golpes no-globo del bot con stretch 1.3 y apex<=150 (BOT_FLAT, velocidad hasta x1.3).
+
+RULETA 3 NIVELES (normal/dorada/epica): logica en frontend/src/domain/dailyWheel.ts (rollTier, boost, scaleReward) y wheelConfig.ts (WHEEL.tiers). Guardado: base/tier/taps en WheelSpin. Dorada +15%, epica +20% en monedas/xp/dinero (no items). Hasta 4 toques; con 4: ~55% normal, 33% dorada, 12% epica. Color: ui/wheelArt.ts (TIER_LOOK, ensureTierTexture).
+
+(15-11-2026) Claude: COFRE EVOLUTIVO: domain/chest.ts (gainChest/openChest/chestStatus, 2 dias, normal->especial->epico sin reiniciar tiempo, epico repetido=150 monedas; premios 200/60/3, 450/140/8, 900/300/20+cosmetico). PlayerState.chest (migrate sanitizeChest, clonePlayer). Ruleta: sector chest (5%) en lugar del 2o ESPECIAL (cos1 peso 200; c50 2600); icono cofre para el cofre, estrella para EPICO. WheelScene muestra el cofre. ui/ChestButton.ts en el menu a la derecha de TIENDA (cuenta atras, abrir con premio). tools/test-chest.mjs 7 OK.
+
+(15-11-2026) Claude: INSTALADO nxo-front stunned HD (nxo-rival-reacciones-1).
+
+MAI HD: mai-movimientos-11 (recover-right) instalada. Cuerdas amarillo-oliva (no #E0A000): revisar transparencia en el juego.
+
+(15-11-2026) Claude: INSTALADO nxo-front point-won HD (nxo-rival-reacciones-2).
+
+MAI HD: mai-movimientos-12 (recover-left) instalada. Cuerdas verde-amarillas: revisar en juego.
+
+(15-11-2026) Claude: INSTALADO nxo-front point-lost HD (nxo-rival-reacciones-3). Reacciones rival completas.
+
+MAI HD: mai-golpes-1 (forehand) instalada. Cuerdas doradas OK.
+
+(15-11-2026) Claude: INSTALADO nxo-front walk-intro HD (nxo-rival-extras-1, clip nuevo creado en nxo-front-extra.json).
+
+MAI HD: mai-golpes-2 (backhand) instalada. Cuerdas doradas OK; frame 5 con la raqueta pegada al borde izquierdo.
+
+(15-11-2026) Claude: INSTALADO nxo-front inferno-hit HD (nxo-rival-extras-2).
+
+MAI HD: mai-golpes-3 (forehand-power) instalada. Revisada la tira: sin restos en el frame 8; el trazo blanco de los frames 6-7 sale tenue.
+
+(15-11-2026) Claude: INSTALADO nxo-front volley HD (nxo-rival-extras-3). nxo-front completo salvo ULTI.
+
+(15-11-2026) Claude: INSTALADO nxo-front inferno-swing HD (nxo-rival-ulti-1, 2x4=8 frames; hold 4 / impact 6 sin cambios). nxo-front-inferno stand 150.
+
+(15-11-2026) Claude: INSTALADO nxo-front ulti-hit HD (nxo-rival-ulti-2).
+
+(15-11-2026) Claude: INSTALADO nxo-front ulti-stun HD (nxo-rival-ulti-3).
+MAI HD: mai-golpes-4 (backhand-power, v2 por el lado izquierdo) instalada. Frame 4: zapatilla pegada al borde derecho de la casilla.
+
+(15-11-2026) Claude: INSTALADO nxo-front idle-nr HD (nxo-rival-ulti-4).
+
+(15-11-2026) Claude: INSTALADO nxo-front run-nr HD (nxo-rival-ulti-5).
+MAI HD: mai-golpes-5 (serve, v2 con la raqueta a la derecha en el trofeo) instalada.
+MAI HD: serveRacket.normal re-medido sobre serve.webp: dx 22, z 166 (characters.mjs y mai-hits.json). spin sigue con el valor viejo hasta mai-golpes-6.
+
+(15-11-2026) Claude: INSTALADO nxo-front pickup HD (nxo-rival-ulti-6). NXO RIVAL (nxo-front) 100% HD: 12 mov + 8 golpes + 3 reacciones + 3 extras + 6 ULTI.
+
+(15-11-2026) Claude: cofre en el menu = CARD con forma de RULETAS DIARIAS, encima de ella a la derecha (chestButton 250x104), muestra nivel y "SE ABRE EN ..." / "TOCA PARA ABRIR". Quitado el boton junto a TIENDA.
+
+(15-11-2026) Claude: card cofre ajustada: 150x104, solo icono del cofre (sin texto), etiqueta arriba = tiempo restante o "ABRIR!", borde derecho alineado con RULETAS DIARIAS; solo aparece si hay cofre (chestButton devuelve null) y desaparece al abrirlo.
+
+(15-11-2026) Claude: menu: playY = navTop - 96 (antes -130): JUGAR/2v2, ruletas y cofre mas cerca de la barra; relativo a la barra, verificado en 375x667 y 390x844.
+MAI HD: mai-golpes-6 (serve-spin) instalada. serveRacket MAI: normal dx 18 z 168, spin dx 20 z 160 (spin estimado: su impacto es casi igual al del saque normal; revisar en juego). Ojo: golpes-6 casi no se distingue de golpes-5.
+
+(15-11-2026) Claude: info de la apuesta a la IZQUIERDA (searchPanel). ESPECIAL al chocar con la pared vuelve a pelota normal (checkBackWall: setPower false, humo y elementFx fuera). DROP SHOT 0: lineas curvas que giran; el punto ya no es al botar: dropZeroBack -> punto al volver a pasar la red (o tocar la red); el rival puede devolverla antes. Victoria: sin rayos giratorios, aura dorada en insignia y titulo; shade de 32 franjas -> un degradado (sin rayas). CourtView: sin estirar filas/columnas (rayas), cielo liso + degradado de 90 px dentro del borde y costados oscuros.
+
+(15-11-2026) Claude: TOMO la migracion MAI HD (traspaso de Kiro). Instaladas 15 (mov 1-12, golpes 1-6). Sigue mai-golpes-7.
+
+MAI HD: mai-golpes-7 (smash) instalada. Ojo: frame 3 (trofeo, donde arranca el golpe) sin raqueta visible (queda tras la cabeza); se ve ~70 ms. Memoria ~49,8 MB.
+
+MAI HD: mai-golpes-8 RECHAZADA (frames 3 y 5 con la raqueta en la mano izquierda; el 3 es la pose congelada del remate). Movida a Mai/Old sprites/mai-golpes-8-mano-izquierda.png. Pedido rehacer.
+EFECTOS DE PELOTA nuevos (15-11-2026): frontend/src/fx/ballTrailFx.ts (cinta + particulas a mano, sin texturas ni preFX), StyleId ampliado en domain/player.ts, items en domain/shopCatalog.ts, aspecto en ui/styleLook.ts (campo fx). classic = POR DEFECTO (sin estela). PowerDialog ahora crece en filas de 5 si hay mas de 10 poderes. Arcoiris: sin rareza y available:false hasta que el usuario decida. Solo el usuario ve su estela (no viaja por la red).
+
+MAI HD: mai-reacciones-1 (stunned) instalada. golpes-9 (serve-toss) no se hace para MAI (saca desde el frame 1 de serve).
+
+MAI HD: mai-reacciones-2 (point-won) instalada (usuario OK; frame 6 raqueta tapada, frame 7 cruzada a la izquierda por el golpecito en la palma).
+
+MAI HD: mai-reacciones-3 (point-lost) instalada (usuario OK; cordaje verde-lima en frames 2-3, nube verdosa, frame 6 sin raqueta).
+(15-11-2026) MatchScene: (1) SUPERSALTO/VOLTERETA: la sombra del personaje ya no sube con el (renderActors la deja en el suelo y la achica con la altura; vale tambien para el salto del remate), agachado y estirado al despegar (takeoffSquash), agachado al aterrizar el supersalto (landSquash), giro de la voltereta sobre el centro real del cuerpo (72, antes 64). (2) Saque del bot: noLobServeSpeed subia la velocidad hasta x2,26 cuando el golpe salia bajo; ahora tope 1,25x (y 1,25 x SERVE_SPEED). (3) A LAS ESTRELLAS (skyLaunch): vuelo con una sola animacion lineal, gira a 1080 grados/s constante hasta desaparecer, sobre el centro del cuerpo; golpe con estrella, anillo y rayas (skyImpactFx), parada de 130 ms, estela de brillos, sin sombra volando.
+
+MAI HD: mai-extras-1 (walk-intro, clip nuevo creado en mai-extra.json) instalada. Cordaje lima en la fuente pero en la tira se ve bien.
+(15-11-2026) TIENDA: rotacion en frontend/src/domain/shopRotation.ts (3 a la vez; charge/smash/defensive cada 12 h, inferno cada 24 h; EFECTO PELOTA todos, fila deslizable en ShopScene con eje decidido al primer movimiento). Prueba: node tools/test-shop-rotation.mjs. ShopScene compra con purchaseOffered. Se quito la tarjeta FUEGO de la Tienda.
+MAI HD: mai-extras-2 (inferno-hit) instalada.
+MAI HD: mai-extras-3 (volley) instalada (1a version sin raqueta en f8, rehecha).
+(15-11-2026, Kiro) MAESTRIAS Y PASIVAS: definidas en docs/MAESTRIAS.md (sin codigo todavia). Nxo = Agilidad, Mai = Precision, +1 % por nivel hasta 10 %, 1 maestria por partido ganado y solo desde el nivel 20 de la cuenta. La ZONA pasa a ser por personaje (los Rayos siguen siendo de la cuenta). La barra va en PERSONALIZAR sobre las 4 tarjetas y el Pase de Batalla explica la pasiva del personaje con un icono (i). Faltan por confirmar la curva de maestrias, que partidos cuentan y como se aplica la pasiva (seccion 10 del documento).
+RULETA TEST (solo DEV): 5a ruleta celeste TEST en RULETAS DIARIAS; giro extra (bonusSpin test:<ms>) con selector de premio (forceSlot en dailyWheel.spin); los premios SI se entregan. Card del cofre aparece al ganarlo (onPlayerChange en MenuScene). COFRE: tocarlo cerrado abre ventana ABRIR YA con anuncio (placement chest_open_now; en DEV sin anuncios se simula) -> openChest(s, now, skipWait). test-chest 9 OK.
+(15-11-2026, Kiro) MAESTRIAS IMPLEMENTADAS (ver docs/MAESTRIAS.md, tabla de archivos): domain/characterPassives.ts, PlayerState.mastery, awardMastery, ZONA por personaje (zone.stats[skin], los atributos viejos pasaron a Nxo), barra masteryBar en PERSONALIZAR, franja PASIVA con icono (i) en el premio de personaje del Pase, fila +1 MAESTRIA en el resultado y pasiva aplicada en MatchScene (Nxo agilidad: velocidad y alcance; Mai precision: menos desvio). Prueba: node tools/test-mastery.mjs. La curva y las reglas son la propuesta del documento (sin confirmar por el usuario): se cambian en characterPassives.ts. tools/sim-economy.mjs juega con Nxo para la ZONA.

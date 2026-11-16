@@ -104,7 +104,7 @@ export const CHARACTERS = {
     moves: {
       ...MAI_LEGACY_MOVES, // ver el bloque TEMPORAL de arriba
       greenDetails: true,
-      serveRacket: { normal: { dx: 12, z: 128 }, spin: { dx: 20, z: 146 } },
+      serveRacket: { normal: { dx: 18, z: 168 }, spin: { dx: 20, z: 160 } }, // medido sobre serve.webp / serve-spin.webp HD (mai-golpes-5 y 6, 15-11-2026); el spin es una estimación (el frame 5 es casi igual al del saque normal)
     },
     ulti: { greenDetails: true },
   },

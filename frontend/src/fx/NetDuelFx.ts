@@ -8,8 +8,8 @@ import type { CineProfile } from './SmashCinematic';
  *
  * Las miradas son las franjas de ojos de la ULTI (fx/infernoGaze.ts, public/personajes/<Personaje>/pj-<id>-mirada.webp) pero
  * LIMPIAS: sin resplandor de elemento, rayo en los ojos, chispas ni líneas de velocidad. Cada una ocupa ≈ 1/3 del ancho de la
- * pantalla, a la derecha y a la altura de la red, una sobre otra y "mirándose": el jugador (abajo) mira a la derecha (como
- * dibujada) y el rival (arriba) a la izquierda (espejada).
+ * pantalla, a la altura de la red y en la MISMA fila, "mirándose": el jugador a la IZQUIERDA mira a la derecha (como
+ * dibujada) y el rival a la DERECHA mira a la izquierda (espejada).
  *
  * Durante el inicio la escena está congelada (tweens y temporizadores en pausa): todo se anima desde `update(ms)` con el
  * tiempo REAL transcurrido, que llama la escena en cada fotograma. Fijo en pantalla (scrollFactor 0 → cámara de interfaz).
@@ -28,17 +28,16 @@ const easeIn = (u: number) => u * u * u;
 export function createDuelGaze(scene: Phaser.Scene, o: { centerY: number; mySkin: string; rivalSkin: string }): DuelGaze {
   const W = scene.scale.width;
   const pw = Math.round(W * NET_DUEL.gazeW);
-  const gap = 8;
   const margin = 10;
-  const plates: { c: Phaser.GameObjects.Container; delay: number; w: number }[] = [];
+  const plates: { c: Phaser.GameObjects.Container; delay: number; w: number; xIn: number; xOut: number }[] = [];
 
   /** una franja (null si el personaje no tiene mirada o su imagen no cargó) */
-  const plate = (skin: string, color: number, flip: boolean, below: boolean, delay: number) => {
+  const plate = (skin: string, color: number, flip: boolean, left: boolean, delay: number) => {
     const art = GAZE_ARTS[skin];
     if (!art || !scene.textures.exists(art.key)) return;
     const src = scene.textures.get(art.key).getSourceImage() as HTMLImageElement;
     const ph = Math.round(pw * (src.height / src.width));
-    const y = below ? o.centerY + gap / 2 : o.centerY - gap / 2 - ph;
+    const y = o.centerY - ph / 2; // (14-11-2026) las dos en la MISMA fila (centradas en centerY)
     const g = scene.add.graphics();
     g.fillStyle(0x000000, 0.35).fillRect(5, 6, pw, ph); // sombra
     g.fillStyle(0x0a1638, 1).fillRect(0, 0, pw, ph);
@@ -46,20 +45,22 @@ export function createDuelGaze(scene: Phaser.Scene, o: { centerY: number; mySkin
     const edge = scene.add.graphics();
     edge.lineStyle(5, 0x000000, 1).strokeRect(0, 0, pw, ph);
     edge.lineStyle(3, color, 1).strokeRect(2, 2, pw - 4, ph - 4);
-    const c = scene.add.container(W + 10, y, [g, img, edge]).setScrollFactor(0).setDepth(7600);
-    plates.push({ c, delay, w: pw });
+    // la del rival entra por la DERECHA; la tuya por la IZQUIERDA (mirándose)
+    const xIn = left ? margin : W - pw - margin;
+    const xOut = left ? -pw - 10 : W + 10;
+    const c = scene.add.container(xOut, y, [g, img, edge]).setScrollFactor(0).setDepth(7600);
+    plates.push({ c, delay, w: pw, xIn, xOut });
   };
-  plate(o.rivalSkin, RIVAL, true, false, 0); // el rival, arriba, mirando a la izquierda
-  plate(o.mySkin, MINE, false, true, 70); // tú, abajo, mirando a la derecha
+  plate(o.rivalSkin, RIVAL, true, false, 0); // el rival, a la derecha, mirando a la izquierda
+  plate(o.mySkin, MINE, false, true, 70); // tú, a la izquierda, mirando a la derecha
 
-  const xIn = W - pw - margin;
-  const xOut = W + 10;
   return {
     update(ms: number, endMs: number) {
       for (const p of plates) {
         if (!p.c.active) continue;
         const e = ms - p.delay;
         const tOut = endMs - NET_DUEL.gazeOutMs;
+        const { xIn, xOut } = p;
         let x: number;
         if (e <= 0) x = xOut;
         else if (e < NET_DUEL.gazeInMs) x = xOut + (xIn - xOut) * easeOut(e / NET_DUEL.gazeInMs);
@@ -151,27 +152,99 @@ export interface DuelScore {
 
 export function createDuelScore(scene: Phaser.Scene, y: number): DuelScore {
   const W = scene.scale.width;
-  const R = 25;
-  const gap = 24;
+  const R = 27;
+  const gap = 22;
   const n = NET_DUEL.rounds;
   const x0 = W / 2 - ((n - 1) * (2 * R + gap)) / 2;
+  // (14-11-2026) CUADRO más cuidado: sombra, fondo con reflejo arriba, borde dorado doble y BRILLO que recorre el borde
+  // (como la oferta del Pase de Batalla en la Tienda)
+  const pw = n * 2 * R + (n - 1) * gap + 40;
+  const ph = 2 * R + 24;
+  const px = W / 2 - pw / 2;
+  const py = y - ph / 2;
+  const rad = 20;
   const panel = scene.add.graphics().setScrollFactor(0).setDepth(7600);
-  const pw = n * 2 * R + (n - 1) * gap + 34;
-  panel.fillStyle(0x000000, 0.45).fillRoundedRect(W / 2 - pw / 2 + 2, y - R - 10, pw, 2 * R + 20, 18);
-  panel.fillStyle(0x0b1733, 0.92).fillRoundedRect(W / 2 - pw / 2, y - R - 12, pw, 2 * R + 20, 18);
-  panel.lineStyle(3, 0xffd23f, 1).strokeRoundedRect(W / 2 - pw / 2, y - R - 12, pw, 2 * R + 20, 18);
+  panel.fillStyle(0x000000, 0.45).fillRoundedRect(px + 3, py + 6, pw, ph, rad);
+  panel.fillStyle(0x6b4a00, 1).fillRoundedRect(px - 3, py - 3, pw + 6, ph + 6, rad + 3); // aro exterior oscuro
+  panel.fillStyle(0x0b1733, 0.96).fillRoundedRect(px, py, pw, ph, rad);
+  panel.fillStyle(0x24407a, 0.55).fillRoundedRect(px + 4, py + 4, pw - 8, ph * 0.42, { tl: rad - 4, tr: rad - 4, bl: 6, br: 6 }); // reflejo de arriba
+  panel.lineStyle(3, 0xffd23f, 1).strokeRoundedRect(px, py, pw, ph, rad);
+  panel.lineStyle(1.5, 0xfff1b8, 0.55).strokeRoundedRect(px + 4, py + 4, pw - 8, ph - 8, rad - 4);
+  const shine = scene.add.graphics().setScrollFactor(0).setDepth(7602).setBlendMode(Phaser.BlendModes.ADD);
+
+  /** punto del borde redondeado a la distancia d (sentido horario desde arriba a la izquierda, tras la esquina) */
+  const sw = pw - 2 * rad;
+  const sh = ph - 2 * rad;
+  const arc = (Math.PI / 2) * rad;
+  const per = 2 * (sw + sh) + 4 * arc;
+  const at = (d: number) => {
+    let t = ((d % per) + per) % per;
+    const corner = (cx: number, cy: number, a0: number, u: number) => ({ x: cx + Math.cos(a0 + (u / rad)) * rad, y: cy + Math.sin(a0 + (u / rad)) * rad });
+    if (t < sw) return { x: px + rad + t, y: py };
+    t -= sw;
+    if (t < arc) return corner(px + pw - rad, py + rad, -Math.PI / 2, t);
+    t -= arc;
+    if (t < sh) return { x: px + pw, y: py + rad + t };
+    t -= sh;
+    if (t < arc) return corner(px + pw - rad, py + ph - rad, 0, t);
+    t -= arc;
+    if (t < sw) return { x: px + pw - rad - t, y: py + ph };
+    t -= sw;
+    if (t < arc) return corner(px + rad, py + ph - rad, Math.PI / 2, t);
+    t -= arc;
+    if (t < sh) return { x: px, y: py + ph - rad - t };
+    t -= sh;
+    return corner(px + rad, py + rad, Math.PI, t);
+  };
+  const t0 = performance.now();
+  // tiempo REAL (el duelo congela tweens y temporizadores al empezar)
+  const drawShine = () => {
+    if (!shine.active) return;
+    const d = ((performance.now() - t0) / 2600) * per;
+    const trail = 90;
+    shine.clear();
+    for (const off of [0, per / 2]) {
+      for (let k = 0; k < 10; k++) {
+        const a = at(d + off - (k * trail) / 10);
+        const b = at(d + off - ((k + 1) * trail) / 10);
+        const f = 1 - k / 10;
+        shine.lineStyle(4 * f + 1.5, 0xfff6c8, 0.9 * f).lineBetween(a.x, a.y, b.x, b.y);
+      }
+      const head = at(d + off);
+      shine.fillStyle(0xffffff, 1).fillCircle(head.x, head.y, 3.5);
+    }
+  };
+  scene.events.on(Phaser.Scenes.Events.PRE_RENDER, drawShine);
+  scene.events.once(Phaser.Scenes.Events.SHUTDOWN, () => scene.events.off(Phaser.Scenes.Events.PRE_RENDER, drawShine));
+
+  /** pelota de tenis con volumen: sombra, color, sombreado abajo, brillo arriba y costuras */
+  const paint = (g: Phaser.GameObjects.Graphics, who: DuelRoundColor | null) => {
+    const col = who === 'player' ? 0x2f7bff : who === 'bot' ? 0xff3b4e : who === 'tie' ? 0x5b6272 : 0x3a4152;
+    const dark = who === 'player' ? 0x1340a8 : who === 'bot' ? 0xa3101f : 0x262b37;
+    const rim = who === null ? 0x6b7489 : 0xffffff;
+    g.clear();
+    g.fillStyle(0x000000, 0.35).fillEllipse(2, R * 0.92, R * 1.7, R * 0.45);
+    g.fillStyle(dark, 1).fillCircle(0, 0, R);
+    g.fillStyle(col, 1).fillCircle(-R * 0.08, -R * 0.1, R * 0.9);
+    g.fillStyle(0xffffff, who === null ? 0.1 : 0.28).fillCircle(-R * 0.34, -R * 0.38, R * 0.36);
+    g.fillStyle(0xffffff, who === null ? 0.15 : 0.75).fillCircle(-R * 0.42, -R * 0.46, R * 0.13);
+    g.lineStyle(3, 0xffffff, who === null ? 0.3 : 0.85);
+    g.beginPath().arc(-R * 1.15, 0, R * 0.95, -0.7, 0.7).strokePath();
+    g.beginPath().arc(R * 1.15, 0, R * 0.95, Math.PI - 0.7, Math.PI + 0.7).strokePath();
+    g.lineStyle(3, rim, who === null ? 0.7 : 1).strokeCircle(0, 0, R);
+    if (who !== null) g.lineStyle(2, 0x000000, 0.35).strokeCircle(0, 0, R + 2.5);
+  };
   const balls: Phaser.GameObjects.Container[] = [];
-  const bodies: Phaser.GameObjects.Arc[] = [];
+  const bodies: Phaser.GameObjects.Graphics[] = [];
+  const halos: Phaser.GameObjects.Arc[] = [];
   for (let i = 0; i < n; i++) {
-    const body = scene.add.circle(0, 0, R, 0x6b7280, 1).setStrokeStyle(3, 0x1a2238, 1);
-    // costuras de la pelota (dos arcos blancos)
-    const seams = scene.add.graphics();
-    seams.lineStyle(3, 0xffffff, 0.75);
-    seams.beginPath().arc(-R * 1.15, 0, R * 0.95, -0.7, 0.7).strokePath();
-    seams.beginPath().arc(R * 1.15, 0, R * 0.95, Math.PI - 0.7, Math.PI + 0.7).strokePath();
-    const c = scene.add.container(x0 + i * (2 * R + gap), y, [body, seams]).setScrollFactor(0).setDepth(7601);
+    const halo = scene.add.circle(0, 0, R + 7, 0xffd23f, 0).setStrokeStyle(4, 0xffd23f, 0.9).setVisible(false);
+    const body = scene.add.graphics();
+    paint(body, null);
+    const c = scene.add.container(x0 + i * (2 * R + gap), y, [halo, body]).setScrollFactor(0).setDepth(7601);
     balls.push(c);
     bodies.push(body);
+    halos.push(halo);
   }
   let act = -1;
   let pulse: Phaser.Tweens.Tween | null = null;
@@ -180,15 +253,16 @@ export function createDuelScore(scene: Phaser.Scene, y: number): DuelScore {
       if (i === act || !balls[i]?.active) return;
       pulse?.remove();
       balls.forEach((b) => b.setScale(1));
+      halos.forEach((h) => h.setVisible(false));
       act = i;
-      pulse = scene.tweens.add({ targets: balls[i], scale: { from: 1, to: 1.18 }, duration: 260, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
+      halos[i].setVisible(true); // la ronda en juego lleva un aro dorado
+      pulse = scene.tweens.add({ targets: balls[i], scale: { from: 1, to: 1.15 }, duration: 260, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
     },
     set(i: number, who: DuelRoundColor) {
       const b = bodies[i];
       if (!b?.active) return;
-      const col = who === 'player' ? 0x2f7bff : who === 'bot' ? 0xff4f5e : 0x3a3f4d;
-      b.setFillStyle(col, 1);
-      b.setStrokeStyle(3, who === 'tie' ? 0xcfd6e6 : 0xffffff, 1);
+      paint(b, who);
+      halos[i].setVisible(false);
       if (act === i) {
         pulse?.remove();
         pulse = null;
@@ -204,7 +278,9 @@ export function createDuelScore(scene: Phaser.Scene, y: number): DuelScore {
     },
     destroy() {
       pulse?.remove();
+      scene.events.off(Phaser.Scenes.Events.PRE_RENDER, drawShine);
       if (panel.active) panel.destroy();
+      if (shine.active) shine.destroy();
       for (const b of balls) if (b.active) b.destroy();
     },
   };
@@ -270,17 +346,18 @@ export function createDuelPressure(scene: Phaser.Scene): DuelPressure {
 }
 
 /**
- * "¡RONDA DECISIVA!": texto grande al centro (entra con escala y se va solo a los `ms`). Va 1-1 antes de la tercera ronda.
+ * "¡ÚLTIMA RONDA!" (14-11-2026): justo ENCIMA del marcador de 3 pelotas (`scoreY` = su centro), no al medio de la pantalla:
+ * ningún texto tapa a los personajes ni la pelota. Entra con escala y se va solo a los `ms`. Va 1-1 antes de la tercera.
  * Fijo en pantalla (scrollFactor 0 → cámara de interfaz).
  */
-export function showDuelDecisive(scene: Phaser.Scene, ms: number = NET_DUEL.decisiveMs) {
+export function showDuelDecisive(scene: Phaser.Scene, scoreY: number, ms: number = NET_DUEL.decisiveMs) {
   const W = scene.scale.width;
-  const H = scene.scale.height;
-  const t = scene.add.text(W / 2, H * 0.4, '¡RONDA DECISIVA!', { fontFamily: '"Lilita One", "Arial Black", sans-serif', fontSize: '64px', color: '#ffd23f', stroke: '#2a0a00', strokeThickness: 10 }).setOrigin(0.5).setScrollFactor(0).setDepth(7800).setScale(0.2).setAlpha(0);
-  if (t.width > W - 30) t.setFontSize(Math.floor(64 * (W - 30) / t.width));
+  const y = scoreY - 27 - 12 - 28; // borde de arriba del marcador (radio 27 + 12) y medio texto
+  const t = scene.add.text(W / 2, y, '¡ÚLTIMA RONDA!', { fontFamily: '"Lilita One", "Arial Black", sans-serif', fontSize: '40px', color: '#ffd23f', stroke: '#2a0a00', strokeThickness: 8 }).setOrigin(0.5).setScrollFactor(0).setDepth(7800).setScale(0.2).setAlpha(0);
+  if (t.width > W - 30) t.setFontSize(Math.floor(40 * (W - 30) / t.width));
   scene.tweens.add({ targets: t, scale: 1, alpha: 1, duration: 220, ease: 'Back.easeOut' });
   scene.tweens.add({ targets: t, scale: 1.12, duration: 160, yoyo: true, repeat: 1, delay: 260, ease: 'Sine.easeInOut' });
-  scene.tweens.add({ targets: t, alpha: 0, y: H * 0.37, delay: Math.max(300, ms - 220), duration: 220, ease: 'Cubic.easeIn', onComplete: () => t.destroy() });
+  scene.tweens.add({ targets: t, alpha: 0, y: y - 12, delay: Math.max(300, ms - 220), duration: 220, ease: 'Cubic.easeIn', onComplete: () => t.destroy() });
   return t;
 }
 

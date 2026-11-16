@@ -2,125 +2,283 @@
   "source": "pj-mai-1.png..4 (tools/build-moves.mjs): animaciones nuevas",
   "view": "back",
   "cell": {
-    "w": 212,
-    "h": 150
+    "w": 152,
+    "h": 225
   },
   "origin": {
     "x": 0.5,
-    "y": 0.93333
+    "y": 0.98222
   },
-  "standHeight": 112,
+  "standHeight": 190,
   "animations": {
     "run-left": {
       "file": "run-left.webp",
       "frames": 8,
       "fps": 14,
-      "loop": true
+      "loop": true,
+      "cell": {
+        "w": 230,
+        "h": 199
+      },
+      "origin": {
+        "x": 0.5,
+        "y": 0.94472
+      }
     },
     "dash": {
       "file": "dash.webp",
       "frames": 8,
       "fps": 18,
-      "loop": true
+      "loop": true,
+      "cell": {
+        "w": 216,
+        "h": 221
+      },
+      "origin": {
+        "x": 0.5,
+        "y": 0.9819
+      }
     },
     "defeat": {
       "file": "defeat.webp",
       "frames": 8,
       "fps": 10,
-      "loop": false
+      "loop": false,
+      "cell": {
+        "w": 192,
+        "h": 250
+      },
+      "origin": {
+        "x": 0.5,
+        "y": 0.984
+      }
     },
     "serve-spin": {
       "file": "serve-spin.webp",
       "frames": 8,
       "fps": 12,
       "loop": false,
-      "impact": 4
+      "impact": 4,
+      "cell": {
+        "w": 190,
+        "h": 251
+      },
+      "origin": {
+        "x": 0.5,
+        "y": 0.98406
+      }
     },
     "dive-right": {
       "file": "dive-right.webp",
       "frames": 8,
       "fps": 18,
-      "loop": false
+      "loop": false,
+      "cell": {
+        "w": 424,
+        "h": 317
+      },
+      "origin": {
+        "x": 0.5,
+        "y": 0.98738
+      }
     },
     "dive-left": {
       "file": "dive-left.webp",
       "frames": 8,
       "fps": 18,
-      "loop": false
+      "loop": false,
+      "cell": {
+        "w": 390,
+        "h": 267
+      },
+      "origin": {
+        "x": 0.5,
+        "y": 0.98502
+      }
     },
     "recover-right": {
       "file": "recover-right.webp",
       "frames": 8,
       "fps": 14,
-      "loop": false
+      "loop": false,
+      "cell": {
+        "w": 216,
+        "h": 223
+      },
+      "origin": {
+        "x": 0.5,
+        "y": 0.98206
+      }
     },
     "recover-left": {
       "file": "recover-left.webp",
-      "frames": 2,
+      "frames": 8,
       "fps": 14,
-      "loop": false
+      "loop": false,
+      "cell": {
+        "w": 208,
+        "h": 242
+      },
+      "origin": {
+        "x": 0.5,
+        "y": 0.98347
+      }
     },
     "stunned": {
       "file": "stunned.webp",
       "frames": 8,
       "fps": 12,
-      "loop": true
+      "loop": true,
+      "cell": {
+        "w": 144,
+        "h": 205
+      },
+      "origin": {
+        "x": 0.5,
+        "y": 0.98049
+      }
     },
     "point-won": {
       "file": "point-won.webp",
       "frames": 8,
       "fps": 12,
-      "loop": false
+      "loop": false,
+      "cell": {
+        "w": 180,
+        "h": 256
+      },
+      "origin": {
+        "x": 0.5,
+        "y": 0.98438
+      }
     },
     "point-lost": {
       "file": "point-lost.webp",
       "frames": 8,
       "fps": 10,
-      "loop": false
+      "loop": false,
+      "cell": {
+        "w": 164,
+        "h": 217
+      },
+      "origin": {
+        "x": 0.5,
+        "y": 0.98157
+      }
     },
     "wait": {
       "file": "wait.webp",
       "frames": 8,
       "fps": 10,
-      "loop": true
+      "loop": true,
+      "cell": {
+        "w": 288,
+        "h": 203
+      },
+      "origin": {
+        "x": 0.5,
+        "y": 0.95567
+      }
     },
     "walk": {
       "file": "walk.webp",
-      "frames": 9,
+      "frames": 8,
       "fps": 10,
-      "loop": true
+      "loop": true,
+      "cell": {
+        "w": 162,
+        "h": 219
+      },
+      "origin": {
+        "x": 0.5,
+        "y": 0.98174
+      }
     },
     "inferno-hit": {
       "file": "inferno-hit.webp",
-      "frames": 9,
+      "frames": 8,
       "fps": 14,
-      "loop": false
+      "loop": false,
+      "cell": {
+        "w": 270,
+        "h": 227
+      },
+      "origin": {
+        "x": 0.5,
+        "y": 0.98238
+      }
     },
     "volley": {
       "file": "volley.webp",
-      "frames": 9,
+      "frames": 8,
       "fps": 16,
       "loop": false,
-      "impact": 4
+      "impact": 4,
+      "cell": {
+        "w": 206,
+        "h": 212
+      },
+      "origin": {
+        "x": 0.5,
+        "y": 0.98113
+      }
     },
     "dropshot": {
       "file": "dropshot.webp",
       "frames": 9,
       "fps": 14,
       "loop": false,
-      "impact": 4
+      "impact": 4,
+      "cell": {
+        "w": 360,
+        "h": 205
+      },
+      "origin": {
+        "x": 0.5,
+        "y": 0.96585
+      }
     },
     "intro": {
       "file": "intro.webp",
       "frames": 9,
       "fps": 10,
-      "loop": false
+      "loop": false,
+      "cell": {
+        "w": 252,
+        "h": 211
+      },
+      "origin": {
+        "x": 0.5,
+        "y": 0.95261
+      }
     },
     "greet": {
       "file": "greet.webp",
       "frames": 9,
       "fps": 10,
-      "loop": false
+      "loop": false,
+      "cell": {
+        "w": 248,
+        "h": 205
+      },
+      "origin": {
+        "x": 0.5,
+        "y": 0.96585
+      }
+    },
+    "walk-intro": {
+      "file": "walk-intro.webp",
+      "frames": 8,
+      "fps": 8,
+      "loop": true,
+      "cell": {
+        "w": 140,
+        "h": 199
+      },
+      "origin": {
+        "x": 0.5,
+        "y": 0.9799
+      }
     }
   }
 }

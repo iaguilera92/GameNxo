@@ -2,14 +2,14 @@
   "source": "pj-nxo-rival-2.png (fila 8)",
   "view": "front",
   "cell": {
-    "w": 178,
-    "h": 136
+    "w": 118,
+    "h": 190
   },
   "origin": {
     "x": 0.5,
-    "y": 0.93382
+    "y": 0.97895
   },
-  "standHeight": 110,
+  "standHeight": 150,
   "start": 2,
   "animations": {
     "smash-power": {
@@ -18,7 +18,15 @@
       "fps": 14,
       "loop": false,
       "impact": 4,
-      "scale": 1
+      "scale": 1,
+      "cell": {
+        "w": 154,
+        "h": 200
+      },
+      "origin": {
+        "x": 0.5,
+        "y": 0.98
+      }
     }
   }
 }

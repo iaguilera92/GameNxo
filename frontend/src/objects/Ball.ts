@@ -4,6 +4,7 @@ import { C } from '../ui/theme';
 import { project } from '../view/projection';
 import type { SmashPower } from '../domain/smashPowers';
 import { SMASH_LOOK } from '../fx/smashFx';
+import { type TrailFx, type TrailLook, TrailParticles, drawRibbon } from '../fx/ballTrailFx';
 
 export interface BallState {
   x: number;
@@ -20,7 +21,16 @@ export interface BallState {
   ay?: number;
   /** gravedad propia de ESTE vuelo (el GLOBO DISPARADO sube mucho más alto en el mismo tiempo); por defecto GRAVITY. Vuelve a la normal al botar */
   g?: number;
+  /**
+   * DROP SHOT 0 (14-11-2026): efecto hacia atrás. Al BOTAR, la pelota se devuelve por encima de la red hacia quien la tiró
+   * (velocidad de vuelta = `back` × DROP_ZERO.backSpeed). Se borra al botar y queda `backBounced` (lo lee la escena: punto).
+   */
+  back?: number;
+  backBounced?: boolean;
 }
+
+/** DROP SHOT 0: velocidad horizontal de la vuelta y altura con la que vuelve a pasar sobre la red */
+export const DROP_ZERO = { backSpeed: 240, netClear: 22, maxVz: 520 };
 
 export type BallEvent = 'bounce' | 'net' | null;
 
@@ -62,6 +72,20 @@ export function stepBall(s: BallState, dt: number): BallEvent {
       s.vy = vy0 + ay * t;
     }
     s.z = 0;
+    if (s.back) {
+      // DROP SHOT 0: bota y vuelve hacia atrás, pasando de nuevo sobre la red
+      const dir = s.vx > 0 ? -1 : 1;
+      const v = DROP_ZERO.backSpeed * s.back;
+      const t = Math.max(0.06, Math.abs(s.x - NET_X) / v);
+      s.vx = dir * v;
+      s.vy *= 0.3;
+      s.vz = Math.min(DROP_ZERO.maxVz, (NET_HEIGHT + DROP_ZERO.netClear + 0.5 * GRAVITY * t * t) / t);
+      s.g = undefined;
+      s.ay = undefined;
+      s.back = undefined;
+      s.backBounced = true;
+      return 'bounce';
+    }
     // tras un vuelo con gravedad propia (globo disparado) el bote es el de un globo normal: la velocidad de caída se reescala
     s.vz = -s.vz * (s.damp ?? BOUNCE_DAMP) * (s.g ? GRAVITY / s.g : 1);
     s.g = undefined;
@@ -107,6 +131,8 @@ export function aimShot(from: BallState, tx: number, ty: number, speed: number, 
   from.fric = undefined;
   from.ay = undefined;
   from.g = undefined;
+  from.back = undefined;
+  from.backBounced = undefined;
   from.vx = dx / T;
   from.vy = dy / T;
   from.vz = (0.5 * GRAVITY * T * T - from.z) / T;
@@ -241,6 +267,7 @@ export class Ball {
   readonly shadow: Phaser.GameObjects.Ellipse;
   readonly sprite: Phaser.GameObjects.Container;
   private trail: Phaser.GameObjects.Graphics;
+  private fxParts: TrailParticles;
   private history: { x: number; y: number; col: number }[] = [];
   private guide: Phaser.GameObjects.Graphics;
   private kind: ShotKind = 'normal';
@@ -264,6 +291,7 @@ export class Ball {
     this.shadow = scn.add.ellipse(0, 0, 30, 12, 0x000000, 0.5);
     this.guide = scn.add.graphics();
     this.trail = scn.add.graphics();
+    this.fxParts = new TrailParticles(scn.add.graphics()); // partículas del efecto de pelota equipado (fx/ballTrailFx.ts)
     this.sprite = scn.add.container(0, 0);
     makeBallArt(scn);
     const outline = scn.add.circle(0, 0, 12, C.outline);
@@ -346,13 +374,13 @@ export class Ball {
    * Cambia el color de la estela según el tipo de golpe. `look`: estilo equipado del jugador (solo en
    * sus golpes): tiñe la estela de los golpes normales y añade chispas si el estilo las tiene.
    */
-  setKind(k: ShotKind, charged = false, look?: { trail: number; sparkle: boolean }) {
+  setKind(k: ShotKind, charged = false, look?: TrailLook) {
     this.kind = k;
     this.charged = charged;
     this.look = look ?? null;
     if (this.max) this.setMaxCharge(false); // cada golpe nuevo apaga el brillo del cargado al máximo
   }
-  private look: { trail: number; sparkle: boolean } | null = null;
+  private look: TrailLook | null = null;
   private sparkTimer = 0;
 
   /** Refuerza la estela (más ancha y de color) tras un golpe potente; decae en menos de un segundo. */
@@ -437,6 +465,7 @@ export class Ball {
     // golpe cargado al máximo: la pelota late con su brillo y los rayos parpadean; sin estela, salvo el GLOBO DISPARADO
     // (globo cargado al máximo, 13-11-2026), que conserva su estela amarilla de globo
     if (this.max && !this.power && !this.quietFx) {
+      this.fxParts.clear();
       if (this.kind !== 'lob') {
         this.history = [];
         this.trail.clear();
@@ -456,15 +485,18 @@ export class Ball {
     if (this.quietFx) {
       this.history = [];
       this.trail.clear();
+      this.fxParts.clear();
       return;
     }
     // estela tipo "viento": cinta cónica del color del golpe
     this.boost = Math.max(0, this.boost - dt * 1.3);
     const styled = this.look && (this.kind === 'normal' || this.kind === 'side') ? this.look.trail : null;
-    // golpe NORMAL sin estilo equipado: sin estela (el efecto de pelota se asignará en PERSONALIZACIÓN)
+    // golpe NORMAL sin estilo equipado (POR DEFECTO): sin estela
     if (!this.power && this.kind === 'normal' && !this.look) {
       this.history = [];
       this.trail.clear();
+      this.fxParts.tick(null, air.sx, sy, scale, dt); // deja que se apaguen solas las partículas del golpe anterior
+      this.fxParts.g.setDepth(ground.sy + 2);
       return;
     }
     // globo y cortita conservan SIEMPRE su color (el refuerzo del golpe solo ensancha la estela, no la tiñe)
@@ -474,16 +506,11 @@ export class Ball {
     this.history.push({ x: air.sx, y: sy, col });
     if (this.history.length > 20) this.history.shift();
     this.trail.clear();
-    const n = this.history.length;
-    for (let i = 1; i < n; i++) {
-      const a = this.history[i - 1];
-      const b = this.history[i];
-      const t = i / n;
-      const w = (3 + t * 16) * scale * (this.charged ? 1.6 : 1) * (1 + 0.7 * this.boost);
-      const alpha = Math.min(1, t * (this.charged ? 0.85 : 0.6) * (1 + 0.5 * this.boost));
-      this.trail.lineStyle(w, b.col, alpha).lineBetween(a.x, a.y, b.x, b.y);
-      this.trail.fillStyle(b.col, alpha).fillCircle(b.x, b.y, w / 2);
-    }
+    // efecto de pelota del estilo equipado (fx/ballTrailFx.ts): solo en los golpes normales con estilo, no en globos ni poderes
+    const fx: TrailFx = styled !== null && !fixed && !this.power ? this.look?.fx ?? 'plain' : 'plain';
+    drawRibbon(this.trail, this.history, { scale, charged: this.charged, boost: this.boost, fx, now: this.scn.time.now });
+    this.fxParts.g.setDepth(ground.sy + 2);
+    this.fxParts.tick(fx !== 'plain' && this.sprite.visible ? fx : null, air.sx, sy, scale, dt);
     if (this.fire && this.sprite.visible) this.emitFire(dt, air.sx, sy, scale, ground.sy);
   }
 
@@ -531,6 +558,7 @@ export class Ball {
   clearTrail() {
     this.history = [];
     this.trail.clear();
+    this.fxParts.clear();
     this.guide.clear();
     this.kind = 'normal';
     this.charged = false;
@@ -541,6 +569,7 @@ export class Ball {
     this.sprite.setVisible(v);
     this.shadow.setVisible(v);
     this.trail.setVisible(v);
+    this.fxParts.g.setVisible(v);
     this.guide.setVisible(v);
   }
 }

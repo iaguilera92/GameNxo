@@ -75,8 +75,11 @@ simulaciones nunca baja de 7.
 | Posición semanal | Top 1 50 · Top 10 20 · Top 50 5 |
 | Pase gratis | 40 por temporada (un mes) |
 | Pase premium | 60 más (con la bienvenida) |
+| Ruleta | ~0,4 por giro (casual ~1 al día, regular ~2) |
 | Premio repetido del pase | 3 |
 | Paquetes (dinero real) | sección 5 |
+
+**Regla del dinero virtual (14-11-2026):** se compran con dinero virtual los ítems de rareza **normal** y **especial** (excepto las ULTIS). La rareza **épica** y la **legendaria** y las **ULTIS** solo con dinero real. Hoy son 11 ítems comprables con dinero virtual (590 de dinero: Cargando Fuego y Energía, Destello, 5 especiales y 4 defensivos especiales) y solo con dinero real las 4 ULTIS y el Cargando Tulipán. El dinero llega despacio, así que nadie tiene la Tienda de golpe. Simulado (20 semillas): casual junta ~274 de dinero en 60 días y compra ~6 ítems hasta el nivel 20 (día 57); regular compra ~5 hasta el nivel 20 (día 22) y los 11 hacia el día 50; intenso los 11 hacia el día 36. El Pase Premium sigue dando más que el gratis (60 contra 40).
 
 **Sale:** solo en la Tienda. El Pase Premium se paga con dinero real ($3.990 CLP), no con billetes.
 
@@ -91,6 +94,10 @@ Techo semanal sin pagar: ~165 (30 del diario con anuncio + 125 de Challenger Top
 | Efecto pelota Verde | 10 | $490 | 2 |
 | Efecto pelota Oro | 25 | $990 | 5 |
 | Efecto pelota Rosado | 15 | $690 | 1 |
+| Efecto pelota Brasas · Hielo · Neón · Humo (especial) | 40 | $1.490 | 1 |
+| Efecto pelota Tulipanes · Corazones (épica, solo dinero real) | 60 | $1.990 | 1 |
+| Efecto pelota Estrellas (legendaria, solo dinero real) | 100 | $2.490 | 1 |
+| Efecto pelota Arcoíris (SIN rareza, no se vende aún) | 40 | $1.490 | 1 |
 | ULTI (INFERNO) Hielo | 40 | $1.490 | 1 |
 | ULTI Viento | 60 | $1.990 | 1 |
 | ULTI Rayo | 80 | $2.490 | 1 |
@@ -104,7 +111,9 @@ Techo semanal sin pagar: ~165 (30 del diario con anuncio + 125 de Challenger Top
 | DEFENSIVO Destello | 50 | $1.490 | 1 |
 | DEFENSIVO Sombra | 50 | $1.490 | 1 |
 | DEFENSIVO Supersalto | 50 | $1.490 | 1 |
-| **Toda la tienda** | **735** | | |
+| DEFENSIVO Voltereta | 50 | $1.490 | 1 |
+| DEFENSIVO Patinaje | 50 | $1.490 | 1 |
+| **Toda la tienda** | **835** | | |
 
 Paquetes de dinero: Puñado 50 = $1.490 · Fajo 130 = $2.990 · Maletín 350 = $6.990 · Bolsa 750 = $13.990 ·
 Cofre 2.000 = $34.990 · Caja fuerte 4.500 = $69.990. Cuanto más grande, más dinero por peso.
@@ -117,24 +126,26 @@ intenso tiene toda la tienda recién el día ~50.
 
 ## 6. XP y niveles (`frontend/src/config.ts`, `frontend/src/domain/unlocks.ts`)
 
-- XP: victoria 190 · derrota o rendición 80 · ruleta ~5 de media por giro. (12-11-2026: antes 60 / 25 y la ruleta
-  daba 102 por giro; la XP pasó de la ruleta a las partidas con el mismo ritmo de niveles del casual.) Toda la XP llena también el pase de la
-  temporada.
-- Curva: XP para pasar del nivel n al n+1 = 100 + (n − 1) × 120.
-- XP acumulada: nivel 2 = 100 · 5 = 1.120 · 10 = 5.220 · 15 = 12.320 · 20 = 22.420 (nivel máximo).
+- XP (14-11-2026, decisión del usuario): **una victoria = un nivel** (190 XP), una derrota = medio nivel (95: dos derrotas hacen un nivel) y rendirse o abandonar = un tercio de una derrota (32). Ruleta ~5 de media por giro. Toda la XP llena también el pase de la temporada.
+- Curva: **plana**, 190 XP por nivel en todos los niveles (`xpToNext` en `config.ts`; antes 100 + 120 por nivel, 22.420 XP del 1 al 20). Del 1 al 20: 3.610 XP.
+- Tutorial por nivel con el modo desarrollo apagado: `docs/TUTORIAL.md`.
 
 | Nivel | Qué se desbloquea | Casual | Regular |
 |---|---|---|---|
 | 2 | DEFENSIVO | día 1 | día 1 |
 | 4 | ESPECIAL (SMASH) | día 2 | día 1 |
-| 6 | ULTI (INFERNO) | día 5 | día 2 |
-| 8 | ESTILOS de color | día 8 | día 3 |
-| 10 | EFECTO PELOTA | día 13 | día 5 |
-| 12 | CARGANDO GOLPE | día 20 | día 8 |
-| 15 | ZONA y SAQUE CON EFECTO | día 31 | día 12 |
-| 20 | nivel máximo | día 56 | día 22 |
+| 6 | ULTI (INFERNO) | día 3 | día 1 |
+| 8 | ESTILOS de color | día 3 | día 2 |
+| 10 | EFECTO PELOTA | día 4 | día 2 |
+| 12 | CARGANDO GOLPE | día 6 | día 2 |
+| 15 | ZONA y SAQUE CON EFECTO | día 7 | día 3 |
+| 20 | nivel máximo | día 9 | día 4 |
 
-(Simulador, mediana de 5 semillas, 12-11-2026. El intenso llega al nivel 20 el día ~8.)
+(Simulador, mediana de 20 semillas, 14-11-2026. El intenso llega al nivel 20 el día 2. Ojo: con la curva plana el nivel 20 llega MUY pronto y el pase de la temporada se completa en 2-8 días. El dinero y los premios diarios dependen de los días, no del nivel: los ~6 ítems de dinero virtual que se pensaron "hasta el nivel 20" llegan ahora hacia el día 45-57 (casual). Si se quiere frenar, se puede hacer la curva más lenta desde el nivel 10.)
+
+**Rarezas (14-11-2026):** normal · especial · épica · legendaria (`ItemRarity` en `shopCatalog.ts`). Hoy solo están clasificadas las ULTIS: todas son **especial** y se compran **solo con dinero real (CLP)**: con dinero virtual `purchase` las rechaza (`real_money_only`) y la Tienda muestra su precio en CLP como botón. Aún no hay ULTIS gratuitas (el fuego de la ULTI no se vende: viene con el personaje). También son **especiales** todos los poderes del ESPECIAL y del DEFENSIVO, salvo el DESTELLO (**normal**); el DASH y el FUEGO vienen gratis y no están en la Tienda. Efecto pelota: Brasas, Hielo, Neón y Humo especiales; Tulipanes y Corazones épicas; Estrellas legendaria; Arcoíris sin rareza (no se vende hasta decidirla); los estilos de color de siempre siguen sin rareza. Cargando golpe: Fuego normal, Energía especial, Tulipán épica. **Regla:** cada habilidad o poder nuevo se crea preguntando antes al usuario su rareza. El price en dinero de las ULTIS queda solo como referencia (regla de precios en CLP y total de la tienda); el simulador ya no las compra.
+
+**Jugador sin nada (MODO DESARROLLO apagado):** nivel 1, solo el personaje inicial, DASH y SMASH de fuego (bloqueados por nivel), estilo clásico y 5.000 monedas. Desde 12-11-2026 la Tienda tampoco vende antes de tiempo: un poder del DEFENSIVO se compra desde el nivel 2, del ESPECIAL desde el 4, de la ULTI desde el 6, el EFECTO PELOTA (estilos) desde el 10 y CARGANDO GOLPE desde el 12 (shopCatalog.ts toma el nivel de unlocks.ts; el nivel propio del ítem solo cuenta si es mayor).
 
 El rival se elige por tu nivel (tu nivel ±2; en Ranked, +2 por liga): subir de nivel también sube la dificultad.
 
@@ -157,17 +168,17 @@ Chile.
 
 | Premio | Probabilidad |
 |---|---|
-| 10 monedas | 30 % |
-| 50 monedas | 25 % |
+| 1 de dinero | 27 % |
+| 5 de dinero | 3 % |
+| 50 monedas | 31 % |
 | 100 monedas | 15 % |
 | 150 monedas | 8 % |
-| 10 XP | 10 % |
-| 25 XP | 6 % |
+| 25 XP | 10 % |
 | 50 XP | 3 % |
 | ÉPICO: 500 monedas o 250 XP | 1 % |
 | ESPECIAL: cosmético (repetido = 300 monedas) | 2 % |
 
-Media por giro: ~45 monedas + ~5 XP (antes 300 + 102). El anuncio x2 repite el premio de ese giro. Premios bajados
+Media por giro: ~45 monedas + ~5 XP + ~0,4 de dinero (antes 300 + 102). **Dinero en la ruleta (14-11-2026, decisión del usuario):** los sectores de 1 y de 5 de dinero reemplazan a 10 monedas y 10 XP; su peso pasó a 50 monedas y 25 XP, así que las monedas y la XP por giro quedan iguales. El anuncio x2 repite el premio de ese giro. Premios bajados
 el 12-11-2026 (decisión del usuario: la ruleta daba demasiado y con el x2 se duplicaba). Ojo: la ruleta era ~70 % de la
 XP de un jugador nuevo; sin ella los niveles llegan bastante más tarde (ver la sección 6 y el simulador).
 
@@ -277,8 +288,14 @@ actualizar este documento (y [RANKED.md](RANKED.md) si es de Ranked).
 | Domingo del diario | 1.500 + 10 | 3.500 + 10 |
 | Curva de XP | 100 + 50 por nivel (10.450 al 20) | 100 + 120 por nivel (22.420 al 20) |
 | Pase: XP por nivel | 100 | 350 desde la Temporada 2 |
-| CLP directo | ESPECIAL Hielo y CARGA Tulipán $1.690; ESPECIAL Viento y los 3 DEFENSIVOS $1.790 | $1.390 y $1.490 |
+| CLP directo | ESPECIAL Hielo y CARGA Tulipán $1.690; ESPECIAL Viento y los 5 DEFENSIVOS $1.790 | $1.390 y $1.490 |
 
 Efecto:
 - Partidas con menos de 10 entradas Ranked: casual 14 % → 0,6 %, regular 15 % → 0,6 %, novato 16 % → 0,9 %.
 - Nivel 20 del casual: día 25 → día 53.
+
+### Ruleta por niveles
+Cada toque (hasta 4) puede subir la ruleta: normal → dorada 12 %, normal → épica 2 %, dorada → épica 10 %. Dorada +15 % y épica +20 % en monedas, XP y dinero (los ítems no cambian). Con 4 toques: ~55 % normal, ~33 % dorada, ~12 % épica. Config en `WHEEL.tiers` (`domain/wheelConfig.ts`).
+
+### Rotación de la Tienda (15-11-2026)
+La Tienda muestra solo 3 a la vez de CARGANDO GOLPE, PODERES ESPECIALES y PODERES DEFENSIVOS (cambian cada 12 h) y de PODERES ULTI (cada 24 h). Si una categoría tiene 3 o menos, se ven los que haya y no cambia (hoy CARGANDO GOLPE tiene 3). EFECTO PELOTA no rota: están todos, en una fila que se desliza hacia la derecha. El FUEGO del ESPECIAL (gratis) ya no sale en la Tienda: se elige en PERSONALIZAR. Es igual para todos los jugadores y sale del reloj (`domain/shopRotation.ts`, mismo reinicio 23:59 de Chile que la ruleta y el regalo: la ventana de 24 h es el ciclo; las de 12 h, sus dos mitades). Cada categoría tiene un orden fijo y cada ventana avanza de 3 en 3, así que salen todos con el tiempo. Cobrar solo lo que se ve: `purchaseOffered` rechaza con `not_in_shop` lo que no está en la ventana actual. El simulador (`tools/sim-economy.mjs`) sigue calculando sobre todo el catálogo, sin la rotación.

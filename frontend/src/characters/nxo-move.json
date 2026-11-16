@@ -2,14 +2,14 @@
   "source": "pj-nxo-1.png (fila 5)",
   "view": "back",
   "cell": {
-    "w": 222,
-    "h": 142
+    "w": 134,
+    "h": 240
   },
   "origin": {
     "x": 0.5,
-    "y": 0.94366
+    "y": 0.98333
   },
-  "standHeight": 115,
+  "standHeight": 190,
   "turnExit": 5,
   "turnRate": 2.2,
   "landFrom": 1,
@@ -21,7 +21,15 @@
       "file": "brake-turn.webp",
       "frames": 8,
       "fps": 14,
-      "loop": false
+      "loop": false,
+      "cell": {
+        "w": 232,
+        "h": 239
+      },
+      "origin": {
+        "x": 0.5,
+        "y": 0.98326
+      }
     }
   }
 }

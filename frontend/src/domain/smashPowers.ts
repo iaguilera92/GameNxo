@@ -6,7 +6,7 @@
  * - Cambia lo que se ve: la pelota, su estela, el aura al armarlo, la cinemática del golpe y el impacto. El golpe es el mismo
  *   (misma potencia, mismo aturdido). Lo ve también el rival en el 1v1 (acciones `smash-armed` / `smash-cine`, `data.element`).
  */
-export type SmashPower = 'fire' | 'ice' | 'wind' | 'lightning';
+export type SmashPower = 'fire' | 'ice' | 'wind' | 'lightning' | 'shadow' | 'light';
 
 export interface SmashPowerDef {
   id: SmashPower;
@@ -24,6 +24,10 @@ export const SMASH_POWERS: SmashPowerDef[] = [
   { id: 'ice', name: 'HIELO', ball: 'SMASH DE HIELO', desc: 'Pelota helada con bruma de escarcha y cristales. Si el rival la toca, sale despedido.', color: 0x45b8ff, css: '#9fe2ff' },
   { id: 'wind', name: 'VIENTO', ball: 'SMASH DE VIENTO', desc: 'Pelota envuelta en un torbellino verde que deja ráfagas. Si el rival la toca, sale despedido.', color: 0x3fd68a, css: '#9cf5c2' },
   { id: 'lightning', name: 'RAYO', ball: 'SMASH DE RAYO', desc: 'Pelota cargada de electricidad que suelta chispas. Si el rival la toca, sale despedido.', color: 0xffd23f, css: '#ffe36b' },
+  // (14-11-2026) nuevos
+  { id: 'shadow', name: 'SOMBRA', ball: 'SMASH DE SOMBRA', desc: 'Esfera oscura envuelta en humo negro y llamas moradas. Si el rival la toca, sale despedido.', color: 0x9b4dff, css: '#c9a3ff' },
+  // (12-11-2026) LUZ (antes ESTRELLA): luz pura, sin estrellas. El id guardado cambió de 'star' a 'light' (domain/migrate.ts lo convierte)
+  { id: 'light', name: 'LUZ', ball: 'SMASH DE LUZ', desc: 'Esfera de luz pura que deslumbra con rayos y destellos. Si el rival la toca, sale despedido.', color: 0xfff0b0, css: '#fff6cc' },
 ];
 
 const IDS = new Set<string>(SMASH_POWERS.map((p) => p.id));

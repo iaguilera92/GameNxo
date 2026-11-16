@@ -2,14 +2,14 @@
   "source": "pj-nxo-2.png (fila 8)",
   "view": "back",
   "cell": {
-    "w": 222,
-    "h": 142
+    "w": 134,
+    "h": 240
   },
   "origin": {
     "x": 0.5,
-    "y": 0.94366
+    "y": 0.98333
   },
-  "standHeight": 115,
+  "standHeight": 190,
   "start": 2,
   "animations": {
     "smash-power": {
@@ -18,7 +18,15 @@
       "fps": 14,
       "loop": false,
       "impact": 4,
-      "scale": 1
+      "scale": 1,
+      "cell": {
+        "w": 194,
+        "h": 285
+      },
+      "origin": {
+        "x": 0.5,
+        "y": 0.90175
+      }
     }
   }
 }

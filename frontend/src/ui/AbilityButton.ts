@@ -382,6 +382,8 @@ const ELEMENT_FILTER: Record<Exclude<SmashPower, 'fire'>, string> = {
   wind: 'hue-rotate(110deg) saturate(1.05) brightness(1.1)', // verde
   // amarillo eléctrico: girar el tono del rojo deja manchas naranja y verdes; se pasa a luz, se tiñe en sepia y se satura
   lightning: 'grayscale(1) sepia(1) saturate(5) hue-rotate(14deg) brightness(1.45)',
+  shadow: 'hue-rotate(255deg) saturate(1.3) brightness(0.8)', // morado oscuro
+  light: 'grayscale(1) sepia(1) saturate(1.6) hue-rotate(-8deg) brightness(2.1)', // blanco dorado luminoso
 };
 
 /**

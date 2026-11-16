@@ -8,7 +8,7 @@ NxoGames/
 ├── frontend/   juego: Phaser 3 + TypeScript + Vite, Android con Capacitor 6
 ├── backend/    servidor: Node.js + TypeScript + Express + Socket.IO
 └── docs/       MULTIJUGADOR.md (LAN 1v1, eventos, pruebas) · RANKED.md (ligas) · ECONOMIA.md (monedas, dinero, XP,
-                pase, tienda) · COMO-TRABAJAR-SPRITES-MOVIMIENTOS.md (hojas de sprites)
+                pase, tienda) · COMO-TRABAJAR-SPRITES-MOVIMIENTOS.md (hojas de sprites) · BASE-DE-DATOS.md (cuentas y base de datos: próximo paso)
 ```
 
 > El juego estaba antes en la raíz del repositorio. Ahora todo lo del juego (`src/`, `public/`, `android/`,
@@ -65,6 +65,8 @@ npm run cap:release   # build de producción (anuncios reales, .env.release) + c
   (`npx tsc --noEmit` y `npm run build`) y decir qué probar en el teléfono.
 - Coordinación entre IAs: `NOTAS-CLAUDE.txt` (lo que hizo cada una y avisos). Reglas de Kiro: `.kiro/steering/`.
   Sprites: `docs/COMO-TRABAJAR-SPRITES-MOVIMIENTOS.md` (leer antes de tocar hojas). Economía: `docs/ECONOMIA.md`.
+- **Viene una base de datos con cuentas** (lo comprado y lo equipado por usuario): lee `docs/BASE-DE-DATOS.md` antes de tocar
+  poderes, tienda, perfil o el protocolo del partido. Los ids de los poderes no se cambian nunca.
 - No cambiar el stack sin consultar (Phaser 3 + Capacitor 6 + JDK 17). Versiones fijadas en `package.json`.
 - Antes del APK siempre `npm run build && npx cap sync android` (lo hace `npm run apk`).
 - En `Character` no usar la propiedad `body` (choca con Phaser): es `torso`.

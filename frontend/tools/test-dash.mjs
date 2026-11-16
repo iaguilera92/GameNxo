@@ -1,4 +1,4 @@
-// Pruebas del DASH sprint. Uso: node tools/test-dash.mjs
+﻿// Pruebas del DASH sprint. Uso: node tools/test-dash.mjs
 import assert from 'node:assert/strict';
 import { DASH, arrivalTime, createRun, guaranteeStep, phaseAt, planSprint, positionAt, sampleTrajectory, shouldCancelRun, stepRun } from '../src/logic/DashSprint.ts';
 import { DashFx } from '../src/fx/dashFx.ts';
@@ -7,12 +7,12 @@ let ok = 0;
 const test = (name, fn) => {
   fn();
   ok++;
-  console.log(`  ✓ ${name}`);
+  console.log(`  âœ“ ${name}`);
 };
 const FPSS = [30, 60, 90, 144];
 const MAX = 330;
 
-// ---- física copiada de src/objects/Ball.ts + constantes de src/config.ts (como en test-player-motion)
+// ---- fÃ­sica copiada de src/objects/Ball.ts + constantes de src/config.ts (como en test-player-motion)
 const COURT = { left: 170, right: 1110, top: 230, bottom: 590 };
 const ALLEY = 60, NET_X = 640, NET_HEIGHT = 34, GRAVITY = 950, BOUNCE_DAMP = 0.62, SHOT_SPEED = 640, HIT_MAX_Z = 135, HIT_RANGE = 78;
 const P_X = [COURT.left - 70, NET_X - 45], Y_MIN = COURT.top - 50, Y_MAX = COURT.bottom + 50, LAT_C = 410, HALF_W = 180;
@@ -87,16 +87,16 @@ test('alcance: el sprint llega en todos los casos en que llegaba el teletranspor
     assert.ok(p.x >= BOUNDS.xMin && p.x <= BOUNDS.xMax && p.y >= BOUNDS.yMin && p.y <= BOUNDS.yMax);
   }
   assert.equal(sprint, legacy, `${sprint}/${legacy}`);
-  console.log(`      ${sprint}/${legacy} igual que antes · por encima de 2,5×: ${((boosted / sprint) * 100).toFixed(2)} % · DASH de urgencia: ${((quick / sprint) * 100).toFixed(2)} %`);
+  console.log(`      ${sprint}/${legacy} igual que antes Â· por encima de 2,5Ã—: ${((boosted / sprint) * 100).toFixed(2)} % Â· DASH de urgencia: ${((quick / sprint) * 100).toFixed(2)} %`);
 });
 
-test('pelotas lejanas: esquina contraria → llega antes que la pelota, con 2,5× o la velocidad justa ≤ 3,5×', () => {
+test('pelotas lejanas: esquina contraria â†’ llega antes que la pelota, con 2,5Ã— o la velocidad justa â‰¤ 3,5Ã—', () => {
   let n = 0;
   for (const c of cases) {
     const smp = sampleTrajectory(c.ball, 0, stepBall, NET_X, HIT_MAX_Z, BOX);
     if (!smp || !smp.length) continue;
     const last = smp.at(-1);
-    const from = { x: last.x < 400 ? P_X[1] : P_X[0], y: last.y < LAT_C ? Y_MAX - 30 : Y_MIN + 30 }; // lo más lejos posible
+    const from = { x: last.x < 400 ? P_X[1] : P_X[0], y: last.y < LAT_C ? Y_MAX - 30 : Y_MIN + 30 }; // lo mÃ¡s lejos posible
     const p = planSprint(smp, from, MAX, BOUNDS);
     if (!p) continue;
     n++;
@@ -151,7 +151,7 @@ test('sombras: exactamente 3 por DASH, en posiciones reales del recorrido y en o
 });
 
 // ---- simulador de escenarios con el MISMO orden que MatchScene.update:
-// updateDashSprint (cancelar / avanzar) → movimiento libre → subpasos de pelota (contacto normal) → updateDashHit
+// updateDashSprint (cancelar / avanzar) â†’ movimiento libre â†’ subpasos de pelota (contacto normal) â†’ updateDashHit
 function scenario({ fps, natural = null, walk = null, inferno = null, rallyEnds = null, planT = 0.9 }) {
   const plan = { x: 300, y: 520, t: planT, mult: 2.5, dist: 0 };
   let run = createRun({ x: 140, y: 300 }, plan, MAX);
@@ -160,7 +160,7 @@ function scenario({ fps, natural = null, walk = null, inferno = null, rallyEnds 
   let t = 0, lastHitter = 'bot', rally = true, cine = 0, hits = [], ghostsLive = 0, movedAfterCancel = false;
   for (let f = 0; f < 5000 && t < 3; f++) {
     const dt = 1 / fps;
-    // cinemática especial (INFERNO): el partido no avanza (update retorna); al terminar golpea INFERNO
+    // cinemÃ¡tica especial (INFERNO): el partido no avanza (update retorna); al terminar golpea INFERNO
     if (inferno && t >= inferno && cine === 0) cine = 2.0;
     if (cine > 0) {
       cine -= dt;
@@ -196,11 +196,11 @@ function scenario({ fps, natural = null, walk = null, inferno = null, rallyEnds 
   return { hits, run, g, ghostsLive, movedAfterCancel, pl };
 }
 
-test('devolución garantizada: exactamente UN golpe forzado al esperar en el punto (30–144 fps)', () => {
+test('devoluciÃ³n garantizada: exactamente UN golpe forzado al esperar en el punto (30â€“144 fps)', () => {
   for (const fps of FPSS) assert.deepEqual(scenario({ fps }).hits, ['forzado']);
 });
 
-test('pérdida voluntaria: alejarse > 45 → sin golpe forzado; moverse ≤ 40 → se mantiene', () => {
+test('pÃ©rdida voluntaria: alejarse > 45 â†’ sin golpe forzado; moverse â‰¤ 40 â†’ se mantiene', () => {
   for (const fps of FPSS) {
     assert.deepEqual(scenario({ fps, walk: 60 }).hits, []);
     assert.deepEqual(scenario({ fps, walk: 40 }).hits, ['forzado']);
@@ -255,7 +255,7 @@ function fakeScene() {
   return {
     objs,
     tweens,
-    add: { image: (x, y) => Object.assign(mk(), { x, y }), ellipse: (x, y) => Object.assign(mk(), { x, y }) },
+    add: { graphics: () => mk(), image: (x, y) => Object.assign(mk(), { x, y }), ellipse: (x, y) => Object.assign(mk(), { x, y }) },
     tweens: { add: (cfg) => tweens.push(cfg), killTweensOf: () => {} },
     runTweens() { while (tweens.length) tweens.shift().onComplete?.(); },
   };
@@ -265,7 +265,7 @@ const sprite = (a, b, c, d, flip = false) => ({
   getWorldTransformMatrix: () => ({ a, b, c, d, tx: 100, ty: 200 }),
 });
 
-test('sombras: copian la pose (volteo por escala negativa = flipX, no giro de 180°) y no quedan objetos vivos', () => {
+test('sombras: copian la pose (volteo por escala negativa = flipX, no giro de 180Â°) y no quedan objetos vivos', () => {
   const sc = fakeScene();
   sc.tweens = sc.tweens ?? [];
   const fx = new DashFx(sc, DASH);
@@ -276,10 +276,10 @@ test('sombras: copian la pose (volteo por escala negativa = flipX, no giro de 18
   }
   assert.ok(fx.count > 0);
   const g = sc.objs[0].props;
-  assert.equal(g.setFlipX[0], true); // escala negativa → volteado
+  assert.equal(g.setFlipX[0], true); // escala negativa â†’ volteado
   assert.ok(Math.abs(g.setRotation[0]) < 1e-9); // sin giro
   assert.deepEqual(g.setScale, [0.6, 0.6]);
-  assert.equal(sc.objs[1].props.setFlipX[0], true); // ya volteado y escala positiva → sigue volteado
+  assert.equal(sc.objs[1].props.setFlipX[0], true); // ya volteado y escala positiva â†’ sigue volteado
   sc.runTweens();
   assert.equal(fx.count, 0);
   assert.ok(sc.objs.every((o) => o.destroyed), 'todo destruido');
@@ -305,7 +305,7 @@ test('DASH de urgencia: mismas fases y llegada exacta con transiciones cortas', 
   }
 });
 
-test('fases: phaseAt coherente con la duración total', () => {
+test('fases: phaseAt coherente con la duraciÃ³n total', () => {
   const r = createRun({ x: 140, y: 300 }, { x: 400, y: 300, t: 2, mult: 3 }, MAX);
   assert.equal(phaseAt(r, 0), 'start');
   assert.equal(phaseAt(r, DASH.startS + r.sprintS / 2), 'sprint');

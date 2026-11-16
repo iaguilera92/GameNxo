@@ -22,6 +22,8 @@ export interface DailyWheelsOpts {
   onToast: (msg: string) => void;
   /** recién llegado del CARGANDO (primera vez en el menú): la cascada espera al fundido (INTRO_DELAY); si no, sale ya */
   fromLoading?: boolean;
+  /** RULETA TEST (solo desarrollo, como el DÍA TEST del premio diario): 5.ª ruleta celeste al final de la fila */
+  onTest?: () => void;
 }
 
 const MINI_R = 34;
@@ -45,6 +47,7 @@ export class DailyWheels extends Phaser.GameObjects.Container {
     this.setDepth(50);
     this.panel();
     this.refresh();
+    if (import.meta.env.DEV && opts.onTest) this.testWheel();
     const off = onPlayerChange(() => this.refresh());
     const tick = scene.time.addEvent({ delay: 1000, loop: true, callback: () => this.tickTimer() });
     this.once('destroy', () => {
@@ -90,8 +93,7 @@ export class DailyWheels extends Phaser.GameObjects.Container {
     this.slots = [];
     this.slotPos = new Map();
     // siempre las 4 en su sitio; las ya cobradas quedan deshabilitadas (no se pierde el espacio)
-    const area = this.pw - 210;
-    const step = Math.min(96, area / WHEEL.perDay);
+    const step = this.step();
     const x0 = -this.pw / 2 + PANEL_H * 0.22 + 12 + step / 2;
     // SELECCIONADA: la primera que aún no se cobró (la próxima que se abrirá)
     const sel = st.findIndex((s) => s !== 'done');
@@ -120,6 +122,38 @@ export class DailyWheels extends Phaser.GameObjects.Container {
     this.info.setText(ready ? `¡${ready} PARA GIRAR!` : left ? 'JUEGA Y GIRA' : '¡VUELVE MAÑANA!').setColor(ready ? '#ffd23f' : '#cfe0ff');
     fitText(this.info, 150);
     this.tickTimer();
+  }
+
+  /** separación entre ruletas (en desarrollo cabe además la RULETA TEST) */
+  private step() {
+    const n = WHEEL.perDay + (import.meta.env.DEV && this.opts.onTest ? 1 : 0);
+    return Math.min(96, (this.pw - 210) / n);
+  }
+
+  /** RULETA TEST (solo desarrollo): siempre disponible, celeste, con la etiqueta TEST. */
+  private testWheel() {
+    const step = this.step();
+    const x = -this.pw / 2 + PANEL_H * 0.22 + 12 + step / 2 + WHEEL.perDay * step;
+    const c = this.scene.add.container(x, 4);
+    this.add(c);
+    const rim = this.scene.add.graphics();
+    rim.fillStyle(NAVY, 1).fillCircle(0, 0, MINI_R + 5);
+    rim.fillStyle(0x45e7ff, 1).fillCircle(0, 0, MINI_R + 2.5);
+    c.add(rim);
+    const face = this.scene.add.graphics();
+    drawWheelFace(face, MINI_R, false);
+    c.add(face);
+    this.scene.tweens.add({ targets: face, angle: 360, duration: 6000, repeat: -1 });
+    const tag = this.scene.add.graphics();
+    tag.fillStyle(0x073e59, 1).fillRoundedRect(-27, MINI_R - 6, 54, 22, 9);
+    tag.lineStyle(2, 0x45e7ff, 1).strokeRoundedRect(-27, MINI_R - 6, 54, 22, 9);
+    c.add(tag);
+    c.add(this.scene.add.text(0, MINI_R + 5, 'TEST', { fontFamily: FONT, fontSize: '14px', color: '#d8fbff' }).setOrigin(0.5).setLetterSpacing(1));
+    c.setSize(MINI_R * 2 + 16, MINI_R * 2 + 16).setInteractive({ useHandCursor: true });
+    c.on('pointerup', () => {
+      this.scene.tweens.add({ targets: c, scale: { from: 0.88, to: 1 }, duration: 220, ease: 'Back.easeOut' });
+      this.opts.onTest?.();
+    });
   }
 
   /** Efecto de "abierta": destello y anillo que se expande en la posición de la ruleta cobrada. */

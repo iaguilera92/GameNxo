@@ -61,15 +61,44 @@ export class DashFx {
     }
   }
 
-  /** Arranque: polvo en los pies (pantalla x, y; k = escala del personaje) y anillo azul-violeta. */
-  burst(x: number, y: number, k: number, depth: number) {
-    const ring = this.scene.add.ellipse(x, y, 90 * k, 30 * k, this.cfg.ghostTint, 0.35).setStrokeStyle(4, 0xd9d2ff, 0.9).setDepth(depth - 1);
-    this.track(ring);
-    this.scene.tweens.add({ targets: ring, scaleX: 1.9, scaleY: 1.9, alpha: 0, duration: 260, onComplete: () => this.kill(ring) });
-    for (let i = 0; i < 5; i++) {
-      const d = this.scene.add.ellipse(x + (Math.random() - 0.5) * 50 * k, y + (Math.random() - 0.5) * 6, (14 + Math.random() * 10) * k, (7 + Math.random() * 4) * k, 0xe8e2d0, 0.7).setDepth(depth + 1);
+  /**
+   * Arranque: destello en los pies (pantalla x, y; k = escala del personaje), dos anillos de choque, rayas de velocidad
+   * sobre el suelo y polvo. `color` = tono del poder (por defecto el azul-violeta del DASH; el DESTELLO usa el cian).
+   * Lo usan igual el usuario, el bot y el rival online (todos llaman a este método).
+   */
+  burst(x: number, y: number, k: number, depth: number, color: number = this.cfg.ghostTint) {
+    const sc = this.scene;
+    // destello blanco que se abre y se apaga rápido
+    const flash = sc.add.ellipse(x, y - 4 * k, 60 * k, 26 * k, 0xffffff, 0.85).setDepth(depth + 2).setBlendMode('ADD');
+    this.track(flash);
+    sc.tweens.add({ targets: flash, scaleX: 2.6, scaleY: 2.2, alpha: 0, duration: 170, ease: 'Quad.easeOut', onComplete: () => this.kill(flash) });
+    // dos anillos de choque: el segundo sale un poco después y más grande
+    for (let i = 0; i < 2; i++) {
+      const ring = sc.add.ellipse(x, y, 90 * k, 30 * k, color, i === 0 ? 0.35 : 0.18).setStrokeStyle(i === 0 ? 4 : 3, 0xd9d2ff, 0.9).setDepth(depth - 1);
+      this.track(ring);
+      sc.tweens.add({ targets: ring, scaleX: i === 0 ? 1.9 : 2.8, scaleY: i === 0 ? 1.9 : 2.8, alpha: 0, delay: i * 70, duration: 260 + i * 80, ease: 'Quad.easeOut', onComplete: () => this.kill(ring) });
+    }
+    // rayas de velocidad pegadas al suelo, hacia fuera
+    const g = sc.add.graphics().setDepth(depth - 0.5).setBlendMode('ADD');
+    this.track(g);
+    const rays = 10;
+    for (let i = 0; i < rays; i++) {
+      const a = (i / rays) * Math.PI * 2 + Math.random() * 0.3;
+      const r0 = (26 + Math.random() * 10) * k;
+      const r1 = r0 + (34 + Math.random() * 30) * k;
+      const x0 = x + Math.cos(a) * r0;
+      const y0 = y + Math.sin(a) * r0 * 0.34; // aplastado: es el suelo visto en perspectiva
+      const x1 = x + Math.cos(a) * r1;
+      const y1 = y + Math.sin(a) * r1 * 0.34;
+      g.lineStyle(7 * k, color, 0.22).lineBetween(x0, y0, x1, y1);
+      g.lineStyle(2.5 * k, i % 2 ? 0xffffff : color, 0.9).lineBetween(x0, y0, x1, y1);
+    }
+    sc.tweens.add({ targets: g, alpha: 0, duration: 300, ease: 'Quad.easeOut', onComplete: () => this.kill(g) });
+    // polvo
+    for (let i = 0; i < 8; i++) {
+      const d = sc.add.ellipse(x + (Math.random() - 0.5) * 70 * k, y + (Math.random() - 0.5) * 8, (14 + Math.random() * 12) * k, (7 + Math.random() * 5) * k, 0xe8e2d0, 0.7).setDepth(depth + 1);
       this.track(d);
-      this.scene.tweens.add({ targets: d, y: d.y - (6 + Math.random() * 14), scaleX: 1.8, scaleY: 1.8, alpha: 0, duration: 260 + Math.random() * 160, onComplete: () => this.kill(d) });
+      sc.tweens.add({ targets: d, y: d.y - (6 + Math.random() * 16), scaleX: 1.9, scaleY: 1.9, alpha: 0, duration: 260 + Math.random() * 180, onComplete: () => this.kill(d) });
     }
   }
 
@@ -88,9 +117,9 @@ export class DashFx {
     const ny = ux;
     const g = this.scene.add.graphics().setDepth(depth + 2).setBlendMode('ADD');
     this.track(g);
-    const lines = 9;
+    const lines = 14;
     for (let i = 0; i < lines; i++) {
-      const off = (i / (lines - 1) - 0.5) * 120 * k + (Math.random() - 0.5) * 8 * k;
+      const off = (i / (lines - 1) - 0.5) * 150 * k + (Math.random() - 0.5) * 8 * k;
       const tail = len * Math.random() * 0.3;
       const head = len * (0.7 + Math.random() * 0.3);
       const x0 = ax + ux * tail + nx * off;
@@ -100,6 +129,7 @@ export class DashFx {
       const w = (2 + Math.random() * 5) * k;
       g.lineStyle(w * 2.6, color, 0.16).lineBetween(x0, y0, x1, y1); // halo
       g.lineStyle(w, i % 3 === 0 ? 0xffffff : color, 0.85).lineBetween(x0, y0, x1, y1); // núcleo
+      g.fillStyle(0xffffff, 0.9).fillCircle(x1, y1, w * 0.9); // punta brillante
     }
     this.scene.tweens.add({ targets: g, x: ux * len * 0.12, y: uy * len * 0.12, alpha: 0, duration: 340, ease: 'Quad.easeOut', onComplete: () => this.kill(g) });
   }

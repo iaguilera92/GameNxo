@@ -1,10 +1,14 @@
 import Phaser from 'phaser';
 import { POWER_IMPACT, type PowerKind } from '../logic/PowerImpact';
-import { BALL_ART, ballDims, type InfernoElement } from './InfernoFx';
+import { BALL_ART, ballDims, type FxElement, type InfernoElement } from './InfernoFx';
 import { SMASH_LOOK } from './smashFx';
 import { smashPowerOf } from '../domain/smashPowers';
 import { sfx } from './sfx';
-import { lightningBlast, lightningGroundFx, windBlast, windGroundFx } from './elementImpactFx';
+import { flicker, zap, iceBlast, lightningBlast, lightningGroundFx, shadowBlast, lightBlast, windBlast, windGroundFx } from './elementImpactFx';
+
+const FB = Phaser.Math.FloatBetween;
+const IB = Phaser.Math.Between;
+const pick = <T>(a: readonly T[]): T => a[Math.floor(Math.random() * a.length)];
 
 /**
  * Colores de las explosiones del INFERNO según el poder elegido (fuego, hielo, viento, rayo: domain/infernoPowers.ts).
@@ -25,7 +29,7 @@ const BLAST: Record<InfernoElement, { flash: number; tongues: number[]; puffs: n
  * Ambas: destello blanco inicial muy breve, expansión rápida, chispas/fragmentos y sacudida moderada.
  * Pocos objetos de vida corta (≈ 30) que se destruyen solos.
  */
-export function powerImpactFx(scene: Phaser.Scene, kind: PowerKind, x: number, y: number, k: number, el: InfernoElement = 'fire') {
+export function powerImpactFx(scene: Phaser.Scene, kind: PowerKind, x: number, y: number, k: number, el: FxElement = 'fire') {
   // ULTI de FUEGO que impacta a quien la recibe (el bot, tú o el rival online): su sonido propio
   // (el pelotazo le llega al personaje y la raqueta sale volando; el golpe de la bola suena aparte, en infernoSound.impact)
   if (kind === 'inferno') sfx(scene, el === 'fire' ? 'impacto-ulti-fuego' : el === 'lightning' ? 'impacto-ulti-rayo' : el === 'ice' ? 'impacto-ulti-hielo' : 'ball-recibir-ulti-ataque');
@@ -37,7 +41,15 @@ export function powerImpactFx(scene: Phaser.Scene, kind: PowerKind, x: number, y
   const fade = (o: Phaser.GameObjects.GameObject & { setScale(v: number): unknown }, props: Phaser.Types.Tweens.TweenBuilderConfig | object, ms: number, delay = 0) =>
     scene.tweens.add({ targets: o, ...props, delay, duration: ms, onComplete: () => o.destroy() });
 
-  if (kind === 'smash') {
+  // (14-11-2026) ESPECIAL de HIELO / VIENTO / RAYO: impacto PROPIO de su elemento (cristales que brotan y se quiebran /
+  // torbellino con hojas / descarga eléctrica), más chico que el de la ULTI. El de fuego sigue con su estallido de siempre.
+  const sp = kind === 'smash' ? smashPowerOf(el) : null;
+  if (sp === 'ice') iceBlast(scene, x, y, s * 0.85, D);
+  else if (sp === 'wind') windBlast(scene, x, y, s * 0.75, D);
+  else if (sp === 'lightning') lightningBlast(scene, x, y, s * 0.75, D);
+  else if (sp === 'shadow') shadowBlast(scene, x, y, s * 0.85, D);
+  else if (sp === 'light') lightBlast(scene, x, y, s * 0.85, D);
+  else if (kind === 'smash') {
     // colores según el poder del SMASH (el: fuego = blanco y dorado de siempre; hielo = blanco azulado + cristales)
     const B = SMASH_LOOK[smashPowerOf(el)].blast;
     // destello blanco inicial (muy breve)
@@ -60,6 +72,8 @@ export function powerImpactFx(scene: Phaser.Scene, kind: PowerKind, x: number, y
     lines.setScale(0.6);
     fade(lines, { scale: 1.25, alpha: 0, ease: 'Quad.easeOut' }, 280);
     sparks(scene, x, y, s, B.sparks, 14, D);
+    // fuego: estallido de llamas y brasas, a la mitad del tamaño del de la ULTI (la ULTI sigue siendo la más espectacular)
+    if (sp === 'fire' || !sp) infernoBlast(scene, x, y, s * 0.5, D, 'fire');
     // hielo: esquirlas de cristal que salen disparadas y se apagan
     if (B.shards) {
       for (let i = 0; i < 12; i++) {
@@ -74,11 +88,101 @@ export function powerImpactFx(scene: Phaser.Scene, kind: PowerKind, x: number, y
   } else if (el === 'wind') {
     windBlast(scene, x, y, s, D);
   } else {
-    infernoBlast(scene, x, y, s, D, el);
+    infernoBlast(scene, x, y, s, D, el as InfernoElement);
   }
+
+  // ESPECIAL: lo que queda en el suelo y en el cuerpo del golpeado después del estallido (cada poder el suyo)
+  if (sp) smashAftermath(scene, sp, x, y, s, D);
 
   const sh = POWER_IMPACT.shake[kind];
   scene.cameras.main.shake(sh.ms, sh.intensity);
+}
+
+/** Colores [principal, claro, destello de pantalla RGB o null] del golpe del ESPECIAL de cada poder. */
+const AFTER: Record<string, { main: number; light: number; flash: [number, number, number] | null }> = {
+  fire: { main: 0xff6a12, light: 0xffd23a, flash: [255, 170, 80] },
+  ice: { main: 0x4aa8ff, light: 0xeafcff, flash: [190, 230, 255] },
+  wind: { main: 0x3fd68a, light: 0xf0fff4, flash: [200, 255, 220] },
+  lightning: { main: 0x2f6bff, light: 0xfff36b, flash: null }, // lightningBlast ya da su destello
+  shadow: { main: 0x7a2fd6, light: 0xd0a8ff, flash: [150, 90, 230] },
+  light: { main: 0xffd86a, light: 0xffffff, flash: [255, 250, 225] },
+};
+
+/**
+ * (12-11-2026) REFUERZO del impacto del ESPECIAL (todos los poderes): destello de pantalla del color del poder, onda de choque
+ * pegada al suelo bajo el golpeado, resplandor que se queda un momento sobre su cuerpo (se nota que está tocado) y una marca propia
+ * en el suelo: quemadura (fuego), escarcha con grietas (hielo), remolino de polvo (viento), charco negro (sombra), mancha de
+ * luz (luz), arcos a ras de suelo (rayo). Más chico que el de la ULTI. x, y = centro del cuerpo; el suelo se estima debajo.
+ * Va dentro de powerImpactFx: lo ven igual el usuario, el bot y el rival online.
+ */
+function smashAftermath(scene: Phaser.Scene, sp: string, x: number, y: number, s: number, D: number) {
+  const C = AFTER[sp];
+  if (!C) return;
+  const ADD = Phaser.BlendModes.ADD;
+  const gy = y + 52 * s; // pies aproximados
+  const kill = (o: Phaser.GameObjects.GameObject) => () => o.destroy();
+  if (C.flash) scene.cameras.main.flash(90, C.flash[0], C.flash[1], C.flash[2]);
+  // onda de choque pegada al suelo: dos aros aplastados que corren hacia fuera
+  for (let i = 0; i < 2; i++) {
+    const w = scene.add.ellipse(x, gy, 80 * s, 24 * s).setStrokeStyle((6 - i * 2) * s, i ? C.light : C.main, 0.95).setDepth(gy - 1).setBlendMode(ADD);
+    scene.tweens.add({ targets: w, scaleX: 4.2 + i * 1.2, scaleY: 3.2 + i, alpha: 0, delay: i * 70, duration: 420, ease: 'Cubic.easeOut', onComplete: kill(w) });
+  }
+  // resplandor sobre el cuerpo: se queda ~0,7 s y se apaga (late una vez)
+  const glow = scene.textures.exists('fx-inferno-glow')
+    ? scene.add.image(x, y, 'fx-inferno-glow').setTint(C.main).setDisplaySize(130 * s, 170 * s)
+    : scene.add.ellipse(x, y, 90 * s, 120 * s, C.main, 0.6);
+  glow.setDepth(D - 1).setBlendMode(sp === 'shadow' ? Phaser.BlendModes.NORMAL : ADD).setAlpha(0.85);
+  scene.tweens.add({ targets: glow, alpha: 0, scale: glow.scale * 1.35, delay: 120, duration: 650, ease: 'Sine.easeOut', onComplete: kill(glow) });
+
+  // marca propia en el suelo
+  const mark = (w: number, h: number, col: number, a: number, hold: number, fade: number) => {
+    const m = scene.add.ellipse(x, gy, w * s, h * s, col, a).setDepth(gy - 2).setScale(0.3);
+    scene.tweens.add({ targets: m, scale: 1, duration: 140, ease: 'Cubic.easeOut' });
+    scene.tweens.add({ targets: m, alpha: 0, delay: hold, duration: fade, onComplete: kill(m) });
+    return m;
+  };
+  if (sp === 'fire') {
+    mark(150, 44, 0x1a0a04, 0.55, 700, 600);
+    for (let i = 0; i < 8; i++) {
+      const e = scene.add.circle(x + FB(-30, 30) * s, gy + FB(-6, 6) * s, FB(2, 4) * s, pick([0xfff1a0, 0xffa21a, 0xff5a12]), 1).setDepth(D).setBlendMode(ADD);
+      scene.tweens.add({ targets: e, y: e.y - FB(60, 140) * s, x: e.x + FB(-30, 30) * s, alpha: 0, duration: IB(500, 900), ease: 'Quad.easeOut', onComplete: kill(e) });
+    }
+  } else if (sp === 'ice') {
+    mark(170, 50, 0xbfe9ff, 0.5, 900, 700);
+    const g = scene.add.graphics({ x, y: gy }).setDepth(gy - 1.5);
+    g.lineStyle(Math.max(1.5, 2.2 * s), 0xffffff, 0.9);
+    for (let i = 0; i < 8; i++) {
+      const a = (i / 8) * Math.PI * 2 + FB(-0.2, 0.2);
+      const L = FB(50, 90) * s;
+      g.beginPath().moveTo(0, 0).lineTo(Math.cos(a) * L * 0.5, Math.sin(a) * L * 0.17 + FB(-3, 3)).lineTo(Math.cos(a) * L, Math.sin(a) * L * 0.34).strokePath();
+    }
+    scene.tweens.add({ targets: g, alpha: 0, delay: 800, duration: 700, onComplete: kill(g) });
+  } else if (sp === 'wind') {
+    mark(160, 44, 0xd8f0d8, 0.35, 250, 500);
+    for (let i = 0; i < 6; i++) {
+      const dir = i % 2 ? 1 : -1;
+      const l = scene.add.rectangle(x, y + FB(-40, 40) * s, FB(40, 80) * s, 2.4 * s, pick([0xffffff, 0xcfffdc, 0x9cf0b0]), 0.9).setDepth(D).setBlendMode(ADD);
+      scene.tweens.add({ targets: l, x: x + dir * FB(110, 190) * s, alpha: 0, scaleX: 1.8, delay: IB(0, 80), duration: IB(260, 380), ease: 'Cubic.easeOut', onComplete: kill(l) });
+    }
+  } else if (sp === 'shadow') {
+    const pool = mark(170, 52, 0x08040c, 0.6, 900, 700);
+    pool.setStrokeStyle(3 * s, 0x9b4dff, 0.8);
+    for (let i = 0; i < 6; i++) {
+      const w = scene.add.circle(x + FB(-30, 30) * s, gy, FB(3, 6) * s, pick([0xb57aff, 0xd0a8ff]), 0.9).setDepth(D).setBlendMode(ADD);
+      scene.tweens.add({ targets: w, y: w.y - FB(50, 120) * s, alpha: 0, duration: IB(500, 850), ease: 'Quad.easeOut', onComplete: kill(w) });
+    }
+  } else if (sp === 'light') {
+    mark(170, 50, 0xfff0b0, 0.45, 300, 700).setBlendMode(ADD);
+  } else if (sp === 'lightning') {
+    const g = scene.add.graphics().setDepth(gy - 1).setBlendMode(ADD);
+    flicker(scene, g, 380, 55, (p) => {
+      for (let i = 0; i < 5; i++) {
+        const a = (i / 5) * Math.PI * 2 + FB(-0.3, 0.3);
+        const L = FB(50, 100) * s * Math.min(1, p * 2.4 + 0.3);
+        zap(g, x, gy, x + Math.cos(a) * L, gy + Math.sin(a) * L * 0.32, 8 * s, 2 * s, 0, 1 - p * 0.8);
+      }
+    });
+  }
 }
 
 /**

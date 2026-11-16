@@ -103,6 +103,8 @@ export interface ShotPlan {
   power?: boolean;
   /** ULTI del rival (INFERNO DRIVE): además de `power`, la escena pone la esfera de fuego y los efectos del poder */
   ulti?: boolean;
+  /** DROP SHOT 0 del rival: dejada con efecto hacia atrás (al botar en tu campo vuelve a su cancha y es su punto) */
+  dropZero?: boolean;
 }
 
 /** Estrategia de golpes (Etapa 4). */
@@ -113,6 +115,8 @@ const STRAT = {
   defensiveBelow: 0.35,
   /** riesgo relativo de fallar cada golpe */
   risk: { normal: 1, deep: 1.25, angle: 1.4, drop: 0.8, lob: 0.7 } as Record<ShotIntent, number>,
+  /** DROP SHOT 0 (dejada con efecto hacia atrás): calidad mínima y probabilidad al elegir dejada */
+  dropZero: { minQuality: 0.75, chance: 0.4 },
   /** probabilidad de fallo = outChance × riesgo × (outBase + outBadContact × (1 − calidad)) */
   outBase: 0.6,
   outBadContact: 1.1,
@@ -473,12 +477,13 @@ export class BotBrain {
       deep: 0.55 * d * q,
       angle: 0.45 * ai.aimSkill * q,
       drop: (playerDeep ? 0.6 : 0.06) * d * q,
-      lob: playerAtNet ? 0.1 + 0.9 * d : 0.04,
+      // (14-11-2026) el rival NO tira globos (usuario): salían de repente y mal. Peso 0 aquí y en la defensa de abajo.
+      lob: 0,
     };
+    void playerAtNet;
     if (q < STRAT.defensiveBelow) {
       // muy apurado: se defiende (sin riesgos); el globo defensivo es cosa de rivales buenos
       w.deep = w.angle = w.drop = 0;
-      w.lob += 0.1 + 0.5 * d;
     }
     // variedad: si los dos últimos fueron iguales, ese golpe pierde peso
     const [a, b] = this.lastIntents;
@@ -487,6 +492,7 @@ export class BotBrain {
     this.lastIntents = [intent, a];
 
     // 3) ejecución
+    let dropZero = false;
     let tx: number;
     let ty: number;
     let speed = SHOT_SPEED * (0.82 + 0.3 * d) * (0.85 + 0.15 * q);
@@ -510,6 +516,13 @@ export class BotBrain {
         speed = SHOT_SPEED * 0.78;
         margin = 8;
         kind = 'drop';
+        // (14-11-2026) DROP SHOT 0: con buen contacto, a veces la tira con efecto hacia atrás (más los rivales buenos)
+        if (!this.netPractice && q >= STRAT.dropZero.minQuality && Math.random() < STRAT.dropZero.chance * Math.min(1, 0.4 + this.abil.smash)) {
+          dropZero = true;
+          tx = NET_X - ownLen * rand(0.1, 0.2);
+          speed = SHOT_SPEED * 0.9;
+          margin = 5;
+        }
         break;
       case 'lob': // globo alto y profundo (por encima del jugador en la red, o para defenderse)
         tx = NET_X - ownLen * rand(0.82, 0.94);
@@ -531,7 +544,7 @@ export class BotBrain {
       else if (Math.random() < 0.5) tx = COURT.left - rand(15, 55);
       else ty = Math.random() < 0.5 ? COURT.top - rand(15, 45) : COURT.bottom + rand(15, 45);
     }
-    return { tx, ty, speed, kind, margin, intent, quality: q };
+    return { tx, ty, speed, kind, margin, intent, quality: q, ...(dropZero ? { dropZero } : {}) };
   }
 }
 

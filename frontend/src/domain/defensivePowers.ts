@@ -7,7 +7,7 @@
  * - Se elige en PERSONALIZACIÓN (tarjeta DEFENSIVO › PODERES) y se guarda en `PlayerState.equipped.defensive`.
  *   Todos usan el mismo botón y la misma recarga (DASH_COOLDOWN); solo cambia lo que hace al activarse.
  */
-export type DefensivePower = 'dash' | 'blink' | 'shadow' | 'jump';
+export type DefensivePower = 'dash' | 'blink' | 'shadow' | 'jump' | 'flip' | 'skate';
 
 export interface DefensivePowerDef {
   id: DefensivePower;
@@ -24,6 +24,9 @@ export const DEFENSIVE_POWERS: DefensivePowerDef[] = [
   // (Claude, 11-11-2026) los dos nuevos: también te dejan en el punto de la pelota y aseguran la devolución
   { id: 'shadow', name: 'SOMBRA', desc: 'Un clon de sombra corre hasta la pelota y cambias tu lugar con él para devolverla.', color: 0x9a6bff, css: '#d4bfff' },
   { id: 'jump', name: 'SUPERSALTO', desc: 'Un salto enorme hasta la pelota: caes con una onda de choque y la devuelves.', color: 0xff9a3d, css: '#ffd0a0' },
+  // (12-11-2026) VOLTERETA y PATINAJE: lo mismo (te dejan en la pelota y devuelves) con otro movimiento, como una skin
+  { id: 'flip', name: 'VOLTERETA', desc: 'Llegas a la pelota con dos volteretas laterales en arco, caes agachado y devuelves con un revés.', color: 0x5dff8a, css: '#c4ffd4' },
+  { id: 'skate', name: 'PATINAJE', desc: 'Patinas hasta la pelota dejando un camino de hielo que se derrite.', color: 0xa6dcff, css: '#e6f7ff' },
 ];
 
 const IDS = new Set<string>(DEFENSIVE_POWERS.map((p) => p.id));

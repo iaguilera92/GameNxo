@@ -1,4 +1,7 @@
 import Phaser from 'phaser';
+import { getPlayer } from '../domain/playerStore';
+import type { PlayerState } from '../domain/player';
+import { equippedFrame } from '../domain/profileFrames';
 import { FONT, restartOnResize, textStyle } from '../ui/theme';
 import { UI, flatButton, stadiumBg } from '../ui/ui';
 import { playerLook, rivalLook } from '../objects/Character';
@@ -126,7 +129,7 @@ export class MatchmakingScene extends Phaser.Scene {
     const rivalLevel = Math.min(MAX_LEVEL, rivalLevelFor(p.level) + tier * 2);
     showVersusScreen(
       this,
-      { name: p.name, level: p.level, look: playerLook(p.skin), portraitSkin: p.skin as SkinId, wins: totalWins(), color: p.color }, // tu color; el rival, el suyo de siempre
+      { name: p.name, level: p.level, look: playerLook(p.skin), portraitSkin: p.skin as SkinId, wins: totalWins(), color: p.color, frame: equippedFrame(getPlayer() as PlayerState) }, // tu color y tu MARCO; el rival, el suyo de siempre
       {
         name: botName,
         level: rivalLevel,
@@ -134,6 +137,8 @@ export class MatchmakingScene extends Phaser.Scene {
         portraitSkin: rivalFor(p.skin),
         // el rival simulado también lleva victorias (proporcionales a su nivel), como un jugador real
         wins: Math.round(rivalLevel * Phaser.Math.FloatBetween(2, 5)),
+        // en la Liga el rival simulado también luce un marco (de su liga o de una anterior; a veces ninguno), como un jugador real
+        frame: tier >= 0 && (this.rankedBet || this.unranked) && Math.random() < 0.75 ? LEAGUE_ORDER[Phaser.Math.Between(0, tier)] : null,
       },
     );
     // 1 s después del sonido del VS entra la música de la cancha (sigue sonando en el partido)
@@ -146,7 +151,7 @@ export class MatchmakingScene extends Phaser.Scene {
         // Ranked: la entrada se paga justo al empezar (cancelar la búsqueda no cobra nada)
         if (this.rankedBet) {
           const res = enterRanked(newMatchId(), this.rankedBet);
-          if (!res.ok) return this.back(res.error === 'not_enough_coins' ? 'No te alcanzan las monedas' : 'No se pudo entrar a Ranked');
+          if (!res.ok) return this.back(res.error === 'not_enough_coins' ? 'No te alcanzan las monedas' : 'No se pudo entrar a la Liga');
         }
         this.toMatch = true;
         this.scene.start('Match', { botName, rivalLevel, ambiente: this.ambiente });

@@ -19,7 +19,7 @@ import { drawPassiveIcon, skinName } from '../ui/passiveInfo';
 import { myLeague, myPosition, rankedState, settleCurrentRanked } from '../logic/Ranked';
 import { matchStakes } from '../domain/rankedConfig';
 import { isDevMode } from '../domain/devMode';
-import { recordWin } from '../logic/Stats';
+import { recordPlayed, recordWin } from '../logic/Stats';
 import { showInterstitial } from '../ads/ads';
 import type { EndClip } from '../objects/NxoActor';
 
@@ -250,7 +250,9 @@ export class MatchEndScene extends Phaser.Scene {
     }
 
     // ruletas diarias: cada partida COMPLETADA (ganada o perdida; no rendición) cuenta UNA vez (id único guardado)
-    const wstore = d as MatchEndData & { _matchId?: string; _wheel?: number | null };
+    const wstore = d as MatchEndData & { _matchId?: string; _wheel?: number | null; _playedId?: string };
+    // partidas jugadas (PERFIL): toda partida terminada, también la rendida; una sola vez aunque la escena se repita
+    if (!wstore._playedId) recordPlayed((wstore._playedId = newMatchId()));
     if (!d.surrendered && !wstore._matchId) {
       wstore._matchId = newMatchId();
       wstore._wheel = recordMatchWin(wstore._matchId); // índice de la ruleta desbloqueada (o null)
@@ -264,6 +266,8 @@ export class MatchEndScene extends Phaser.Scene {
       const skin = getProfile().skin;
       const res = commit((st) => awardMastery(st, skin));
       mstore._mastery = res.ok && res.gained > 0 ? { skin, before: res.before, after: res.after } : null;
+      // el MENÚ, al volver, presenta la maestría junto a la EXP: la 3.ª oleada va al personaje en vez de a las barras (MenuScene.playXpGain)
+      if (mstore._mastery) this.registry.set('menu.masteryGain', mstore._mastery);
     }
     this.mastery = mstore._mastery ?? null;
     this.mrow = this.mastery ? 44 : 0;
@@ -1009,7 +1013,7 @@ export class MatchEndScene extends Phaser.Scene {
     }, { palette: 'yellow' });
     // REVANCHA: misma lógica que ya existía (reiniciar el partido con el mismo rival).
     // En Ranked se vuelve a buscar partida con la misma apuesta (la entrada se paga de nuevo al empezar).
-    const again = arcadeButton(this, x1, y, bw, bh, d.ranked ? 'OTRA RANKED' : d.lan ? 'OTRA PARTIDA' : 'REVANCHA', () => {
+    const again = arcadeButton(this, x1, y, bw, bh, d.ranked ? 'OTRA DE LIGA' : d.lan ? 'OTRA PARTIDA' : 'REVANCHA', () => {
       if (leaving) return;
       leaving = true;
       resetMatchEnd(this.scene.get(matchKey));

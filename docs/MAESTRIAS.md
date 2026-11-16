@@ -52,16 +52,16 @@ nivel pide más que el anterior, en forma de duplicar. Duplicando, el nivel 10 p
 
 **Propuesta** (maestrías necesarias para subir *desde el nivel anterior*, 1 por victoria):
 
-| Sube a nivel | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 |
-|---|---|---|---|---|---|---|---|---|---|
-| Maestrías del paso | 2 | 4 | 8 | 12 | 16 | 20 | 25 | 30 | 40 |
-| Acumuladas | 2 | 6 | 14 | 26 | 42 | 62 | 87 | 117 | 157 |
+| Sube a nivel | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 |
+|---|---|---|---|---|---|---|---|---|---|---|
+| Maestrías del paso | 1 | 2 | 4 | 8 | 12 | 16 | 20 | 25 | 30 | 40 |
+| Acumuladas | 1 | 3 | 7 | 15 | 27 | 43 | 63 | 88 | 118 | 158 |
 
-Con esa tabla, el nivel 10 son 157 victorias con ese personaje. Se guarda en un solo lugar (`domain/`, ver sección 8) para cambiarla sin tocar nada más.
+Con esa tabla, el nivel 10 son 158 victorias con ese personaje. **DECIDIDO por el usuario (15-11-2026): el personaje parte en el NIVEL 0 (0 %) y la primera victoria ya sube al nivel 1.** Se guarda en un solo lugar (`domain/`, ver sección 8) para cambiarla sin tocar nada más.
 
 **Otras decisiones pendientes** (con la propuesta por defecto):
 
-- **Nivel de partida:** nivel 1 con +1 % (el texto dice "subir de nivel 1 a 2"). Alternativa: nivel 0 con 0 %.
+- **Nivel de partida (decidido):** nivel 0 con 0 %; con 1 victoria, nivel 1 (+1 %).
 - **Qué partidos cuentan:** victorias contra el bot y online. Ranked también. Contra el bot se puede abusar jugando muchas partidas
   seguidas: si se quiere evitar, que solo cuenten Ranked y online, o que contra el bot haya un tope por día.
 - **Abandono, desconexión, partido sin terminar:** no da maestría.
@@ -69,7 +69,7 @@ Con esa tabla, el nivel 10 son 157 victorias con ese personaje. Se guarda en un 
 
 ## 4. Las pasivas (PROPUESTA de cómo se aplican)
 
-`P = nivel de maestría × 1 %` (0 a 0,10). La pasiva **siempre está activa** en el partido (no depende de la ZONA).
+`P = nivel de maestría × 1 %` (0 a 0,10; nivel 0 = sin efecto). La pasiva **siempre está activa** en el partido (no depende de la ZONA).
 
 | Personaje | Pasiva | Efecto propuesto con `P` |
 |---|---|---|
@@ -156,8 +156,8 @@ Al ganar, tras la XP, el panel de resultado debe mostrar **+1 MAESTRÍA** con el
 
 Todo lo de abajo está implementado con la propuesta como valor por defecto; el usuario puede cambiarlo:
 
-1. **Curva** (sección 3): 2, 4, 8, 12, 16, 20, 25, 30, 40 (157 victorias para el nivel 10). Se cambia en `MASTERY.steps`.
-2. **Nivel de partida:** nivel 1 con +1 % (también antes del nivel 20 de la cuenta: solo las maestrías esperan al nivel 20). Para empezar en 0 % hay que cambiar `masteryLevel`/`passiveValue`.
+1. **Curva** (sección 3): 1, 2, 4, 8, 12, 16, 20, 25, 30, 40 (158 victorias para el nivel 10). Se cambia en `MASTERY.steps`.
+2. **Nivel de partida (decidido):** nivel 0 con 0 %; la primera victoria sube al nivel 1. Las maestrías esperan al nivel 20 de la cuenta.
 3. **Qué partidos cuentan:** cualquier victoria del usuario (contra el bot, online y Ranked); la rendición no suma. Sin tope diario contra el bot (riesgo de abuso: ver sección 3).
 4. **Cómo se aplican** (sección 4): Agilidad = velocidad y alcance (`MatchScene.maxSp`, `inReach`); Precisión = menos desvío en los golpes con Perfect Timing y en el saque (`precisionCut`, `executeServe`).
 5. **Los atributos de ZONA** que ya existían pasaron a **Nxo** (`ZONE_LEGACY_SKIN`).

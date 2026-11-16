@@ -4,12 +4,11 @@ import { FONT, restartOnResize, textStyle } from '../ui/theme';
 import { UI, stadiumBg } from '../ui/ui';
 import { arcadeButton } from '../ui/modeButtons';
 import { commit, getPlayer, onPlayerChange } from '../domain/playerStore';
-import { equipCharge, equipDefensive, equipInferno, equipSmash, equipStyle } from '../domain/operations';
 import { offersChangeIn, purchaseOffered, shopOffers } from '../domain/shopRotation';
-import { type SmashPower, smashOwned, smashPowerDef, smashPowerOf } from '../domain/smashPowers';
+import { type SmashPower, smashOwned, smashPowerDef } from '../domain/smashPowers';
 import { BUTTON_ART, queueButtonArt } from '../ui/buttonArt';
 import { elementTexture } from '../ui/AbilityButton';
-import { type DefensivePower, defensiveOwned, defensivePowerDef, defensivePowerOf } from '../domain/defensivePowers';
+import { type DefensivePower, defensiveOwned, defensivePowerDef } from '../domain/defensivePowers';
 import { drawDefensiveIcon, drawDisc } from '../ui/icons';
 import { BP_SEASON, syncSeason } from '../domain/battlePass';
 import { bpSeasonInfo } from '../domain/battlePassConfig';
@@ -18,9 +17,13 @@ import { drawCashIcon } from './BattlePassScene';
 import { type ItemId, type ItemKind, type StyleId, owns } from '../domain/player';
 import { drawRarityFrame } from '../ui/rarity';
 import { CASH_PACKS, SHOP_ITEMS, clpLabel, type CashPack, type ItemRarity, type ShopItem } from '../domain/shopCatalog';
+import { openShopPreview } from '../ui/ShopPreviewDialog';
+import { createZoneDemo } from '../fx/zoneDemo';
+import { ZONE_SKINS, ZONE_SKIN_IDS, type ZoneSkinId, zoneSkinOwned } from '../domain/zoneSkins';
+import { createDefensiveDemo, createSpecialDemo, createStyleDemo } from '../fx/powerDemo';
 import { addBallPreview, ensureBallAnims, queueInfernoArt } from '../fx/InfernoFx';
 import { infernoPowerDef, type InfernoPower } from '../domain/infernoPowers';
-import { type ChargeFxId, chargeFxDef, chargeFxOf, chargeFxOwned } from '../domain/chargeFx';
+import { type ChargeFxId, chargeFxDef, chargeFxOwned } from '../domain/chargeFx';
 import { chargePreview, queueChargeFxArt } from '../fx/chargeFx';
 import { fitText } from '../ui/fitText';
 import { styleLook } from '../ui/styleLook';
@@ -72,6 +75,10 @@ const INFO = {
     title: 'PODERES DEFENSIVOS',
     text: `El DEFENSIVO te ayuda a llegar a pelotas lejanas y se recarga cada ${DASH_COOLDOWN} segundos.\n\nCada poder cambia lo que hace: el DASH (gratis) es un sprint hasta la pelota, el DESTELLO te teletransporta, la SOMBRA cambia tu lugar con un clon, el SUPERSALTO salta hasta ella, la VOLTERETA llega con dos volteretas y el PATINAJE patina dejando un camino de hielo. Todos devuelven asegurado y se recargan igual.\n\nLa Tienda muestra 3 a la vez y cambia la selección cada 12 horas.`,
   },
+  zone: {
+    title: 'ZONA',
+    text: 'La ZONA se activa sola cuando vas perdiendo: corres más y golpeas mejor por unos puntos.\n\nEl ESTILO DE ZONA solo cambia cómo se ve. La ELÉCTRICA (de todos) es solo el rayo de luz en los ojos; los estilos de la Tienda suman un AURA alrededor del personaje: FUEGO (épica) y SOMBRA (legendaria), con dinero real.',
+  },
 } as const;
 type Info = (typeof INFO)[keyof typeof INFO];
 
@@ -118,11 +125,15 @@ export class ShopScene extends Phaser.Scene {
   preload() {
     if (!this.textures.exists('menu-bg')) this.load.image('menu-bg', 'assets/menu-bg.webp');
     if (!this.textures.exists('shop-title')) this.load.image('shop-title', 'assets/tienda-titulo.webp');
+    if (!this.textures.exists('cash-1')) this.load.image('cash-1', 'assets/dinero-virtual-1.webp'); // icono de DINERO (16-11-2026)
+    if (!this.textures.exists('cash-pack')) this.load.image('cash-pack', 'assets/dinero-fardo-chico.webp'); // precios de más de 1
     // retrato de Mai (premio mayor del Pase, en OFERTAS): ya lo carga BootScene; solo se descarga si falta
     if (!this.textures.exists('portrait-mai')) this.load.image('portrait-mai', 'assets/characters/mai_portrait.webp');
     queueInfernoArt(this.load); // bolas de los poderes (vista previa)
     queueChargeFxArt(this.load, ['fire', 'energy', 'tulip']); // aros de carga (vista previa)
     queueButtonArt(this.load); // botón SMASH (vista previa de sus poderes)
+    // sonidos del partido que usan las demostraciones EN ACCIÓN (fx/powerDemo.ts): carga, golpe y golpe de la ULTI
+    for (const [k, file] of [['cargando', 'mp3/cargando.mp3'], ['inferno-hit', 'mp3/inferno.mp3'], ['golpe-fuerte', 'mp3/golpe-fuerte.mp3']] as const) if (!this.cache.audio.exists(k)) this.load.audio(k, file);
   }
 
   /** al entrar: a qué sección baja sola ('cash' = DINERO; viene del + del menú) */
@@ -299,6 +310,16 @@ export class ShopScene extends Phaser.Scene {
       this.reg(y, dh);
     });
     y += dh + 52;
+    // ---------------------------------------------------------------- ESTILOS DE ZONA (16-11-2026): Eléctrica (de todos), Fuego (épica), Sombra (legendaria)
+    this.sectionTitle(W, y, 'ZONA', INFO.zone);
+    y += titleGap;
+    const zc = cols3(ZONE_SKIN_IDS.length);
+    const zh = 270;
+    ZONE_SKIN_IDS.forEach((zid, i) => {
+      this.zoneCard(zc.x(i), y, zc.w, zh, zid, SHOP_ITEMS.find((it) => it.id === `zone:${zid}`));
+      this.reg(y, zh);
+    });
+    y += zh + 52;
     // ---------------------------------------------------------------- dinero (se compra con CLP)
     this.cashY = y;
     this.sectionTitle(W, y, 'DINERO');
@@ -709,11 +730,10 @@ export class ShopScene extends Phaser.Scene {
     const s = getPlayer();
     const id = it.id.split(':')[1] as StyleId;
     const has = owns(s, it.id);
-    const equipped = s.equipped.style === id;
-    const lowLevel = s.level < it.minLevel;
+        const lowLevel = s.level < it.minLevel;
     const c = this.add.container(0, 0);
     this.body.add(c);
-    c.add(this.card(x, y, w, h, { line: equipped ? 0xffffff : has ? NEON : it.id === 'style:gold' ? GOLD : 0x2c3d66, glow: equipped || it.id === 'style:gold' ? 0.3 : 0, rarity: it.rarity }));
+    c.add(this.card(x, y, w, h, { line: has ? NEON : it.id === 'style:gold' ? GOLD : 0x2c3d66, glow: it.id === 'style:gold' ? 0.3 : 0, rarity: it.rarity }));
 
     // vista previa: la pelota con la estela de ese estilo, en movimiento (así se verán tus golpes)
     const sx = x + w / 2;
@@ -727,22 +747,18 @@ export class ShopScene extends Phaser.Scene {
     // botón inferior (dinero del juego) y, debajo, el precio en dinero real
     const by = y + h - 64;
     const bw = w - 24;
-    if (!has && it.available && !it.realMoneyOnly) c.add(this.clpTag(sx, y + h - 22, bw, it.clp));
-    if (equipped) {
-      c.add(this.pill(sx, by, bw, 'EN USO', 0x1f6b35, '#9fe8a0'));
+    // (16-11-2026) el botón de abajo es VER (EN ACCIÓN): dentro se compra (dinero virtual / real) o se usa. Lo legendario no se muestra: botones de siempre
+    // (21-11-2026) lo que ya es tuyo también se VE (dentro se usa): ya no hay botón USAR en la tarjeta
+    const canView = has || (it.rarity !== 'legendaria' && it.available);
+    if (!has && it.available && !it.realMoneyOnly) c.add(canView ? [] : this.clpTag(sx, y + h - 22, bw, it.clp));
+    if (canView) {
+      c.add(this.viewButton(sx, by, bw, () => this.openPreview(it)));
     } else if (!has && !it.available) {
       // sin rareza decidida: se ve el efecto pero aún no se vende
       c.add(this.pill(sx, by, bw, 'PRÓXIMAMENTE', 0x24365f, '#9fb4e0'));
     } else if (!has && it.realMoneyOnly) {
       // ÉPICA / LEGENDARIA: solo con dinero real (el pago llega con la pasarela)
       c.add(arcadeButton(this, sx, by, bw, 48, clpLabel(it.clp), this.tap(() => this.toast(lowLevel ? `Necesitas nivel ${it.minLevel}` : 'El pago con dinero real (CLP) llega pronto')), { palette: 'green', disabled: lowLevel }));
-    } else if (has) {
-      const b = arcadeButton(this, sx, by, bw, 48, 'USAR', this.tap(() => {
-        commit((st) => equipStyle(st, id));
-        this.toast(`Estilo ${it.name} equipado`);
-        this.build();
-      }), { palette: 'blue' });
-      c.add(b);
     } else {
       const btn = this.priceButton(sx, by, bw, it.price, lowLevel || s.gems < it.price, this.tap(() => this.confirmBuy(it)));
       c.add(btn);
@@ -755,8 +771,7 @@ export class ShopScene extends Phaser.Scene {
     const power = it.id.split(':')[1] as InfernoPower;
     const def = infernoPowerDef(power);
     const has = owns(s, it.id);
-    const equipped = has && s.equipped.inferno === power;
-    const c = this.add.container(0, 0);
+        const c = this.add.container(0, 0);
     this.body.add(c);
     this.ultiCardBg(c, x, y, w, h);
     const sx = x + w / 2;
@@ -767,19 +782,12 @@ export class ShopScene extends Phaser.Scene {
     c.add(desc);
     const by = y + h - 64;
     const bw = w - 24;
-    // las ULTIS solo se pagan con dinero real: el botón principal es el precio en CLP (sin precio en dinero virtual)
-    if (!has && !it.realMoneyOnly) c.add(this.clpTag(sx, y + h - 22, bw, it.clp));
-    if (equipped) c.add(this.pill(sx, by, bw, 'EN USO', 0x1f6b35, '#9fe8a0'));
-    else if (!has && it.realMoneyOnly) {
+    // (21-11-2026) el botón de abajo es VER (EN ACCIÓN): dentro se compra o se usa. Lo legendario que no tienes: botones de siempre
+    const canView = has || it.rarity !== 'legendaria';
+    if (!has) c.add(canView ? [] : this.clpTag(sx, y + h - 22, bw, it.clp));
+    if (canView) c.add(this.viewButton(sx, by, bw, () => this.openPreview(it)));
+    else if (it.realMoneyOnly) {
       c.add(arcadeButton(this, sx, by, bw, 48, clpLabel(it.clp), this.tap(() => this.toast(s.level < it.minLevel ? `Necesitas nivel ${it.minLevel}` : 'El pago con dinero real (CLP) llega pronto')), { palette: 'green', disabled: s.level < it.minLevel }));
-    } else if (has) {
-      c.add(
-        arcadeButton(this, sx, by, bw, 48, 'USAR', this.tap(() => {
-          commit((st) => equipInferno(st, power));
-          this.toast(`${def.ball} equipada`);
-          this.build();
-        }), { palette: 'blue' }),
-      );
     } else c.add(this.priceButton(sx, by, bw, it.price, s.level < it.minLevel || s.gems < it.price, this.tap(() => this.confirmBuy(it))));
   }
 
@@ -788,10 +796,9 @@ export class ShopScene extends Phaser.Scene {
     const s = getPlayer();
     const def = smashPowerDef(id);
     const has = smashOwned(s.owned, id);
-    const equipped = smashPowerOf(s.equipped.smash) === id;
-    const c = this.add.container(0, 0);
+        const c = this.add.container(0, 0);
     this.body.add(c);
-    c.add(this.card(x, y, w, h, { line: equipped ? 0xffffff : has ? def.color : 0x2c3d66, glow: equipped || has ? 0.3 : 0.1, rarity: it?.rarity }));
+    c.add(this.card(x, y, w, h, { line: has ? def.color : 0x2c3d66, glow: has ? 0.3 : 0.1, rarity: it?.rarity }));
     const sx = x + w / 2;
     const key = BUTTON_ART.smash.key;
     if (this.textures.exists(key)) c.add(this.add.image(sx, y + 66, elementTexture(this, key, id) ?? key).setDisplaySize(84, 84));
@@ -804,17 +811,52 @@ export class ShopScene extends Phaser.Scene {
     c.add(this.add.text(sx, y + 154, has ? (it ? 'COMPRADO' : 'INCLUIDO') : def.desc, { fontFamily: FONT, fontSize: '13px', color: has ? '#9fe8a0' : '#9fb4e0', align: 'center', wordWrap: { width: w - 16 } }).setOrigin(0.5, 0));
     const by = y + h - 64;
     const bw = w - 24;
-    if (!has && it) c.add(this.clpTag(sx, y + h - 22, bw, it.clp));
-    if (equipped) c.add(this.pill(sx, by, bw, 'EN USO', 0x1f6b35, '#9fe8a0'));
-    else if (has) {
-      c.add(
-        arcadeButton(this, sx, by, bw, 48, 'USAR', this.tap(() => {
-          commit((st) => equipSmash(st, id));
-          this.toast(`SMASH ${def.name.toLowerCase()} equipado`);
-          this.build();
-        }), { palette: 'blue' }),
-      );
-    } else if (it) c.add(this.priceButton(sx, by, bw, it.price, s.level < it.minLevel || s.gems < it.price, this.tap(() => this.confirmBuy(it))));
+    // (21-11-2026) el botón de abajo es VER (EN ACCIÓN): dentro se compra o se usa. Lo legendario que no tienes: botones de siempre
+    const canView = has || (!!it && it.rarity !== 'legendaria');
+    if (!has && it) c.add(canView ? [] : this.clpTag(sx, y + h - 22, bw, it.clp));
+    if (canView) c.add(this.viewButton(sx, by, bw, () => this.openPreviewOf('smash', id, it)));
+    else if (it) c.add(this.priceButton(sx, by, bw, it.price, s.level < it.minLevel || s.gems < it.price, this.tap(() => this.confirmBuy(it))));
+  }
+
+  /**
+   * Tarjeta de un ESTILO DE ZONA (domain/zoneSkins.ts): un rostro con su aura y el rayo de los ojos, nombre y botón. La Eléctrica es de todos (USAR /
+   * EN USO); la de FUEGO (épica) se VE en acción y se compra dentro; la SOMBRA (legendaria) no se muestra: precio en CLP / USAR / EN USO.
+   */
+  private zoneCard(x: number, y: number, w: number, h: number, zid: ZoneSkinId, it?: ShopItem) {
+    const s = getPlayer();
+    const def = ZONE_SKINS[zid];
+    const has = zoneSkinOwned(s, zid);
+        const c = this.add.container(0, 0);
+    this.body.add(c);
+    c.add(this.card(x, y, w, h, { line: has ? def.col : 0x2c3d66, glow: has ? 0.3 : 0.1, rarity: it?.rarity }));
+    const sx = x + w / 2;
+    // dibujo: cabeza con el aura del color de la zona y el rayo de los ojos (la Sombra, con humo negro)
+    const ic = this.add.graphics({ x: sx, y: y + 70 });
+    if (def.smoke) for (let k = 0; k < 7; k++) ic.fillStyle(k % 2 ? 0x1a0c2e : 0x0a0612, 0.7).fillCircle(Math.cos(k * 0.9) * 30, Math.sin(k * 1.3) * 22 + 6, 14 + (k % 3) * 3);
+    // el aura solo en los estilos que se venden (la Zona por defecto es solo el rayo de los ojos)
+    if (!def.noAura) {
+      ic.fillStyle(def.col, 0.18).fillCircle(0, 0, 48);
+      ic.fillStyle(def.col, 0.3).fillCircle(0, 0, 38);
+      for (let k = 0; k < 6; k++) {
+        const a = -Math.PI / 2 + (k - 2.5) * 0.42;
+        ic.lineStyle(4, k % 2 ? def.hot : def.col, 0.9).lineBetween(Math.cos(a) * 30, Math.sin(a) * 30, Math.cos(a) * 46, Math.sin(a) * 46);
+      }
+    }
+    ic.fillStyle(0x0a1638, 1).fillCircle(0, 4, 26);
+    ic.fillStyle(0x16244a, 1).fillCircle(0, 4, 22);
+    ic.lineStyle(9, def.col, 0.45).lineBetween(-8, 0, -46, -10);
+    ic.lineStyle(3.5, def.hot, 1).lineBetween(-8, 0, -46, -10);
+    ic.fillStyle(def.hot, 1).fillCircle(-8, 0, 4.5).fillCircle(8, 0, 4.5);
+    c.add(ic);
+    c.add(this.add.text(sx, y + 140, def.name.toUpperCase(), { fontFamily: FONT, fontSize: '24px', color: '#' + def.hot.toString(16).padStart(6, '0') }).setOrigin(0.5));
+    c.add(this.add.text(sx, y + 164, has ? (it ? 'COMPRADO' : 'INCLUIDO') : def.desc, { fontFamily: FONT, fontSize: '13px', color: has ? '#9fe8a0' : '#9fb4e0', align: 'center', wordWrap: { width: w - 16 } }).setOrigin(0.5, 0));
+    const by = y + h - 64;
+    const bw = w - 24;
+    // (21-11-2026) lo que ya es tuyo también se VE (dentro se usa): sin botón USAR en la tarjeta
+    const canView = has || (!!it && it.rarity !== 'legendaria');
+    if (!has && it) c.add(canView ? [] : this.clpTag(sx, y + h - 22, bw, it.clp));
+    if (canView) c.add(this.viewButton(sx, by, bw, () => this.openPreviewOf('zone', zid, it)));
+    else if (it) c.add(arcadeButton(this, sx, by, bw, 48, clpLabel(it.clp), this.tap(() => this.toast(s.level < it.minLevel ? `Necesitas nivel ${it.minLevel}` : 'El pago con dinero real (CLP) llega pronto')), { palette: 'green', disabled: s.level < it.minLevel }));
   }
 
   /** Tarjeta de un poder del DEFENSIVO: su icono, nombre, descripción y botón (precio / USAR / EN USO). */
@@ -823,10 +865,9 @@ export class ShopScene extends Phaser.Scene {
     const id = it.id.split(':')[1] as DefensivePower;
     const def = defensivePowerDef(id);
     const has = defensiveOwned(s.owned, id);
-    const equipped = defensivePowerOf(s.equipped.defensive) === id;
-    const c = this.add.container(0, 0);
+        const c = this.add.container(0, 0);
     this.body.add(c);
-    c.add(this.card(x, y, w, h, { line: equipped ? 0xffffff : has ? def.color : 0x2c3d66, glow: equipped || has ? 0.3 : 0.1, rarity: it?.rarity }));
+    c.add(this.card(x, y, w, h, { line: has ? def.color : 0x2c3d66, glow: has ? 0.3 : 0.1, rarity: it?.rarity }));
     const sx = x + w / 2;
     const ic = this.add.graphics({ x: sx, y: y + 66 });
     drawDisc(ic, 36, def.color, 0x1b3a6b);
@@ -836,17 +877,12 @@ export class ShopScene extends Phaser.Scene {
     c.add(this.add.text(sx, y + 154, has ? 'COMPRADO' : def.desc, { fontFamily: FONT, fontSize: '13px', color: has ? '#9fe8a0' : '#9fb4e0', align: 'center', wordWrap: { width: w - 16 } }).setOrigin(0.5, 0));
     const by = y + h - 64;
     const bw = w - 24;
-    if (!has) c.add(this.clpTag(sx, y + h - 22, bw, it.clp));
-    if (equipped) c.add(this.pill(sx, by, bw, 'EN USO', 0x1f6b35, '#9fe8a0'));
-    else if (has) {
-      c.add(
-        arcadeButton(this, sx, by, bw, 48, 'USAR', this.tap(() => {
-          commit((st) => equipDefensive(st, id));
-          this.toast(`Defensivo ${def.name.toLowerCase()} equipado`);
-          this.build();
-        }), { palette: 'blue' }),
-      );
-    } else c.add(this.priceButton(sx, by, bw, it.price, s.level < it.minLevel || s.gems < it.price, this.tap(() => this.confirmBuy(it))));
+    // (16-11-2026) el botón de abajo es VER (EN ACCIÓN): dentro se compra o se usa. Lo legendario: botones de siempre
+    // (21-11-2026) lo que ya es tuyo también se VE (dentro se usa): sin botón USAR en la tarjeta
+    const canView = has || it.rarity !== 'legendaria';
+    if (!has) c.add(canView ? [] : this.clpTag(sx, y + h - 22, bw, it.clp));
+    if (canView) c.add(this.viewButton(sx, by, bw, () => this.openPreview(it)));
+    else c.add(this.priceButton(sx, by, bw, it.price, s.level < it.minLevel || s.gems < it.price, this.tap(() => this.confirmBuy(it))));
   }
 
   /** Tarjeta de un efecto de CARGA: el aro animado, nombre, descripción y botón (precio / USAR / EN USO / DE TU PERSONAJE). */
@@ -857,29 +893,21 @@ export class ShopScene extends Phaser.Scene {
     const skin = s.equipped.skin;
     const has = chargeFxOwned(s.owned, id, skin);
     const bought = s.owned.includes(it.id);
-    const equipped = chargeFxOf(s.equipped.charge, skin) === id;
-    const c = this.add.container(0, 0);
+        const c = this.add.container(0, 0);
     this.body.add(c);
-    c.add(this.card(x, y, w, h, { line: equipped ? 0xffffff : has ? def.color : 0x2c3d66, glow: equipped || has ? 0.3 : 0.1, rarity: it?.rarity }));
+    c.add(this.card(x, y, w, h, { line: has ? def.color : 0x2c3d66, glow: has ? 0.3 : 0.1, rarity: it?.rarity }));
     const sx = x + w / 2;
     c.add(chargePreview(this, id, sx, y + 128, Math.min(w - 10, 170)));
     c.add(this.add.text(sx, y + 166, def.name, { fontFamily: FONT, fontSize: '24px', color: def.css }).setOrigin(0.5));
     c.add(this.add.text(sx, y + 190, has && !bought ? 'DE TU PERSONAJE' : has ? 'COMPRADO' : def.desc, { fontFamily: FONT, fontSize: '13px', color: has ? '#9fe8a0' : '#9fb4e0', align: 'center', wordWrap: { width: w - 16 } }).setOrigin(0.5, 0));
     const by = y + h - 64;
     const bw = w - 24;
-    // la rareza ÉPICA / LEGENDARIA solo se paga con dinero real: el botón principal es el precio en CLP (sin precio en dinero virtual)
-    if (!has && !it.realMoneyOnly) c.add(this.clpTag(sx, y + h - 22, bw, it.clp));
-    if (equipped) c.add(this.pill(sx, by, bw, 'EN USO', 0x1f6b35, '#9fe8a0'));
-    else if (!has && it.realMoneyOnly) {
+    // (21-11-2026) el botón de abajo es VER (EN ACCIÓN): dentro se compra o se usa. Lo legendario que no tienes: botones de siempre
+    const canView = has || it.rarity !== 'legendaria';
+    if (!has) c.add(canView ? [] : this.clpTag(sx, y + h - 22, bw, it.clp));
+    if (canView) c.add(this.viewButton(sx, by, bw, () => this.openPreview(it)));
+    else if (it.realMoneyOnly) {
       c.add(arcadeButton(this, sx, by, bw, 48, clpLabel(it.clp), this.tap(() => this.toast('El pago con dinero real (CLP) llega pronto')), { palette: 'green' }));
-    } else if (has) {
-      c.add(
-        arcadeButton(this, sx, by, bw, 48, 'USAR', this.tap(() => {
-          commit((st) => equipCharge(st, id));
-          this.toast(`Cargando ${def.name.toLowerCase()} equipado`);
-          this.build();
-        }), { palette: 'blue' }),
-      );
     } else c.add(this.priceButton(sx, by, bw, it.price, s.level < it.minLevel || s.gems < it.price, this.tap(() => this.confirmBuy(it))));
   }
 
@@ -924,9 +952,9 @@ export class ShopScene extends Phaser.Scene {
     const k = 1 + Math.min(i, 5) * 0.12;
     const midX = x + w * 0.44;
     const baseY = y + (h - barH) * 0.72;
-    const pile = this.add.graphics();
+    const pile = this.add.container(0, 0);
     layers.forEach((n, row) => {
-      for (let j = 0; j < n; j++) drawCashIcon(pile, k, midX + (j - (n - 1) / 2) * 26 * k, baseY - row * 15 * k + (j % 2) * 3);
+      for (let j = 0; j < n; j++) pile.add(this.cashIcon(midX + (j - (n - 1) / 2) * 26 * k, baseY - row * 15 * k + (j % 2) * 3, 40 * k));
     });
     c.add(pile);
 
@@ -970,6 +998,76 @@ export class ShopScene extends Phaser.Scene {
     c.once(Phaser.GameObjects.Events.DESTROY, () => pv.tween.remove());
   }
 
+  // ================================================================ ver en acción
+  /** Botón VER (abajo de la tarjeta, en el sitio de USAR / precio): abre la pantalla EN ACCIÓN. */
+  private viewButton(x: number, y: number, w: number, onClick: () => void) {
+    // (21-11-2026) sin el triángulo de "play": solo el texto VER
+    return arcadeButton(this, x, y, w, 48, 'VER', this.tap(onClick), { palette: 'blue' });
+  }
+
+  // (16-11-2026, usuario) sin precio bajo el botón VER: el precio se ve al entrar (VER EN ACCIÓN). Se quitó priceTag.
+
+  /** (16-11-2026, usuario) icono de DINERO: la imagen del billete (assets/dinero-virtual-1.webp) de `size` px; si no cargó, el dibujo de siempre. */
+  private cashIcon(x: number, y: number, size: number, amount = 1): Phaser.GameObjects.Image | Phaser.GameObjects.Graphics {
+    // (usuario 16-11-2026) un PRECIO de más de 1 lleva el fardo chico (dinero-fardo-chico.webp, de dinero-virtual-2)
+    const key = amount > 1 && this.textures.exists('cash-pack') ? 'cash-pack' : 'cash-1';
+    if (this.textures.exists(key)) return this.add.image(x, y, key).setDisplaySize(size, size);
+    const g = this.add.graphics({ x, y });
+    drawCashIcon(g, size / 40);
+    return g;
+  }
+
+  /**
+   * VER EN ACCIÓN (16-11-2026): la pantalla "EN ACCIÓN" de PERSONALIZAR con el artículo de la Tienda (efecto de pelota o defensivo), sin lista ni
+   * equipar: solo COMPRAR con dinero virtual o con dinero real. Lo legendario no tiene botón VER.
+   */
+  private openPreview(it: ShopItem) {
+    this.openPreviewOf(it.kind, it.id.split(':')[1], it);
+  }
+
+  /**
+   * EN ACCIÓN de cualquier artículo (21-11-2026: también ULTI, ESPECIAL y CARGANDO GOLPE, y lo que ya es tuyo). `it` falta en lo que viene de serie
+   * (SMASH de fuego, Zona eléctrica): siempre es tuyo. Dentro: COMPRAR (virtual / real) si no lo tienes; si ya es tuyo, solo se ve (la Tienda no equipa: eso es en PERSONALIZAR).
+   */
+  private openPreviewOf(kind: ItemKind | 'zone', id: string, it?: ShopItem) {
+    const s = getPlayer();
+    const skin = s.equipped.skin;
+    type P = { kindLabel: string; name: string; desc: string; color: number; demo: Parameters<typeof openShopPreview>[1]['demo']; owned: boolean };
+    let p: P;
+    if (kind === 'zone') {
+      const zd = ZONE_SKINS[id as ZoneSkinId];
+      p = { kindLabel: 'ZONA', name: it?.name ?? zd.name, desc: zd.desc, color: zd.col, demo: (pa, o, i) => createZoneDemo(this, pa, o, i, skin, zd), owned: zoneSkinOwned(s, zd.id) };
+    } else if (kind === 'style') {
+      const look = styleLook(id as StyleId);
+      p = { kindLabel: 'EFECTO DE PELOTA', name: it?.name ?? id, desc: look.perk, color: look.color, demo: (pa, o, i) => createStyleDemo(this, pa, o, i, skin, look), owned: owns(s, `style:${id}` as ItemId) };
+    } else if (kind === 'inferno') {
+      const d = infernoPowerDef(id as InfernoPower);
+      p = { kindLabel: 'ULTI', name: d.ball, desc: d.desc, color: d.color, demo: (pa, o, i) => createSpecialDemo(this, pa, o, i, skin, 'inferno', id), owned: owns(s, `inferno:${id}` as ItemId) };
+    } else if (kind === 'smash') {
+      const d = smashPowerDef(id as SmashPower);
+      p = { kindLabel: 'ESPECIAL', name: d.name, desc: d.desc, color: d.color, demo: (pa, o, i) => createSpecialDemo(this, pa, o, i, skin, 'smash', id), owned: smashOwned(s.owned, id as SmashPower) };
+    } else if (kind === 'charge') {
+      const d = chargeFxDef(id as ChargeFxId);
+      p = { kindLabel: 'CARGANDO GOLPE', name: d.name, desc: d.desc, color: d.color, demo: (pa, o, i) => createSpecialDemo(this, pa, o, i, skin, 'charge', id), owned: chargeFxOwned(s.owned, id as ChargeFxId, skin) };
+    } else {
+      const d = defensivePowerDef(id as DefensivePower);
+      p = { kindLabel: 'DEFENSIVO', name: it?.name ?? d.name, desc: d.desc, color: d.color, demo: (pa, o, i) => createDefensiveDemo(this, pa, o, i, skin, id as DefensivePower), owned: defensiveOwned(s.owned, id as DefensivePower) };
+    }
+    openShopPreview(this, {
+      kindLabel: p.kindLabel,
+      name: p.name,
+      desc: p.desc,
+      color: p.color,
+      rarity: it?.rarity,
+      demo: p.demo,
+      owned: p.owned,
+      price: !it || it.realMoneyOnly || !it.available ? null : it.price,
+      priceDim: !it || s.level < it.minLevel || s.gems < it.price,
+      clp: it?.clp ?? 0,
+      onBuyCash: () => it && this.confirmBuy(it),
+      onBuyReal: () => this.toast(it && s.level < it.minLevel ? `Necesitas nivel ${it.minLevel}` : 'El pago con dinero real (CLP) llega pronto'),
+    });
+  }
   // ================================================================ compra
   private confirmBuy(it: ShopItem) {
     const s = getPlayer();
@@ -992,8 +1090,7 @@ export class ShopScene extends Phaser.Scene {
     panel.add(this.add.text(0, -ph / 2 + 50, '¿COMPRAR?', { fontFamily: FONT, fontSize: '38px', color: '#ffffff', stroke: '#0a1638', strokeThickness: 6 }).setOrigin(0.5).setLetterSpacing(2));
     panel.add(this.add.text(0, -ph / 2 + 104, `${it.kind === 'style' ? 'Estilo' : it.kind === 'inferno' ? 'Poder ULTI' : it.kind === 'charge' ? 'Cargando golpe' : it.kind === 'defensive' ? 'Poder defensivo' : it.kind === 'smash' ? 'SMASH' : 'Habilidad'} ${it.name}`, { fontFamily: FONT, fontSize: '26px', color: '#dbe5ff' }).setOrigin(0.5));
     // precio y saldo después
-    const coin = this.add.graphics({ x: -46, y: -ph / 2 + 158 });
-    drawCashIcon(coin, 1);
+    const coin = this.cashIcon(-46, -ph / 2 + 158, 40, it.price);
     panel.add(coin);
     panel.add(this.add.text(-22, -ph / 2 + 158, it.price.toLocaleString('es-CL'), { fontFamily: FONT, fontSize: '32px', color: '#ffd23f', stroke: '#0a1638', strokeThickness: 6 }).setOrigin(0, 0.5));
     panel.add(this.add.text(0, -ph / 2 + 196, `Te quedarán ${(s.gems - it.price).toLocaleString('es-CL')} de dinero`, { fontFamily: FONT, fontSize: '17px', color: '#7f93bf' }).setOrigin(0.5));
@@ -1037,8 +1134,7 @@ export class ShopScene extends Phaser.Scene {
   private cashPill(right: number, y: number) {
     const c = this.add.container(0, y);
     const bg = this.add.graphics();
-    const cash = this.add.graphics();
-    drawCashIcon(cash, 0.85);
+    const cash = this.cashIcon(0, 0, 34);
     this.cashText = this.add.text(0, 0, '', { fontFamily: FONT, fontSize: '24px', color: '#ffffff' }).setOrigin(1, 0.5);
     c.add([bg, cash, this.cashText]);
     const layout = () => {
@@ -1211,8 +1307,7 @@ export class ShopScene extends Phaser.Scene {
     g.fillStyle(dim ? 0x5a4a20 : 0xf29a0c, 1).fillRoundedRect(-w / 2, -h / 2, w, h, 14);
     g.fillStyle(dim ? 0x6e5c2a : 0xffcc1f, 1).fillRoundedRect(-w / 2, -h / 2, w, h * 0.62, { tl: 14, tr: 14, bl: 6, br: 6 });
     g.fillStyle(0xffffff, dim ? 0.08 : 0.3).fillRoundedRect(-w / 2 + 8, -h / 2 + 4, w - 16, 8, 4);
-    const icon = this.add.graphics({ x: -26, y: 0 });
-    drawCashIcon(icon, 0.7); // la Tienda cobra DINERO
+    const icon = this.cashIcon(-26, 0, 30, price); // la Tienda cobra DINERO
     const t = this.add.text(-8, 0, price.toLocaleString('es-CL'), { fontFamily: FONT, fontSize: '24px', color: dim ? '#c9b98a' : '#0a1638' }).setOrigin(0, 0.5);
     // centra icono + cifra
     const total = 30 + t.width;
@@ -1269,11 +1364,14 @@ export class ShopScene extends Phaser.Scene {
     const { line = NEON, glow = 0.18, r = 20, rarity } = opts;
     const g = this.add.graphics();
     g.fillStyle(0x000000, 0.35).fillRoundedRect(x + 3, y + 5, w, h, r);
-    if (glow) g.lineStyle(8, line, glow).strokeRoundedRect(x, y, w, h, r);
+    if (glow && !rarity) g.lineStyle(8, line, glow).strokeRoundedRect(x, y, w, h, r);
     g.fillStyle(NAVY, 0.94).fillRoundedRect(x, y, w, h, r);
     g.fillStyle(0x1b2d5c, 0.45).fillRoundedRect(x + 3, y + 3, w - 6, Math.min(h * 0.45, 40), { tl: r - 3, tr: r - 3, bl: 0, br: 0 });
-    g.lineStyle(3, line, 1).strokeRoundedRect(x, y, w, h, r);
-    if (rarity) drawRarityFrame(g, x, y, w, h, r, rarity); // el marco de su rareza va encima del borde (ui/rarity.ts)
+    if (rarity) {
+      // (16-11-2026) con rareza, su marco (con relieve, fondo teñido y gemas) reemplaza al borde de la tarjeta; lo equipado, aro blanco por fuera
+      drawRarityFrame(g, x, y, w, h, r, rarity, true);
+      if (line === 0xffffff) g.lineStyle(3, 0xffffff, 0.95).strokeRoundedRect(x - 6, y - 6, w + 12, h + 12, r + 5);
+    } else g.lineStyle(3, line, 1).strokeRoundedRect(x, y, w, h, r);
     return g;
   }
 

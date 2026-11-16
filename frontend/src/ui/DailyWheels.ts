@@ -95,8 +95,9 @@ export class DailyWheels extends Phaser.GameObjects.Container {
     // siempre las 4 en su sitio; las ya cobradas quedan deshabilitadas (no se pierde el espacio)
     const step = this.step();
     const x0 = -this.pw / 2 + PANEL_H * 0.22 + 12 + step / 2;
-    // SELECCIONADA: la primera que aún no se cobró (la próxima que se abrirá)
-    const sel = st.findIndex((s) => s !== 'done');
+    // SELECCIONADA: la próxima que se gana jugando (aro celeste y vaivén)
+    // (16-11-2026) solo se anima la que VIENE si juegas (la primera por ganar) y la TEST: las demás, quietas
+    const sel = st.indexOf('locked');
     st.forEach((s, i) => {
       const x = x0 + i * step;
       this.slotPos.set(i, x);
@@ -188,9 +189,9 @@ export class DailyWheels extends Phaser.GameObjects.Container {
       this.scene.tweens.add({ targets: sel, scale: { from: 0.96, to: 1.08 }, alpha: { from: 1, to: 0.55 }, duration: 650, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
     }
     if (ready) {
-      const aura = this.scene.add.circle(0, 0, MINI_R + 10, GOLD, 0.35).setBlendMode(Phaser.BlendModes.ADD);
+      // lista para girar: aura dorada fija (sin latir) y el "!"
+      const aura = this.scene.add.circle(0, 0, MINI_R + 10, GOLD, 0.3).setBlendMode(Phaser.BlendModes.ADD);
       c.add(aura);
-      this.scene.tweens.add({ targets: aura, scale: 1.25, alpha: 0.05, duration: 700, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
     }
     const rim = this.scene.add.graphics();
     rim.fillStyle(NAVY, 1).fillCircle(0, 0, MINI_R + 5);
@@ -214,12 +215,11 @@ export class DailyWheels extends Phaser.GameObjects.Container {
       c.add(this.scene.add.circle(0, 0, MINI_R + 3, 0x1a2238, 0.68));
       c.setAlpha(0.75);
     } else if (s === 'locked') {
-      // por ganar: a color y "viva" (vaivén suave), sin candado; se gira al terminar una partida
+      // por ganar: a color, sin candado; solo la que viene (la seleccionada) se mueve (vaivén suave); las demás, quietas
       face.setAngle(i * 23);
-      this.scene.tweens.add({ targets: face, angle: face.angle + 14, duration: 1400 + i * 160, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
+      if (selected) this.scene.tweens.add({ targets: face, angle: face.angle + 14, duration: 1400, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
     } else if (ready) {
-      this.scene.tweens.add({ targets: face, angle: 360, duration: 6000, repeat: -1 });
-      this.scene.tweens.add({ targets: c, y: y - 5, duration: 520, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
+      // lista para girar: quieta (16-11-2026), se distingue por el aura dorada y el "!"
       const badge = this.scene.add.container(MINI_R - 2, -MINI_R + 4);
       const bg = this.scene.add.graphics();
       bg.fillStyle(NAVY, 1).fillCircle(0, 0, 12.5);
@@ -227,7 +227,6 @@ export class DailyWheels extends Phaser.GameObjects.Container {
       badge.add(bg);
       badge.add(this.scene.add.text(0, 0, '!', { fontFamily: FONT, fontSize: '16px', color: '#ffffff' }).setOrigin(0.5));
       c.add(badge);
-      this.scene.tweens.add({ targets: badge, scale: 1.25, duration: 340, yoyo: true, repeat: -1 });
     }
 
     c.setSize(MINI_R * 2 + 16, MINI_R * 2 + 16).setInteractive({ useHandCursor: true });

@@ -152,3 +152,21 @@ test('exceso de mensajes por segundo: se descartan los sobrantes', async () => {
   a.close();
   b.close();
 });
+
+test('marco del perfil y estilo de zona: llegan al rival si son conocidos; si no, se omiten', async () => {
+  const a = await client();
+  const b = await client();
+  a.emit(EV.FIND, { profile: { name: 'Ana', level: 3, skin: 'nxo', frame: 'gold', zone: 'shadow' } });
+  await once(a, EV.SEARCHING);
+  const ma = once<{ opponent: { frame?: string; zone?: string } }>(a, EV.MATCHED);
+  const mb = once<{ opponent: { frame?: string; zone?: string } }>(b, EV.MATCHED);
+  b.emit(EV.FIND, { profile: { name: 'Beto', level: 3, skin: 'nxo', frame: '<script>', zone: 'lava' } });
+  const [ra, rb] = await Promise.all([ma, mb]);
+  assert.equal(rb.opponent.frame, 'gold');
+  assert.equal(ra.opponent.frame, undefined);
+  // estilo de ZONA: el conocido llega; uno inventado se omite
+  assert.equal(rb.opponent.zone, 'shadow');
+  assert.equal(ra.opponent.zone, undefined);
+  a.close();
+  b.close();
+});

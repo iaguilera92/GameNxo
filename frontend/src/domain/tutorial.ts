@@ -143,8 +143,8 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
   {
     id: 'l16-ranked',
     level: 16,
-    title: 'RANKED',
-    pages: ['En RANKED apuestas monedas: ganar paga más y subes de liga. Tu clasificación es tu saldo de monedas.'],
+    title: 'LIGA',
+    pages: ['En la LIGA apuestas monedas: ganar paga el doble de la entrada. Tu puesto en la liga es lo que ganas en la semana: llega a la meta y el domingo subes de liga.'],
   },
   {
     id: 'l17-ligas',

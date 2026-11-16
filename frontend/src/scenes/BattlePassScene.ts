@@ -5,6 +5,7 @@ import { stadiumBg } from '../ui/ui';
 import { fitText } from '../ui/fitText';
 import { commit, getPlayer, onPlayerChange } from '../domain/playerStore';
 import { bpSeasonInfo } from '../domain/battlePassConfig';
+import { totalPlayed } from '../logic/Stats';
 import { BP_SEASON, BP_TIERS, type BpReward, type BpTrack, bpBonusSpinIndex, bpBuyPremium, bpCanClaim, bpClaim, bpClaimBonus, bpClaimWelcome, bpLevel, syncSeason } from '../domain/battlePass';
 import type { PlayerState } from '../domain/player';
 import { type ChargeFxId, chargeFxDef } from '../domain/chargeFx';
@@ -12,7 +13,7 @@ import type { EmoteKind } from '../domain/emotes';
 import { EMOTE_TEXTURE, queueEmoteArt } from '../ui/Emotes';
 import { styleLook } from '../ui/styleLook';
 import { passiveOf } from '../domain/characterPassives';
-import { drawPassiveIcon, openPassiveDialog } from '../ui/passiveInfo';
+import { openPassiveDialog } from '../ui/passiveInfo';
 import { CHAR_COLOR_LIST } from '../domain/charColors';
 
 /**
@@ -82,6 +83,10 @@ export class BattlePassScene extends Phaser.Scene {
     // retrato de Mai: ya lo carga BootScene (characters/portrait.ts); solo se descarga si falta (1,3 MB)
     if (!this.textures.exists('portrait-mai')) this.load.image('portrait-mai', 'assets/characters/mai_portrait.webp');
     queueEmoteArt(this.load); // premios: emotes (miniaturas de ~32 KB)
+    // (16-11-2026) premio de 1 DINERO: un solo billete (assets/dinero-virtual-1.webp, sin fondo; original con croma magenta en dinero-virtual.webp)
+    if (!this.textures.exists('bp-cash-1')) this.load.image('bp-cash-1', 'assets/dinero-virtual-1.webp');
+    // premios de 2 a 4 DINERO: fardo chico (assets/dinero-fardo-chico.webp, sin fondo; original con croma magenta en dinero-virtual-2.webp)
+    if (!this.textures.exists('bp-cash-pack')) this.load.image('bp-cash-pack', 'assets/dinero-fardo-chico.webp');
   }
 
   create() {
@@ -280,7 +285,9 @@ export class BattlePassScene extends Phaser.Scene {
     }
 
     // franjas de fondo: más vivas en los niveles alcanzados
-    const reached = row === 0 || level >= row;
+    // (16-11-2026) la fila XP (bienvenida) se ve apagada, como las bloqueadas, hasta jugar la primera partida
+    const welcomeLocked = row === 0 && !(totalPlayed() > 0 || s.bp.xp > 0);
+    const reached = (row === 0 && !welcomeLocked) || (row > 0 && level >= row);
     const bg = this.add.graphics();
     // columna GRATIS: azul pizarra apagado (no compite con la premium), con un leve degradado
     const [fT, fB] = reached ? [0x3f5f8f, 0x2c4670] : [0x283a5c, 0x1c2a45];
@@ -319,6 +326,15 @@ export class BattlePassScene extends Phaser.Scene {
     node.fillStyle(0xffffff, 0.3).fillPoints([{ x: 0, y: -d }, { x: d, y: 0 }, { x: 0, y: 0 }, { x: -d, y: 0 }], true);
     c.add(node);
     c.add(this.add.text(L, h / 2, row === 0 ? 'XP' : String(row), { fontFamily: FONT, fontSize: row === 0 ? '16px' : '24px', color: reached ? '#3a2400' : '#1c2440' }).setOrigin(0.5));
+    if (welcomeLocked) {
+      // aviso en UNA fila, entre las dos celdas y a la altura del rombo XP (centro de la fila), que late para que se lea
+      const note = this.add.text(0, h / 2, 'JUEGA UNA PARTIDA PARA DESBLOQUEAR', { fontFamily: FONT, fontSize: '25px', color: '#ffe36b', stroke: '#06122e', strokeThickness: 6 }).setOrigin(0.5);
+      fitText(note, W - 40);
+      note.x = W / 2; // centrado en el ancho de las DOS celdas (el rombo está en la unión, más a la izquierda)
+      c.add(note);
+      const s0 = note.scale;
+      this.loop({ targets: note, scale: { from: s0 * 0.94, to: s0 * 1.08 }, duration: 650, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
+    }
 
     this.building = null;
     return { c, tweens };
@@ -329,8 +345,10 @@ export class BattlePassScene extends Phaser.Scene {
     const { s } = this.st;
     const welcome = row === 0;
     const reward = welcome ? BP_SEASON.welcome[track] : BP_SEASON.tiers[row - 1][track];
+    // (16-11-2026, usuario) la fila XP (bienvenida) se desbloquea al jugar la PRIMERA partida (antes era gratis de inmediato)
+    const welcomeLocked = welcome && !(totalPlayed() > 0 || s.bp.xp > 0);
     const err = welcome
-      ? (track === 'prem' && !s.bp.premium ? 'not_premium' : (track === 'free' ? s.bp.welcomeFreeClaimed : s.bp.welcomePremClaimed) ? 'already_claimed' : null)
+      ? (track === 'prem' && !s.bp.premium ? 'not_premium' : (track === 'free' ? s.bp.welcomeFreeClaimed : s.bp.welcomePremClaimed) ? 'already_claimed' : welcomeLocked ? 'locked' : null)
       : bpCanClaim(s, track, row);
     const claimed = err === 'already_claimed';
     const ready = err === null;
@@ -351,9 +369,15 @@ export class BattlePassScene extends Phaser.Scene {
         c.add(glow);
         this.loop({ targets: glow, scale: { from: 0.85, to: 1.15 }, alpha: { from: 0.5, to: 0.15 }, duration: 800, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
       }
-      const ic = this.add.graphics({ x: cx, y: iy }).setScale(1.6);
-      this.drawReward(ic, reward);
-      c.add(ic);
+      const cashKey = reward.kind !== 'cash' ? null : reward.amount === 1 ? 'bp-cash-1' : reward.amount < 5 ? 'bp-cash-pack' : null;
+      if (cashKey && this.textures.exists(cashKey)) {
+        // DINERO (usuario 16-11-2026): 1 = un billete; 2 a 4 = fardo chico; 5 o más, el dibujo de siempre
+        c.add(this.add.image(cx, iy, cashKey).setDisplaySize(cashKey === 'bp-cash-1' ? 92 : 100, cashKey === 'bp-cash-1' ? 92 : 100));
+      } else {
+        const ic = this.add.graphics({ x: cx, y: iy }).setScale(1.6);
+        this.drawReward(ic, reward);
+        c.add(ic);
+      }
       if (reward.kind === 'item' && reward.item.startsWith('emote:')) {
         const key = EMOTE_TEXTURE[reward.item.split(':')[1] as EmoteKind];
         if (key && this.textures.exists(key)) c.add(this.add.image(cx, iy, key).setDisplaySize(76, 76));
@@ -413,7 +437,7 @@ export class BattlePassScene extends Phaser.Scene {
   private characterCell(c: Phaser.GameObjects.Container, cx: number, cy: number, w: number, h: number, prem: boolean, reward: Extract<BpReward, { kind: 'character' }>): Phaser.GameObjects.Zone | null {
     const accent = prem ? 0xfff1b8 : 0x8fd8ff;
     const box = { x0: 118, y0: 4, x1: 1070, y1: 1356 }; // caja visible de mai_portrait.png (1130 × 1392), como en characters/portrait.ts
-    const vh = h * 0.58; // un poco más chico que antes: arriba queda sitio para la PASIVA del personaje
+    const vh = h * 0.68; // (16-11-2026, usuario) más grande: ya no hay franja de la PASIVA arriba
     const vw = ((box.x1 - box.x0) / (box.y1 - box.y0)) * vh;
     const feetY = cy + h * 0.24;
 
@@ -452,24 +476,16 @@ export class BattlePassScene extends Phaser.Scene {
     fitText(tagText, tagW - 12);
     cell.add(tagText);
 
-    // PASIVA del personaje (docs/MAESTRIAS.md): franja arriba con su nombre, una frase breve y un icono (i) que abre el detalle
+    // PASIVA del personaje (docs/MAESTRIAS.md): (16-11-2026, usuario) sin franja ni frase: solo un icono (i) a la derecha de la etiqueta
+    // (PERSONAJE NUEVO / ESTILO ORO) que abre el detalle
     const def = passiveOf(reward.skin);
     if (!def) return null;
-    const top = -h / 2 + 8;
-    const pw = Math.min(w - 16, 320);
-    const pg = this.add.graphics();
-    pg.fillStyle(0x06122e, 0.92).fillRoundedRect(-pw / 2, top, pw, 30, 15);
-    pg.lineStyle(2, def.color, 1).strokeRoundedRect(-pw / 2, top, pw, 30, 15);
-    const pic = this.add.graphics({ x: -pw / 2 + 18, y: top + 15 });
-    drawPassiveIcon(pic, def.id, 8, def.color);
-    const ptxt = this.add.text(-pw / 2 + 36, top + 15, `PASIVA · ${def.name}`, { fontFamily: FONT, fontSize: '15px', color: def.css, stroke: '#061431', strokeThickness: 3 }).setOrigin(0, 0.5).setLetterSpacing(1);
-    fitText(ptxt, pw - 36 - 40);
-    const info = this.add.graphics({ x: pw / 2 - 18, y: top + 15 });
-    info.fillStyle(0x10224d, 1).fillCircle(0, 0, 11).lineStyle(2, 0xffffff, 0.9).strokeCircle(0, 0, 11);
-    const itxt = this.add.text(pw / 2 - 18, top + 16, 'i', { fontFamily: FONT, fontSize: '16px', color: '#ffffff' }).setOrigin(0.5);
-    const short = this.add.text(0, top + 40, def.short, { fontFamily: FONT, fontSize: '13px', color: '#e6f0ff', align: 'center', stroke: '#061431', strokeThickness: 3, wordWrap: { width: w - 24 } }).setOrigin(0.5, 0);
-    cell.add([pg, pic, ptxt, info, itxt, short]);
-    const zone = this.add.zone(0, top + 15, pw, 34).setInteractive({ useHandCursor: true });
+    const ix = tagW / 2 + 22;
+    const info = this.add.graphics({ x: ix, y: tagY });
+    info.fillStyle(0x06122e, 1).fillCircle(0, 0, 15).fillStyle(0x10224d, 1).fillCircle(0, 0, 13).lineStyle(2, 0xffffff, 0.9).strokeCircle(0, 0, 13);
+    const itxt = this.add.text(ix, tagY + 1, 'i', { fontFamily: FONT, fontSize: '18px', color: '#ffffff' }).setOrigin(0.5);
+    cell.add([info, itxt]);
+    const zone = this.add.zone(ix, tagY, 44, 44).setInteractive({ useHandCursor: true });
     zone.on('pointerup', (p: Phaser.Input.Pointer) => {
       if (this.moved > 12 || p.y < this.listTop) return; // la máscara no recorta los toques: solo dentro de la zona visible de la lista
       openPassiveDialog(this, reward.skin);

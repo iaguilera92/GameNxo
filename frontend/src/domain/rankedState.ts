@@ -4,7 +4,8 @@
  */
 import type { RankId } from './ranks';
 
-export type RankedOutcome = 'win' | 'loss' | 'surrender' | 'abandon';
+/** `opponent_left`: el RIVAL online se rindió o abandonó (D9; ver settleRanked y RANKED.forfeitBonus) */
+export type RankedOutcome = 'win' | 'loss' | 'surrender' | 'abandon' | 'opponent_left';
 
 /** Partida Ranked con la entrada ya pagada y sin liquidar. */
 export interface RankedPending {
@@ -22,8 +23,14 @@ export interface WeeklyReward {
   week: string;
   league: RankId;
   matches: number;
-  /** cumplió el mínimo de partidas */
+  /** victorias Ranked de la semana (requisito: RANKED.minWinsForReward) */
+  wins: number;
+  /** resultado neto de la semana (Ranking Liga) */
+  net: number;
+  /** cumplió el mínimo de victorias */
   eligible: boolean;
+  /** liga a la que ascendió al cerrar la semana (neto ≥ meta) */
+  promotedTo: RankId | null;
   position: number | null;
   /** premio de liga + premio por posición (0 si no es elegible) */
   coins: number;
@@ -55,8 +62,15 @@ export interface RankedState {
   /** semana (lunes AAAA-MM-DD) y mes (AAAA-MM) a los que pertenecen los datos */
   week: string;
   month: string;
-  /** partidas completadas (ganadas + perdidas) en la semana: requisito de recompensa */
+  /** partidas Ranked liquidadas en la semana (ganadas + perdidas, rendición y abandono incluidos) */
   weekMatches: number;
+  /** RANKING LIGA (v2): resultado NETO de la semana en Ranked (apuestas ganadas − perdidas). Puede ser negativo. Vuelve a 0 cada semana */
+  weekNet: number;
+  /** victorias y derrotas Ranked de la semana (requisito de recompensa y desempates) */
+  weekWins: number;
+  weekLosses: number;
+  /** cuándo alcanzó su neto actual (último desempate: quien llegó antes queda arriba). 0 = sin partidas */
+  weekReachedAt: number;
   /** estadísticas de la semana (temporada) y totales */
   season: RankedStats;
   total: RankedStats;
@@ -67,9 +81,11 @@ export interface RankedState {
   settled: string[];
   /** recompensas semanales por mostrar / cobrar */
   rewards: WeeklyReward[];
+  /** MEJOR liga alcanzada (nunca baja): desbloquea los MARCOS del perfil (domain/profileFrames.ts). Guardados viejos: la actual */
+  bestLeague?: RankId;
   /** liga que el jugador ya vio celebrada (animación de ascenso pendiente si difiere) */
   seenLeague: RankId;
-  /** último descenso mensual sin mostrar */
+  /** último descenso mensual sin mostrar (descenso EN PAUSA: hoy nunca se crea; coinsCut siempre 0, las monedas no se recortan) */
   demotion: { from: RankId; to: RankId; coinsCut: number } | null;
 }
 
@@ -82,6 +98,10 @@ export function newRankedState(): RankedState {
     week: '',
     month: '',
     weekMatches: 0,
+    weekNet: 0,
+    weekWins: 0,
+    weekLosses: 0,
+    weekReachedAt: 0,
     season: newStats(),
     total: newStats(),
     pending: null,
@@ -89,6 +109,7 @@ export function newRankedState(): RankedState {
     settled: [],
     rewards: [],
     seenLeague: 'bronze',
+    bestLeague: 'bronze',
     demotion: null,
   };
 }

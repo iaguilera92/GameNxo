@@ -1,5 +1,8 @@
 # Ranked (ligas competitivas)
 
+> **Ranked v2 — etapa 1 implementada (16-11-2026):** las reglas vigentes están en [`RANKED-V2.md`](RANKED-V2.md). Donde este documento
+> difiera (clasificación por saldo, ascenso al terminar la partida, 3 partidas, metas 30.000…480.000, descenso con recorte), **manda RANKED-V2**.
+
 Responsable: Claude. Kiro mantiene el partido (MatchScene): Ranked **no** modifica el partido.
 
 ## Economía (decidida con el usuario el 08-11-2026)

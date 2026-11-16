@@ -16,7 +16,7 @@ fija lo que ya existe, lo que falta y las reglas para no complicar la migración
 | Poderes | `domain/smashPowers.ts`, `defensivePowers.ts`, `infernoPowers.ts`, `chargeFx.ts`, `charColors.ts` | Cada uno con su lista de ids y su función `...Owned` |
 | Servidor | `backend/` | Sin cuentas ni base de datos. No sabe qué poder tiene cada jugador |
 
-Cada ítem de la Tienda tiene `rarity` (normal · especial · épica · legendaria; hoy: ULTIS, ESPECIAL y DEFENSIVO especiales salvo el DESTELLO, normal; cargando golpe: Fuego normal, Energía especial, Tulipán épica; EFECTOS DE PELOTA: Brasas, Hielo, Neón y Humo especiales, Tulipanes y Corazones épicas, Estrellas legendaria, Arcoíris sin clasificar y no a la venta; los estilos de color de siempre sin clasificar. `style:classic` es POR DEFECTO: sin estela) y `realMoneyOnly` (solo dinero real: las ULTIS y la rareza épica o legendaria). Esas dos marcas son datos de catálogo, no de la cuenta: el servidor las lee del mismo catálogo.
+Cada ítem de la Tienda tiene `rarity` (normal · especial · épica · legendaria; hoy: ULTIS, ESPECIAL y DEFENSIVO especiales salvo el DESTELLO, normal; cargando golpe: Fuego normal, Energía especial, Tulipán épica; EFECTOS DE PELOTA: Brasas, Hielo, Neón y Humo especiales, Tulipanes y Corazones épicas, Estrellas legendaria, Arcoíris y Estrellas legendarias; Rojo, Verde, Oro y Rosado normales. `style:classic` es POR DEFECTO: sin estela) y `realMoneyOnly` (solo dinero real: las ULTIS y la rareza épica o legendaria). Esas dos marcas son datos de catálogo, no de la cuenta: el servidor las lee del mismo catálogo.
 
 El tutorial por nivel guarda en la cuenta los avisos ya vistos (`PlayerState.tutorial`, ids de `domain/tutorial.ts`: no se cambian nunca).
 

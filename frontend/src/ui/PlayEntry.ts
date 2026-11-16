@@ -179,8 +179,8 @@ export function openUnrankedInfo(scene: Phaser.Scene, onClose?: () => void) {
   p.add(scene.add.text(0, -ph / 2 + 44, 'AMISTOSO', { fontFamily: FONT, fontSize: '32px', color: '#ffffff', stroke: '#0a1638', strokeThickness: 6 }).setOrigin(0.5).setLetterSpacing(2));
   const lines = [
     `No te alcanzan las monedas para la entrada (${fmtCoins(n.entry)}).`,
-    'Igual juegas contra rivales de Ranked, pero sin apostar: no ganas monedas de apuesta.',
-    'Sí ganas EXP y ruletas. Consigue monedas en ruletas, premio diario y pase para volver a Ranked.',
+    'Igual juegas contra rivales de tu Liga, pero sin apostar: no ganas monedas de apuesta.',
+    'Sí ganas EXP y ruletas. Consigue monedas en ruletas, premio diario y pase para volver a la Liga.',
   ];
   p.add(scene.add.text(0, -6, lines.join('\n\n'), { fontFamily: FONT, fontSize: '19px', color: '#dbe5ff', align: 'center', wordWrap: { width: pw - 60 } }).setOrigin(0.5));
   p.add(arcadeButton(scene, 0, ph / 2 - 56, 260, 70, 'ENTENDIDO', close, { palette: 'blue' }));
@@ -282,7 +282,7 @@ export function openPlayInfo(scene: Phaser.Scene, openPicker?: () => void, onClo
   const pw = Math.min(600, scene.scale.width - 40);
   const ph = 400;
   const { p, close } = modal(scene, pw, ph, 0x3a7bff, onClose);
-  p.add(scene.add.text(0, -ph / 2 + 44, 'PARTIDA RANKED', { fontFamily: FONT, fontSize: '32px', color: '#ffffff', stroke: '#0a1638', strokeThickness: 6 }).setOrigin(0.5).setLetterSpacing(2));
+  p.add(scene.add.text(0, -ph / 2 + 44, 'PARTIDA DE LIGA', { fontFamily: FONT, fontSize: '32px', color: '#ffffff', stroke: '#0a1638', strokeThickness: 6 }).setOrigin(0.5).setLetterSpacing(2));
   p.add(scene.add.text(0, -ph / 2 + 84, `LIGA ${rankDef(v.league).name.toUpperCase()}`, { fontFamily: FONT, fontSize: '22px', color: st.css }).setOrigin(0.5).setLetterSpacing(2));
   const lines = [
     `En esta liga cada partida cuesta ${fmtCoins(n.entry)} monedas. Si ganas, recibes ${fmtCoins(n.prize)}.`,

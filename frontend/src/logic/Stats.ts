@@ -14,18 +14,27 @@ const MAX_IDS = 50;
 interface Stats {
   wins: number;
   counted: string[];
+  /** partidas JUGADAS (terminadas, ganadas o no; 16-11-2026, para el PERFIL) y sus ids ya contados */
+  played: number;
+  countedPlayed: string[];
 }
 
 function load(): Stats {
   try {
     const raw = JSON.parse(localStorage.getItem(KEY) ?? 'null') as Partial<Stats> | null;
     if (raw && typeof raw.wins === 'number' && Number.isFinite(raw.wins)) {
-      return { wins: Math.max(0, Math.floor(raw.wins)), counted: Array.isArray(raw.counted) ? raw.counted.filter((x) => typeof x === 'string').slice(-MAX_IDS) : [] };
+      const wins = Math.max(0, Math.floor(raw.wins));
+      const ids = (v: unknown) => (Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string').slice(-MAX_IDS) : []);
+      // datos viejos sin `played`: al menos las victorias y las partidas Ranked ya jugadas
+      const r = getPlayer().ranked.total;
+      const played = typeof raw.played === 'number' && Number.isFinite(raw.played) ? Math.max(wins, Math.floor(raw.played)) : Math.max(wins, r.wins + r.losses);
+      return { wins, counted: ids(raw.counted), played, countedPlayed: ids(raw.countedPlayed) };
     }
   } catch {
     /* sin almacenamiento o dato roto: se recalcula */
   }
-  return { wins: getPlayer().ranked.total.wins, counted: [] };
+  const r = getPlayer().ranked.total;
+  return { wins: r.wins, counted: [], played: r.wins + r.losses, countedPlayed: [] };
 }
 
 function save(s: Stats) {
@@ -50,4 +59,20 @@ export function recordWin(matchId: string): number {
   if (s.counted.length > MAX_IDS) s.counted.shift();
   save(s);
   return s.wins;
+}
+
+/** Partidas jugadas (terminadas: ganadas, perdidas o rendidas). */
+export function totalPlayed(): number {
+  return load().played;
+}
+
+/** Suma una partida jugada (una sola vez por `matchId`). Devuelve el total. */
+export function recordPlayed(matchId: string): number {
+  const s = load();
+  if (s.countedPlayed.includes(matchId)) return s.played;
+  s.played++;
+  s.countedPlayed.push(matchId);
+  if (s.countedPlayed.length > MAX_IDS) s.countedPlayed.shift();
+  save(s);
+  return s.played;
 }

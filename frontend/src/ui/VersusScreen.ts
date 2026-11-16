@@ -5,6 +5,9 @@ import { Character, type CharacterLook } from '../objects/Character';
 import { addPortrait } from '../characters/portrait';
 import { applyCharColor } from '../fx/CharColorFx';
 import type { SkinId } from '../characters/skins';
+import type { FrameId } from '../domain/profileFrames';
+import { FRAME_IDS } from '../domain/profileFrames';
+import { LEAGUE_STYLE } from './leagueStyle';
 
 /**
  * Pantalla VS (vertical, estilo juego de pelea): pantalla partida en diagonal, TÚ arriba en azul
@@ -21,6 +24,37 @@ export interface VersusSide {
   wins?: number;
   /** ESTILO DE COLOR del personaje (solo el jugador; fx/CharColorFx.ts) */
   color?: string;
+  /** MARCO del perfil (domain/profileFrames.ts): borde de la placa con el color de esa liga. Sin marco = azul / rojo */
+  frame?: FrameId | null;
+}
+
+/** Borde de la placa con el MARCO de una liga (mismo estilo que el de la card del perfil: ui/ProfileDialog.drawProfileFrame). */
+function drawPlateFrame(g: Phaser.GameObjects.Graphics, shape: { x: number; y: number }[], frame: FrameId) {
+  const st = LEAGUE_STYLE[frame];
+  const tier = FRAME_IDS.indexOf(frame);
+  g.lineStyle(14 + tier * 1.5, st.color, 0.25).strokePoints(shape, true, true); // brillo
+  g.lineStyle(8, st.dark, 1).strokePoints(shape, true, true);
+  g.lineStyle(5, st.color, 1).strokePoints(shape, true, true);
+  g.lineStyle(1.8, st.light, 0.95).strokePoints(shape.map((p) => ({ x: p.x * 0.965, y: p.y * 0.9 })), true, true);
+  // remaches (gemas desde Oro) en las 4 esquinas de la placa
+  const xs = shape.map((p) => p.x);
+  const ys = shape.map((p) => p.y);
+  const corners = [
+    shape.reduce((a, p) => (p.x + p.y < a.x + a.y ? p : a)),
+    shape.reduce((a, p) => (p.x - p.y > a.x - a.y ? p : a)),
+    shape.reduce((a, p) => (p.y - p.x > a.y - a.x ? p : a)),
+    shape.reduce((a, p) => (p.x + p.y > a.x + a.y ? p : a)),
+  ];
+  const cx = (Math.min(...xs) + Math.max(...xs)) / 2;
+  const cy = (Math.min(...ys) + Math.max(...ys)) / 2;
+  const gem = tier >= 2;
+  for (const c of corners) {
+    const x = c.x + (cx - c.x) * 0.06;
+    const y = c.y + (cy - c.y) * 0.14;
+    g.fillStyle(st.dark, 1).fillCircle(x, y, gem ? 7 : 5.5);
+    g.fillStyle(gem ? st.light : st.color, 1).fillCircle(x, y, gem ? 5 : 3.8);
+    if (gem) g.fillStyle(0xffffff, 0.9).fillCircle(x - 1.4, y - 1.4, 1.5);
+  }
 }
 
 const BLUE = { main: 0x2f7bff, deep: 0x0b2a78, glow: 0x6fb2ff, text: '#9fd0ff' };
@@ -118,9 +152,15 @@ export function showVersus(scene: Phaser.Scene, player: VersusSide, rival: Versu
     const shape = roundedPoly([[-pw / 2 + k, -ph / 2], [pw / 2, -ph / 2], [pw / 2 - k, ph / 2], [-pw / 2, ph / 2]], 14);
     const g = scene.add.graphics();
     g.fillStyle(0x000000, 0.4).fillPoints(shape.map((p) => ({ x: p.x + 4, y: p.y + 7 })), true);
-    g.lineStyle(10, pal.main, 0.22).strokePoints(shape, true, true);
-    g.fillStyle(0x0a1430, 0.95).fillPoints(shape, true);
-    g.lineStyle(3, pal.main, 1).strokePoints(shape, true, true);
+    if (side.frame) {
+      // MARCO del perfil elegido (16-11-2026): la placa lleva el borde de esa liga
+      g.fillStyle(0x0a1430, 0.95).fillPoints(shape, true);
+      drawPlateFrame(g, shape, side.frame);
+    } else {
+      g.lineStyle(10, pal.main, 0.22).strokePoints(shape, true, true);
+      g.fillStyle(0x0a1430, 0.95).fillPoints(shape, true);
+      g.lineStyle(3, pal.main, 1).strokePoints(shape, true, true);
+    }
     c.add(g);
     // etiqueta TÚ / RIVAL
     const tw = 104;

@@ -1,0 +1,110 @@
+{
+  "source": "pj-mai-rival.png",
+  "view": "front",
+  "cell": {
+    "w": 122,
+    "h": 160
+  },
+  "origin": {
+    "x": 0.5,
+    "y": 0.975
+  },
+  "standHeight": 150,
+  "hold": 1,
+  "serveWait": 2,
+  "smashStart": 1,
+  "animations": {
+    "idle": {
+      "file": "idle.webp",
+      "frames": 8,
+      "fps": 9,
+      "loop": true,
+      "scale": 1,
+      "cell": {
+        "w": 122,
+        "h": 160
+      },
+      "origin": {
+        "x": 0.5,
+        "y": 0.975
+      }
+    },
+    "run": {
+      "file": "run.webp",
+      "frames": 8,
+      "fps": 14,
+      "loop": true,
+      "scale": 0.89,
+      "cell": {
+        "w": 110,
+        "h": 161
+      },
+      "origin": {
+        "x": 0.5,
+        "y": 0.97516
+      }
+    },
+    "forehand": {
+      "file": "forehand.webp",
+      "frames": 8,
+      "fps": 15,
+      "loop": false,
+      "impact": 4,
+      "scale": 0.905
+    },
+    "serve": {
+      "file": "serve.webp",
+      "frames": 6,
+      "fps": 12,
+      "loop": false,
+      "impact": 3,
+      "scale": 1.042
+    },
+    "victory": {
+      "file": "victory.webp",
+      "frames": 8,
+      "fps": 10,
+      "loop": false,
+      "scale": 1.137,
+      "cell": {
+        "w": 118,
+        "h": 168
+      },
+      "origin": {
+        "x": 0.5,
+        "y": 0.97619
+      }
+    },
+    "runstop": {
+      "file": "runstop.webp",
+      "frames": 8,
+      "fps": 12,
+      "loop": false,
+      "scale": 0.89,
+      "cell": {
+        "w": 130,
+        "h": 162
+      },
+      "origin": {
+        "x": 0.5,
+        "y": 0.97531
+      }
+    },
+    "backhand": {
+      "file": "backhand.webp",
+      "frames": 8,
+      "fps": 15,
+      "loop": false,
+      "impact": 3,
+      "scale": 0.905
+    },
+    "smash": {
+      "file": "smash.webp",
+      "frames": 6,
+      "fps": 14,
+      "loop": false,
+      "impact": 3,
+      "scale": 1.042
+    }
+  }
+}

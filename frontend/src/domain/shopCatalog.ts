@@ -13,7 +13,7 @@ import { UNLOCK_LEVEL, type UnlockKey } from './unlocks';
  * RAREZAS (decididas con el usuario el 14-11-2026): normal · especial · epica · legendaria. Clasificadas hoy: todas las ULTIS, todos los
  * poderes del ESPECIAL y todos los del DEFENSIVO son especiales, salvo el DESTELLO (normal); el DASH y el FUEGO vienen gratis y no están en
  * el catálogo. CARGANDO GOLPE: Fuego normal, Energía especial, Tulipán épica. EFECTOS DE PELOTA: Brasas, Hielo, Neón y Humo especiales; Tulipanes y
- * Corazones épicas; Estrellas legendaria; Arcoíris y los estilos de color de siempre sin rareza (rarity ausente = sin clasificar).
+ * Corazones épicas; Estrellas y Arcoíris legendarias; los estilos de color de siempre (Rojo, Verde, Oro, Rosado) normales (15-11-2026).
  * REGLA: cada habilidad o poder NUEVO se crea preguntando antes al usuario qué rareza tiene.
  */
 export type ItemRarity = 'normal' | 'especial' | 'epica' | 'legendaria';
@@ -45,8 +45,8 @@ const BASE_ITEMS: ShopItem[] = [
   // rosado: premio del Pase de Batalla (nivel 5); también se compra
   { id: 'style:pink', kind: 'style', name: 'Rosado', price: 15, clp: 690, minLevel: 1, available: true },
   // efectos de pelota con forma propia (15-11-2026, fx/ballTrailFx.ts). Precios: ESPECIAL como los poderes especiales (40 / $1.490),
-  // ÉPICA 60 / $1.990 y LEGENDARIA 100 / $2.990 (referencia: solo se pagan con dinero real). ARCOÍRIS: SIN rareza ni compra hasta que el usuario la decida.
-  { id: 'style:rainbow', kind: 'style', name: 'Arcoíris', price: 40, clp: 1490, minLevel: 1, available: false },
+  // ÉPICA 60 / $1.990 y LEGENDARIA 100 / $2.490 (referencia: solo se pagan con dinero real).
+  { id: 'style:rainbow', kind: 'style', name: 'Arcoíris', price: 100, clp: 2490, minLevel: 1, available: true },
   { id: 'style:ember', kind: 'style', name: 'Brasas', price: 40, clp: 1490, minLevel: 1, available: true },
   { id: 'style:frost', kind: 'style', name: 'Hielo', price: 40, clp: 1490, minLevel: 1, available: true },
   { id: 'style:neon', kind: 'style', name: 'Neón', price: 40, clp: 1490, minLevel: 1, available: true },
@@ -75,6 +75,9 @@ const BASE_ITEMS: ShopItem[] = [
   { id: 'defensive:jump', kind: 'defensive', name: 'Supersalto', price: 50, clp: 1490, minLevel: 1, available: true },
   { id: 'defensive:flip', kind: 'defensive', name: 'Voltereta', price: 50, clp: 1490, minLevel: 1, available: true },
   { id: 'defensive:skate', kind: 'defensive', name: 'Patinaje', price: 50, clp: 1490, minLevel: 1, available: true },
+  // ESTILOS DE ZONA (16-11-2026, domain/zoneSkins.ts; la ELÉCTRICA es de todos): FUEGO épica y SOMBRA legendaria = solo dinero real
+  { id: 'zone:fire', kind: 'zone', name: 'Fuego', price: 80, clp: 1990, minLevel: 1, available: true },
+  { id: 'zone:shadow', kind: 'zone', name: 'Sombra', price: 100, clp: 2490, minLevel: 1, available: true },
 ];
 /** Rareza de un ítem de la Tienda por su id (undefined = sin clasificar o no está en la Tienda: FUEGO, DASH). */
 export function itemRarity(id: string): ItemRarity | undefined {
@@ -86,7 +89,7 @@ export function itemRarity(id: string): ItemRarity | undefined {
  * un jugador de nivel 1 compraba poderes del ESPECIAL, el DEFENSIVO o la ULTI que aún no puede usar. El nivel de cada ítem es el mayor
  * entre el suyo y el de su habilidad; el nivel de desbloqueo se cambia solo en unlocks.ts.
  */
-const KIND_UNLOCK: Partial<Record<ItemKind, UnlockKey>> = { defensive: 'defensive', smash: 'special', inferno: 'ulti', charge: 'charge', style: 'trail' };
+const KIND_UNLOCK: Partial<Record<ItemKind, UnlockKey>> = { defensive: 'defensive', smash: 'special', inferno: 'ulti', charge: 'charge', style: 'trail', zone: 'zone' };
 export const SHOP_ITEMS: ShopItem[] = BASE_ITEMS.map((it) => {
   const key = KIND_UNLOCK[it.kind];
   const base = key ? { ...it, minLevel: Math.max(it.minLevel, UNLOCK_LEVEL[key]) } : it;
@@ -95,6 +98,8 @@ export const SHOP_ITEMS: ShopItem[] = BASE_ITEMS.map((it) => {
   // (14-11-2026) TODAS las ULTIS cuestan dinero real y son de rareza ESPECIAL (aún no hay ULTIS gratuitas). Su price en dinero virtual
   // queda solo como referencia (regla de precios en CLP y total de la tienda); no se puede pagar con él.
   if (it.kind === 'inferno') return { ...base, rarity: 'especial' as const, realMoneyOnly: true };
+  // (16-11-2026) ESTILOS DE ZONA (decisión del usuario): FUEGO épica, SOMBRA legendaria; las dos, solo dinero real
+  if (it.kind === 'zone') return { ...base, rarity: it.id === 'zone:shadow' ? ('legendaria' as const) : ('epica' as const), realMoneyOnly: true };
   // (14-11-2026) ESPECIAL y DEFENSIVO: todos especiales, menos el DESTELLO (normal)
   if (it.kind === 'smash' || it.kind === 'defensive') return { ...base, rarity: it.id === 'defensive:blink' ? ('normal' as const) : ('especial' as const) };
   // (14-11-2026) CARGANDO GOLPE: Fuego normal, Energía especial, Tulipán épica (propuesta aceptada por omisión; la legendaria queda reservada). Los ESTILOS siguen sin rareza (decisión del usuario).
@@ -104,11 +109,12 @@ export const SHOP_ITEMS: ShopItem[] = BASE_ITEMS.map((it) => {
   }
   // (15-11-2026) EFECTOS DE PELOTA nuevos (decididos con el usuario): Brasas, Hielo, Neón y Humo = especial; Tulipanes y Corazones = épica
   // (solo dinero real); Estrellas = legendaria (solo dinero real). Los estilos de color de siempre (rojo, verde, oro, rosado) siguen sin rareza.
-  // Arcoíris queda sin rareza y sin poder comprarse hasta que el usuario la decida.
+  // Arcoíris = legendaria (solo dinero real). Rojo, Verde, Oro y Rosado = normales (se compran con dinero virtual y salen en el Pase de Batalla).
   if (it.kind === 'style') {
-    const STYLE_RARITY: Partial<Record<string, ItemRarity>> = { 'style:ember': 'especial', 'style:frost': 'especial', 'style:neon': 'especial', 'style:smoke': 'especial', 'style:tulip': 'epica', 'style:hearts': 'epica', 'style:stars': 'legendaria' };
+    const STYLE_RARITY: Partial<Record<string, ItemRarity>> = { 'style:ember': 'especial', 'style:frost': 'especial', 'style:neon': 'especial', 'style:smoke': 'especial', 'style:tulip': 'epica', 'style:hearts': 'epica', 'style:stars': 'legendaria', 'style:rainbow': 'legendaria', 'style:red': 'normal', 'style:green': 'normal', 'style:gold': 'normal', 'style:pink': 'normal' };
     const rarity = STYLE_RARITY[it.id];
     if (rarity) return { ...base, rarity, ...(rarity === 'epica' || rarity === 'legendaria' ? { realMoneyOnly: true } : {}) };
+
   }
   return base;
 });

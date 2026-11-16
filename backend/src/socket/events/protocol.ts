@@ -67,6 +67,10 @@ export interface PlayerProfile {
   color?: string;
   /** victorias totales del jugador (se muestran bajo su nombre en la pantalla VS; sin dato o 0 = no se muestra) */
   wins?: number;
+  /** MARCO del perfil (id de liga: bronze … challenger; se ve en la placa de la pantalla VS). Sin él = sin marco */
+  frame?: string;
+  /** ESTILO DE ZONA (fire | shadow; sin él = Eléctrica): cómo se ve su ZONA en el partido */
+  zone?: string;
 }
 
 export interface FindRequest {

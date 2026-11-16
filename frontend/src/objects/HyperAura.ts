@@ -4,7 +4,7 @@ import type { SmashPower } from '../domain/smashPowers';
 import { SMASH_LOOK } from '../fx/smashFx';
 
 /** Colores de la "hipercarga" por poder del SMASH: fuego = morado/rosa eléctrico (el de siempre); hielo = azul y cian (SMASH_LOOK). */
-type Pal = { col: number; hot: number; core: number };
+export type Pal = { col: number; hot: number; core: number };
 
 /** Altura aproximada del personaje en unidades locales (antes de escalar). */
 const BODY_H = 150;
@@ -51,21 +51,24 @@ export class HyperAura {
   private sparks!: Phaser.GameObjects.Particles.ParticleEmitter;
   /** poder del SMASH con el que están creados los elementos (start lo cambia si hace falta) */
   private el: SmashPower = 'fire';
+  /** colores propios (ESTILO DE ZONA, domain/zoneSkins.ts); sin ellos, los del aura del poder (SMASH_LOOK) */
+  private pal?: Pal;
   /** zonas de emisión (se reescalan cada frame con la perspectiva) */
   private flameZone = new Phaser.Geom.Rectangle(-46, -75, 92, 120);
   private sparkZone = new Phaser.Geom.Rectangle(-46, -60, 92, 90);
   active = false;
 
   /** `el` = poder con el que se crea (la ZONA usa 'ice'): así encenderla no rehace los emisores a mitad de partido. */
-  constructor(private scene: Phaser.Scene, private ch: Character, el: SmashPower = 'fire') {
+  constructor(private scene: Phaser.Scene, private ch: Character, el: SmashPower = 'fire', pal?: Pal) {
     ensureTextures(scene);
+    this.pal = pal;
     this.build(el);
   }
 
   /** Crea los emisores con los colores del poder (se vuelve a llamar solo si cambia de poder). */
   private build(el: SmashPower) {
     const scene = this.scene;
-    const { col: COL, hot: COL_HOT, core: COL_CORE }: Pal = SMASH_LOOK[el].aura;
+    const { col: COL, hot: COL_HOT, core: COL_CORE }: Pal = this.pal ?? SMASH_LOOK[el].aura;
     this.el = el;
     // llamas de energía (detrás del personaje)
     this.flames = scene.add.particles(0, 0, 'fx-glow', {
@@ -105,7 +108,7 @@ export class HyperAura {
       this.destroyParts();
       this.build(el);
     }
-    const COL_HOT = SMASH_LOOK[this.el].aura.hot;
+    const COL_HOT = (this.pal ?? SMASH_LOOK[this.el].aura).hot;
     this.active = true;
     this.flames.start();
     this.sparks.start();

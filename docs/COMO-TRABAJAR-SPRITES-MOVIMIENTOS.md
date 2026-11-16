@@ -340,7 +340,7 @@ unidades del personaje (alto 150): `z` = altura del centro del cordaje sobre los
 hoja 2 (filas 5 o 6) o la hoja del saque de un personaje hay que volver a medirlo**: abrir el frame 5 de la tira,
 anotar el centro del óvalo de la raqueta en píxeles (sobre los pies y respecto al centro de la celda) y multiplicar por
 `150 / standHeight`. Valores actuales: NXO espaldas 147 / 143 (z normal / efecto; dx −25 / −33, hoja 2 del 12-11-2026), NXO rival 148 / 146 (dx −10 / −19,
-raqueta a la izquierda de la imagen; medido el 12-11-2026), MAI 128 / 146.
+raqueta a la izquierda de la imagen; medido el 12-11-2026), MAI 173 / 175 (dx 30 / 29, HD, 16-11-2026).
 
 ### Hoja 3: estiradas y reacciones
 

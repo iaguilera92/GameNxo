@@ -2,7 +2,8 @@
  * PASIVAS DE PERSONAJE y MAESTRÍAS (datos puros, sin Phaser). Definición completa y decisiones: docs/MAESTRIAS.md.
  *
  * Cada personaje tiene una pasiva que llega a +10 %. Se sube con puntos de MAESTRÍA: 1 por partido ganado con ese personaje, y solo
- * desde que la cuenta llega al nivel máximo (nivel 20). Cada nivel de maestría vale +1 % (nivel 10 = +10 %); se empieza en el nivel 1.
+ * desde que la cuenta llega al nivel máximo (nivel 20). Cada nivel de maestría vale +1 % (nivel 10 = +10 %). Se empieza en el NIVEL 0 (0 %) y la
+ * primera victoria ya sube al nivel 1.
  *
  * Los ids (`agility`, `precision`, los de personaje) no se cambian nunca. Se guardan los PUNTOS (`PlayerState.mastery[skin]`), no el nivel:
  * así cambiar la curva de abajo no rompe lo guardado.
@@ -58,21 +59,21 @@ export const MASTERY = {
   maxLevel: 10,
   /** lo que vale cada nivel (0,01 = 1 %) */
   pctPerLevel: 0.01,
-  /** puntos para subir DESDE el nivel anterior: al 2 → 2, al 3 → 4, … al 10 → 40 (1 punto por partido ganado) */
-  steps: [2, 4, 8, 12, 16, 20, 25, 30, 40],
+  /** puntos para subir DESDE el nivel anterior: al 1 → 1, al 2 → 2, al 3 → 4, … al 10 → 40 (1 punto por partido ganado) */
+  steps: [1, 2, 4, 8, 12, 16, 20, 25, 30, 40],
 } as const;
 
-/** Puntos acumulados necesarios para llegar al nivel 2, 3, … 10 (2, 6, 14, 26, 42, 62, 87, 117, 157). */
+/** Puntos acumulados necesarios para llegar al nivel 1, 2, … 10 (1, 3, 7, 15, 27, 43, 63, 88, 118, 158). */
 export const MASTERY_THRESHOLDS: number[] = MASTERY.steps.reduce<number[]>((acc, s) => [...acc, (acc[acc.length - 1] ?? 0) + s], []);
 /** Puntos del nivel máximo (más no se acumula). */
 export const MASTERY_MAX_POINTS = MASTERY_THRESHOLDS[MASTERY_THRESHOLDS.length - 1];
 
 const clampPoints = (points: number) => Math.min(MASTERY_MAX_POINTS, Math.max(0, Math.floor(Number.isFinite(points) ? points : 0)));
 
-/** Nivel de maestría (1..10) con `points` puntos. */
+/** Nivel de maestría (0..10) con `points` puntos. */
 export function masteryLevel(points: number): number {
   const p = clampPoints(points);
-  let level = 1;
+  let level = 0;
   for (const t of MASTERY_THRESHOLDS) if (p >= t) level++;
   return level;
 }
@@ -91,13 +92,13 @@ export function masteryProgress(points: number): MasteryProgress {
   const p = clampPoints(points);
   const level = masteryLevel(p);
   if (level >= MASTERY.maxLevel) return { level, into: 0, need: 0, frac: 1, max: true };
-  const base = level === 1 ? 0 : MASTERY_THRESHOLDS[level - 2];
-  const need = MASTERY.steps[level - 1];
+  const base = level === 0 ? 0 : MASTERY_THRESHOLDS[level - 1];
+  const need = MASTERY.steps[level];
   const into = p - base;
   return { level, into, need, frac: need > 0 ? into / need : 1, max: false };
 }
 
-/** Valor de la pasiva con `points` puntos: 0,01 (nivel 1) … 0,10 (nivel 10). */
+/** Valor de la pasiva con `points` puntos: 0 (nivel 0) … 0,10 (nivel 10). */
 export function passiveValue(points: number): number {
   return Math.round(masteryLevel(points) * MASTERY.pctPerLevel * 1000) / 1000;
 }

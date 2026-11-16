@@ -20,6 +20,7 @@ import { isSmashPower, smashOwned } from './smashPowers';
 import { defensiveOwned, isDefensivePower } from './defensivePowers';
 import { isTutorialId } from './tutorial';
 import { sanitizeChest } from './chest';
+import { isFrameId } from './profileFrames';
 
 /** Todos los ítems que existen (los demás ids guardados se descartan). */
 // Mai deja de ser inicial para quedar como gran premio del nivel 30; se conserva en perfiles antiguos.
@@ -100,6 +101,10 @@ export function migratePlayer(raw: unknown, starter: StarterSkin = 'nxo'): Playe
     if (isCharColor(eq.color) && charColorOwned(s.owned, eq.color)) s.equipped.color = eq.color;
     // poder del defensivo elegido: solo si lo tiene (el DASH es de todos)
     if (isDefensivePower(eq.defensive) && defensiveOwned(s.owned, eq.defensive)) s.equipped.defensive = eq.defensive;
+    // estilo de ZONA: solo si lo tiene
+    if ((eq.zone === 'fire' || eq.zone === 'shadow') && s.owned.includes(`zone:${eq.zone}` as ItemId)) s.equipped.zone = eq.zone;
+    // marco del perfil: id de liga válido (si está desbloqueado lo decide profileFrames.equippedFrame al mostrarlo)
+    if (isFrameId(eq.frame)) s.equipped.frame = eq.frame;
     if (isInfernoPower(eq.inferno)) {
       s.equipped.inferno = eq.inferno;
       if (eq.inferno !== 'fire' && !s.owned.includes(itemId.inferno(eq.inferno))) s.owned.push(itemId.inferno(eq.inferno));

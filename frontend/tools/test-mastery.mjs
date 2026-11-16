@@ -28,27 +28,29 @@ test('cada personaje con pasiva: Nxo AGILIDAD, Mai PRECISIÓN', () => {
   assert.equal(P.passiveOf('mai').id, 'precision');
   assert.equal(P.passiveOf('otro'), undefined);
 });
-test('curva: nivel 1 sin puntos, nivel 10 con el total y nunca más', () => {
-  assert.equal(P.masteryLevel(0), 1);
+test('curva: nivel 0 sin puntos, una victoria = nivel 1, nivel 10 con el total y nunca más', () => {
+  assert.equal(P.masteryLevel(0), 0);
   assert.equal(P.masteryLevel(1), 1);
-  assert.equal(P.masteryLevel(2), 2);
-  assert.equal(P.masteryLevel(5), 2);
-  assert.equal(P.masteryLevel(6), 3);
+  assert.equal(P.masteryLevel(2), 1);
+  assert.equal(P.masteryLevel(3), 2);
+  assert.equal(P.masteryLevel(6), 2);
+  assert.equal(P.masteryLevel(7), 3);
   assert.equal(P.masteryLevel(P.MASTERY_MAX_POINTS - 1), 9);
   assert.equal(P.masteryLevel(P.MASTERY_MAX_POINTS), 10);
   assert.equal(P.masteryLevel(99999), 10);
-  assert.equal(P.masteryLevel(-5), 1);
-  assert.equal(P.MASTERY_MAX_POINTS, 157);
+  assert.equal(P.masteryLevel(-5), 0);
+  assert.equal(P.MASTERY_MAX_POINTS, 158);
 });
-test('cada nivel vale +1 % (nivel 10 = +10 %)', () => {
-  assert.equal(P.passiveValue(0), 0.01);
-  assert.equal(P.passiveValue(2), 0.02);
+test('cada nivel vale +1 % (nivel 0 = 0 %, nivel 10 = +10 %)', () => {
+  assert.equal(P.passiveValue(0), 0);
+  assert.equal(P.passiveValue(1), 0.01);
+  assert.equal(P.passiveValue(3), 0.02);
   assert.equal(P.passiveValue(P.MASTERY_MAX_POINTS), 0.1);
 });
 test('progreso hacia el siguiente nivel', () => {
   const a = P.masteryProgress(0);
-  assert.deepEqual([a.level, a.into, a.need, a.max], [1, 0, 2, false]);
-  const b = P.masteryProgress(3); // nivel 2 (2 puntos) + 1 de 4
+  assert.deepEqual([a.level, a.into, a.need, a.max], [0, 0, 1, false]);
+  const b = P.masteryProgress(4); // nivel 2 (3 puntos) + 1 de 4
   assert.deepEqual([b.level, b.into, b.need], [2, 1, 4]);
   assert.equal(b.frac, 0.25);
   const m = P.masteryProgress(P.MASTERY_MAX_POINTS);
@@ -67,7 +69,7 @@ test('awardMastery: desde el nivel 20 suma 1 por victoria y solo a ese personaje
   for (let i = 0; i < 3; i++) s = OPS.awardMastery(s, 'nxo').state;
   assert.equal(s.mastery.nxo, 3);
   assert.equal(s.mastery.mai, undefined);
-  assert.equal(P.masteryLevel(s.mastery.nxo), 2);
+  assert.equal(P.masteryLevel(s.mastery.nxo), 2); // 3 victorias = nivel 2 (1 punto al nivel 1, 2 más al 2)
 });
 test('awardMastery: no pasa del máximo y no toca el estado recibido', () => {
   const s = newPlayer();

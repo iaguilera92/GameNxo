@@ -62,7 +62,7 @@ export const BP_SEASON = {
    * Tienda de 50: GRATIS 40 y PREMIUM 60 (con la bienvenida) = 100. El resto del dinero sale de la ruleta, el premio
    * diario y la clasificación semanal. Antes daba 175 + 535.
    * niveles 1..N (índice 0 = nivel 1): entre medio, los emotes (3 y 11), los efectos
-   * de pelota (ROSADO 5, ORO 10 premium y VERDE 15), el cargando golpe TULIPÁN (12 premium), Rayos para la ZONA (25) y Mai (30).
+   * de pelota (ROSADO 5, ORO 10 premium, VERDE 15 y ROJO 20; los 4 efectos NORMALES: los demás son especial, épica o legendaria y no salen en el Pase), el cargando golpe TULIPÁN (12 premium), Rayos para la ZONA (25) y Mai (30).
    * ESTILOS DE COLOR del personaje (domain/charColors.ts): AZUL 8 y VERDE 18 (gratis); MORADO 7, DORADO 21 y SOMBRA 27
    * (premium). Se equipan en PERSONALIZACIÓN.
    */
@@ -86,7 +86,7 @@ export const BP_SEASON = {
     { free: $(1), prem: $(2) },
     { free: it('color:verde', 'Color Verde'), prem: $(3) },
     { free: $(2), prem: $(3) },
-    { free: $(2), prem: $(3) },
+    { free: it('style:red', 'Rojo'), prem: $(3) },
     { free: $(1), prem: it('color:dorado', 'Color Dorado') },
     { free: $(2), prem: $(2) },
     { free: $(2), prem: $(3) },

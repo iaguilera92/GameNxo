@@ -1,4 +1,7 @@
 import Phaser from 'phaser';
+import { getPlayer } from '../domain/playerStore';
+import type { PlayerState } from '../domain/player';
+import { equippedFrame, isFrameId } from '../domain/profileFrames';
 import { FONT, restartOnResize } from '../ui/theme';
 import { searchSpinner } from '../ui/searchSpinner';
 import { UI, flatButton, stadiumBg } from '../ui/ui';
@@ -120,7 +123,7 @@ export class LanSearchScene extends Phaser.Scene {
           tr.off('disconnect', onDisc as (d: never) => void);
         });
         const p = getProfile();
-        tr.emit(EV.FIND, { profile: { name: p.name, level: p.level, skin: p.skin, zoneStats: p.zoneStats, charge: p.charge, color: p.color, wins: totalWins() } });
+        tr.emit(EV.FIND, { profile: { name: p.name, level: p.level, skin: p.skin, zoneStats: p.zoneStats, charge: p.charge, color: p.color, wins: totalWins(), frame: equippedFrame(getPlayer() as PlayerState) ?? undefined, zone: getPlayer().equipped.zone } });
         this.cleanup.push(() => {
           // salir de la escena sin emparejar = cancelar la búsqueda (no queda sala fantasma)
           if (!this.matched) tr.emit(EV.CANCEL);
@@ -162,9 +165,9 @@ export class LanSearchScene extends Phaser.Scene {
     const opp = net.opponent;
     showVersusScreen(
       this,
-      { name: p.name, level: p.level, look: playerLook(p.skin), portraitSkin: p.skin as SkinId, wins: totalWins(), color: p.color },
+      { name: p.name, level: p.level, look: playerLook(p.skin), portraitSkin: p.skin as SkinId, wins: totalWins(), color: p.color, frame: equippedFrame(getPlayer() as PlayerState) },
       // el rival con SU personaje (opponent.skin); si no se conoce, el respaldo de siempre
-      { name: opp.name, level: opp.level, look: lookForSkin(opp.skin, 'front', p.skin), portraitSkin: opp.skin as SkinId, color: charColorOf(opp.color), wins: opp.wins }, // sus victorias, si las mandó
+      { name: opp.name, level: opp.level, look: lookForSkin(opp.skin, 'front', p.skin), portraitSkin: opp.skin as SkinId, color: charColorOf(opp.color), wins: opp.wins, frame: isFrameId(opp.frame) ? opp.frame : null }, // sus victorias y su marco, si los mandó
     );
     // 1 s después del sonido del VS entra la música de la cancha (sigue sonando en el partido)
     const musicIn = this.time.delayedCall(1000, () => playMatchMusic(this, this.ambiente));

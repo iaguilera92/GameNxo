@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { FONT } from './theme';
+import { fitText } from './fitText';
 import { roundedPoly } from './shapes';
 import { arcadeButton } from './modeButtons';
 import { drawCoinIcon, drawGiftIcon } from './wheelArt';
@@ -37,6 +38,7 @@ export function dailyLoginButton(scene: Phaser.Scene, x: number, y: number, onTo
     drawGiftIcon(ic, Math.min(20, h * 0.24));
     if (!ready) ic.setAlpha(0.55);
     const t = scene.add.text(0, h / 2 - 15, 'DIARIO', { fontFamily: FONT, fontSize: '17px', color: ready ? '#ffd23f' : '#ffffff' }).setOrigin(0.5);
+    fitText(t, w - 14, 0.55); // se achica antes que cortarse
     c.add([g, ic, t]);
     if (ready) {
       const dot = scene.add.circle(w / 2 - 8, -h / 2 + 4, 9, GOLD).setStrokeStyle(3, NAVY);
@@ -82,17 +84,24 @@ export function openDailyLogin(scene: Phaser.Scene, onChange: () => void, onToas
     p.add(scene.add.image(0, -ph / 2 + 56, 'daily-title-art').setDisplaySize(titleW, titleW / 3));
   }
   const subtitleY = -ph / 2 + 133;
+  // subtítulo más grande y SIEMPRE en una fila: si no cabe, se achica; las líneas laterales se ajustan a su ancho
+  const subtitle = scene.add.text(0, subtitleY, 'Un premio por cada día de la semana', { fontFamily: FONT, fontSize: '22px', color: '#e1ecff', stroke: '#061431', strokeThickness: 4 }).setOrigin(0.5);
+  const subMaxW = pw - 60;
+  if (subtitle.width > subMaxW) subtitle.setScale(subMaxW / subtitle.width);
+  const subHalf = subtitle.displayWidth / 2 + 12;
   const subtitleLine = scene.add.graphics();
-  subtitleLine.lineStyle(3, 0x08caff, 0.95).lineBetween(-pw / 2 + 42, subtitleY, -184, subtitleY);
-  subtitleLine.lineBetween(184, subtitleY, pw / 2 - 42, subtitleY);
+  if (pw / 2 - 42 > subHalf + 10) {
+    subtitleLine.lineStyle(3, 0x08caff, 0.95).lineBetween(-pw / 2 + 42, subtitleY, -subHalf, subtitleY);
+    subtitleLine.lineBetween(subHalf, subtitleY, pw / 2 - 42, subtitleY);
+  }
   p.add(subtitleLine);
-  p.add(scene.add.text(0, subtitleY, 'Un premio por cada día de la semana', { fontFamily: FONT, fontSize: '16px', color: '#e1ecff', stroke: '#061431', strokeThickness: 3 }).setOrigin(0.5));
+  p.add(subtitle);
   const closeBtn = scene.add.container(pw / 2 - 42, -ph / 2 + 42);
   const closeG = scene.add.graphics();
-  closeG.fillStyle(0x590f27, 1).fillRoundedRect(-28, -25, 56, 50, 13);
-  closeG.fillStyle(0xf3324a, 1).fillRoundedRect(-24, -29, 48, 48, 12);
-  closeG.lineStyle(3, 0xffa3ad, 1).strokeRoundedRect(-24, -29, 48, 48, 12);
-  closeG.lineStyle(6, 0xffffff, 1).beginPath().moveTo(-8, -13).lineTo(8, 3).moveTo(8, -13).lineTo(-8, 3).strokePath();
+  // X sola, sin fondo (usuario 16-11-2026): borde oscuro para que se lea sobre el panel
+  const xPath = (w: number, c: number) => closeG.lineStyle(w, c, 1).beginPath().moveTo(-14, -14).lineTo(14, 14).moveTo(14, -14).lineTo(-14, 14).strokePath();
+  xPath(12, 0x061431);
+  xPath(7, 0xffffff);
   closeBtn.add(closeG);
   closeBtn.setSize(58, 58).setInteractive({ useHandCursor: true }).on('pointerup', close);
   p.add(closeBtn);

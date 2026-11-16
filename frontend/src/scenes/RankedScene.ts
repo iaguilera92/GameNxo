@@ -7,14 +7,16 @@ import { fitText } from '../ui/fitText';
 import { RankBadge, preloadRankBadges } from '../ui/RankBadge';
 import { drawChestIcon, drawCoinIcon, drawGiftIcon } from '../ui/wheelArt';
 import { drawCashIcon } from './BattlePassScene';
-import { LEAGUE_STYLE, fmtCoins, fmtLeft } from '../ui/leagueStyle';
+import { LEAGUE_STYLE, fmtCoins, fmtLeft, fmtNet } from '../ui/leagueStyle';
+import { navLigaLabel } from '../ui/navLabel';
+import { openLeagueRanking } from '../ui/LeagueRanking';
 import { RANKS, type RankId, rankDef } from '../domain/ranks';
-import { RANKED } from '../domain/rankedConfig';
+import { RANKED, positionPrize } from '../domain/rankedConfig';
 import type { BoardEntry } from '../domain/rankedBots';
 import type { RankedView } from '../domain/ranked';
 import type { WeeklyReward } from '../domain/rankedState';
 import { onPlayerChange } from '../domain/playerStore';
-import { claimWeekly, leagueLeaders, markRankedSeen, pendingWeekly, rankedState, rankedView, syncRanked } from '../logic/Ranked';
+import { claimWeekly, markRankedSeen, pendingWeekly, rankedState, rankedView, syncRanked } from '../logic/Ranked';
 
 const NAVY = 0x0b1733;
 const NEON = 0x3a7bff;
@@ -31,9 +33,11 @@ const NAV = {
 };
 
 /**
- * Pantalla principal de RANKED: liga y emblema, saldo y progreso al ascenso, posición, partidas de la
- * semana (x/3), récord, racha, tiempo restante, recompensa estimada y la
- * tabla Top 100. Al entrar muestra (una vez) el ascenso, el descenso mensual y las recompensas semanales.
+ * Pantalla principal de RANKED (v2, docs/RANKED-V2.md): liga y emblema, NETO de la semana y avance a la meta semanal,
+ * posición (y posición de premio), victorias de la semana (x/3), récord, racha, tiempo restante, recompensa estimada y las
+ * tabla RANKING LIGA (neto semanal, con bots). El título de la pantalla es LIGA (16-11-2026, pedido del usuario).
+ * El RANKING GLOBAL (saldo) NO está aquí: se abre desde el menú principal (ui/GlobalRanking.ts) para no confundirlos.
+ * Al entrar muestra (una vez) el ascenso y las recompensas semanales. El saldo global va en la píldora de arriba.
  */
 export class RankedScene extends Phaser.Scene {
   private overlay: Phaser.GameObjects.GameObject[] = [];
@@ -56,7 +60,6 @@ export class RankedScene extends Phaser.Scene {
   preload() {
     if (!this.textures.exists('menu-bg')) this.load.image('menu-bg', 'assets/menu-bg.webp');
     if (!this.textures.exists(NAV.key)) this.load.image(NAV.key, NAV.file);
-    if (!this.textures.exists('ranked-title')) this.load.image('ranked-title', 'assets/ranked-titulo.webp');
     preloadRankBadges(this.load); // todas: tabla de líderes y lista de ligas
   }
 
@@ -99,66 +102,97 @@ export class RankedScene extends Phaser.Scene {
     const headY = 60;
     const headerStart = this.children.list.length;
     this.backButton(50, headY);
-    // ranked-titulo.png incluye márgenes transparentes amplios: darle más ancho hace visible el arte
-    // sin cambiar la proporción ni depender de una variante WebP inexistente.
-    const titleW = Math.min(370, Math.max(220, W - 360));
-    this.add.image(W / 2, headY + 3, 'ranked-title').setDisplaySize(titleW, titleW / 3);
-    this.coinPill(W - 24, headY, v.coins);
+    // título LIGA (antes la imagen "RANKED"; 16-11-2026: los títulos de Ranked pasan a LIGA)
+    this.add.text(W / 2, headY + 2, 'LIGA', { fontFamily: FONT, fontSize: '54px', color: '#ffd23f', stroke: '#0a1638', strokeThickness: 10 }).setOrigin(0.5).setLetterSpacing(6).setShadow(0, 5, '#000000', 6, true, true);
+    this.coinPill(W - 24, headY, v.coins); // monedas de la cuenta (arriba a la derecha)
     const headerObjects = this.children.list.slice(headerStart);
     this.add.container(0, 0, headerObjects).setScrollFactor(0);
     const contentStart = this.children.list.length;
 
     // ---- emblema + liga
-    new RankBadge(this, W / 2, 182 + e1, { rank: v.league, level: 99, size: 168, position: v.league === 'challenger' ? (v.position ?? undefined) : undefined, onOpen: () => this.leagueList() });
-    // bajo el emblema (que ya dice el nombre de la liga): PÍLDORA "fin de temporada" en el sitio del nombre (sin más alto):
-    // cápsula oscura con borde del color de la liga, segmento de color con el reloj a la izquierda y el tiempo destacado
+    // (21-11-2026) el emblema un poco más arriba (antes 182): más aire con las marcas de la barra
+    new RankBadge(this, W / 2, 168 + e1, { rank: v.league, level: 99, size: 168, position: v.league === 'challenger' ? (v.position ?? undefined) : undefined, onOpen: () => this.leagueList() });
+    // ---- PROGRESO DE LIGA (21-11-2026, referencia del usuario): una barra alta bajo el emblema. Sobre ella, con una línea punteada, dónde vas
+    // (las monedas que llevas esta semana en la liga) y al final la META. Sin el "NETO DE LA SEMANA", el número grande ni la barra fina de antes
+    const bw = Math.min(600, W - 60);
+    const bx = W / 2 - bw / 2;
+    const bh = 40;
+    const barY = 340 + e1; // centro de la barra
     {
-      const cy = 282 + e1;
+      const top = barY - bh / 2;
+      const prog = v.target == null || v.promoting ? 1 : Phaser.Math.Clamp(v.progress, 0, 1);
+      const fillCol = v.promoting ? 0x3ad65a : st.color;
+      const fillHi = v.promoting ? 0x8cf59a : st.light;
+      const g = this.add.graphics();
+      g.fillStyle(0x000000, 0.35).fillRoundedRect(bx + 2, top + 5, bw, bh, 12);
+      g.fillStyle(0x0d1650, 1).fillRoundedRect(bx, top, bw, bh, 12);
+      const fw = prog > 0 ? Math.max(24, bw * prog) : 0;
+      if (fw > 0) {
+        g.fillStyle(fillCol, 1).fillRoundedRect(bx + 3, top + 3, fw - 6, bh - 6, 9);
+        g.fillStyle(fillHi, 0.55).fillRoundedRect(bx + 6, top + 5, Math.max(0, fw - 12), (bh - 6) * 0.32, 6);
+      }
+      g.lineStyle(3, 0xe8eeff, 1).strokeRoundedRect(bx, top, bw, bh, 12);
+      // franjas diagonales en lo lleno (recortadas a su forma)
+      if (fw > 0) {
+        const stripes = this.add.graphics();
+        stripes.fillStyle(0xffffff, 0.16);
+        for (let x = -bh; x < fw + bh; x += 22) stripes.fillPoints([{ x: bx + x, y: top + bh }, { x: bx + x + 11, y: top + bh }, { x: bx + x + 11 + bh, y: top }, { x: bx + x + bh, y: top }], true);
+        const mg = this.make.graphics({}, false);
+        mg.fillStyle(0xffffff).fillRoundedRect(bx + 3, top + 3, fw - 6, bh - 6, 9);
+        stripes.setMask(mg.createGeometryMask());
+        this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => mg.destroy());
+      }
+      // marcas arriba: línea punteada que baja hasta la barra y el número encima
+      const lblY = top - 26;
+      const mark = (x: number, text: string, color: string, align: number) => {
+        const d = this.add.graphics();
+        d.lineStyle(3, 0xffffff, 0.9);
+        for (let yy = lblY + 12; yy < top + bh - 4; yy += 9) d.lineBetween(x, yy, x, Math.min(yy + 5, top + bh - 4));
+        const tx = this.add.text(x, lblY, text, { fontFamily: FONT, fontSize: '24px', color, stroke: '#0a1638', strokeThickness: 5 }).setOrigin(align, 1);
+        return tx;
+      };
+      const net = v.weekNet;
+      const curX = bx + Phaser.Math.Clamp(bw * prog, 0, bw);
+      // la meta al final (en la liga máxima no hay meta)
+      const goal = v.target == null ? null : mark(bx + bw - 3, fmtCoins(v.target), '#ffffff', 1);
+      // dónde vas: centrado en su línea, sin salirse de la barra ni pisar la meta (si no cabe, la meta cede)
+      // con la moneda a la derecha del número; el conjunto va centrado en su línea
+      const cur = mark(curX, fmtCoins(net), net < 0 ? '#ff8174' : '#ffd23f', 0);
+      const cr = 11;
+      const gw = cur.width + 6 + cr * 2;
+      const gx = Phaser.Math.Clamp(curX - gw / 2, bx, bx + bw - gw);
+      cur.setX(gx);
+      const coin = this.add.graphics({ x: gx + cur.width + 6 + cr, y: lblY - cur.height / 2 + 1 });
+      drawCoinIcon(coin, cr);
+      if (goal && gx + gw > goal.x - goal.width - 10) goal.setVisible(false);
+    }
+
+    // FIN DE TEMPORADA: debajo de la barra (cápsula oscura con borde del color de la liga, reloj y el tiempo destacado)
+    const by = 404 + e1; // centro de la cápsula (las placas de abajo se colocan desde aquí)
+    {
+      const cy = by;
       const ph = 34;
-      const lbl = this.add.text(0, cy, 'FIN DE TEMPORADA', { fontFamily: FONT, fontSize: '13px', color: '#9fb4e0' }).setOrigin(0, 0.5).setLetterSpacing(1.5);
-      const val = this.add.text(0, cy, fmtLeft(v.msLeft), { fontFamily: FONT, fontSize: '19px', color: '#ffffff' }).setOrigin(0, 0.5).setLetterSpacing(0.5);
+      const lbl = this.add.text(0, cy, 'FIN DE TEMPORADA', { fontFamily: FONT, fontSize: '13px', color: '#ffffff', stroke: '#0a1638', strokeThickness: 3 }).setOrigin(0, 0.5).setLetterSpacing(1.5);
+      const val = this.add.text(0, cy, fmtLeft(v.msLeft), { fontFamily: FONT, fontSize: '19px', color: '#ffffff', stroke: '#0a1638', strokeThickness: 4 }).setOrigin(0, 0.5).setLetterSpacing(0.5);
       const seg = ph; // segmento cuadrado del reloj
       const pw = seg + 12 + lbl.width + 10 + 2 + 10 + val.width + 16;
       const x0 = W / 2 - pw / 2;
       const g = this.add.graphics();
       g.fillStyle(0x000000, 0.35).fillRoundedRect(x0 + 2, cy - ph / 2 + 4, pw, ph, ph / 2);
-      g.fillStyle(0x0a1638, 0.94).fillRoundedRect(x0, cy - ph / 2, pw, ph, ph / 2);
-      g.fillStyle(st.color, 1).fillRoundedRect(x0, cy - ph / 2, seg, ph, { tl: ph / 2, bl: ph / 2, tr: 4, br: 4 });
-      g.lineStyle(2, st.color, 0.95).strokeRoundedRect(x0, cy - ph / 2, pw, ph, ph / 2);
-      // reloj blanco en el segmento de color
+      // (21-11-2026) toda la cápsula con fondo del color de la liga (antes oscura con solo el segmento del reloj de color); el reloj, un tono más oscuro
+      g.fillStyle(st.color, 1).fillRoundedRect(x0, cy - ph / 2, pw, ph, ph / 2);
+      g.fillStyle(0xffffff, 0.22).fillRoundedRect(x0 + 8, cy - ph / 2 + 3, pw - 16, ph * 0.3, ph * 0.15);
+      // (21-11-2026) el reloj sobre el MISMO fondo que el resto de la cápsula (sin tramo más oscuro)
+      g.lineStyle(2, st.light, 1).strokeRoundedRect(x0, cy - ph / 2, pw, ph, ph / 2);
       const cx = x0 + seg / 2 + 1;
       g.lineStyle(2.4, 0xffffff, 1).strokeCircle(cx, cy, 8).lineBetween(cx, cy, cx, cy - 5).lineBetween(cx, cy, cx + 4, cy + 1);
       lbl.setX(x0 + seg + 12);
-      // separador fino entre la etiqueta y el tiempo
       const sx = lbl.x + lbl.width + 10;
-      g.fillStyle(st.color, 0.6).fillRect(sx, cy - 9, 2, 18);
+      g.fillStyle(st.dark, 0.7).fillRect(sx, cy - 9, 2, 18);
       val.setX(sx + 2 + 10);
       this.children.bringToTop(lbl);
       this.children.bringToTop(val);
     }
-
-    // ---- monedas reunidas (centradas) y progreso debajo
-    const gy = 366 + e1;
-    const goldTxt = this.add.text(0, gy, fmtCoins(v.coins), { fontFamily: FONT, fontSize: '58px', color: '#ffd23f', stroke: '#0a1638', strokeThickness: 8 }).setOrigin(0, 0.5);
-    const coinR = 22;
-    const total = coinR * 2 + 12 + goldTxt.width;
-    const gx0 = W / 2 - total / 2;
-    const coinG = this.add.graphics({ x: gx0 + coinR, y: gy });
-    drawCoinIcon(coinG, coinR);
-    goldTxt.setX(gx0 + coinR * 2 + 12);
-    this.add.text(W / 2, gy - 41, 'MONEDAS REUNIDAS', { fontFamily: FONT, fontSize: '15px', color: '#c9b98a' }).setOrigin(0.5).setLetterSpacing(3);
-
-    const bw = Math.min(600, W - 60);
-    const by = 422 + e1;
-    const g = this.add.graphics();
-    g.fillStyle(0x0a1638, 1).fillRoundedRect(W / 2 - bw / 2 - 4, by - 17, bw + 8, 34, 17);
-    g.fillStyle(0x1a2a52, 1).fillRoundedRect(W / 2 - bw / 2, by - 13, bw, 26, 13);
-    const fillW = Math.max(26, bw * v.progress);
-    g.fillStyle(st.color, 1).fillRoundedRect(W / 2 - bw / 2, by - 13, fillW, 26, 13);
-    g.fillStyle(0xffffff, 0.28).fillRoundedRect(W / 2 - bw / 2 + 6, by - 10, Math.max(0, fillW - 12), 7, 4);
-    const progTxt = v.target == null ? 'LIGA MÁXIMA · DEFIENDE TU PUESTO' : `${Math.floor(v.progress * 100)}% · META ${fmtCoins(v.target)}`;
-    this.add.text(W / 2, by, progTxt, { fontFamily: FONT, fontSize: '17px', color: '#ffffff', stroke: '#0a1638', strokeThickness: 4 }).setOrigin(0.5);
-
     // ---- estadísticas: 3 placas (POSICIÓN · RÉCORD · RACHA). La de SEMANA se quitó: su avance ya está en la
     // recompensa semanal de abajo (13-11-2026). Formato propio: placa inclinada con medallón del icono sobre el borde
     // superior, cifra grande, etiqueta y una píldora con el detalle.
@@ -171,9 +205,12 @@ export class RankedScene extends Phaser.Scene {
     const TGAP = 16;
     const tw = (Math.min(640, W - 60) - 2 * TGAP) / 3;
     const topPos = v.position != null && v.position <= 10;
+    // tramo de premio (posición de premio: solo entre reales con servidor, D7)
+    const prizeLbl = positionPrize(v.prizePosition)?.label ?? null;
+    const prizeSub = prizeLbl ? (v.prizePosition !== v.position ? `PREMIO #${v.prizePosition} · ${prizeLbl}` : prizeLbl) : `DE ${v.board.length}`;
     const tiles: { label: string; value: string; sub: string; accent: number; icon: StatIcon; hot: boolean }[] = [
-      { label: 'POSICIÓN', value: v.position ? `#${v.position}` : '—', sub: v.position && v.position <= 50 ? (v.position === 1 ? 'TOP 1' : v.position <= 10 ? 'TOP 10' : 'TOP 50') : `DE ${v.board.length}`, accent: topPos ? GOLD : 0x3a7bff, icon: 'trophy', hot: topPos },
-      { label: 'RÉCORD', value: `${v.season.wins}-${v.season.losses}`, sub: `${pct(v.season.wins, v.season.losses)} VICT.`, accent: 0x37e0ff, icon: 'chart', hot: false },
+      { label: 'POSICIÓN', value: v.position ? `#${v.position}` : '—', sub: prizeSub, accent: topPos ? GOLD : 0x3a7bff, icon: 'trophy', hot: topPos },
+      { label: 'SEMANA', value: `${v.weekWins}-${v.weekLosses}`, sub: `${pct(v.weekWins, v.weekLosses)} VICT.`, accent: 0x37e0ff, icon: 'chart', hot: false },
       { label: 'RACHA', value: `${v.season.streak}`, sub: `MEJOR ${v.total.bestStreak}`, accent: 0xff8a3d, icon: 'flame', hot: v.season.streak >= 3 },
     ];
     tiles.forEach((t, i) => {
@@ -307,28 +344,28 @@ export class RankedScene extends Phaser.Scene {
     // texto y progreso: un punto por partida, unidos por una línea; los completados con ✓
     const tx = cx0 + 46;
     const textW = Math.max(80, prizeX - tx - 14);
-    const left = v.minMatches - v.weekMatches;
-    const estSub = elig ? `¡Meta cumplida! Se cobra el domingo${v.estimate.label ? ` · ${v.estimate.label}` : ''}` : `Juega ${left} partida${left === 1 ? '' : 's'} más y se cobra el domingo`;
+    const left = v.minWins - v.weekWins;
+    const estSub = elig ? `¡Meta cumplida! Se cobra el domingo${v.estimate.label ? ` · ${v.estimate.label}` : ''}` : `Gana ${left} partida${left === 1 ? '' : 's'} más y se cobra el domingo`;
     const est = this.add.text(tx, bodyY - 18, estSub, { fontFamily: FONT, fontSize: '14px', color: '#f2e7c1' }).setOrigin(0, 0.5);
     fitText(est, textW);
-    const segments = Math.max(1, v.minMatches);
+    const segments = Math.max(1, v.minWins);
     const dotR = 11;
     const pgY = bodyY + 18;
     const span = Math.max(0, Math.min(textW - 70, (segments - 1) * 40));
     const step = segments > 1 ? span / (segments - 1) : 0;
     const pg = this.add.graphics();
     pg.lineStyle(4, 0x39404c, 1).lineBetween(tx + dotR, pgY, tx + dotR + span, pgY);
-    const done = Math.min(v.weekMatches, segments);
+    const done = Math.min(v.weekWins, segments);
     if (done > 1) pg.lineStyle(4, 0x52e432, 1).lineBetween(tx + dotR, pgY, tx + dotR + step * (done - 1), pgY);
     for (let i = 0; i < segments; i++) {
       const dx = tx + dotR + i * step;
-      const ok = i < v.weekMatches;
+      const ok = i < v.weekWins;
       pg.fillStyle(0x07152f, 1).fillCircle(dx, pgY, dotR + 2);
       pg.fillStyle(ok ? 0x52e432 : 0x39404c, 1).fillCircle(dx, pgY, dotR);
       if (ok) pg.lineStyle(3, 0xffffff, 1).beginPath().moveTo(dx - 5, pgY).lineTo(dx - 1, pgY + 4).lineTo(dx + 5, pgY - 4).strokePath();
       else this.add.text(dx, pgY, `${i + 1}`, { fontFamily: FONT, fontSize: '12px', color: '#9aa3b3' }).setOrigin(0.5);
     }
-    this.add.text(tx + dotR * 2 + span + 8, pgY, `${Math.min(v.weekMatches, v.minMatches)}/${v.minMatches}`, { fontFamily: FONT, fontSize: '14px', color: '#ffffff' }).setOrigin(0, 0.5);
+    this.add.text(tx + dotR * 2 + span + 8, pgY, `${Math.min(v.weekWins, v.minWins)}/${v.minWins}`, { fontFamily: FONT, fontSize: '14px', color: '#ffffff' }).setOrigin(0, 0.5);
 
     // ---- líderes de la liga: podio, puestos siguientes y tabla completa
     // panel: la etiqueta del título va montada sobre su borde de arriba (centro en `panelTop`)
@@ -415,7 +452,7 @@ export class RankedScene extends Phaser.Scene {
       drawAvatar(x, ay, r, entry, color);
       const nm = this.add.text(x, podiumBottom - 40, me ? 'TÚ' : entry.name, { fontFamily: FONT, fontSize: i === 0 ? '18px' : '16px', color: me ? '#ffd23f' : '#ffffff' }).setOrigin(0.5);
       fitText(nm, colW - 12);
-      const coins = this.add.text(0, podiumBottom - 18, fmtCoins(entry.coins), { fontFamily: FONT, fontSize: i === 0 ? '20px' : '17px', color: '#ffd23f' }).setOrigin(0, 0.5);
+      const coins = this.add.text(0, podiumBottom - 18, fmtNet(entry.coins), { fontFamily: FONT, fontSize: i === 0 ? '20px' : '17px', color: '#ffd23f' }).setOrigin(0, 0.5);
       const coinsW = coins.width + 24;
       const coin = this.add.graphics({ x: x - coinsW / 2 + 9, y: podiumBottom - 18 });
       drawCoinIcon(coin, 8);
@@ -446,7 +483,7 @@ export class RankedScene extends Phaser.Scene {
       const nx = L + 8 + bs + 12 + 34 + 12;
       const nm = this.add.text(nx, yy, me ? `${entry.name} (TÚ)` : entry.name, { fontFamily: FONT, fontSize: '17px', color: me ? '#ffd23f' : '#ffffff' }).setOrigin(0, 0.5);
       fitText(nm, rw3 * 0.5);
-      const ct = this.add.text(L + rw3 - 14, yy, fmtCoins(entry.coins), { fontFamily: FONT, fontSize: '19px', color: '#ffd23f' }).setOrigin(1, 0.5);
+      const ct = this.add.text(L + rw3 - 14, yy, fmtNet(entry.coins), { fontFamily: FONT, fontSize: '19px', color: '#ffd23f' }).setOrigin(1, 0.5);
       const ci = this.add.graphics({ x: L + rw3 - 14 - ct.width - 13, y: yy });
       drawCoinIcon(ci, 9);
     });
@@ -525,7 +562,7 @@ export class RankedScene extends Phaser.Scene {
     this.add.text(left + 54, y + 28, 'ÚLTIMAS PARTIDAS', { fontFamily: FONT, fontSize: '19px', color: '#ffffff' }).setOrigin(0, 0.5).setLetterSpacing(0.5);
     const recent = v.history.slice(0, 3);
     if (!recent.length) {
-      this.add.text(x, y + 103, 'Juega partidas Ranked para ver tus resultados', { fontFamily: FONT, fontSize: '14px', color: '#9fb4e0', align: 'center', wordWrap: { width: w - 32 } }).setOrigin(0.5);
+      this.add.text(x, y + 103, 'Juega partidas de Liga para ver tus resultados', { fontFamily: FONT, fontSize: '14px', color: '#9fb4e0', align: 'center', wordWrap: { width: w - 32 } }).setOrigin(0.5);
     } else {
       recent.forEach((match, i) => {
         const rowY = y + 60 + i * 33;
@@ -552,15 +589,17 @@ export class RankedScene extends Phaser.Scene {
     drawGiftIcon(gift, 18);
     this.add.text(left + 56, y + 28, 'PREMIOS EXTRA', { fontFamily: FONT, fontSize: '20px', color: '#fff0a8' }).setOrigin(0, 0.5).setLetterSpacing(0.5);
     RANKED.positionPrizes.forEach((prize, i) => {
-      const rowY = y + 64 + i * 28;
+      // 4 tramos (v2): filas más bajas para que quepan sobre el botón
+      const rowY = y + 60 + i * 24;
       const row = this.add.graphics();
-      row.fillStyle(0x191405, 0.98).fillRoundedRect(left + 12, rowY - 13, w - 24, 26, 12);
-      row.lineStyle(1.5, 0x927322, 0.95).strokeRoundedRect(left + 12, rowY - 13, w - 24, 26, 12);
-      row.fillStyle(i === 0 ? 0xa96800 : 0x4b4635, 1).fillRoundedRect(left + 17, rowY - 10, 66, 20, 10);
-      this.add.text(left + 50, rowY, prize.label, { fontFamily: FONT, fontSize: '13px', color: '#ffffff' }).setOrigin(0.5);
+      row.fillStyle(0x191405, 0.98).fillRoundedRect(left + 12, rowY - 11, w - 24, 22, 11);
+      row.lineStyle(1.5, 0x927322, 0.95).strokeRoundedRect(left + 12, rowY - 11, w - 24, 22, 11);
+      row.fillStyle(i === 0 ? 0xa96800 : 0x4b4635, 1).fillRoundedRect(left + 16, rowY - 9, 80, 18, 9);
+      const lb = this.add.text(left + 56, rowY, prize.label, { fontFamily: FONT, fontSize: '12px', color: '#ffffff' }).setOrigin(0.5);
+      fitText(lb, 74);
       const cash = prize.cash > 0 ? ` · ${prize.cash} dinero` : '';
-      const value = this.add.text(left + 92, rowY, `+${fmtCoins(prize.coins)} monedas${cash}`, { fontFamily: FONT, fontSize: '13px', color: '#ffe15b' }).setOrigin(0, 0.5);
-      fitText(value, w - 112);
+      const value = this.add.text(left + 104, rowY, `+${fmtCoins(prize.coins)}${cash}`, { fontFamily: FONT, fontSize: '13px', color: '#ffe15b' }).setOrigin(0, 0.5);
+      fitText(value, w - 124);
     });
     arcadeButton(this, x, y + h - 39, w - 40, 36, 'VER PREMIOS', () => this.extraRewardsOverlay(), { palette: 'yellow' });
   }
@@ -579,11 +618,11 @@ export class RankedScene extends Phaser.Scene {
     g.fillStyle(NAVY, 0.99).fillRoundedRect(-pw / 2, 0, pw, ph, 24);
     g.lineStyle(3, NEON, 1).strokeRoundedRect(-pw / 2, 0, pw, ph, 24);
     p.add(g);
-    p.add(this.add.text(0, 42, 'HISTORIAL RANKED', { fontFamily: FONT, fontSize: '30px', color: '#ffffff' }).setOrigin(0.5).setLetterSpacing(1));
+    p.add(this.add.text(0, 42, 'HISTORIAL DE LIGA', { fontFamily: FONT, fontSize: '30px', color: '#ffffff' }).setOrigin(0.5).setLetterSpacing(1));
     p.add(this.add.text(0, 75, 'Tus últimas partidas completadas', { fontFamily: FONT, fontSize: '15px', color: '#9fb4e0' }).setOrigin(0.5));
     const entries = v.history.slice(0, 12);
     if (!entries.length) {
-      p.add(this.add.text(0, 150, 'Aún no tienes partidas Ranked registradas.', { fontFamily: FONT, fontSize: '18px', color: '#dbe5ff', align: 'center', wordWrap: { width: pw - 50 } }).setOrigin(0.5));
+      p.add(this.add.text(0, 150, 'Aún no tienes partidas de Liga registradas.', { fontFamily: FONT, fontSize: '18px', color: '#dbe5ff', align: 'center', wordWrap: { width: pw - 50 } }).setOrigin(0.5));
     } else {
       const rowH = Math.min(42, (ph - 180) / entries.length);
       entries.forEach((match, i) => {
@@ -604,7 +643,7 @@ export class RankedScene extends Phaser.Scene {
     const H = this.scale.height;
     const objs = this.openOverlay(0.82);
     const pw = Math.min(600, W - 36);
-    const ph = 460;
+    const ph = 540;
     const p = this.add.container(W / 2, (H - ph) / 2).setDepth(8001);
     objs.push(p);
     p.add(this.add.rectangle(0, ph / 2, pw, ph, 0, 0.001).setInteractive());
@@ -613,9 +652,9 @@ export class RankedScene extends Phaser.Scene {
     g.lineStyle(3, GOLD, 1).strokeRoundedRect(-pw / 2, 0, pw, ph, 24);
     p.add(g);
     p.add(this.add.text(0, 42, 'PREMIOS EXTRA DE LA SEMANA', { fontFamily: FONT, fontSize: '27px', color: '#ffe15b' }).setOrigin(0.5));
-    p.add(this.add.text(0, 78, 'Se suman a la recompensa de tu liga al cerrar la semana.', { fontFamily: FONT, fontSize: '15px', color: '#f1dfab', align: 'center', wordWrap: { width: pw - 60 } }).setOrigin(0.5));
+    p.add(this.add.text(0, 78, 'Se suman a la recompensa de tu liga al cerrar la semana. Los bots no reciben premios.', { fontFamily: FONT, fontSize: '15px', color: '#f1dfab', align: 'center', wordWrap: { width: pw - 60 } }).setOrigin(0.5));
     RANKED.positionPrizes.forEach((prize, i) => {
-      const y = 142 + i * 76;
+      const y = 142 + i * 70;
       const row = this.add.graphics();
       row.fillStyle(0x191405, 1).fillRoundedRect(-pw / 2 + 24, y - 26, pw - 48, 56, 16);
       row.lineStyle(2, i === 0 ? GOLD : 0x8d773b, 1).strokeRoundedRect(-pw / 2 + 24, y - 26, pw - 48, 56, 16);
@@ -623,146 +662,19 @@ export class RankedScene extends Phaser.Scene {
       p.add(this.add.text(-pw / 2 + 48, y + 1, prize.label, { fontFamily: FONT, fontSize: '20px', color: i === 0 ? '#ffd23f' : '#ffffff' }).setOrigin(0, 0.5));
       p.add(this.add.text(pw / 2 - 48, y + 1, `${fmtCoins(prize.coins)} monedas${prize.cash ? ` · ${prize.cash} dinero` : ''}`, { fontFamily: FONT, fontSize: '17px', color: '#ffe15b' }).setOrigin(1, 0.5));
     });
-    p.add(this.add.text(0, 375, `Completa ${RANKED.minMatchesForReward} partidas Ranked para optar a estos premios.`, { fontFamily: FONT, fontSize: '15px', color: '#f1dfab', align: 'center', wordWrap: { width: pw - 60 } }).setOrigin(0.5));
+    p.add(this.add.text(0, 142 + RANKED.positionPrizes.length * 70 - 10, `Gana ${RANKED.minWinsForReward} partidas de Liga en la semana para optar a estos premios.`, { fontFamily: FONT, fontSize: '15px', color: '#f1dfab', align: 'center', wordWrap: { width: pw - 60 } }).setOrigin(0.5));
     p.add(arcadeButton(this, 0, ph - 42, Math.min(300, pw - 60), 54, 'CERRAR', () => this.closeOverlay(), { palette: 'yellow' }));
   }
 
   // ================================================================ tabla Top 100
+  /**
+   * Tabla Top 100 del RANKING LIGA (neto de la semana, con bots). El Global se abre desde el menú. La ventana es ui/LeagueRanking.ts (la misma
+   * que abre la card de liga del MENÚ); aquí va sobre el overlay de la pantalla (que resetea el desplazamiento y rehace la pantalla al cerrar).
+   */
   private leaderboard() {
-    const W = this.scale.width;
-    const H = this.scale.height;
-    const v = rankedView();
-    const st = LEAGUE_STYLE[v.league];
     const objs = this.openOverlay();
-    const pw = Math.min(680, W - 24);
-    const top = 96;
-    const bottom = H - 30;
-    const ph = bottom - top;
-    const p = this.add.container(W / 2, top).setDepth(8001);
-    objs.push(p);
-    p.add(this.add.rectangle(0, ph / 2, pw, ph, 0, 0.001).setInteractive());
-    const g = this.add.graphics();
-    g.fillStyle(NAVY, 0.98).fillRoundedRect(-pw / 2, 0, pw, ph, 24);
-    g.lineStyle(3, st.color, 1).strokeRoundedRect(-pw / 2, 0, pw, ph, 24);
-    p.add(g);
-    p.add(this.add.text(0, 36, `TOP ${RANKED.tableSize} · ${rankDef(v.league).name.toUpperCase()}`, { fontFamily: FONT, fontSize: '30px', color: st.css, stroke: '#0a1638', strokeThickness: 5 }).setOrigin(0.5).setLetterSpacing(2));
-    p.add(this.add.text(0, 68, `Cierra en ${fmtLeft(v.msLeft)} · Top 1, Top 10 y Top 50 ganan premio extra`, { fontFamily: FONT, fontSize: '15px', color: '#9fb4e0' }).setOrigin(0.5));
-
-    // mejores de cada liga
-    const leaders = leagueLeaders();
-    const lw = (pw - 30) / leaders.length;
-    leaders.forEach((l, i) => {
-      const x = -pw / 2 + 15 + lw * (i + 0.5);
-      p.add(new RankBadge(this, x, 112, { rank: l.league, level: 99, size: 40 }));
-      const nm = this.add.text(x, 142, l.top.id === 'me' ? 'TÚ' : l.top.name, { fontFamily: FONT, fontSize: '12px', color: l.top.id === 'me' ? '#ffd23f' : '#dbe5ff' }).setOrigin(0.5);
-      fitText(nm, lw - 6);
-      p.add(nm);
-    });
-    p.add(this.add.text(0, 162, 'MEJOR JUGADOR DE CADA LIGA', { fontFamily: FONT, fontSize: '11px', color: '#7f93bf' }).setOrigin(0.5).setLetterSpacing(1));
-
-    // lista con desplazamiento
-    const listTop = 180;
-    const listBottom = ph - 92;
-    const rowH = 58;
-    const list = this.add.container(0, listTop);
-    p.add(list);
-    const maskG = this.make.graphics({}, false);
-    maskG.fillRect(W / 2 - pw / 2, top + listTop, pw, listBottom - listTop);
-    list.setMask(maskG.createGeometryMask());
-    objs.push(maskG);
-    v.board.forEach((e, i) => list.add(this.boardRow(e, i * rowH + rowH / 2, pw - 24, rowH - 6)));
-    const maxScroll = Math.max(0, v.board.length * rowH - (listBottom - listTop));
-    let scroll = 0;
-    const setScroll = (s: number) => {
-      scroll = Phaser.Math.Clamp(s, 0, maxScroll);
-      list.y = listTop - scroll;
-    };
-    // abre centrado en el jugador
-    if (v.position) setScroll((v.position - 1) * rowH - (listBottom - listTop) / 2 + rowH / 2);
-    const zone = this.add.zone(W / 2, top + (listTop + listBottom) / 2, pw, listBottom - listTop).setInteractive().setDepth(8002);
-    objs.push(zone);
-    let dragY: number | null = null;
-    let start = 0;
-    zone.on('pointerdown', (ptr: Phaser.Input.Pointer) => {
-      dragY = ptr.y;
-      start = scroll;
-    });
-    this.input.on('pointermove', (ptr: Phaser.Input.Pointer) => {
-      if (dragY != null && ptr.isDown) setScroll(start - (ptr.y - dragY));
-    });
-    this.input.on('pointerup', () => (dragY = null));
-    zone.on('wheel', (_p: unknown, _dx: number, dy: number) => setScroll(scroll + dy));
-
-    // fila fija del jugador
-    const me = v.board.find((e) => e.id === 'me');
-    if (me) p.add(this.boardRow(me, listBottom + 6 + rowH / 2, pw - 24, rowH - 4, true));
-    // cerrar
-    const close = this.add.text(pw / 2 - 30, 34, '✕', { fontFamily: FONT, fontSize: '30px', color: '#9fb4e0' }).setOrigin(0.5).setInteractive({ useHandCursor: true });
-    close.on('pointerup', () => this.closeOverlay());
-    p.add(close);
-    this.events.once('overlay-closed', () => {
-      this.input.off('pointermove');
-      this.input.off('pointerup');
-    });
+    objs.push(openLeagueRanking(this, { dim: false, onClose: () => this.closeOverlay() }));
   }
-
-  private boardRow(e: BoardEntry, y: number, w: number, h: number, pinned = false, compact = false) {
-    const c = this.add.container(0, y);
-    const me = e.id === 'me';
-    const medal = compact
-      ? e.position === 1
-        ? GOLD
-        : e.position === 2
-          ? 0xc0c8d8
-          : e.position === 3
-            ? 0xd88a4a
-            : 0
-      : e.position === 1
-        ? GOLD
-        : e.position <= 10
-          ? 0xc0c8d8
-          : e.position <= 50
-            ? 0xd88a4a
-            : 0;
-    const g = this.add.graphics();
-    g.fillStyle(me ? 0x3a2a08 : e.position % 2 ? 0x14224a : 0x101c3e, pinned ? 1 : 0.95).fillRoundedRect(-w / 2, -h / 2, w, h, 12);
-    if (me) g.lineStyle(3, GOLD, 1).strokeRoundedRect(-w / 2, -h / 2, w, h, 12);
-    else if (e.position === 1) g.lineStyle(2, GOLD, 0.8).strokeRoundedRect(-w / 2, -h / 2, w, h, 12);
-    c.add(g);
-    // posición (medalla para los tramos con premio)
-    const px = -w / 2 + (compact ? 32 : 34);
-    if (medal) {
-      const mg = this.add.graphics({ x: px, y: 0 });
-      mg.fillStyle(0x0a1638, 1).fillCircle(0, 0, compact ? 17 : 19);
-      mg.fillStyle(medal, 1).fillCircle(0, 0, compact ? 14 : 16);
-      c.add(mg);
-    }
-    c.add(this.add.text(px, 0, `${e.position}`, { fontFamily: FONT, fontSize: compact ? '17px' : e.position >= 100 ? '15px' : '19px', color: medal ? '#0a1638' : '#9fb4e0' }).setOrigin(0.5));
-    // avatar
-    const ax = px + (compact ? 43 : 46);
-    const av = this.add.graphics({ x: ax, y: 0 });
-    const avatarR = compact ? 17 : 20;
-    av.fillStyle(0x0a1638, 1).fillCircle(0, 0, avatarR);
-    av.fillStyle(e.avatar.color, 1).fillCircle(0, 0, avatarR - 3);
-    av.fillStyle(0x0a1638, 0.85).fillCircle(0, -4, compact ? 5.5 : 6.5);
-    av.fillRoundedRect(compact ? -8 : -10, 4, compact ? 16 : 20, compact ? 8 : 9, { tl: 8, tr: 8, bl: 2, br: 2 });
-    c.add(av);
-    // nombre y nivel
-    const nameX = ax + (compact ? 25 : 30);
-    const nm = this.add.text(nameX, compact ? -7 : -9, me ? `${e.name} (TÚ)` : e.name, { fontFamily: FONT, fontSize: compact ? '17px' : '20px', color: me ? '#ffd23f' : '#ffffff' }).setOrigin(0, 0.5);
-    fitText(nm, w * 0.42);
-    c.add(nm);
-    c.add(this.add.text(nameX, compact ? 11 : 13, `NV ${e.level} · ${e.wins}V ${e.losses}D`, { fontFamily: FONT, fontSize: compact ? '11px' : '13px', color: '#9fb4e0' }).setOrigin(0, 0.5));
-    // monedas
-    const ct = this.add.text(w / 2 - 14, 0, fmtCoins(e.coins), { fontFamily: FONT, fontSize: compact ? '18px' : '21px', color: '#ffd23f' }).setOrigin(1, 0.5);
-    c.add(ct);
-    const coinSize = compact ? 9 : 10;
-    const ci = this.add.graphics({ x: w / 2 - 18 - ct.width - coinSize, y: 0 });
-    drawCoinIcon(ci, coinSize);
-    c.add(ci);
-    return c;
-  }
-
   // ================================================================ lista de ligas
   private leagueList() {
     const W = this.scale.width;
@@ -789,7 +701,7 @@ export class RankedScene extends Phaser.Scene {
       p.add(rg);
       p.add(new RankBadge(this, -pw / 2 + 64, y, { rank: r.id, level: 99, size: 76 }));
       p.add(this.add.text(-pw / 2 + 112, y - 20, r.name.toUpperCase() + (cur ? '  · TU LIGA' : ''), { fontFamily: FONT, fontSize: '22px', color: st.css }).setOrigin(0, 0.5));
-      p.add(this.add.text(-pw / 2 + 112, y + 6, eco.target != null ? `Asciende con ${fmtCoins(eco.target)} monedas` : 'Liga máxima', { fontFamily: FONT, fontSize: '15px', color: '#9fb4e0' }).setOrigin(0, 0.5));
+      p.add(this.add.text(-pw / 2 + 112, y + 6, eco.target != null ? `Meta semanal ${fmtCoins(eco.target)} monedas netas` : 'Liga máxima', { fontFamily: FONT, fontSize: '15px', color: '#9fb4e0' }).setOrigin(0, 0.5));
       p.add(this.add.text(-pw / 2 + 112, y + 28, `Entrada ${fmtCoins(eco.entry)} · Semanal ${fmtCoins(eco.weekly.coins)}${eco.weekly.cash ? ` + ${eco.weekly.cash} dinero` : ''}`, { fontFamily: FONT, fontSize: '14px', color: '#7f93bf' }).setOrigin(0, 0.5));
     });
     const close = this.add.text(pw / 2 - 30, -ph / 2 + 36, '✕', { fontFamily: FONT, fontSize: '30px', color: '#9fb4e0' }).setOrigin(0.5).setInteractive({ useHandCursor: true });
@@ -897,7 +809,10 @@ export class RankedScene extends Phaser.Scene {
     p.add(badge);
     this.tweens.add({ targets: badge, scale: { from: 0.7, to: 1 }, duration: 500, ease: 'Back.easeOut' });
     p.add(this.add.text(0, -ph / 2 + 306, rankDef(w.league).name.toUpperCase(), { fontFamily: FONT, fontSize: '30px', color: st.css }).setOrigin(0.5).setLetterSpacing(3));
-    p.add(this.add.text(0, -ph / 2 + 346, `POSICIÓN FINAL ${w.position ? `#${w.position}` : '—'}${w.positionLabel ? ` · ${w.positionLabel}` : ''} · ${w.matches} PARTIDAS`, { fontFamily: FONT, fontSize: '18px', color: '#dbe5ff' }).setOrigin(0.5));
+    const sumTxt = this.add.text(0, -ph / 2 + 346, `POSICIÓN ${w.position ? `#${w.position}` : '—'}${w.positionLabel ? ` · ${w.positionLabel}` : ''} · ${w.wins} VICTORIAS · NETO ${fmtNet(w.net)}`, { fontFamily: FONT, fontSize: '18px', color: '#dbe5ff' }).setOrigin(0.5);
+    fitText(sumTxt, pw - 40);
+    p.add(sumTxt);
+    if (w.promotedTo) p.add(this.add.text(0, -ph / 2 + 112, `¡LLEGASTE A LA META! SUBES A ${rankDef(w.promotedTo).name.toUpperCase()}`, { fontFamily: FONT, fontSize: '17px', color: '#62ef89' }).setOrigin(0.5));
     if (w.eligible) {
       const rg = this.add.graphics();
       rg.fillStyle(0x1a1306, 1).fillRoundedRect(-pw / 2 + 40, -ph / 2 + 380, pw - 80, 96, 18);
@@ -920,7 +835,7 @@ export class RankedScene extends Phaser.Scene {
       p.add(this.add.text(-25, rayY, `+${w.rays} RAYO${w.rays === 1 ? '' : 'S'}`, { fontFamily: FONT, fontSize: '17px', color: '#79e8ff' }).setOrigin(0, 0.5));
       this.confetti(objs, [GOLD, st.color, 0xffffff]);
     } else {
-      const t = this.add.text(0, -ph / 2 + 428, `Necesitabas ${RANKED.minMatchesForReward} partidas completadas (jugaste ${w.matches}).\nSigues en tu liga: ¡esta semana sí!`, { fontFamily: FONT, fontSize: '19px', color: '#9fb4e0', align: 'center', wordWrap: { width: pw - 70 } }).setOrigin(0.5);
+      const t = this.add.text(0, -ph / 2 + 428, `Necesitabas ${RANKED.minWinsForReward} victorias (ganaste ${w.wins}).\nSigues en tu liga: ¡esta semana sí!`, { fontFamily: FONT, fontSize: '19px', color: '#9fb4e0', align: 'center', wordWrap: { width: pw - 70 } }).setOrigin(0.5);
       p.add(t);
     }
     p.add(arcadeButton(this, 0, ph / 2 - 62, 300, 80, w.eligible ? 'RECLAMAR' : 'ENTENDIDO', () => {
@@ -989,6 +904,8 @@ export class RankedScene extends Phaser.Scene {
     const bottom = H - NAV.bottom;
     const top = bottom - (y1 - y0) * scale;
     this.add.image(NAV.side, bottom, NAV.key).setOrigin(x0 / NAV.w, y1 / NAV.h).setScale(scale).setDepth(100).setScrollFactor(0);
+    // pestaña LIGA (antes "RANKING" dentro de la imagen; activa en esta pantalla)
+    navLigaLabel(this, (ox, oy) => ({ x: NAV.side + (ox - x0) * scale, y: bottom + (oy - y1) * scale }), scale, true, 441).setScrollFactor(0);
 
     const zone = (from: number, to: number, onClick: () => void) => {
       const zx = NAV.side + (W - NAV.side * 2) * from;

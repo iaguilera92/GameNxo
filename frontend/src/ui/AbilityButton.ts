@@ -97,6 +97,17 @@ export class AbilityButton extends Phaser.GameObjects.Container {
     this.face.add(this.scene.add.image(0, 0, key).setDisplaySize(d, d));
   }
 
+  /**
+   * Sustituye la cara del botón por un dibujo propio (21-11-2026: el DEFENSIVO equipado, p. ej. la SOMBRA, en vez del DASH de siempre). `draw` recibe
+   * el Graphics y el radio del botón; se dibuja el mismo disco y borde que el resto de botones.
+   */
+  setDrawnFace(draw: (g: Phaser.GameObjects.Graphics, R: number) => void) {
+    this.face.removeAll(true);
+    const g = this.scene.add.graphics();
+    draw(g, this.radius);
+    this.face.add(g);
+  }
+
   /** Bloquea / libera el botón (se ve atenuado y vibra si se pulsa mientras está bloqueado). */
   setEnabled(on: boolean) {
     this.enabled = on;

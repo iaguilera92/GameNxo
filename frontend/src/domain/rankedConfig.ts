@@ -10,11 +10,14 @@ import type { RankId } from './ranks';
 export interface LeagueEconomy {
   /** costo de entrada (modalidad normal); la apuesta multiplica entrada y premio */
   entry: number;
-  /** saldo con el que se asciende a la liga siguiente (null = liga máxima) */
+  /**
+   * META SEMANAL de ascenso (Ranked v2, docs/RANKED-V2.md): resultado NETO de la semana en Ranked (apuestas ganadas − perdidas;
+   * no cuentan ruletas, cofres ni premios). Al cerrar la semana, con neto ≥ meta se sube UNA liga. null = liga máxima.
+   */
   target: number | null;
   /** recompensa semanal por liga (si se cumple el mínimo de partidas) */
   weekly: { coins: number; cash: number };
-  /** liga a la que se baja en el reinicio mensual */
+  /** liga a la que se baja en el descenso mensual (EN PAUSA: el criterio está pendiente, D6 de docs/RANKED-V2.md) */
   demoteTo: RankId;
 }
 
@@ -33,35 +36,41 @@ export const RANKED = {
   prizeMult: 2,
   /** apuestas disponibles (multiplicador individual de entrada y premio) */
   bets: [1, 2] as const,
-  /** partidas completadas (ganadas o perdidas) para cobrar la recompensa semanal */
-  minMatchesForReward: 3,
+  /** VICTORIAS Ranked en la semana para cobrar la recompensa semanal (v2: antes eran 3 partidas completadas) */
+  minWinsForReward: 3,
   /**
-   * Descenso mensual: si el saldo supera este tope de la liga NUEVA, se recorta a él. Fracción del tramo
-   * entre el objetivo de la liga nueva y el de la siguiente (0.5 = mitad de la liga siguiente): con una
-   * partida más se vuelve a subir y se empieza a mitad de la liga.
+   * Rival que se va (rendición / abandono del rival online, D9): quien gana cobra entrada + entrada × este factor si ya había
+   * ganado al menos un juego (apuesta 500 → recibe 750); si no, se le devuelve la entrada (propuesta pendiente de confirmar).
    */
-  demotionCapFraction: 0.5,
+  forfeitBonus: 0.5,
+  /** descenso mensual EN PAUSA (D6): nadie baja hasta definir el criterio. Las monedas NUNCA se recortan. */
+  monthlyDemotion: false,
   /** participantes visibles por liga (jugadores reales + rivales simulados) */
   tableSize: 100,
   leagues: {
     // semanal de Bronce = 12 entradas (más que una semana de premio diario); Plata paga más que Bronce (docs/ECONOMIA.md)
-    bronze: { entry: 500, target: 30_000, weekly: { coins: 6_000, cash: 0 }, demoteTo: 'bronze' },
-    silver: { entry: 1_000, target: 60_000, weekly: { coins: 8_000, cash: 10 }, demoteTo: 'bronze' },
-    gold: { entry: 2_000, target: 120_000, weekly: { coins: 9_000, cash: 20 }, demoteTo: 'silver' },
-    platinum: { entry: 4_000, target: 240_000, weekly: { coins: 12_000, cash: 30 }, demoteTo: 'gold' },
-    diamond: { entry: 8_000, target: 480_000, weekly: { coins: 15_000, cash: 50 }, demoteTo: 'platinum' },
+    // metas v2 (16-11-2026, D1): 30 victorias netas x1 (15 con x2) en todas las ligas = 30 × entrada
+    bronze: { entry: 500, target: 15_000, weekly: { coins: 6_000, cash: 0 }, demoteTo: 'bronze' },
+    silver: { entry: 1_000, target: 30_000, weekly: { coins: 8_000, cash: 10 }, demoteTo: 'bronze' },
+    gold: { entry: 2_000, target: 60_000, weekly: { coins: 9_000, cash: 20 }, demoteTo: 'silver' },
+    platinum: { entry: 4_000, target: 120_000, weekly: { coins: 12_000, cash: 30 }, demoteTo: 'gold' },
+    diamond: { entry: 8_000, target: 240_000, weekly: { coins: 15_000, cash: 50 }, demoteTo: 'platinum' },
     challenger: { entry: 16_000, target: null, weekly: { coins: 20_000, cash: 75 }, demoteTo: 'diamond' },
   } as Record<RankId, LeagueEconomy>,
-  /** premios extra por posición final de la semana (el primer tramo que incluya la posición) */
+  /**
+   * Premios extra por posición final de la semana: SE SUMAN a la recompensa de la liga (D10). El primer tramo que incluya la
+   * posición. Tramos v2: 1 · 2–3 · 4–10 · 11–50 · resto (solo la base). CANTIDADES PROVISIONALES: pendientes de definir.
+   */
   positionPrizes: [
     { upTo: 1, label: 'TOP 1', coins: 5_000, cash: 50 },
-    { upTo: 10, label: 'TOP 10', coins: 2_000, cash: 20 },
-    { upTo: 50, label: 'TOP 50', coins: 500, cash: 5 },
+    { upTo: 3, label: 'TOP 2-3', coins: 3_500, cash: 35 },
+    { upTo: 10, label: 'TOP 4-10', coins: 2_000, cash: 20 },
+    { upTo: 50, label: 'TOP 11-50', coins: 500, cash: 5 },
   ] as PositionPrize[],
   /**
-   * Sin backend solo existe un jugador real: los rivales simulados SÍ ocupan posiciones (si no, el jugador
-   * sería siempre Top 1). Con backend y jugadores suficientes poner false: las posiciones de premio se
-   * calculan solo entre jugadores reales. Los bots NUNCA reciben premios.
+   * Decidido (D7): la POSICIÓN DE PREMIO se calcula solo entre jugadores reales (los bots no quitan premios) y se muestra aparte.
+   * Sin backend solo existe UN jugador real (sería siempre Top 1): mientras no haya servidor los bots SÍ ocupan posiciones.
+   * Con backend poner false. Los bots NUNCA reciben premios.
    */
   botsCountForPositionPrizes: true,
   /** partidas Ranked recordadas (ids) para no liquidar dos veces la misma */
@@ -86,16 +95,6 @@ export function matchStakes(id: RankId, bet: number) {
   return { entry, prize: entry * RANKED.prizeMult };
 }
 
-/** Tope de saldo tras bajar a `to` (null = sin tope). */
-export function demotionCap(to: RankId): number | null {
-  const t = league(to).target;
-  const n = nextLeague(to);
-  const nt = n ? league(n).target : null;
-  if (t == null) return null;
-  const span = nt != null ? nt - t : t; // la siguiente es la máxima: tramo = el propio objetivo
-  return Math.floor(t + span * RANKED.demotionCapFraction);
-}
-
 export function positionPrize(pos: number | null): PositionPrize | null {
   if (pos == null || pos < 1) return null;
   return RANKED.positionPrizes.find((p) => pos <= p.upTo) ?? null;
@@ -117,6 +116,7 @@ export function validateRankedConfig(): string[] {
   });
   const ups = RANKED.positionPrizes.map((p) => p.upTo);
   if (ups.some((u, i) => i > 0 && u <= ups[i - 1])) errs.push('tramos de posición desordenados');
-  if (RANKED.minMatchesForReward < 0) errs.push('mínimo de partidas inválido');
+  if (!Number.isInteger(RANKED.minWinsForReward) || RANKED.minWinsForReward < 0) errs.push('mínimo de victorias inválido');
+  if (RANKED.forfeitBonus < 0 || RANKED.forfeitBonus > 1) errs.push('forfeitBonus inválido');
   return errs;
 }

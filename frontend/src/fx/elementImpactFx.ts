@@ -419,42 +419,69 @@ export function ultiStunFx(scene: Phaser.Scene, el: InfernoElement, at: () => Fx
 
 // ---------------------------------------------------------------- ULTI de RAYO: desplazamiento (en vez de las sombras)
 /**
- * Cuerpo CARGADO de electricidad durante el desplazamiento de la ULTI de rayo: halo blanco-amarillo intenso detrás,
- * un velo brillante encima (el personaje se ve luminoso) y rayos que le recorren el cuerpo, ~16 veces por segundo.
- * Sin preFX (no se puede en los sprites dentro de un Container). Dura `ms`.
+ * Cuerpo CARGADO de electricidad durante el desplazamiento de la ULTI de rayo (21-11-2026, pedido del usuario: sin el círculo de antes). Brilla EL
+ * PERSONAJE: una copia de su dibujo (mismo fotograma, tamaño y volteo) pintada de luz amarilla-blanca encima y otra azul un poco más grande detrás
+ * (contorno eléctrico), las dos parpadeando, y rayos que le recorren el cuerpo ~16 veces por segundo. Sin preFX (no se puede en los sprites dentro de
+ * un Container): solo tinte relleno y mezcla aditiva. `ch` = el personaje; `space` = contenedor donde se dibuja (la demostración de PERSONALIZAR,
+ * con su propia escala); sin `ch`, solo los rayos. Dura `ms`.
  */
-export function lightningBodyFx(scene: Phaser.Scene, at: () => FxAnchor | null, ms: number) {
-  const back = scene.add.graphics().setBlendMode(Phaser.BlendModes.ADD);
+export function lightningBodyFx(scene: Phaser.Scene, at: () => FxAnchor | null, ms: number, ch?: Phaser.GameObjects.Container, space?: Phaser.GameObjects.Container) {
   const front = scene.add.graphics().setBlendMode(Phaser.BlendModes.ADD);
+  const lit: Phaser.GameObjects.Image[] = [];
+  const rim: Phaser.GameObjects.Image[] = [];
   // reloj REAL: la cinemática de la ULTI pausa el del partido (scene.time) y esto tiene que animarse durante ella
   const t0 = performance.now();
   let next = 0;
+  let fl = 1;
+  const end = () => {
+    scene.events.off('update', tick);
+    if (front.active) front.destroy();
+    for (const o of [...lit, ...rim]) if (o.active) o.destroy();
+  };
+  /** copia `o` en la imagen `img` (posición, escala, giro y volteo pasados al espacio de dibujo) */
+  const copy = (img: Phaser.GameObjects.Image, o: BodyPart, grow: number) => {
+    let m = o.getWorldTransformMatrix();
+    if (space) {
+      // (Phaser 3.90: multiply devuelve el array; se usa la matriz invertida, que es la que queda multiplicada)
+      const inv = space.getWorldTransformMatrix().invert();
+      inv.multiply(m);
+      m = inv;
+    }
+    const sy = Math.hypot(m.c, m.d);
+    const rot = Math.atan2(-m.c, m.d);
+    const cos = Math.cos(rot);
+    const sx = Math.abs(cos) > 1e-3 ? m.a / cos : m.b / Math.sin(rot);
+    img.setTexture(o.texture.key, o.frame.name).setOrigin(o.originX, o.originY).setPosition(m.tx, m.ty).setScale(Math.abs(sx) * grow, sy * grow).setRotation(rot).setFlipX(o.flipX !== sx < 0);
+  };
   const tick = () => {
     const now = performance.now();
     const p = (now - t0) / ms;
     const a = at();
-    if (p >= 1 || !a || !back.active) {
-      scene.events.off('update', tick);
-      if (back.active) back.destroy();
-      if (front.active) front.destroy();
-      return;
+    if (p >= 1 || !a || !front.active) return end();
+    const fade = p > 0.85 ? (1 - p) / 0.15 : Math.min(1, p * 6);
+    // el personaje encendido (cada fotograma, para que siga su animación)
+    if (ch?.active) {
+      const parts = bodyParts(ch);
+      parts.forEach((o, i) => {
+        const r = (rim[i] ??= scene.add.image(0, 0, o.texture.key).setTintFill(0x5aa8ff).setBlendMode(Phaser.BlendModes.ADD));
+        const l = (lit[i] ??= scene.add.image(0, 0, o.texture.key).setTintFill(0xfff6b0).setBlendMode(Phaser.BlendModes.ADD));
+        copy(r, o, 1.07);
+        copy(l, o, 1);
+        r.setVisible(true).setAlpha(0.55 * fade * fl).setDepth(ch.depth - 0.4);
+        l.setVisible(true).setAlpha(0.5 * fade * fl).setDepth(ch.depth + 0.3);
+      });
+      for (let i = parts.length; i < lit.length; i++) {
+        lit[i].setVisible(false);
+        rim[i]?.setVisible(false);
+      }
     }
     if (now < next) return;
     next = now + 60;
-    const fade = p > 0.85 ? (1 - p) / 0.15 : Math.min(1, p * 6);
+    fl = 0.7 + Math.random() * 0.3;
     const H = Math.max(30, a.y - a.headY);
-    const cy = a.y - H * 0.5;
-    back.clear().setDepth(a.y - 0.5);
     front.clear().setDepth(a.y + 6);
-    // halo detrás: blanco-amarillo potente que parpadea
-    const fl = 0.75 + Math.random() * 0.25;
-    back.fillStyle(0x5aa8ff, 0.28 * fade * fl).fillEllipse(a.x, cy, H * 1.5, H * 1.7);
-    back.fillStyle(0xfff36b, 0.35 * fade * fl).fillEllipse(a.x, cy, H * 1.05, H * 1.3);
-    back.fillStyle(0xffffff, 0.45 * fade * fl).fillEllipse(a.x, cy, H * 0.6, H * 0.95);
-    // velo luminoso sobre el cuerpo: el personaje se ve brillante
-    front.fillStyle(0xffffff, 0.22 * fade * fl).fillEllipse(a.x, cy, H * 0.55, H * 0.95);
     // rayos por el cuerpo y saliendo de él
-    for (let i = 0; i < 5; i++) {
+    for (let i = 0; i < 6; i++) {
       const y0 = a.y - H * FB(0.05, 0.98);
       const x0 = a.x + FB(-0.25, 0.25) * H;
       const ang = Math.random() * Math.PI * 2;
@@ -464,9 +491,30 @@ export function lightningBodyFx(scene: Phaser.Scene, at: () => FxAnchor | null, 
     for (let i = 0; i < 6; i++) front.fillStyle(pick(ELEC.spark), fade).fillCircle(a.x + FB(-0.45, 0.45) * H, a.y - Math.random() * H, FB(1.5, 3.5));
   };
   scene.events.on('update', tick);
-  scene.events.once('shutdown', () => scene.events.off('update', tick));
+  scene.events.once('shutdown', end);
 }
 
+type BodyPart = Phaser.GameObjects.GameObject & {
+  visible: boolean;
+  texture: Phaser.Textures.Texture;
+  frame: Phaser.Textures.Frame;
+  originX: number;
+  originY: number;
+  flipX: boolean;
+  getWorldTransformMatrix(): Phaser.GameObjects.Components.TransformMatrix;
+};
+/** Imágenes y sprites visibles del personaje (recursivo), como DashFx. */
+function bodyParts(root: Phaser.GameObjects.GameObject): BodyPart[] {
+  const out: BodyPart[] = [];
+  const walk = (o: Phaser.GameObjects.GameObject) => {
+    const d = o as BodyPart & { list?: Phaser.GameObjects.GameObject[] };
+    if (d.visible === false) return;
+    if (Array.isArray(d.list)) d.list.forEach(walk);
+    else if (d.texture && d.frame && typeof d.getWorldTransformMatrix === 'function' && d.texture.key !== '__DEFAULT' && d.texture.key !== '__MISSING') out.push(d);
+  };
+  walk(root);
+  return out;
+}
 /**
  * Salto-RAYO de la ULTI: un rayo gordo une el punto de salida con el de llegada (el personaje viaja como un destello),
  * con fogonazo blanco en los dos extremos y un trueno corto. (ax, ay) / (bx, by) = pies en pantalla, `k` = escala.
@@ -501,15 +549,19 @@ export function lightningDashFlash(scene: Phaser.Scene, ax: number, ay: number, 
       zap(bolt, ax, ya, bx, yb, 16 * s, 3 * s, 0, 1 - p * 0.6);
     }
     fx.clear();
-    // fogonazo en la salida y (un poco después) en la llegada, con su aro en el suelo
+    // (21-11-2026) sin el fogonazo redondo ni el aro del suelo (tapaban al personaje): en la salida y la llegada, rayitos que saltan del cuerpo;
+    // el brillo es el del propio personaje (lightningBodyFx)
     for (const [x, y, d] of [
       [ax, ya, 0],
       [bx, yb, 0.18],
     ] as const) {
       const q = Math.min(1, Math.max(0, (p - d) / (1 - d)));
-      if (q <= 0) continue;
-      fx.fillStyle(0xffffff, 0.95 * (1 - q)).fillCircle(x, y, 26 * s * (0.6 + 2.2 * q));
-      fx.lineStyle(3 * s, ELEC.mid, 1 - q).strokeEllipse(x, y + headUp * 0.5, 50 * s * (1 + 2.4 * q), 16 * s * (1 + 2.4 * q));
+      if (q <= 0 || q >= 1) continue;
+      for (let i = 0; i < 4; i++) {
+        const ang = FB(0, Math.PI * 2);
+        const L = headUp * FB(0.35, 0.6) * (0.6 + q);
+        zap(fx, x, y, x + Math.cos(ang) * L, y + Math.sin(ang) * L * 0.75, 8 * s, 2.2 * s, 1, 1 - q);
+      }
     }
     // chispas que salen de la llegada
     const q2 = Math.min(1, Math.max(0, (p - 0.18) / 0.82));

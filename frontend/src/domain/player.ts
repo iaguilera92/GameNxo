@@ -7,6 +7,7 @@
  */
 import type { AbilityId } from '../logic/Abilities';
 import type { SkinId } from '../characters/skins';
+import type { RankId } from './ranks';
 import { type WheelState, cloneWheel, newWheelState } from './wheelState';
 import { type BattlePassState, cloneBattlePass, newBattlePass } from './battlePassState';
 import { type RankedState, cloneRanked, newRankedState } from './rankedState';
@@ -38,9 +39,9 @@ export const newLoginState = (): LoginState => ({ last: '', streak: 0, adBonusDa
 
 /** Efectos de pelota (estelas). `classic` = POR DEFECTO (sin estela). Los ids no se cambian nunca. */
 export type StyleId = 'classic' | 'red' | 'green' | 'gold' | 'pink' | 'rainbow' | 'ember' | 'frost' | 'tulip' | 'hearts' | 'stars' | 'neon' | 'smoke';
-export type ItemKind = 'ability' | 'skin' | 'style' | 'inferno' | 'charge' | 'defensive' | 'smash' | 'emote' | 'color';
+export type ItemKind = 'ability' | 'skin' | 'style' | 'inferno' | 'charge' | 'defensive' | 'smash' | 'emote' | 'color' | 'zone';
 /** Id único de ítem: `<tipo>:<id>` (ej. 'ability:wall', 'skin:mai'). Los `emote:` solo se ganan en el Pase de Batalla. */
-export type ItemId = `ability:${AbilityId}` | `skin:${SkinId}` | `style:${StyleId}` | `inferno:${InfernoPower}` | `charge:${ChargeFxId}` | `defensive:${DefensivePower}` | `smash:${SmashPower}` | `emote:${EmoteKind}` | `color:${CharColorId}`;
+export type ItemId = `ability:${AbilityId}` | `skin:${SkinId}` | `style:${StyleId}` | `inferno:${InfernoPower}` | `charge:${ChargeFxId}` | `defensive:${DefensivePower}` | `smash:${SmashPower}` | `emote:${EmoteKind}` | `color:${CharColorId}` | `zone:${'fire' | 'shadow'}`;
 
 export interface Loadout {
   skin: SkinId;
@@ -56,6 +57,10 @@ export interface Loadout {
   defensive?: DefensivePower;
   /** ESTILO DE COLOR del personaje (domain/charColors.ts); sin elegir = clásico */
   color?: CharColorId;
+  /** ESTILO DE ZONA (domain/zoneSkins.ts): cómo se ve tu ZONA; sin elegir = Eléctrica */
+  zone?: 'fire' | 'shadow';
+  /** MARCO del perfil (domain/profileFrames.ts: el de una liga ya alcanzada); sin elegir = borde azul */
+  frame?: RankId;
 }
 
 import type { ChestState } from './chest';

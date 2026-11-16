@@ -151,6 +151,11 @@ export function registerSocketHandlers(io: Server) {
         const color = typeof profile.color === 'string' && /^[a-z0-9-]{1,16}$/.test(profile.color) && profile.color !== 'classic' ? profile.color : undefined;
         // victorias totales (solo se muestran en la pantalla VS): entero entre 0 y 999999
         const wins = Number.isFinite(Number(profile.wins)) ? Math.max(0, Math.min(999999, Math.floor(Number(profile.wins)))) : 0;
+        // marco del perfil (solo cosmético, pantalla VS): solo ids de liga conocidos. Sin cuentas el servidor no puede comprobar
+        // que el jugador llegó a esa liga (docs/RANKED-V2.md, etapa 3): cuando existan, validar contra su mejor liga guardada
+        const frame = typeof profile.frame === 'string' && ['bronze', 'silver', 'gold', 'platinum', 'diamond', 'challenger'].includes(profile.frame) ? profile.frame : undefined;
+        // estilo de ZONA (solo cosmético): ids conocidos; sin cuentas no se comprueba que lo haya comprado (igual que el marco)
+        const zone = typeof profile.zone === 'string' && ['fire', 'shadow'].includes(profile.zone) ? profile.zone : undefined;
         const clean = {
           name: profile.name.slice(0, 16),
           level: Math.max(1, Math.floor(Number(profile.level) || 1)),
@@ -158,6 +163,8 @@ export function registerSocketHandlers(io: Server) {
           ...(charge ? { charge } : {}),
           ...(color ? { color } : {}),
           ...(wins > 0 ? { wins } : {}),
+          ...(frame ? { frame } : {}),
+          ...(zone ? { zone } : {}),
           zoneStats: {
             strength: clampZone(rawZone.strength),
             speed: clampZone(rawZone.speed),

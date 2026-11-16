@@ -11,6 +11,8 @@ export const LEAGUE_STYLE: Record<RankId, { color: number; light: number; dark: 
 };
 
 export const fmtCoins = (n: number) => n.toLocaleString('es-CL');
+/** Neto con signo (Ranking Liga): +1.500 · −500 · 0 */
+export const fmtNet = (n: number) => (n > 0 ? '+' : n < 0 ? '−' : '') + Math.abs(n).toLocaleString('es-CL');
 
 /** "3d 04h" / "5h 12m" / "12m". */
 export function fmtLeft(ms: number) {

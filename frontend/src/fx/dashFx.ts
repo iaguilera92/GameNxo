@@ -37,11 +37,22 @@ export class DashFx {
     return this.live.size;
   }
 
-  /** Sombra nº `index` (0 = la más antigua y tenue) del personaje `ch` en su sitio actual. */
-  ghost(ch: Phaser.GameObjects.Container, index: number, depth: number) {
+  /**
+   * Sombra nº `index` (0 = la más antigua y tenue) del personaje `ch` en su sitio actual. `space` = contenedor donde se crean las sombras (la
+   * demostración del selector de PERSONALIZAR: un escenario con su propia escala y posición): la posición y el tamaño pasan del mundo a ese contenedor.
+   */
+  ghost(ch: Phaser.GameObjects.Container, index: number, depth: number, space?: Phaser.GameObjects.Container) {
     const alpha = this.cfg.ghostAlpha[index] ?? 0.35;
     for (const o of drawables(ch)) {
-      const m = o.getWorldTransformMatrix();
+      const world = o.getWorldTransformMatrix();
+      // (21-11-2026) OJO: en Phaser 3.90 TransformMatrix.multiply devuelve el ARRAY (Float32Array), no la matriz: se multiplica en `inv` y se usa
+      // `inv` (antes se usaba lo devuelto → a, d, tx, ty indefinidos y las sombras de las demostraciones salían en 0,0, fuera de la vista)
+      let m = world;
+      if (space) {
+        const inv = space.getWorldTransformMatrix().invert();
+        inv.multiply(world);
+        m = inv;
+      }
       // descomposición con volteo: una escala negativa (rig volteado) se convierte en flipX, no en un giro de 180°
       const sy = Math.hypot(m.c, m.d);
       const rot = Math.atan2(-m.c, m.d);

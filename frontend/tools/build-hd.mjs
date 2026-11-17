@@ -228,6 +228,7 @@ function framesHd(path) {
     const ground = Math.max(...row.map((f) => f.foot - f.cellTop));
     for (const f of row) f.ay = f.cellTop + ground - f.y0;
   }
+  frames.imgW = w; // ancho de la imagen fuente: los clips que copian la escala de otro (SCALE_AS) se corrigen si es de otro tamaño
   return frames;
 }
 
@@ -354,8 +355,11 @@ for (const [clip, d] of Object.entries(data)) {
     d.ref = ref;
   }
 }
-for (const d of Object.values(data)) if (d.k === null) d.k = data[d.ref].k;
-for (const clip of RUN_LIKE) if (data[clip]?.hd && !data[clip].old && data.run?.hd) data[clip].k = data.run.k; // sin referencia: al tamaño de `run`
+// (17-11-2026) misma escala que su referencia EN EL DIBUJO: si la imagen fuente es de otro tamaño (p. ej. 2512 o 1024 px de ancho en vez de
+// 1536), el personaje viene dibujado más grande o más chico en píxeles y se corrige con la proporción de anchos (antes la estirada de MAI
+// rival salía 1,5 veces más grande hacia un lado y casi la mitad hacia el otro)
+for (const d of Object.values(data)) if (d.k === null) d.k = data[d.ref].k * ((data[d.ref].frames.imgW ?? 1) / (d.frames.imgW ?? 1));
+for (const clip of RUN_LIKE) if (data[clip]?.hd && !data[clip].old && data.run?.hd) data[clip].k = data.run.k * ((data.run.frames.imgW ?? 1) / (data[clip].frames.imgW ?? 1)); // sin referencia: al tamaño de `run` (corregido por el tamaño de la imagen)
 
 // (14-11-2026) CELDA PROPIA POR TIRA (simétrica: el ancla en el centro): cada animación ocupa solo lo que dibuja. Antes había
 // una celda común (la de la más ancha) y cada tira pagaba ese tamaño en la memoria del teléfono.

@@ -498,8 +498,9 @@ export class Character extends Phaser.GameObjects.Container {
   }
 
   /** Estirada con su animación (hojas nuevas). false = sin hoja: el llamador inclina el cuerpo. */
-  lunge(side: number): boolean {
-    return this.nxo?.lunge(side) ?? false;
+  /** `hold` (17-11-2026): se queda tendido al final de la estirada (BOLA DE ENERGÍA), sin la recuperación. */
+  lunge(side: number, hold = false): boolean {
+    return this.nxo?.lunge(side, hold) ?? false;
   }
 
   /** Recibe un ataque especial (aturdido / impacto del INFERNO). false = sin hoja: el llamador usa el giro de siempre. */

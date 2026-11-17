@@ -10,7 +10,7 @@ import type { RankId } from '../domain/ranks';
 import { resetMatchEnd } from '../fx/matchEnd';
 import { markWheelPresented, recordMatchWin, wheelToPresent, wheelStatuses } from '../logic/Wheels';
 import { openWheel, whenWheelReady } from './WheelScene';
-import { drawWheelFace, drawXpIcon } from '../ui/wheelArt';
+import { coinIcon, drawWheelFace, drawXpIcon } from '../ui/wheelArt';
 import { WHEEL } from '../domain/wheelConfig';
 import { commit, getPlayer } from '../domain/playerStore';
 import { awardMastery } from '../domain/operations';
@@ -82,19 +82,7 @@ const DUEL_BOX_H = 214;
 /** zoom al que llega el mapa de atrás cuando terminan de pasar las monedas (parte de 0,9, el de matchEnd.ts) */
 const MAP_ZOOM_END = 0.74;
 
-/** Moneda dibujada (sin imagen): disco dorado con canto, brillo y una corona. */
-function drawCoin(g: Phaser.GameObjects.Graphics, r: number) {
-  g.fillStyle(0x0a1638, 1).fillCircle(0, 0, r + 2.5);
-  g.fillStyle(0xd99400, 1).fillCircle(0, 1.5, r);
-  g.fillStyle(GOLD, 1).fillCircle(0, 0, r);
-  g.lineStyle(Math.max(1.5, r * 0.14), 0xfff1b8, 0.9).strokeCircle(0, 0, r * 0.68);
-  const k = r / 14;
-  g.fillStyle(0xd99400, 1).fillPoints(
-    [{ x: -6 * k, y: 4 * k }, { x: -7 * k, y: -4 * k }, { x: -3 * k, y: 0 }, { x: 0, y: -6 * k }, { x: 3 * k, y: 0 }, { x: 7 * k, y: -4 * k }, { x: 6 * k, y: 4 * k }],
-    true,
-  );
-  g.fillStyle(0xffffff, 0.55).fillEllipse(-r * 0.35, -r * 0.42, r * 0.7, r * 0.32);
-}
+// (17-11-2026) moneda: imagen moneda-1.webp — la moneda dibujada local (drawCoin) se quitó: ahora coinIcon (ui/wheelArt)
 
 /**
  * Poses de la tarjeta de resultado de MAI de frente, cortadas de su hoja nueva (tools/build-end-poses.mjs): la hoja de
@@ -106,6 +94,8 @@ const maiEndKey = (c: keyof typeof MAI_END.clips) => `mai-front-end-${c}`;
 /** Clips de la tarjeta: los del personaje, salvo MAI de frente, que usa sus poses nuevas (si cargaron). */
 function endPosesFor(scene: Phaser.Scene, clips?: DuelClips): DuelClips | undefined {
   if (!clips || !clips.idle.key.startsWith('mai-front')) return clips;
+  // (17-11-2026) con su pack HD conectado (mai-front-v2) ya trae victoria y derrota buenas: las poses viejas solo sin él
+  if (scene.textures.exists('maif-x-defeat')) return clips;
   const k = (c: keyof typeof MAI_END.clips): EndClip | null => {
     const key = maiEndKey(c);
     return scene.textures.exists(key) && scene.anims.exists(key) ? { key, last: 7, origin: { x: 0.5, y: 1 }, standHeight: MAI_END.cell.h } : null;
@@ -457,7 +447,9 @@ export class MatchEndScene extends Phaser.Scene {
 
     // --- 1) MONEDAS
     const m = this.card(c, xs[0], y0, cw, 'MONEDAS', GOLD, 0x3a2a08);
-    drawCoin(m.icon, 30);
+    // (17-11-2026) moneda: imagen moneda-1.webp (en un contenedor con la misma posición/escala del icono, así sus tweens de escala no cambian)
+    const mCoin = this.add.container(m.icon.x, m.icon.y, [coinIcon(this, 0, 0, 30)]).setScale(m.icon.scaleX);
+    m.cont.addAt(mCoin, m.cont.getIndex(m.icon) + 1);
     m.value.setText('+0').setColor('#ffd23f');
     m.sub.setText(`TOTAL ${coins.before.toLocaleString('es-CL')}`);
     this.pop(m.cont, base, () => {
@@ -474,7 +466,7 @@ export class MatchEndScene extends Phaser.Scene {
           m.sub.setText(`TOTAL ${(coins.before + v).toLocaleString('es-CL')}`);
           fitText(m.sub, cw - 16);
         },
-        onComplete: () => this.tweens.add({ targets: m.icon, scale: { from: 1.3, to: 1 }, duration: 300, ease: 'Back.easeOut' }),
+        onComplete: () => this.tweens.add({ targets: mCoin, scale: { from: 1.3, to: 1 }, duration: 300, ease: 'Back.easeOut' }),
       });
       this.coinShower(c, xs[0], y0 + 70, xs[0], y0 + 40, Math.min(7, 2 + Math.round(coins.gained / 10)));
     });
@@ -617,8 +609,7 @@ export class MatchEndScene extends Phaser.Scene {
   /** Monedas que saltan del contador ganado al total (dentro del panel). */
   private coinShower(c: Phaser.GameObjects.Container, x0: number, y0: number, x1: number, y1: number, n: number) {
     for (let i = 0; i < n; i++) {
-      const g = this.add.graphics({ x: x0, y: y0 });
-      drawCoin(g, 9);
+      const g = this.add.container(x0, y0, [coinIcon(this, 0, 0, 9)]); // (17-11-2026) moneda: imagen moneda-1.webp
       g.setScale(0.6).setAlpha(0);
       c.add(g);
       const peak = Math.min(y0, y1) - Phaser.Math.Between(40, 80);
@@ -777,8 +768,7 @@ export class MatchEndScene extends Phaser.Scene {
         // Retrato frontal de NXO como respaldo para animaciones ausentes o skins sin hoja de poses finales.
         bc.add(this.add.image(colL, feetY, 'portrait-nxo').setOrigin(0.5, 1).setDisplaySize(84, 108));
       }
-      const coin = this.add.graphics({ x: colR, y: -24 });
-      drawCoin(coin, 24);
+      const coin = this.add.container(colR, -24, [coinIcon(this, 0, 0, 24)]); // (17-11-2026) moneda: imagen moneda-1.webp
       const val = this.add.text(colR, 30, amount.toLocaleString('es-CL'), { fontFamily: FONT, fontSize: '32px', color: '#ffffff', stroke: '#0a1638', strokeThickness: 5 }).setOrigin(0.5);
       bc.add([coin, val]);
       const center = () => fitText(val, bw / 2 - 16);
@@ -833,8 +823,7 @@ export class MatchEndScene extends Phaser.Scene {
       const gapMs = (TOTAL - FLY) / n;
       let pulse: Phaser.Tweens.Tween | null = null;
       for (let i = 0; i < n; i++) {
-        const cg = this.add.graphics();
-        drawCoin(cg, Phaser.Math.Between(10, 15));
+        const cg = coinIcon(this, 0, 0, Phaser.Math.Between(10, 15)); // (17-11-2026) moneda: imagen moneda-1.webp
         const sx = from.bc.x + colR + Phaser.Math.Between(-14, 14);
         const sy = by + Phaser.Math.Between(-22, 22);
         const ex = to.bc.x + colR + Phaser.Math.Between(-10, 10);

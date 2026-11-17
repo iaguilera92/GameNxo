@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import { FONT } from './theme';
 import { roundedPoly } from './shapes';
 import { refitWhenFontsReady } from './fitText';
+import { bakeGraphics } from './bakeGraphics';
 
 /**
  * Botones de modo de juego (JUGAR / 2v2…): forma inclinada del botón JUGAR original,
@@ -40,17 +41,23 @@ export function modeBand(w: number, h: number, y0: number, y1: number, inset: nu
   return roundedPoly([[xl(y0), y0], [xr(y0), y0], [xr(y1), y1], [xl(y1), y1]], r);
 }
 
+/**
+ * Cuerpo del botón, pintado UNA vez en una textura (por tamaño y paleta) y mostrado como imagen: un Graphics se vuelve a recorrer
+ * entero en cada fotograma (6 polígonos por botón) y, con varios botones a la vez (Tienda), pesa. Centrado en (0, 0), como antes.
+ */
 function modeBody(scene: Phaser.Scene, w: number, h: number, pal: BodyPal) {
-  const g = scene.add.graphics();
-  const off = (pts: Phaser.Math.Vector2[], dx: number, dy: number) => pts.map((p) => ({ x: p.x + dx, y: p.y + dy }));
-  g.fillStyle(pal.shadow, pal.shadowA).fillPoints(off(modeShape(w, h, 4), 6, 9), true);
-  g.fillStyle(0x0a1638, 1).fillPoints(modeShape(w, h, 5), true);
-  g.fillStyle(pal.bottom, 1).fillPoints(modeShape(w, h), true);
-  // capas del degradado (mismas alturas que antes), siempre dentro del contorno
-  g.fillStyle(pal.mid, 1).fillPoints(modeBand(w, h, -h * 0.44, h * 0.34, 5, 9), true);
-  g.fillStyle(pal.top, 1).fillPoints(modeBand(w, h, -h * 0.42, -h * 0.02, 8, 8), true);
-  g.fillStyle(0xffffff, pal.glossA).fillPoints(modeBand(w, h, -h * 0.39, -h * 0.3, Math.max(14, w * 0.05), 4), true);
-  return g;
+  const pad = Math.ceil(h * 0.22) + 16; // inclinación + borde + sombra (6, 9)
+  const key = `mode-body-${w.toFixed(1)}x${h.toFixed(1)}-${pal.top}-${pal.mid}-${pal.bottom}-${pal.shadow}-${pal.shadowA}-${pal.glossA}`;
+  return bakeGraphics(scene, key, { x0: -w / 2 - pad, y0: -h / 2 - pad, w: w + pad * 2, h: h + pad * 2 }, 2, (g) => {
+    const off = (pts: Phaser.Math.Vector2[], dx: number, dy: number) => pts.map((p) => ({ x: p.x + dx, y: p.y + dy }));
+    g.fillStyle(pal.shadow, pal.shadowA).fillPoints(off(modeShape(w, h, 4), 6, 9), true);
+    g.fillStyle(0x0a1638, 1).fillPoints(modeShape(w, h, 5), true);
+    g.fillStyle(pal.bottom, 1).fillPoints(modeShape(w, h), true);
+    // capas del degradado (mismas alturas que antes), siempre dentro del contorno
+    g.fillStyle(pal.mid, 1).fillPoints(modeBand(w, h, -h * 0.44, h * 0.34, 5, 9), true);
+    g.fillStyle(pal.top, 1).fillPoints(modeBand(w, h, -h * 0.42, -h * 0.02, 8, 8), true);
+    g.fillStyle(0xffffff, pal.glossA).fillPoints(modeBand(w, h, -h * 0.39, -h * 0.3, Math.max(14, w * 0.05), 4), true);
+  });
 }
 
 const PALETTES = {

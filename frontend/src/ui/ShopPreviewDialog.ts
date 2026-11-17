@@ -6,6 +6,7 @@ import { RARITY_LABEL, type ItemRarity, clpLabel } from '../domain/shopCatalog';
 import { RARITY_STYLE } from './rarity';
 import { drawCashIcon } from '../scenes/BattlePassScene';
 import type { DemoRect, PowerDemo } from './PowerDialog';
+import { bakeGraphics } from './bakeGraphics';
 
 /**
  * VER EN ACCIÓN desde la TIENDA (16-11-2026, pedido del usuario): la misma pantalla "EN ACCIÓN" del selector de PERSONALIZAR (tu personaje contra la
@@ -100,9 +101,12 @@ export function openShopPreview(scene: Phaser.Scene, o: ShopPreviewOpts) {
   fitText(cap, sw - 60);
   panel.add([dot, cap]);
   scene.tweens.add({ targets: dot, alpha: 0.25, duration: 520, yoyo: true, repeat: -1 });
-  const scan = scene.add.graphics();
-  scan.fillStyle(0xffffff, 0.035);
-  for (let y = sy + 2; y < sy + sh - 2; y += 4) scan.fillRect(sx + 4, y, sw - 8, 1.5);
+  // líneas de la pantalla: ~120 rectángulos que un Graphics recorrería en cada fotograma; pintadas una vez en una textura
+  const scan = bakeGraphics(scene, `shop-bake-scan-${sw}x${sh}`, { x0: 0, y0: 0, w: sw, h: sh }, 1, (g) => {
+    g.fillStyle(0xffffff, 0.035);
+    for (let y = 2; y < sh - 2; y += 4) g.fillRect(4, y, sw - 8, 1.5);
+  });
+  scan.setPosition(sx, sy);
   panel.add(scan);
 
   // ---------------------------------------------------------------- nombre, rareza y descripción

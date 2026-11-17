@@ -1,0 +1,199 @@
+{
+  "source": "personajes/Mai/rival/hd/mai-rival-*.png (tools/build-hd.mjs mai-front; JSON base copiado de nxo-front-extra.json el 17-11-2026)",
+  "view": "front",
+  "cell": {
+    "w": 120,
+    "h": 157
+  },
+  "origin": {
+    "x": 0.5,
+    "y": 0.97452
+  },
+  "standHeight": 150,
+  "animations": {
+    "dash": {
+      "file": "dash.webp",
+      "frames": 8,
+      "fps": 18,
+      "loop": true,
+      "cell": {
+        "w": 124,
+        "h": 153
+      },
+      "origin": {
+        "x": 0.5,
+        "y": 0.97386
+      }
+    },
+    "defeat": {
+      "file": "defeat.webp",
+      "frames": 8,
+      "fps": 10,
+      "loop": false,
+      "cell": {
+        "w": 116,
+        "h": 159
+      },
+      "origin": {
+        "x": 0.5,
+        "y": 0.97484
+      }
+    },
+    "serve-spin": {
+      "file": "serve-spin.webp",
+      "frames": 8,
+      "fps": 12,
+      "loop": false,
+      "impact": 4,
+      "cell": {
+        "w": 132,
+        "h": 185
+      },
+      "origin": {
+        "x": 0.5,
+        "y": 0.97838
+      }
+    },
+    "dive-right": {
+      "file": "dive-right.webp",
+      "frames": 8,
+      "fps": 18,
+      "loop": false,
+      "cell": {
+        "w": 152,
+        "h": 143
+      },
+      "origin": {
+        "x": 0.5,
+        "y": 0.97203
+      }
+    },
+    "dive-left": {
+      "file": "dive-left.webp",
+      "frames": 8,
+      "fps": 18,
+      "loop": false,
+      "cell": {
+        "w": 180,
+        "h": 134
+      },
+      "origin": {
+        "x": 0.5,
+        "y": 0.97015
+      }
+    },
+    "recover-right": {
+      "file": "recover-right.webp",
+      "frames": 8,
+      "fps": 14,
+      "loop": false,
+      "cell": {
+        "w": 134,
+        "h": 157
+      },
+      "origin": {
+        "x": 0.5,
+        "y": 0.97452
+      }
+    },
+    "recover-left": {
+      "file": "recover-left.webp",
+      "frames": 8,
+      "fps": 14,
+      "loop": false,
+      "cell": {
+        "w": 142,
+        "h": 157
+      },
+      "origin": {
+        "x": 0.5,
+        "y": 0.97452
+      }
+    },
+    "stunned": {
+      "file": "stunned.webp",
+      "frames": 8,
+      "fps": 12,
+      "loop": true,
+      "cell": {
+        "w": 118,
+        "h": 157
+      },
+      "origin": {
+        "x": 0.5,
+        "y": 0.97452
+      }
+    },
+    "point-won": {
+      "file": "point-won.webp",
+      "frames": 8,
+      "fps": 12,
+      "loop": false,
+      "cell": {
+        "w": 116,
+        "h": 157
+      },
+      "origin": {
+        "x": 0.5,
+        "y": 0.97452
+      }
+    },
+    "point-lost": {
+      "file": "point-lost.webp",
+      "frames": 8,
+      "fps": 10,
+      "loop": false,
+      "cell": {
+        "w": 120,
+        "h": 157
+      },
+      "origin": {
+        "x": 0.5,
+        "y": 0.97452
+      }
+    },
+    "inferno-hit": {
+      "file": "inferno-hit.webp",
+      "frames": 8,
+      "fps": 14,
+      "loop": false,
+      "cell": {
+        "w": 148,
+        "h": 159
+      },
+      "origin": {
+        "x": 0.5,
+        "y": 0.97484
+      }
+    },
+    "volley": {
+      "file": "volley.webp",
+      "frames": 8,
+      "fps": 16,
+      "loop": false,
+      "impact": 4,
+      "cell": {
+        "w": 124,
+        "h": 158
+      },
+      "origin": {
+        "x": 0.5,
+        "y": 0.97468
+      }
+    },
+    "walk-intro": {
+      "file": "walk-intro.webp",
+      "frames": 8,
+      "fps": 8,
+      "loop": true,
+      "cell": {
+        "w": 104,
+        "h": 159
+      },
+      "origin": {
+        "x": 0.5,
+        "y": 0.97484
+      }
+    }
+  }
+}

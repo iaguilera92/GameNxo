@@ -3,7 +3,7 @@ import { FONT } from './theme';
 import { fitText } from './fitText';
 import { roundedPoly } from './shapes';
 import { arcadeButton } from './modeButtons';
-import { drawCoinIcon, drawGiftIcon } from './wheelArt';
+import { coinIcon, drawGiftIcon } from './wheelArt';
 import { drawCashIcon } from '../scenes/BattlePassScene';
 import { LOGIN, type LoginReward } from '../domain/dailyLogin';
 import { claimLogin, claimLoginRewardAdBonus, loginStatus } from '../logic/Ranked';
@@ -153,11 +153,11 @@ export function openDailyLogin(scene: Phaser.Scene, onChange: () => void, onToas
     if (special) p.add(scene.add.text(cx + cw / 2 - 14, top + 50, '★', { fontFamily: FONT, fontSize: '22px', color: '#fff1a8', stroke: '#3a0a6a', strokeThickness: 4 }).setOrigin(0.5));
 
     // premio: moneda grande + cantidad; con dinero, una segunda línea con los billetes
-    const iy = r.cash ? cy - 12 : cy;
-    const coin = scene.add.graphics({ x: cx, y: iy });
-    drawCoinIcon(coin, 24);
+    // (17-11-2026, usuario) la imagen de la moneda ocupa más: moneda un poco más arriba y la cantidad más abajo, sin chocar
+    const iy = r.cash ? cy - 16 : cy - 3;
+    const coin = coinIcon(scene, cx, iy, 24); // (17-11-2026) moneda: imagen moneda-1.webp
     p.add(coin);
-    const amt = scene.add.text(cx, cy + (r.cash ? 30 : 38), r.coins.toLocaleString('es-CL'), { fontFamily: FONT, fontSize: '28px', color: '#ffffff', stroke: '#0a1638', strokeThickness: 6 }).setOrigin(0.5);
+    const amt = scene.add.text(cx, cy + (r.cash ? 33 : 45), r.coins.toLocaleString('es-CL'), { fontFamily: FONT, fontSize: '28px', color: '#ffffff', stroke: '#0a1638', strokeThickness: 6 }).setOrigin(0.5);
     if (amt.width > cw - 14) amt.setScale((cw - 14) / amt.width);
     p.add(amt);
     if (r.cash) {
@@ -181,7 +181,8 @@ export function openDailyLogin(scene: Phaser.Scene, onChange: () => void, onToas
       if (lost.width > cw - 16) lost.setScale((cw - 16) / lost.width);
       p.add(lost);
     } else if (today) {
-      loops.push(scene.tweens.add({ targets: coin, scale: { from: 1, to: 1.12 }, duration: 600, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' }));
+      // (17-11-2026) moneda: imagen moneda-1.webp (la imagen ya trae escala: el latido es relativo a ella)
+      loops.push(scene.tweens.add({ targets: coin, scale: { from: coin.scaleX, to: coin.scaleX * 1.12 }, duration: 600, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' }));
       // tocar la tarjeta de hoy = RECLAMAR (igual que el botón)
       const hit = scene.add.rectangle(cx, cy, cw, chh, 0xffffff, 0.001).setInteractive({ useHandCursor: true });
       hit.on('pointerdown', (_p: Phaser.Input.Pointer, _x: number, _y: number, e: Phaser.Types.Input.EventData) => e.stopPropagation());
@@ -204,9 +205,7 @@ export function openDailyLogin(scene: Phaser.Scene, onChange: () => void, onToas
     box.lineStyle(4, 0x45e7ff, 1).strokeRoundedRect(cx - cw / 2, cy - chh / 2, cw, chh, 16);
     p.add(box);
     p.add(scene.add.text(cx, cy - chh / 2 + 21, 'DÍA TEST', { fontFamily: FONT, fontSize: '18px', color: '#d8fbff' }).setOrigin(0.5).setLetterSpacing(1));
-    const testCoin = scene.add.graphics({ x: cx, y: cy - 8 });
-    drawCoinIcon(testCoin, 22);
-    p.add(testCoin);
+    p.add(coinIcon(scene, cx, cy - 8, 22)); // (17-11-2026) moneda: imagen moneda-1.webp
     p.add(scene.add.text(cx, cy + 40, `${testReward.coins}`, { fontFamily: FONT, fontSize: '26px', color: '#ffe45c', stroke: '#053044', strokeThickness: 5 }).setOrigin(0.5));
     const hit = scene.add.rectangle(cx, cy, cw, chh, 0xffffff, 0.001).setInteractive({ useHandCursor: true });
     hit.on('pointerup', (_pointer: Phaser.Input.Pointer, _lx: number, _ly: number, event: Phaser.Types.Input.EventData) => {
@@ -370,10 +369,12 @@ function showDailyRewardReveal(
       art = scene.add.image(x, artY, 'daily-coins-art').setDisplaySize(cardW * 0.78, cardH * 0.49);
     } else if (kind === 'cash' && scene.textures.exists('daily-cash-art')) {
       art = scene.add.image(x, artY, 'daily-cash-art').setDisplaySize(cardW * 0.82, cardH * 0.43);
+    } else if (kind === 'coins') {
+      art = coinIcon(scene, x, artY, Math.min(43, cardW * 0.21)); // (17-11-2026) moneda: imagen moneda-1.webp
     } else {
-      art = scene.add.graphics({ x, y: artY });
-      if (kind === 'coins') drawCoinIcon(art, Math.min(43, cardW * 0.21));
-      else drawCashIcon(art, Math.min(1, cardW / 220));
+      const cg = scene.add.graphics({ x, y: artY });
+      drawCashIcon(cg, Math.min(1, cardW / 220));
+      art = cg;
     }
     root.add(art);
     const artScale = { x: art.scaleX, y: art.scaleY };

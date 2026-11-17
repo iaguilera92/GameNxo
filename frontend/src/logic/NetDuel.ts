@@ -68,7 +68,7 @@ export const NET_DUEL = {
   rallyMax: 3,
   /** ronda (0 = la primera) cuyo peloteo es SIEMPRE de 3 golpes rápidos: el SHOW de antes del segundo aro */
   showRound: 1,
-  /** SHOW del peloteo: los golpes cruzan la red de lado a lado (± esta distancia desde el centro, u de cancha) y en algunos golpes el que pega se ESTIRA (duelLungeHit): la pelota va más lejos (× lungeReach) y más baja, pero siempre con un sprite de GOLPE (nunca el de tirado en el suelo) */
+  /** SHOW del peloteo: los golpes cruzan la red de lado a lado (± esta distancia desde el centro, u de cancha) y en algunos golpes el que pega se ESTIRA (duelLungeHit): la pelota va más lejos (× lungeReach) y más baja, con el sprite de la ESTIRADA (17-11-2026, usuario; sin hoja, el golpe de siempre). Del lado del revés, el golpe de revés; de la derecha, la volea */
   showSpread: 85,
   lungeReach: 1.35,
   /** cuadro del resultado de cada ronda y del duelo (ms) */
@@ -82,11 +82,11 @@ export const NET_DUEL = {
 
   // ---- efectos
   /** miradas: ancho de cada franja (fracción del ancho de pantalla) y entrada / salida (ms) */
-  gazeW: 1 / 3,
+  gazeW: 0.48, // (17-11-2026, usuario: más grandes y pegadas a los bordes de la pantalla) antes 1/3
   gazeInMs: 180,
   gazeOutMs: 200,
-  /** viñeta de los lados (alfa máximo) */
-  vignette: 0.42,
+  /** viñeta de los lados (alfa máximo). (17-11-2026, usuario) 0 = sin los bordes oscuros al empezar el duelo */
+  vignette: 0,
   /** RONDA DECISIVA (1-1 antes de la tercera): viñeta más oscura, aviso grande (ms que se queda) y aro dorado */
   vignetteDecisive: 0.78,
   decisiveMs: 800,

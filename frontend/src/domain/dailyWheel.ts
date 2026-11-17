@@ -190,7 +190,8 @@ export function scaleReward(r: WheelReward, tier: WheelTier): WheelReward {
   const pct = WHEEL.tiers.bonusPct[tier];
   if (!pct || r.kind === 'item' || r.kind === 'chest') return r;
   if (r.kind === 'coins' && r.duplicateOf !== undefined) return r;
-  return { ...r, amount: Math.round((r.amount * (100 + pct)) / 100) };
+  // (17-11-2026, usuario) siempre se nota el bonus: al menos +1 (1 de dinero en ruleta dorada o épica = 2, no 1)
+  return { ...r, amount: Math.max(r.amount + 1, Math.round((r.amount * (100 + pct)) / 100)) };
 }
 
 /** Tirada de UN toque: ¿sube la ruleta de nivel? (normal → dorada o épica; dorada → épica; la épica no sube más). */

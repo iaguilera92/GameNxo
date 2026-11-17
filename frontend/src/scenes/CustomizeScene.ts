@@ -27,7 +27,7 @@ import { createTrailPreview, drawTrailStatic } from '../fx/ballTrailFx';
 import { rankedState } from '../logic/Ranked';
 import { LEAGUE_ORDER } from '../domain/rankedConfig';
 import { ZONE_STAT_KEYS, ZONE_STAT_MAX, type ZoneStatKey, zoneStatsOf } from '../domain/zoneProgress';
-import { INFERNO_POWERS, infernoOwned, infernoPowerDef, type InfernoPower } from '../domain/infernoPowers';
+import { INFERNO_POWERS, infernoOwned, infernoPowerDef, isLegendaryInferno, type InfernoPower } from '../domain/infernoPowers';
 import { addBallPreview, ensureBallAnims, queueInfernoArt } from '../fx/InfernoFx';
 import { type PowerSlot, openPowerDialog } from '../ui/PowerDialog';
 import { SMASH_POWERS, type SmashPower, smashOwned, smashPowerDef, smashPowerOf } from '../domain/smashPowers';
@@ -1009,7 +1009,9 @@ ${unlockLabel(key)}`, { fontFamily: FONT, fontSize: '16px', color: '#ffd23f', st
     const power = getProfile().inferno;
     const def = infernoPowerDef(power);
     // degradado morado sin borde (como las tarjetas de PODERES ULTI de la Tienda); el borde brilla al final de la función
-    box.add(this.gradientCard(x, top, w, h, ['#8a4cf0', '#5a22b8', '#2a0c63'], 16, 'ulti'));
+    // (17-11-2026, usuario) con una ULTI LEGENDARIA equipada la tarjeta es DORADA (degradado y brillo del borde dorados)
+    const legend = isLegendaryInferno(power);
+    box.add(legend ? this.gradientCard(x, top, w, h, ['#ffd86b', '#d99400', '#6b3d00'], 16, 'ulti-gold') : this.gradientCard(x, top, w, h, ['#8a4cf0', '#5a22b8', '#2a0c63'], 16, 'ulti'));
 
     // la bola equipada en grande, envuelta en un aura de energía: halo suave fijo + chispas de su color que brotan
     // del borde y suben desvaneciéndose (emisor de partículas: sin crear objetos por fotograma)
@@ -1061,17 +1063,17 @@ ${unlockLabel(key)}`, { fontFamily: FONT, fontSize: '16px', color: '#ffd23f', st
     title.setScale(Math.min(1, tw / title.width));
     const name = this.add.text(tx, top + 43, def.ball, { fontFamily: FONT, fontSize: '14px', color: '#ffffff' }).setOrigin(0, 0).setLetterSpacing(1);
     name.setScale(Math.min(1, tw / name.width));
-    const desc = this.add.text(x + w / 2, top + 184, def.desc, { fontFamily: FONT, fontSize: '13px', color: '#e2d4ff', align: 'center', wordWrap: { width: w - 24 } }).setOrigin(0.5, 0);
+    const desc = this.add.text(x + w / 2, top + 184, def.desc, { fontFamily: FONT, fontSize: '13px', color: legend ? '#ffffff' : '#e2d4ff', align: 'center', wordWrap: { width: w - 24 }, ...(legend ? { stroke: '#4a2a00', strokeThickness: 3 } : {}) }).setOrigin(0.5, 0);
     const rule = this.add
       .text(x + w / 2, top + h - 34, `Se activa tras ${INFERNO.pointsToCharge} golpes ganadores`, { fontFamily: FONT, fontSize: '12px', color: '#ffe9a8' })
       .setOrigin(0.5, 1);
     if (rule.width > w - 16) rule.setScale((w - 16) / rule.width);
-    const more = this.add.text(x + w - 14, top + h - 12, `${def.name} · PODERES ›`, { fontFamily: FONT, fontSize: '12px', color: '#c9a4ff' }).setOrigin(1, 1);
+    const more = this.add.text(x + w - 14, top + h - 12, `${def.name} · PODERES ›`, { fontFamily: FONT, fontSize: '12px', color: legend ? '#fff1b8' : '#c9a4ff', ...(legend ? { stroke: '#4a2a00', strokeThickness: 3 } : {}) }).setOrigin(1, 1);
     if (more.width > w - 20) more.setScale((w - 20) / more.width);
     box.add([title, name, desc, rule, more]);
 
     // brillo que recorre el borde (dos destellos opuestos con estela), como el de la oferta del Pase en la Tienda
-    box.add(this.borderShine(x, top, w, h));
+    box.add(this.borderShine(x, top, w, h, legend ? 0xfff1b8 : 0xffffff));
 
     const hit = this.add.zone(x + w / 2, top + h / 2, w, h).setInteractive({ useHandCursor: true });
     hit.on('pointerup', () => this.openUltiDialog());
@@ -1130,7 +1132,7 @@ ${unlockLabel(key)}`, { fontFamily: FONT, fontSize: '16px', color: '#ffd23f', st
   }
 
   /** Dos destellos opuestos que dan la vuelta al borde de la tarjeta, con estela que se apaga (el de la oferta del Pase en la Tienda). */
-  private borderShine(x: number, y: number, w: number, h: number) {
+  private borderShine(x: number, y: number, w: number, h: number, col = 0xffffff) {
     const edge = this.add.graphics().setBlendMode(Phaser.BlendModes.ADD);
     const per = 2 * (w + h);
     /** punto del borde a la distancia d (desde la esquina superior izquierda, en sentido horario) */
@@ -1156,7 +1158,7 @@ ${unlockLabel(key)}`, { fontFamily: FONT, fontSize: '16px', color: '#ffd23f', st
             const a = at(run.d + off - (k * trail) / 10);
             const b = at(run.d + off - ((k + 1) * trail) / 10);
             const f = 1 - k / 10;
-            edge.lineStyle(5 * f + 2, 0xffffff, 0.85 * f).lineBetween(a.px, a.py, b.px, b.py);
+            edge.lineStyle(5 * f + 2, col, 0.85 * f).lineBetween(a.px, a.py, b.px, b.py);
           }
           const head = at(run.d + off);
           edge.fillStyle(0xffffff, 1).fillCircle(head.px, head.py, 4);
@@ -1274,7 +1276,7 @@ ${unlockLabel(key)}`, { fontFamily: FONT, fontSize: '16px', color: '#ffd23f', st
     open.on('pointerup', () => {
       // el DEFENSIVO (dash) tiene varios poderes: DASH y DESTELLO (domain/defensivePowers.ts)
       if (a.id === 'dash') return this.openDefensiveDialog(a);
-      // el ESPECIAL (smash) también: FUEGO, HIELO, VIENTO y RAYO (domain/smashPowers.ts)
+      // el ESPECIAL (smash) también: los 6 poderes (FUEGO, HIELO, VIENTO, RAYO, SOMBRA y LUZ: domain/smashPowers.ts)
       if (a.id === 'smash') return this.openSmashDialog(a);
       openPowerDialog(this, {
         title: `PODERES · ${a.name.toUpperCase()}`,
@@ -1297,7 +1299,7 @@ ${unlockLabel(key)}`, { fontFamily: FONT, fontSize: '16px', color: '#ffd23f', st
     pill.setDepth(1);
   }
 
-  /** ESPECIAL › PODERES: televisión con el poder del SMASH elegido y los disponibles (FUEGO, HIELO). Equipar refresca la pantalla. */
+  /** ESPECIAL › PODERES: televisión con el poder del SMASH elegido y los disponibles (los 6 de domain/smashPowers.ts). Equipar refresca la pantalla. */
   private openSmashDialog(a: AbilityDef) {
     const p = getPlayer();
     const cur = smashPowerOf(p.equipped.smash);

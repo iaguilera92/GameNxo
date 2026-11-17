@@ -5,7 +5,7 @@ import { rankedView } from '../logic/Ranked';
 import { RankBadge } from './RankBadge';
 import { LEAGUE_STYLE, fmtCoins } from './leagueStyle';
 import { infoIcon } from './PlayEntry';
-import { drawCoinIcon } from './wheelArt';
+import { coinIcon } from './wheelArt';
 
 /**
  * Panel de la búsqueda de rival con APUESTA (Ranked) o AMISTOSO: liga arriba (emblema + nombre) y, bajo el contador, lo
@@ -77,8 +77,7 @@ export function rankedSearchPanel(scene: Phaser.Scene, opts: { bet: number | nul
     if (total > bw - 16) t.setScale((bw - 16 - 10 - iconR * 2) / t.width);
     const tw = t.displayWidth + 10 + iconR * 2;
     t.setX(cx - tw / 2);
-    const ic = scene.add.graphics({ x: cx - tw / 2 + t.displayWidth + 10 + iconR, y: by + 16 });
-    drawCoinIcon(ic, iconR);
+    const ic = coinIcon(scene, cx - tw / 2 + t.displayWidth + 10 + iconR, by + 16, iconR); // (17-11-2026) moneda: imagen moneda-1.webp
     objs.push(t, ic);
   };
   box(W / 2 - bw / 2 - 8, 'Invertido:', `−${fmtCoins(st.entry)}`, 0x5a1424, 0xff5a6a, '#ffb0b8', false);

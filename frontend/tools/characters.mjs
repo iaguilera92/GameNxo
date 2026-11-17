@@ -108,12 +108,14 @@ export const CHARACTERS = {
     },
     ulti: { greenDetails: true },
   },
-  // Mai rival: sus hojas de movimientos (pj-mai-rival-1..4.png) aún no están procesadas; cuando se instalen, añadir `moves` y
-  // conectar el pack en objects/NxoActor.ts. Hoy solo tiene la ULTI cortada.
+  // (17-11-2026) Mai rival EN ALTA: imágenes en personajes/Mai/rival/hd/ (mai-rival-<hoja>-<n>.png, mai-rival-ulti-<n>.png) cortadas con
+  // `node tools/build-hd.mjs mai-front` y `--ulti`; conectada en objects/NxoActor.ts (PACKS 'mai-front'). Las hojas viejas
+  // pj-mai-rival-1..4.png quedan solo de referencia (no se cortan con build-moves). Falta `walk` (movimientos-8 llegó repetida: usa la carrera).
   'mai-front': {
     view: 'front',
     dir: 'Mai/rival',
     prefix: 'pj-mai-rival',
     ulti: { greenDetails: true },
+    serveRacket: { normal: { dx: -22, z: 127 }, spin: { dx: 20, z: 157 } }, // medido a ojo sobre serve.webp / serve-spin.webp HD, frame 5 (17-11-2026)
   },
 };

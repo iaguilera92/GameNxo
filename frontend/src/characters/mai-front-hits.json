@@ -1,0 +1,121 @@
+{
+  "source": "personajes/Mai/rival/hd/mai-rival-*.png (tools/build-hd.mjs mai-front; JSON base copiado de nxo-front-hits.json el 17-11-2026)",
+  "view": "front",
+  "cell": {
+    "w": 120,
+    "h": 157
+  },
+  "origin": {
+    "x": 0.5,
+    "y": 0.97452
+  },
+  "standHeight": 150,
+  "hold": 1,
+  "serveWait": 2,
+  "smashStart": 2,
+  "serveRacket": {
+    "normal": {
+      "dx": -22,
+      "z": 127
+    },
+    "spin": {
+      "dx": 20,
+      "z": 157
+    }
+  },
+  "holdForehand": 1,
+  "holdPower": 3,
+  "holdPowerForehand": 3,
+  "animations": {
+    "forehand": {
+      "file": "forehand.webp",
+      "frames": 8,
+      "fps": 15,
+      "loop": false,
+      "impact": 6,
+      "cell": {
+        "w": 120,
+        "h": 158
+      },
+      "origin": {
+        "x": 0.5,
+        "y": 0.97468
+      }
+    },
+    "backhand": {
+      "file": "backhand.webp",
+      "frames": 8,
+      "fps": 15,
+      "loop": false,
+      "impact": 5,
+      "cell": {
+        "w": 126,
+        "h": 157
+      },
+      "origin": {
+        "x": 0.5,
+        "y": 0.97452
+      }
+    },
+    "forehand-power": {
+      "file": "forehand-power.webp",
+      "frames": 8,
+      "fps": 15,
+      "loop": false,
+      "impact": 5,
+      "cell": {
+        "w": 136,
+        "h": 157
+      },
+      "origin": {
+        "x": 0.5,
+        "y": 0.97452
+      }
+    },
+    "backhand-power": {
+      "file": "backhand-power.webp",
+      "frames": 8,
+      "fps": 15,
+      "loop": false,
+      "impact": 5,
+      "cell": {
+        "w": 130,
+        "h": 157
+      },
+      "origin": {
+        "x": 0.5,
+        "y": 0.97452
+      }
+    },
+    "serve": {
+      "file": "serve.webp",
+      "frames": 8,
+      "fps": 12,
+      "loop": false,
+      "impact": 4,
+      "cell": {
+        "w": 130,
+        "h": 161
+      },
+      "origin": {
+        "x": 0.5,
+        "y": 0.97516
+      }
+    },
+    "smash": {
+      "file": "smash.webp",
+      "frames": 8,
+      "fps": 14,
+      "loop": false,
+      "impact": 4,
+      "cell": {
+        "w": 142,
+        "h": 184
+      },
+      "origin": {
+        "x": 0.5,
+        "y": 0.97826
+      }
+    }
+  }
+}

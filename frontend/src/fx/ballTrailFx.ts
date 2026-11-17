@@ -266,7 +266,7 @@ export function drawTrailStatic(g: Phaser.GameObjects.Graphics, r: number, look:
  * Pelota que cruza (cx - span/2 .. cx + span/2) dejando la estela del efecto, en bucle: para la Tienda y la televisión del
  * selector. Devuelve los objetos que hay que añadir a su contenedor y el tween principal (quitarlo al destruirlos).
  */
-export function createTrailPreview(scene: Phaser.Scene, cx: number, cy: number, span: number, look: TrailLook, size = 1, isVisible?: () => boolean) {
+export function createTrailPreview(scene: Phaser.Scene, cx: number, cy: number, span: number, look: TrailLook, size = 1, isVisible?: () => boolean, minFrameMs = 0) {
   const fx = look.fx ?? 'plain';
   const k = size;
   const pos = (t: number) => ({ x: cx - span / 2 + span * t, y: cy + 26 * k - Math.sin(t * Math.PI) * 52 * k });
@@ -285,9 +285,12 @@ export function createTrailPreview(scene: Phaser.Scene, cx: number, cy: number, 
   const parts = new TrailParticles(pg);
   const st = { t: 0 };
   let last = scene.time.now;
+  let lastDraw = -1e9;
   const draw = () => {
     if (isVisible && !isVisible()) return; // fuera de pantalla: no se redibuja
     const now = scene.time.now;
+    if (minFrameMs && now - lastDraw < minFrameMs) return; // limita los cuadros por segundo (varias vistas previas a la vez)
+    lastDraw = now;
     const dt = Math.min(0.05, (now - last) / 1000);
     last = now;
     g.clear();

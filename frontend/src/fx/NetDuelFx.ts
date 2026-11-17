@@ -28,7 +28,7 @@ const easeIn = (u: number) => u * u * u;
 export function createDuelGaze(scene: Phaser.Scene, o: { centerY: number; mySkin: string; rivalSkin: string }): DuelGaze {
   const W = scene.scale.width;
   const pw = Math.round(W * NET_DUEL.gazeW);
-  const margin = 10;
+  const margin = 0; // (17-11-2026, usuario) pegadas al borde de la pantalla (antes 10 px)
   const plates: { c: Phaser.GameObjects.Container; delay: number; w: number; xIn: number; xOut: number }[] = [];
 
   /** una franja (null si el personaje no tiene mirada o su imagen no cargó) */

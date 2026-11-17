@@ -1,0 +1,32 @@
+{
+  "source": "personajes/Mai/rival/hd/mai-rival-*.png (tools/build-hd.mjs mai-front; JSON base copiado de nxo-front-special.json el 17-11-2026)",
+  "view": "front",
+  "cell": {
+    "w": 120,
+    "h": 157
+  },
+  "origin": {
+    "x": 0.5,
+    "y": 0.97452
+  },
+  "standHeight": 150,
+  "start": 2,
+  "animations": {
+    "smash-power": {
+      "file": "smash-power.webp",
+      "frames": 8,
+      "fps": 14,
+      "loop": false,
+      "impact": 4,
+      "scale": 1,
+      "cell": {
+        "w": 142,
+        "h": 175
+      },
+      "origin": {
+        "x": 0.5,
+        "y": 0.97714
+      }
+    }
+  }
+}

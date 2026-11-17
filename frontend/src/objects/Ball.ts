@@ -404,7 +404,7 @@ export class Ball {
   }
 
   /**
-   * Poder del SMASH que lleva la pelota (fuego, hielo, viento o rayo, domain/smashPowers.ts): color del núcleo, de la estela y de las
+   * Poder del SMASH que lleva la pelota (fuego, hielo, viento, rayo, sombra o luz, domain/smashPowers.ts): color del núcleo, de la estela y de las
    * partículas. Llamar antes de `setIgnited` / `setPower`; si ya está prendida se repinta al momento.
    */
   setElement(el: SmashPower) {

@@ -171,7 +171,7 @@ Por personaje y por vista (espaldas = jugador, frente = rival):
 | `nxo` | espaldas | `Nxo/pj-nxo-1..4.png` | `Nxo/pj-nxo-ulti.png` (6 × 9, tiras WebP) | `nxo-v2/`, `nxo-inferno/` | `nxo-{sprites,hits,move,special,extra,inferno}.json` |
 | `nxo-front` | frente | `Nxo/rival/pj-nxo-rival-1..4.png` | `Nxo/rival/pj-nxo-rival-ulti.png` (6 × 9, tiras WebP) | `nxo-front-v2/`, `nxo-front-inferno/` | `nxo-front-*.json` |
 | `mai` | espaldas | `Mai/pj-mai-1..4.png` | `Mai/pj-mai-ulti.png` (6 × 9, tiras WebP) | `mai-v2/`, `mai-inferno/` | `mai-*.json` |
-| `mai-front` | frente | `Mai/rival/pj-mai-rival-1..4.png` (sin procesar) | `Mai/rival/pj-mai-rival-ulti.png` (6 × 9, tiras WebP) | movimientos: hoja antigua `mai-front-sprites/`; ULTI: `mai-front-inferno/` | `mai-front-sprites.json`, `mai-front-inferno.json` |
+| `mai-front` | frente | `Mai/rival/hd/mai-rival-*.png` (HD, `build-hd.mjs`, 17-11-2026) | `Mai/rival/hd/mai-rival-ulti-1..6.png` (HD, `--ulti`) | `mai-front-v2/`, `mai-front-inferno/` | `mai-front-*.json` |
 
 Qué pack usa cada personaje: `src/characters/catalog.ts`. Carga de los packs: `PACKS` en
 `src/objects/NxoActor.ts`.
@@ -203,7 +203,7 @@ node tools/build-moves.mjs all          # todos los que tienen hojas de movimien
 node tools/build-ulti.mjs nxo           # -> nxo-inferno/*.webp + nxo-inferno.json
 node tools/build-ulti.mjs nxo-front     # -> nxo-front-inferno/
 node tools/build-ulti.mjs mai           # -> mai-inferno/
-node tools/build-ulti.mjs mai-front     # -> mai-front-inferno/ (cortada, aún sin conectar al juego)
+node tools/build-hd.mjs mai-front       # MAI rival en alta (17-11-2026): -> mai-front-v2/ + mai-front-*.json (con --ulti: mai-front-inferno/)
 node tools/build-ulti.mjs all           # todos los que tienen ULTI
 
 npx tsc --noEmit
@@ -252,7 +252,7 @@ está en `_temp/respaldo_oficial/tools-viejas/`.
 | `characters.mjs` | Registro de personajes: qué hojas, filas, columnas y ajustes tiene cada pack. Lo leen las dos herramientas. | **En uso** |
 | `image-out.mjs` | Helper de salida: `saveWebp()` guarda cualquier imagen como WebP (convierte con Chrome, comprueba el tamaño, falla con error claro) y `webpToPng()` para leer un WebP. Lo usan todas las herramientas de imágenes. | **En uso** |
 | `convert-image.mjs` | Convierte PNG ↔ WebP con Chrome headless (puerto al azar y cierra el árbol de procesos). Lo llama `image-out.mjs`. | **En uso** |
-| `build-nxo-sprites.mjs` | Primera generación: la hoja NO tenía rejilla fija, así que mide filas y frames (valles de la proyección, componentes conexas), escala por fila y escribe `<id>-sprites/*.webp` + `<id>-sprites.json`. | **Antigua.** Solo sigue ligada a **Mai rival** (`mai-front-sprites/`, hoja sin migrar). Cuando Mai rival pase a `build-moves.mjs`, se puede borrar. |
+| `build-nxo-sprites.mjs` | Primera generación: la hoja NO tenía rejilla fija, así que mide filas y frames (valles de la proyección, componentes conexas), escala por fila y escribe `<id>-sprites/*.webp` + `<id>-sprites.json`. | **Sin uso** desde el 17-11-2026 (Mai rival pasó a `build-hd.mjs`). Se puede mover a `_temp/respaldo_oficial/tools-viejas/` junto con `assets/characters/mai-front-sprites/`. |
 | `paste-row.mjs` | Pega una animación suelta (frames en cuadrícula) como fila de una hoja de NXO. | Auxiliar para armar hojas. |
 | `keep-enclosed-green.mjs` | Conserva los detalles verdes encerrados en el personaje (hojas de la gorra de Mai) al quitar el croma. | Auxiliar de `build-moves.mjs`. |
 | `build-end-poses.mjs` | Poses de la pantalla de resultado para un personaje de frente sin hoja nueva (`mai-front-end/`). | En uso para Mai rival. |
@@ -469,9 +469,26 @@ Hojas 1, 2 y 3 nuevas del 12-11-2026 (las anteriores están en `_temp/respaldo_o
   `view: front` en el JSON). Con `flip` se espejaría cada frame y cambiarían los frames clave: mejor pedir la hoja
   bien.
 
-**MAI rival**: usa todavía la hoja antigua (`mai-front-sprites/`, `tools/build-nxo-sprites.mjs`). Sus hojas nuevas
-están en `Mai/rival/` sin procesar, salvo la hoja 1 (ver la excepción de abajo). `mai-front` está en `tools/characters.mjs` solo con la ULTI:
-para procesar sus movimientos hacen falta las 4 hojas dentro del contrato (ver la §8).
+**MAI rival EN ALTA (17-11-2026, instalada).** Imágenes en `Mai/rival/hd/` con la numeración de siempre (`mai-rival-movimientos-1..12`,
+`-golpes-1..8`, `-reacciones-1..3`, `-extras-1..3`, `-ulti-1..6`). Cortadas con `node tools/build-hd.mjs mai-front` (25 tiras en
+`mai-front-v2/`, ≈ 16,4 MB de memoria gráfica) y `--ulti` (6 tiras en `mai-front-inferno/`, ≈ 4,5 MB); alto de pie 150, como NXO rival.
+Conectada en `NxoActor.ts` (`PACKS['mai-front']`, clave `maif`, sin bote ni `serve-toss`: `ownToss: false`).
+- **Arranque del pack:** `build-hd` solo actualiza JSON que ya existen; como Mai rival nunca pasó por `build-moves`, sus
+  `mai-front-{sprites,hits,move,special,extra}.json` se crearon UNA vez copiando los de `nxo-front` (mismos clips, fps y frames clave) y
+  quitando los clips sin imagen (`run-left`, `wait`, `serve-bounce`, `serve-toss`, `dropshot`, `intro`, `greet`, `walk`). Desde ahí
+  los regenera `build-hd`. El `mai-front-sprites.json` antiguo y sus tiras quedaron en `_temp/respaldo_oficial/Mai/rival/antes-hd-2026-11-17/`.
+- **`run-left` ya no es necesaria:** el getter `v2` de `NxoActor` mira `dive-right` (todos los packs nuevos la traen).
+- **Imágenes de otro tamaño (17-11-2026):** `movimientos-9` llegó de 2512 × 1680 y `-10..12` de 1024 × 685. `build-hd` ahora corrige la
+  escala de los clips que copian la de otro (`SCALE_AS`: estiradas, aturdido, derrota; y los de carrera con `run`) por la proporción de
+  anchos de la imagen. Antes la estirada a la derecha salía 1,5 veces más grande y la de la izquierda casi a la mitad. Para que se
+  aplique a un clip ya cortado hay que borrar su tira antes de volver a correr `build-hd` (si no, la tira vieja manda el tamaño).
+- **`serveRacket`** (`mai-front-hits.json` y el registro): normal dx −22 z 127, con efecto dx 20 z 157, medidos a ojo sobre el frame 5.
+- **Pendiente (fuera de contrato):**
+  - `mai-rival-movimientos-8` (`walk`) llegó IDÉNTICA a `golpes-8` (el remate potenciado): no se instaló (respaldo con el nombre
+    `…-DUPLICADO-de-golpes-8.png`). Sin `walk`, el juego usa la carrera. Hay que pedir la caminata y volver a correr `build-hd`.
+  - `golpes-5` (`serve`): el contacto (destello) está dibujado en el frame 6, no en el 5 del contrato. El juego golpea en el 5 (raqueta
+    detrás de la cabeza). Redibujar ese saque con el contacto en el frame 5 y volver a medir `serveRacket`.
+  - Las poses viejas de la tarjeta del resultado (`MAI_END`, `mai-front-end/`) ya solo se usan si el pack no cargó.
 
 - **Hojas nuevas del 12-11-2026** (hoja 1, hoja 2 e INFERNO; las anteriores en `_temp/respaldo_oficial/Mai/rival/` con el sufijo
   `-antes-new`). Hojas 3 y 4 siguen siendo las del 10-11-2026, de dibujo viejo.

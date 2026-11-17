@@ -36,6 +36,15 @@ export class BootScene extends Phaser.Scene {
     this.load.image('menu-bg', 'assets/menu-bg.webp');
     this.load.image('btn-jugar', 'assets/btn-jugar.webp');
     this.load.image('nav-bar', 'assets/nav-bar.webp');
+    // (17-11-2026) moneda: imagen moneda-1.webp (textura global de la moneda)
+    if (!this.textures.exists('coin-1')) this.load.image('coin-1', 'assets/moneda-1.webp');
+    // (17-11-2026) DINERO: billete (1) y fardo chico (más de 1), globales (ruleta, menú, tienda)
+    if (!this.textures.exists('cash-1')) this.load.image('cash-1', 'assets/dinero-virtual-1.webp');
+    if (!this.textures.exists('cash-pack')) this.load.image('cash-pack', 'assets/dinero-fardo-chico.webp');
+    // (17-11-2026) COFRE por nivel (normal / oro / épico): menú (ChestButton) y ruleta (ui/wheelArt.chestImage)
+    (['normal', 'oro', 'epico'] as const).forEach((n, i) => {
+      if (!this.textures.exists(`chest-${i}`)) this.load.image(`chest-${i}`, `assets/cofre-${n}.webp`);
+    });
     this.load.audio('vs', 'mp3/vs.mp3'); // sonido de la pantalla VS (la cache de audio es global)
     queueAmbienteLoad(this.load); // ambiente del partido (estadio)
     bootRanked(); // partida Ranked a medias = abandono; cierre de semana / mes

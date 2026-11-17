@@ -93,6 +93,50 @@ export interface PowerDialogOpts {
 const NAVY = 0x0b1733;
 /** El borde del diálogo mide 3 px centrados en su orilla: la mitad interior (1,5 px) más un pelo de aire. La televisión grande llega hasta ahí para no adelgazarlo. */
 const BORDER_IN = 3;
+/** verde del poder equipado (borde y sello ✓ del hueco) */
+const EQUIP_GREEN = 0x24c25a;
+
+/**
+ * Congela lo que ya hay en la escena (lo que queda DETRÁS del diálogo): se esconde (el velo casi negro apenas lo dejaba ver y así no se
+ * dibuja), se pausan sus tweens, las animaciones de sus sprites y sus emisores de partículas. Lo que crea el diálogo después (su televisión,
+ * la demostración "En acción") no se toca. Devuelve la función que lo deja todo como estaba (se llama al destruir el diálogo).
+ */
+function freezeBehind(scene: Phaser.Scene): () => void {
+  const hidden: Phaser.GameObjects.GameObject[] = [];
+  const sprites: Phaser.GameObjects.Sprite[] = [];
+  const emitters: Phaser.GameObjects.Particles.ParticleEmitter[] = [];
+  const all = new Set<unknown>();
+  const walk = (o: Phaser.GameObjects.GameObject) => {
+    all.add(o);
+    if (o instanceof Phaser.GameObjects.Sprite && o.anims?.isPlaying) {
+      o.anims.pause();
+      sprites.push(o);
+    } else if (o instanceof Phaser.GameObjects.Particles.ParticleEmitter && o.active) {
+      o.pause();
+      emitters.push(o);
+    }
+    (o as Phaser.GameObjects.Container).list?.forEach(walk);
+  };
+  for (const o of [...scene.children.list]) {
+    walk(o);
+    const v = o as unknown as Phaser.GameObjects.Components.Visible;
+    if (typeof v.setVisible === 'function' && v.visible) {
+      v.setVisible(false);
+      hidden.push(o);
+    }
+  }
+  const tweens = scene.tweens.getTweens().filter((t) => !t.isPaused() && (t.targets.some((x) => all.has(x)) || t.targets.every((x) => !(x instanceof Phaser.GameObjects.GameObject))));
+  tweens.forEach((t) => t.pause());
+  let done = false;
+  return () => {
+    if (done || !scene.sys.isActive()) return;
+    done = true;
+    for (const o of hidden) if (o.active) (o as unknown as Phaser.GameObjects.Components.Visible).setVisible(true);
+    for (const s of sprites) if (s.active) s.anims.resume();
+    for (const e of emitters) if (e.active) e.resume();
+    for (const t of tweens) if (!t.isDestroyed()) t.resume();
+  };
+}
 
 /** Candado dibujado (cuerpo + argolla) centrado en (0, 0) con `s` de alto aproximado. */
 function drawLock(g: Phaser.GameObjects.Graphics, s: number, color: number) {
@@ -114,7 +158,10 @@ export function openPowerDialog(scene: Phaser.Scene, opts: PowerDialogOpts) {
   const { title: titleText, color, slots, layout = 'center', onShop, onClose, shopLabel = 'IR A LA TIENDA', lockedNote = 'Se compra en la TIENDA.', previewOnly = false, special = false, bigTv = false, demo } = opts;
   const W = scene.scale.width;
   const H = scene.scale.height;
+  // (17-11-2026, usuario) lo de detrás se CONGELA mientras el diálogo está abierto: así la pantalla "En acción" va fluida
+  const unfreeze = freezeBehind(scene);
   const root = scene.add.container(0, 0).setDepth(8000);
+  root.once(Phaser.GameObjects.Events.DESTROY, unfreeze);
   const timers: Phaser.Time.TimerEvent[] = [];
   let changed = false;
   let closed = false;
@@ -499,6 +546,8 @@ export function openPowerDialog(scene: Phaser.Scene, opts: PowerDialogOpts) {
 
   let selected = Math.max(0, slots.findIndex((s) => s.equipped));
   const rings: Phaser.GameObjects.Graphics[] = [];
+  /** dibujo y rótulo de cada hueco (para apagar los no seleccionados) */
+  const cellItems: Phaser.GameObjects.GameObject[][] = [];
   // con páginas, el hueco i ocupa el lugar (i % 10) de su página y cada página está a un ancho de diálogo de la anterior
   const cellX = (i: number) => px + 20 + (paged ? Math.floor(i / POWER_SLOTS) * pw : 0) + ((paged ? i % POWER_SLOTS : i) % COLS) * (slot + 10) + slot / 2;
   const cellY = (i: number) => py + 70 + tvH + ACT_H + Math.floor((paged ? i % POWER_SLOTS : i) / COLS) * (slot + 12) + slot / 2;
@@ -513,9 +562,30 @@ export function openPowerDialog(scene: Phaser.Scene, opts: PowerDialogOpts) {
       g.fillStyle(s?.owned ? 0x10224d : 0x08122b, 1).fillRoundedRect(cx - slot / 2, cy - slot / 2, slot, slot, 16);
       if (s?.rarity) {
         // el marco de su rareza; lo equipado se marca con un aro exterior del color del diálogo
-        drawRarityFrame(g, cx - slot / 2, cy - slot / 2, slot, slot, 16, s.rarity);
-        if (s.equipped) g.lineStyle(3, color, 1).strokeRoundedRect(cx - slot / 2 - 5, cy - slot / 2 - 5, slot + 10, slot + 10, 20);
-      } else g.lineStyle(on || s?.equipped ? 4 : 2, s?.equipped ? color : on ? 0x6f86bd : 0x24365f, 1).strokeRoundedRect(cx - slot / 2, cy - slot / 2, slot, slot, 16);
+        drawRarityFrame(g, cx - slot / 2, cy - slot / 2, slot, slot, 16, s.rarity, false, true);
+        if (s.equipped) g.lineStyle(4, EQUIP_GREEN, 1).strokeRoundedRect(cx - slot / 2 - 5, cy - slot / 2 - 5, slot + 10, slot + 10, 20);
+      } else g.lineStyle(on || s?.equipped ? 4 : 2, s?.equipped ? EQUIP_GREEN : on ? 0x6f86bd : 0x24365f, 1).strokeRoundedRect(cx - slot / 2, cy - slot / 2, slot, slot, 16);
+      // equipado: fondo con un toque verde y borde verde (con rareza, el aro verde de fuera)
+      if (s?.equipped) g.fillStyle(EQUIP_GREEN, 0.14).fillRoundedRect(cx - slot / 2, cy - slot / 2, slot, slot, 16);
+      // los que no se ven ni están equipados, oscurecidos (deshabilitados a la vista)
+      if (!on && !s?.equipped && s) g.fillStyle(0x040a1a, 0.5).fillRoundedRect(cx - slot / 2, cy - slot / 2, slot, slot, 16);
+      // (17-11-2026) el que se está VIENDO: aro blanco con brillo del color del diálogo y fondo más claro (los demás se apagan un poco)
+      if (on) {
+        g.fillStyle(0xffffff, 0.1).fillRoundedRect(cx - slot / 2, cy - slot / 2, slot, slot, 16);
+        g.lineStyle(10, color, 0.4).strokeRoundedRect(cx - slot / 2 - 4, cy - slot / 2 - 4, slot + 8, slot + 8, 20);
+        g.lineStyle(4, 0xffffff, 1).strokeRoundedRect(cx - slot / 2 - 4, cy - slot / 2 - 4, slot + 8, slot + 8, 20);
+      }
+      // el que está EQUIPADO: sello verde con ✓ en la esquina (además de su aro de color)
+      if (s?.equipped) {
+        const bx = cx + slot / 2 - 4;
+        const by = cy - slot / 2 + 4;
+        g.fillStyle(0x06112b, 1).fillCircle(bx, by, 16);
+        g.fillStyle(EQUIP_GREEN, 1).fillCircle(bx, by, 13);
+        g.lineStyle(4, 0xffffff, 1).beginPath().moveTo(bx - 6, by).lineTo(bx - 2, by + 4.5).lineTo(bx + 6.5, by - 5).strokePath();
+      }
+      // apaga lo que no está seleccionado (el equipado, algo menos) para que se note cuál es
+      const dimA = on ? 1 : s?.equipped ? 0.7 : 0.3;
+      for (const o of cellItems[i] ?? []) (o as unknown as Phaser.GameObjects.Components.Alpha).setAlpha?.(dimA);
     });
 
   const show = (i: number) => {
@@ -580,20 +650,20 @@ export function openPowerDialog(scene: Phaser.Scene, opts: PowerDialogOpts) {
       const bx = sx + half + 26;
       const bw2 = half - 46;
       const top = Math.max(sy + 18, midY - 118);
-      screen.add(scene.add.text(bx, top + 8, 'RAREZA', { fontFamily: FONT, fontSize: '14px', color: '#9fb4e0' }).setOrigin(0, 0.5).setLetterSpacing(2));
+      // (17-11-2026) sin el rótulo «RAREZA»: solo la etiqueta con la rareza (p. ej. ESPECIAL)
       const label = s.rarity ? RARITY_LABEL[s.rarity] : (s.badge ?? 'INCLUIDO');
       const lcol = rs ? '#' + rs.light.toString(16).padStart(6, '0') : s.badge ? '#ffd9a0' : '#9fe8a0';
       const pillT = scene.add.text(0, 0, label, { fontFamily: FONT, fontSize: '18px', color: lcol }).setOrigin(0.5).setLetterSpacing(2);
       const pillW = Math.min(bw2, pillT.width + 34);
-      const pillY = top + 24;
+      const pillY = top + 4;
       const pg = scene.add.graphics();
       pg.fillStyle(0x040a1a, 0.95).fillRoundedRect(bx, pillY, pillW, 34, 17);
       pg.lineStyle(2.5, rs ? rs.main : s.badge ? 0xffb347 : 0x35c85a, 1).strokeRoundedRect(bx, pillY, pillW, 34, 17);
       pillT.setPosition(bx + pillW / 2, pillY + 17);
       if (pillT.width > pillW - 16) pillT.setScale((pillW - 16) / pillT.width);
       screen.add([pg, pillT]);
-      screen.add(scene.add.text(bx, top + 88, 'PARA QUÉ SIRVE', { fontFamily: FONT, fontSize: '14px', color: '#9fb4e0' }).setOrigin(0, 0.5).setLetterSpacing(2));
-      const descY = top + 106;
+      screen.add(scene.add.text(bx, top + 62, 'PARA QUÉ SIRVE', { fontFamily: FONT, fontSize: '14px', color: '#9fb4e0' }).setOrigin(0, 0.5).setLetterSpacing(2));
+      const descY = top + 80;
       const room = sy + sh - 56 - descY;
       const desc = scene.add.text(bx, descY, s.owned ? s.desc : `${s.desc}\n${lockedNote}`, { fontFamily: FONT, fontSize: '19px', color: '#e6f0ff', lineSpacing: 4, wordWrap: { width: bw2 } }).setOrigin(0, 0);
       for (let fs = 19; desc.height > room && fs > 12; fs--) desc.setFontSize(fs);
@@ -710,16 +780,23 @@ export function openPowerDialog(scene: Phaser.Scene, opts: PowerDialogOpts) {
     const ring = scene.add.graphics();
     rings.push(ring);
     grid.add(ring);
-    if (s?.owned) grid.add((s.thumb ?? s.preview)(cx, cy - 6, slot * 0.66));
-    else {
+    const items: Phaser.GameObjects.GameObject[] = [];
+    cellItems[i] = items;
+    if (s?.owned) {
+      const th = (s.thumb ?? s.preview)(cx, cy - 6, slot * 0.66);
+      grid.add(th);
+      items.push(th);
+    } else {
       const lk = scene.add.graphics({ x: cx, y: cy - (s ? 8 : 0) });
       drawLock(lk, slot * 0.46, 0x5d73a6);
       grid.add(lk);
+      items.push(lk);
     }
     if (s) {
       const lb = scene.add.text(cx, cy + slot / 2 - 12, s.name.toUpperCase(), { fontFamily: FONT, fontSize: '11px', color: s.owned ? '#dbe5ff' : '#6f84b3' }).setOrigin(0.5);
       if (lb.width > slot - 8) lb.setScale((slot - 8) / lb.width);
       grid.add(lb);
+      items.push(lb);
     }
     const hit = scene.add.zone(cx, cy, slot, slot).setInteractive({ useHandCursor: true });
     hit.on('pointerup', () => {

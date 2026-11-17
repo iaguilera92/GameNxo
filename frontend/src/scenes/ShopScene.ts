@@ -16,6 +16,7 @@ import type { PlayerState } from '../domain/player';
 import { drawCashIcon } from './BattlePassScene';
 import { type ItemId, type ItemKind, type StyleId, owns } from '../domain/player';
 import { drawRarityFrame } from '../ui/rarity';
+import { bakeGraphics, dropBaked } from '../ui/bakeGraphics';
 import { CASH_PACKS, SHOP_ITEMS, clpLabel, type CashPack, type ItemRarity, type ShopItem } from '../domain/shopCatalog';
 import { openShopPreview } from '../ui/ShopPreviewDialog';
 import { createZoneDemo } from '../fx/zoneDemo';
@@ -31,7 +32,7 @@ import { createTrailPreview } from '../fx/ballTrailFx';
 import { DASH_COOLDOWN, SMASH_COOLDOWN } from '../config';
 import { INFERNO } from '../logic/InfernoDrive';
 import { claimShopGift, shopGiftStatus } from '../logic/Ranked';
-import { drawCoinIcon, drawGiftIcon } from '../ui/wheelArt';
+import { coinIcon, drawGiftIcon } from '../ui/wheelArt';
 
 /**
  * TIENDA: todo se compra con DINERO (billetes); la cabecera solo muestra ese saldo.
@@ -48,6 +49,10 @@ const NEON = 0x3a7bff;
 const GOLD = 0xffc42e;
 /** alto de la cabecera fija (volver, saldos): el contenido se desplaza por debajo */
 const HEADER_H = 112;
+/** prefijo de las texturas de fondos pintados una vez (tarjetas, botones): se quitan al salir de la Tienda */
+const SHOP_BAKE = 'shop-bake-';
+/** (17-11-2026) artículos LEGENDARIOS que SÍ tienen botón VER en la Tienda (los demás legendarios, no) */
+const LEGEND_VIEWABLE: ReadonlySet<string> = new Set(['inferno:energy']);
 /** Fondo de las tarjetas de PODERES ULTI: morado degradado con brillo, sin borde. */
 const ULTI_TOP = '#8a4cf0';
 const ULTI_MID = '#5a22b8';
@@ -109,6 +114,7 @@ export class ShopScene extends Phaser.Scene {
   private giftY = 0;
   private freeArrow?: Phaser.GameObjects.Container;
   private giftTimer?: Phaser.Time.TimerEvent;
+  private rotTimer?: Phaser.Time.TimerEvent;
   private dragMoved = false;
   /** filas que se deslizan hacia los lados (EFECTO PELOTA): el contenedor con sus tarjetas, su franja vertical y cuánto puede correr a la izquierda */
   private strips: { c: Phaser.GameObjects.Container; y0: number; y1: number; max: number; bar: Phaser.GameObjects.Graphics }[] = [];
@@ -176,7 +182,7 @@ export class ShopScene extends Phaser.Scene {
     this.strips = [];
     this.build();
     // cuenta atrás de lo que rota y cambio de selección (3 a la vez; CARGANDO / ESPECIAL / DEFENSIVO cada 12 h, ULTI cada 24 h)
-    this.time.addEvent({ delay: 1000, loop: true, callback: () => this.tickRotation() });
+    this.rotTimer = this.time.addEvent({ delay: 1000, loop: true, callback: () => this.tickRotation() });
     this.setupScroll();
     this.makeFreeArrow();
     // viene del + del dinero: tras el fundido, el contenido baja con el scroll (animado) hasta la sección DINERO
@@ -189,7 +195,10 @@ export class ShopScene extends Phaser.Scene {
       });
     }
     const off = onPlayerChange(() => this.refreshCash());
-    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => off());
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      off();
+      dropBaked(this, SHOP_BAKE);
+    });
   }
 
   // ================================================================ contenido
@@ -455,9 +464,8 @@ export class ShopScene extends Phaser.Scene {
     if (st.available) this.tweens.add({ targets: ic, angle: { from: -6, to: 6 }, duration: 380, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
     // monedas que trae, bajo el regalo
     const sub = this.add.text(0, y + h - 30, '5 a 15 monedas gratis', { fontFamily: FONT, fontSize: '20px', color: '#ffe680' }).setOrigin(0, 0.5);
-    const coin = this.add.graphics();
     const subW = 30 + sub.width;
-    drawCoinIcon(coin, 12, cx - subW / 2 + 12, y + h - 30);
+    const coin = coinIcon(this, cx - subW / 2 + 12, y + h - 30, 12); // (17-11-2026) moneda: imagen moneda-1.webp
     sub.setX(cx - subW / 2 + 30);
     c.add([coin, sub]);
     this.giftTimer?.remove();
@@ -505,8 +513,7 @@ export class ShopScene extends Phaser.Scene {
     this.tweens.add({ targets: t, scale: 1, duration: 320, ease: 'Back.easeOut' });
     this.tweens.add({ targets: t, alpha: 0, y: t.y - 40, delay: 1100, duration: 300, onComplete: () => t.destroy() });
     for (let i = 0; i < 12; i++) {
-      const g = this.add.graphics({ x: W / 2, y: H * 0.45 + 40 }).setDepth(8999);
-      drawCoinIcon(g, 12);
+      const g = coinIcon(this, W / 2, H * 0.45 + 40, 12).setDepth(8999); // (17-11-2026) moneda: imagen moneda-1.webp
       const a = Phaser.Math.FloatBetween(-Math.PI, 0);
       const d = Phaser.Math.FloatBetween(90, 220);
       this.tweens.add({ targets: g, x: W / 2 + Math.cos(a) * d, y: H * 0.45 + 40 + Math.sin(a) * d, alpha: 0, duration: Phaser.Math.Between(600, 900), ease: 'Cubic.easeOut', onComplete: () => g.destroy() });
@@ -644,6 +651,7 @@ export class ShopScene extends Phaser.Scene {
     };
     const run = { d: 0 };
     const trail = 150;
+    let lastEdge = 0;
     const edgeTw = this.tweens.add({
       targets: run,
       d: per,
@@ -651,6 +659,8 @@ export class ShopScene extends Phaser.Scene {
       repeat: -1,
       onUpdate: () => {
         if (!c.visible) return; // fuera de pantalla: no se redibuja
+        if (this.time.now - lastEdge < 33) return; // 30 fps bastan para un destello (la mitad del trabajo)
+        lastEdge = this.time.now;
         edge.clear();
         for (const off of [0, per / 2]) {
           for (let k = 0; k < 6; k++) {
@@ -783,7 +793,8 @@ export class ShopScene extends Phaser.Scene {
     const by = y + h - 64;
     const bw = w - 24;
     // (21-11-2026) el botón de abajo es VER (EN ACCIÓN): dentro se compra o se usa. Lo legendario que no tienes: botones de siempre
-    const canView = has || it.rarity !== 'legendaria';
+    // (17-11-2026) excepción: la ULTI LEGENDARIA BOLA DE ENERGÍA SÍ se VE (su demostración con las 4 máquinas, fx/powerDemo.ts)
+    const canView = has || it.rarity !== 'legendaria' || LEGEND_VIEWABLE.has(it.id);
     if (!has) c.add(canView ? [] : this.clpTag(sx, y + h - 22, bw, it.clp));
     if (canView) c.add(this.viewButton(sx, by, bw, () => this.openPreview(it)));
     else if (it.realMoneyOnly) {
@@ -914,9 +925,10 @@ export class ShopScene extends Phaser.Scene {
   /** Precio en dinero real (CLP) bajo el botón. Aún no hay pasarela de pago: avisa al tocarlo. */
   private clpTag(x: number, y: number, w: number, clp: number) {
     const c = this.add.container(x, y);
-    const g = this.add.graphics();
-    g.fillStyle(0x0a1638, 0.9).fillRoundedRect(-w / 2, -14, w, 28, 14);
-    g.lineStyle(2, 0x3fae5a, 0.9).strokeRoundedRect(-w / 2, -14, w, 28, 14);
+    const g = bakeGraphics(this, `${SHOP_BAKE}clp-${w.toFixed(1)}`, { x0: -w / 2 - 4, y0: -18, w: w + 8, h: 36 }, 2, (b) => {
+      b.fillStyle(0x0a1638, 0.9).fillRoundedRect(-w / 2, -14, w, 28, 14);
+      b.lineStyle(2, 0x3fae5a, 0.9).strokeRoundedRect(-w / 2, -14, w, 28, 14);
+    });
     const t = this.add.text(0, 0, `o ${clpLabel(clp)}`, { fontFamily: FONT, fontSize: '14px', color: '#9fe8a0' }).setOrigin(0.5);
     fitText(t, w - 10);
     c.add([g, t]);
@@ -992,7 +1004,7 @@ export class ShopScene extends Phaser.Scene {
       const wx = (par?.x ?? 0) + cx;
       return wx > -span && wx < this.scale.width + span;
     };
-    const pv = createTrailPreview(this, cx, cy, span, styleLook(id), 1, onScreen);
+    const pv = createTrailPreview(this, cx, cy, span, styleLook(id), 1, onScreen, 33); // 30 fps: hay varias a la vez
     c.add(pv.objects);
     this.cardTweens.push(pv.tween);
     c.once(Phaser.GameObjects.Events.DESTROY, () => pv.tween.remove());
@@ -1053,7 +1065,7 @@ export class ShopScene extends Phaser.Scene {
       const d = defensivePowerDef(id as DefensivePower);
       p = { kindLabel: 'DEFENSIVO', name: it?.name ?? d.name, desc: d.desc, color: d.color, demo: (pa, o, i) => createDefensiveDemo(this, pa, o, i, skin, id as DefensivePower), owned: defensiveOwned(s.owned, id as DefensivePower) };
     }
-    openShopPreview(this, {
+    const root = openShopPreview(this, {
       kindLabel: p.kindLabel,
       name: p.name,
       desc: p.desc,
@@ -1067,6 +1079,47 @@ export class ShopScene extends Phaser.Scene {
       onBuyCash: () => it && this.confirmBuy(it),
       onBuyReal: () => this.toast(it && s.level < it.minLevel ? `Necesitas nivel ${it.minLevel}` : 'El pago con dinero real (CLP) llega pronto'),
     });
+    // (17-11-2026) mientras la demostración está abierta, la Tienda de atrás no se dibuja: la demostración usa los efectos del partido
+    // (pelota, humo, sombras, cinemática) y, con ~40 tarjetas debajo, el móvil se pegaba. El velo oscuro apenas la dejaba ver.
+    const resume = this.freezeShop();
+    root.once(Phaser.GameObjects.Events.DESTROY, () => {
+      resume();
+      if (!this.sys.isActive() || !this.body.scene) return;
+      this.body.setVisible(true);
+      this.setScroll(this.scrollY); // devuelve la flecha GRATIS a su estado
+    });
+  }
+
+  /**
+   * Congela la Tienda mientras se ve una demostración (VER): no se dibuja y se PAUSAN todas sus animaciones (tweens de tarjetas, destellos,
+   * estelas, brillos) y sus relojes (cuenta atrás, regalo), para que la demostración tenga todo el procesador. Los tweens de la demostración
+   * no se tocan (se crean después). Devuelve la función que lo deja todo como estaba.
+   */
+  private freezeShop() {
+    this.body.setVisible(false);
+    this.freeArrow?.setVisible(false);
+    // objetos de la Tienda (contenido y flecha) para reconocer sus tweens
+    const mine = new Set<unknown>();
+    const walk = (o: Phaser.GameObjects.GameObject) => {
+      mine.add(o);
+      (o as Phaser.GameObjects.Container).list?.forEach(walk);
+    };
+    walk(this.body);
+    if (this.freeArrow) walk(this.freeArrow);
+    const paused: Phaser.Tweens.Tween[] = [];
+    for (const tw of this.tweens.getTweens()) {
+      if (tw.isPaused()) continue;
+      if (this.cardTweens.includes(tw) || tw.targets.some((t) => mine.has(t))) {
+        tw.pause();
+        paused.push(tw);
+      }
+    }
+    const timers = [this.rotTimer, this.giftTimer].filter((t): t is Phaser.Time.TimerEvent => !!t && !t.paused);
+    timers.forEach((t) => (t.paused = true));
+    return () => {
+      for (const tw of paused) if (!tw.isDestroyed()) tw.resume();
+      for (const t of timers) t.paused = false;
+    };
   }
   // ================================================================ compra
   private confirmBuy(it: ShopItem) {
@@ -1301,12 +1354,13 @@ export class ShopScene extends Phaser.Scene {
 
   private priceButton(x: number, y: number, w: number, price: number, dim: boolean, onClick: () => void) {
     const c = this.add.container(x, y);
-    const g = this.add.graphics();
     const h = 48;
-    g.fillStyle(0x0a1638, 1).fillRoundedRect(-w / 2 - 3, -h / 2 - 3, w + 6, h + 6, 16);
-    g.fillStyle(dim ? 0x5a4a20 : 0xf29a0c, 1).fillRoundedRect(-w / 2, -h / 2, w, h, 14);
-    g.fillStyle(dim ? 0x6e5c2a : 0xffcc1f, 1).fillRoundedRect(-w / 2, -h / 2, w, h * 0.62, { tl: 14, tr: 14, bl: 6, br: 6 });
-    g.fillStyle(0xffffff, dim ? 0.08 : 0.3).fillRoundedRect(-w / 2 + 8, -h / 2 + 4, w - 16, 8, 4);
+    const g = bakeGraphics(this, `${SHOP_BAKE}price-${w.toFixed(1)}-${dim ? 1 : 0}`, { x0: -w / 2 - 6, y0: -h / 2 - 6, w: w + 12, h: h + 12 }, 2, (b) => {
+      b.fillStyle(0x0a1638, 1).fillRoundedRect(-w / 2 - 3, -h / 2 - 3, w + 6, h + 6, 16);
+      b.fillStyle(dim ? 0x5a4a20 : 0xf29a0c, 1).fillRoundedRect(-w / 2, -h / 2, w, h, 14);
+      b.fillStyle(dim ? 0x6e5c2a : 0xffcc1f, 1).fillRoundedRect(-w / 2, -h / 2, w, h * 0.62, { tl: 14, tr: 14, bl: 6, br: 6 });
+      b.fillStyle(0xffffff, dim ? 0.08 : 0.3).fillRoundedRect(-w / 2 + 8, -h / 2 + 4, w - 16, 8, 4);
+    });
     const icon = this.cashIcon(-26, 0, 30, price); // la Tienda cobra DINERO
     const t = this.add.text(-8, 0, price.toLocaleString('es-CL'), { fontFamily: FONT, fontSize: '24px', color: dim ? '#c9b98a' : '#0a1638' }).setOrigin(0, 0.5);
     // centra icono + cifra
@@ -1324,9 +1378,10 @@ export class ShopScene extends Phaser.Scene {
 
   private pill(x: number, y: number, w: number, label: string, color: number, textColor: string) {
     const c = this.add.container(x, y);
-    const g = this.add.graphics();
-    g.fillStyle(0x0a1638, 1).fillRoundedRect(-w / 2 - 3, -24 - 3, w + 6, 54, 16);
-    g.fillStyle(color, 1).fillRoundedRect(-w / 2, -24, w, 48, 14);
+    const g = bakeGraphics(this, `${SHOP_BAKE}pill-${w.toFixed(1)}-${color}`, { x0: -w / 2 - 6, y0: -30, w: w + 12, h: 66 }, 2, (b) => {
+      b.fillStyle(0x0a1638, 1).fillRoundedRect(-w / 2 - 3, -24 - 3, w + 6, 54, 16);
+      b.fillStyle(color, 1).fillRoundedRect(-w / 2, -24, w, 48, 14);
+    });
     c.add(g);
     const t = this.add.text(0, 0, label, { fontFamily: FONT, fontSize: '19px', color: textColor }).setOrigin(0.5).setLetterSpacing(1);
     fitText(t, w - 16);
@@ -1362,17 +1417,22 @@ export class ShopScene extends Phaser.Scene {
   /** Panel con el lenguaje del menú (igual que PERSONAJE). */
   private card(x: number, y: number, w: number, h: number, opts: { line?: number; glow?: number; r?: number; rarity?: ItemRarity } = {}) {
     const { line = NEON, glow = 0.18, r = 20, rarity } = opts;
-    const g = this.add.graphics();
-    g.fillStyle(0x000000, 0.35).fillRoundedRect(x + 3, y + 5, w, h, r);
-    if (glow && !rarity) g.lineStyle(8, line, glow).strokeRoundedRect(x, y, w, h, r);
-    g.fillStyle(NAVY, 0.94).fillRoundedRect(x, y, w, h, r);
-    g.fillStyle(0x1b2d5c, 0.45).fillRoundedRect(x + 3, y + 3, w - 6, Math.min(h * 0.45, 40), { tl: r - 3, tr: r - 3, bl: 0, br: 0 });
-    if (rarity) {
-      // (16-11-2026) con rareza, su marco (con relieve, fondo teñido y gemas) reemplaza al borde de la tarjeta; lo equipado, aro blanco por fuera
-      drawRarityFrame(g, x, y, w, h, r, rarity, true);
-      if (line === 0xffffff) g.lineStyle(3, 0xffffff, 0.95).strokeRoundedRect(x - 6, y - 6, w + 12, h + 12, r + 5);
-    } else g.lineStyle(3, line, 1).strokeRoundedRect(x, y, w, h, r);
-    return g;
+    // (17-11-2026) fondo ESTÁTICO: se pinta una vez en una textura (por tamaño y estilo) y se muestra como imagen. Como Graphics se
+    // recorría entero en cada fotograma (≈20 rectángulos redondeados por tarjeta) y la Tienda se pegaba.
+    const PAD = 36; // sombra, brillo exterior, gemas y corona asoman por fuera del rectángulo
+    const key = `${SHOP_BAKE}card-${w.toFixed(1)}x${h.toFixed(1)}-${line}-${glow}-${r}-${rarity ?? ''}`;
+    const img = bakeGraphics(this, key, { x0: -PAD, y0: -PAD, w: w + PAD * 2, h: h + PAD * 2 }, 1.5, (g) => {
+      g.fillStyle(0x000000, 0.35).fillRoundedRect(3, 5, w, h, r);
+      if (glow && !rarity) g.lineStyle(8, line, glow).strokeRoundedRect(0, 0, w, h, r);
+      g.fillStyle(NAVY, 0.94).fillRoundedRect(0, 0, w, h, r);
+      g.fillStyle(0x1b2d5c, 0.45).fillRoundedRect(3, 3, w - 6, Math.min(h * 0.45, 40), { tl: r - 3, tr: r - 3, bl: 0, br: 0 });
+      if (rarity) {
+        // (16-11-2026) con rareza, su marco (con relieve, fondo teñido y gemas) reemplaza al borde de la tarjeta; lo equipado, aro blanco por fuera
+        drawRarityFrame(g, 0, 0, w, h, r, rarity, true);
+        if (line === 0xffffff) g.lineStyle(3, 0xffffff, 0.95).strokeRoundedRect(-6, -6, w + 12, h + 12, r + 5);
+      } else g.lineStyle(3, line, 1).strokeRoundedRect(0, 0, w, h, r);
+    });
+    return img.setPosition(x - PAD, y - PAD);
   }
 
   /** Título de sección con su línea a cada lado; con `info`, un (i) a la derecha del texto abre su explicación. */

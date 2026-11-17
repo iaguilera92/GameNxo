@@ -59,12 +59,25 @@ const BASE_ITEMS: ShopItem[] = [
   { id: 'inferno:wind', kind: 'inferno', name: 'Viento', price: 60, clp: 1990, minLevel: 1, available: true },
   { id: 'inferno:lightning', kind: 'inferno', name: 'Rayo', price: 80, clp: 2490, minLevel: 1, available: true },
   { id: 'inferno:tulip', kind: 'inferno', name: 'Tulipán', price: 80, clp: 2490, minLevel: 1, available: true },
+  { id: 'inferno:shadow', kind: 'inferno', name: 'Sombra', price: 80, clp: 2490, minLevel: 1, available: true }, // (17-11-2026) ULTI de SOMBRA
+  { id: 'inferno:light', kind: 'inferno', name: 'Luz', price: 80, clp: 2490, minLevel: 1, available: true }, // (17-11-2026) ULTI de LUZ
+  // (17-11-2026) ULTI ULTRA EFECTO (sin hoja: pelota normal + ventilador de aire gigante). ÉPICA (decisión del usuario): por encima de las
+  // ULTIS especiales (80 / $2.490). $2.790 cumple la regla de precios (100 de dinero = 2 Puñados, $2.980)
+  { id: 'inferno:ultra', kind: 'inferno', name: 'Ultra Efecto', price: 100, clp: 2790, minLevel: 1, available: true },
+  // (17-11-2026) ULTI RÁFAGA (sin hoja: pelota real + ráfaga visual de pelotas). ÉPICA y mismo precio que ULTRA EFECTO
+  { id: 'inferno:barrage', kind: 'inferno', name: 'Ráfaga', price: 100, clp: 2790, minLevel: 1, available: true },
+  // (17-11-2026) ULTI BOLA DE ENERGÍA: la primera ULTI LEGENDARIA (cinemática extra: carga de 6 s, peloteo automático y bola gigante).
+  // Por encima de las épicas ($2.790): 130 de dinero = 1 Fajo ($2.990), justo en la regla de precios. Solo dinero real y, como toda
+  // legendaria no se veía en la Tienda; ESTA sí se VE (ShopScene LEGEND_VIEWABLE, 17-11-2026: demo con 4 máquinas)
+  { id: 'inferno:energy', kind: 'inferno', name: 'Bola de Energía', price: 130, clp: 2990, minLevel: 1, available: true },
   // poderes del ESPECIAL (SMASH). El fuego es de todos
   { id: 'smash:ice', kind: 'smash', name: 'Hielo', price: 45, clp: 1390, minLevel: 1, available: true },
   { id: 'smash:wind', kind: 'smash', name: 'Viento', price: 50, clp: 1490, minLevel: 1, available: true },
   { id: 'smash:lightning', kind: 'smash', name: 'Rayo', price: 55, clp: 1990, minLevel: 1, available: true },
   { id: 'smash:shadow', kind: 'smash', name: 'Sombra', price: 60, clp: 1990, minLevel: 1, available: true },
   { id: 'smash:light', kind: 'smash', name: 'Luz', price: 60, clp: 1990, minLevel: 1, available: true },
+  // (17-11-2026) COMETA: primer ESPECIAL ÉPICO (más rareza, más precio): solo dinero real; su price en dinero queda de referencia
+  { id: 'smash:comet', kind: 'smash', name: 'Cometa', price: 85, clp: 2490, minLevel: 1, available: true },
   // efectos de CARGA (el aro bajo el jugador al cargar un golpe). Nxo trae el de fuego y Mai el de tulipán; el clásico es de todos
   { id: 'charge:fire', kind: 'charge', name: 'Fuego', price: 35, clp: 1290, minLevel: 1, available: true },
   { id: 'charge:energy', kind: 'charge', name: 'Energía', price: 35, clp: 1290, minLevel: 1, available: true },
@@ -97,10 +110,14 @@ export const SHOP_ITEMS: ShopItem[] = BASE_ITEMS.map((it) => {
   // (más abajo: ULTIS, y CARGANDO GOLPE según su rareza).
   // (14-11-2026) TODAS las ULTIS cuestan dinero real y son de rareza ESPECIAL (aún no hay ULTIS gratuitas). Su price en dinero virtual
   // queda solo como referencia (regla de precios en CLP y total de la tienda); no se puede pagar con él.
-  if (it.kind === 'inferno') return { ...base, rarity: 'especial' as const, realMoneyOnly: true };
+  // (17-11-2026) ULTRA EFECTO es la primera ULTI ÉPICA (decisión del usuario); RÁFAGA (17-11-2026) también
+  // (17-11-2026) BOLA DE ENERGÍA: primera ULTI LEGENDARIA
+  if (it.kind === 'inferno') return { ...base, rarity: it.id === 'inferno:energy' ? ('legendaria' as const) : it.id === 'inferno:ultra' || it.id === 'inferno:barrage' ? ('epica' as const) : ('especial' as const), realMoneyOnly: true };
   // (16-11-2026) ESTILOS DE ZONA (decisión del usuario): FUEGO épica, SOMBRA legendaria; las dos, solo dinero real
   if (it.kind === 'zone') return { ...base, rarity: it.id === 'zone:shadow' ? ('legendaria' as const) : ('epica' as const), realMoneyOnly: true };
   // (14-11-2026) ESPECIAL y DEFENSIVO: todos especiales, menos el DESTELLO (normal)
+  // (17-11-2026) COMETA: ÉPICA (solo dinero real)
+  if (it.id === 'smash:comet') return { ...base, rarity: 'epica' as const, realMoneyOnly: true };
   if (it.kind === 'smash' || it.kind === 'defensive') return { ...base, rarity: it.id === 'defensive:blink' ? ('normal' as const) : ('especial' as const) };
   // (14-11-2026) CARGANDO GOLPE: Fuego normal, Energía especial, Tulipán épica (propuesta aceptada por omisión; la legendaria queda reservada). Los ESTILOS siguen sin rareza (decisión del usuario).
   if (it.kind === 'charge') {

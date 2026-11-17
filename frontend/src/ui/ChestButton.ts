@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import { FONT } from './theme';
 import { modeBand, modeShape } from './modeButtons';
-import { GOLD, NAVY, drawChestIcon } from './wheelArt';
+import { CHEST_TEX, GOLD, NAVY, chestImage, drawChestIcon } from './wheelArt';
 import { CHEST, chestStatus, formatChestClock, formatChestTime, openChest, type ChestReward } from '../domain/chest';
 import { commit, getPlayer } from '../domain/playerStore';
 import { gameClock } from '../domain/timeSource';
@@ -22,10 +22,13 @@ export function chestButton(scene: Phaser.Scene, x: number, y: number, onToast: 
   const g = scene.add.graphics();
   const glow = scene.add.circle(0, 4, 42, 0xffffff, 0).setBlendMode(Phaser.BlendModes.ADD);
   const icon = scene.add.graphics({ x: 0, y: 4 });
+  // (17-11-2026, usuario) el COFRE en imagen, del nivel actual (normal / oro / épico); sin textura, el dibujado (icon)
+  const iconImg = scene.textures.exists(CHEST_TEX[0]) ? scene.add.image(0, 4, CHEST_TEX[0]).setDisplaySize(84, 84) : null;
   // etiqueta de arriba (como "RULETAS DIARIAS"), centrada: el tiempo que falta
   const tag = scene.add.graphics();
   const tagText = scene.add.text(0, -h / 2 - 2, '', { fontFamily: FONT, fontSize: '17px', color: '#ffd23f' }).setOrigin(0.5).setLetterSpacing(1);
-  c.add([g, glow, icon, tag, tagText]);
+  c.add([g, glow, icon, ...(iconImg ? [iconImg] : []), tag, tagText]);
+  const base = iconImg ? iconImg.scaleX : 1;
   c.setSize(w, h).setInteractive({ useHandCursor: true });
   let pulse: Phaser.Tweens.Tween | null = null;
 
@@ -41,7 +44,8 @@ export function chestButton(scene: Phaser.Scene, x: number, y: number, onToast: 
     g.fillStyle(col, 0.22).fillPoints(modeBand(w, h, -h * 0.44, -h * 0.02, 6, 9), true);
     g.lineStyle(2.5, col, 0.95).strokePoints(modeShape(w, h), true, true);
     icon.clear();
-    drawChestIcon(icon, 30);
+    if (iconImg) iconImg.setTexture(CHEST_TEX[st.level]);
+    else drawChestIcon(icon, 30);
     glow.setFillStyle(col, st.kind === 'ready' ? 0.4 : 0.12);
     tagText.setText(st.kind === 'ready' ? '¡ABRIR!' : formatChestTime(st.msLeft)).setColor(st.kind === 'ready' ? '#ffe680' : '#ffd23f');
     const tw = Math.max(80, tagText.width + 30);
@@ -49,12 +53,19 @@ export function chestButton(scene: Phaser.Scene, x: number, y: number, onToast: 
     tag.fillStyle(NAVY, 1).fillRoundedRect(-tw / 2, -h / 2 - 17, tw, 30, 15);
     tag.lineStyle(2, st.kind === 'ready' ? 0xffe680 : GOLD, 1).strokeRoundedRect(-tw / 2, -h / 2 - 17, tw, 30, 15);
     if (st.kind === 'ready') {
-      if (!pulse) pulse = scene.tweens.add({ targets: [icon, glow], scale: { from: 1, to: 1.15 }, duration: 520, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
+      if (!pulse) {
+        pulse = scene.tweens.add({ targets: [icon, glow], scale: { from: 1, to: 1.15 }, duration: 520, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
+        if (iconImg) scene.tweens.add({ targets: iconImg, scale: { from: base, to: base * 1.15 }, duration: 520, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
+      }
     } else {
       pulse?.remove();
       pulse = null;
       icon.setScale(1);
       glow.setScale(1);
+      if (iconImg) {
+        scene.tweens.killTweensOf(iconImg);
+        iconImg.setScale(base);
+      }
     }
   };
   paint();
@@ -114,8 +125,8 @@ function showOpenNow(scene: Phaser.Scene, level: 0 | 1 | 2, openNow: () => boole
   const block = scene.add.zone(cx, cy, pw, ph).setInteractive(); // tocar el panel no lo cierra
   const title = scene.add.text(cx, cy - ph / 2 + 50, CHEST.names[level], { fontFamily: FONT, fontSize: '38px', color: '#ffe680', stroke: '#0a1638', strokeThickness: 8 }).setOrigin(0.5);
   const glow = scene.add.circle(cx, cy - 50, 70, col, 0.3).setBlendMode(Phaser.BlendModes.ADD);
-  const icon = scene.add.graphics({ x: cx, y: cy - 50 });
-  drawChestIcon(icon, 52);
+  // (17-11-2026) el cofre en imagen de su nivel (en un contenedor: las animaciones de escala siguen igual)
+  const icon = scene.add.container(cx, cy - 50, [chestImage(scene, 0, 0, 150, level)]);
   const time = scene.add.text(cx, cy + 52, '', { fontFamily: FONT, fontSize: '40px', color: '#ffffff', stroke: '#0a1638', strokeThickness: 8 }).setOrigin(0.5);
   const paintTime = () => {
     const st = chestStatus(getPlayer() as never, gameClock.now());
@@ -169,8 +180,8 @@ function showChestReward(scene: Phaser.Scene, got: { reward: ChestReward; level:
   const root = scene.add.container(0, 0).setDepth(9000);
   const dim = scene.add.rectangle(0, 0, W, H, 0x000000, 0.7).setOrigin(0).setInteractive();
   const glow = scene.add.circle(W / 2, H * 0.4, 120, col, 0.35).setBlendMode(Phaser.BlendModes.ADD);
-  const icon = scene.add.graphics({ x: W / 2, y: H * 0.4 });
-  drawChestIcon(icon, 70);
+  // (17-11-2026) el cofre en imagen de su nivel (en un contenedor: las animaciones de escala siguen igual)
+  const icon = scene.add.container(W / 2, H * 0.4, [chestImage(scene, 0, 0, 200, got.level)]);
   const name = scene.add.text(W / 2, H * 0.4 - 150, `¡${CHEST.names[got.level as 0 | 1 | 2]}!`, { fontFamily: FONT, fontSize: '52px', color: '#ffe680', stroke: '#0a1638', strokeThickness: 10 }).setOrigin(0.5);
   const r = got.reward;
   const lines = [`+${r.coins.toLocaleString('es-CL')} MONEDAS`, `+${r.xp} EXP`, `+${r.cash} DINERO`, ...(r.item ? [`¡${r.item.name.toUpperCase()}!`] : [])];

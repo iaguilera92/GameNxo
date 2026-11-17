@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import { FONT } from './theme';
 import { arcadeButton } from './modeButtons';
-import { drawCoinIcon } from './wheelArt';
+import { coinIcon } from './wheelArt';
 import { LEAGUE_STYLE, fmtCoins } from './leagueStyle';
 import { rankDef } from '../domain/ranks';
 import { rankedView, syncRanked } from '../logic/Ranked';
@@ -146,8 +146,7 @@ export function drawStakePill(scene: Phaser.Scene, into: Phaser.GameObjects.Cont
   g.fillStyle(NAVY, 0.92).fillRoundedRect(-pw / 2, -pillH / 2, pw, pillH, pillH / 2);
   g.lineStyle(3, x2 ? RED : GOLD, 1).strokeRoundedRect(-pw / 2, -pillH / 2, pw, pillH, pillH / 2);
   g.fillStyle(0xffffff, 0.12).fillRoundedRect(-pw / 2 + 6, -pillH / 2 + 4, pw - 12, pillH * 0.3, pillH * 0.15);
-  const ic = scene.add.graphics({ x: -pw / 2 + 10 + coinR, y: 0 });
-  drawCoinIcon(ic, coinR);
+  const ic = coinIcon(scene, -pw / 2 + 10 + coinR, 0, coinR); // (17-11-2026) moneda: imagen moneda-1.webp
   amount.setX(-pw / 2 + 10 + coinR * 2 + 8);
   const chipX = pw / 2 - 8 - chipW / 2;
   const cg = scene.add.graphics();
@@ -255,9 +254,7 @@ function openBetPicker(scene: Phaser.Scene, current: number, onPick: (bet: numbe
     p.add(scene.add.text(cx, cy - 72, sk.bet > 1 ? 'APUESTA x2' : 'NORMAL', { fontFamily: FONT, fontSize: '24px', color: sk.bet > 1 ? '#ff9aa3' : '#ffd23f' }).setOrigin(0.5));
     const row = (yy: number, lab: string, val: number, color: string) => {
       p.add(scene.add.text(cx - cw / 2 + 16, yy, lab, { fontFamily: FONT, fontSize: '16px', color: '#7f93bf' }).setOrigin(0, 0.5));
-      const ic = scene.add.graphics({ x: cx + cw / 2 - 22, y: yy });
-      drawCoinIcon(ic, 11);
-      p.add(ic);
+      p.add(coinIcon(scene, cx + cw / 2 - 22, yy, 11)); // (17-11-2026) moneda: imagen moneda-1.webp
       p.add(scene.add.text(cx + cw / 2 - 40, yy, fmtCoins(val), { fontFamily: FONT, fontSize: '24px', color }).setOrigin(1, 0.5));
     };
     row(cy - 28, 'PAGAS', sk.entry, '#ffffff');

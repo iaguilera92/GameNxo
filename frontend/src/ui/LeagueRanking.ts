@@ -2,7 +2,7 @@ import Phaser from 'phaser';
 import { FONT } from './theme';
 import { fitText } from './fitText';
 import { RankBadge } from './RankBadge';
-import { drawCoinIcon } from './wheelArt';
+import { coinIcon } from './wheelArt';
 import { LEAGUE_STYLE, fmtLeft, fmtNet } from './leagueStyle';
 import { rankDef } from '../domain/ranks';
 import { RANKED } from '../domain/rankedConfig';
@@ -153,8 +153,6 @@ function boardRow(scene: Phaser.Scene, e: BoardEntry, y: number, w: number, h: n
   // monedas
   const ct = scene.add.text(w / 2 - 14, 0, fmtNet(e.coins), { fontFamily: FONT, fontSize: '21px', color: e.coins < 0 ? '#ff8174' : '#ffd23f' }).setOrigin(1, 0.5);
   c.add(ct);
-  const ci = scene.add.graphics({ x: w / 2 - 18 - ct.width - 10, y: 0 });
-  drawCoinIcon(ci, 10);
-  c.add(ci);
+  c.add(coinIcon(scene, w / 2 - 18 - ct.width - 10, 0, 10)); // (17-11-2026) moneda: imagen moneda-1.webp
   return c;
 }

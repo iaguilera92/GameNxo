@@ -2,14 +2,14 @@
   "source": "pj-mai-rival-ulti.png (6 filas x 9: ULTI completa)",
   "view": "front",
   "cell": {
-    "w": 159,
-    "h": 179
+    "w": 150,
+    "h": 167
   },
   "origin": {
-    "x": 0.44654,
-    "y": 0.96089
+    "x": 0.5,
+    "y": 0.97605
   },
-  "standHeight": 140,
+  "standHeight": 150,
   "cols": 3,
   "hold": 4,
   "preStrike": 5,
@@ -23,37 +23,85 @@
       "frames": 9,
       "fps": 15,
       "loop": false,
-      "impact": 6
+      "impact": 6,
+      "cell": {
+        "w": 150,
+        "h": 167
+      },
+      "origin": {
+        "x": 0.5,
+        "y": 0.97605
+      }
     },
     "ulti-hit": {
       "file": "ulti-hit.webp",
       "frames": 9,
       "fps": 14,
-      "loop": false
+      "loop": false,
+      "cell": {
+        "w": 128,
+        "h": 175
+      },
+      "origin": {
+        "x": 0.5,
+        "y": 0.97714
+      }
     },
     "ulti-stun": {
       "file": "ulti-stun.webp",
       "frames": 9,
       "fps": 12,
-      "loop": true
+      "loop": true,
+      "cell": {
+        "w": 134,
+        "h": 185
+      },
+      "origin": {
+        "x": 0.5,
+        "y": 0.97838
+      }
     },
     "idle-nr": {
       "file": "idle-nr.webp",
       "frames": 9,
       "fps": 8,
-      "loop": true
+      "loop": true,
+      "cell": {
+        "w": 120,
+        "h": 170
+      },
+      "origin": {
+        "x": 0.5,
+        "y": 0.97647
+      }
     },
     "run-nr": {
       "file": "run-nr.webp",
       "frames": 9,
       "fps": 14,
-      "loop": true
+      "loop": true,
+      "cell": {
+        "w": 118,
+        "h": 161
+      },
+      "origin": {
+        "x": 0.5,
+        "y": 0.97516
+      }
     },
     "pickup": {
       "file": "pickup.webp",
       "frames": 9,
       "fps": 14,
-      "loop": false
+      "loop": false,
+      "cell": {
+        "w": 120,
+        "h": 162
+      },
+      "origin": {
+        "x": 0.5,
+        "y": 0.97531
+      }
     }
   }
 }

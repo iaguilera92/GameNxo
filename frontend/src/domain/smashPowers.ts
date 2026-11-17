@@ -1,12 +1,12 @@
 /**
  * PODERES del ESPECIAL (la habilidad SMASH): cómo se ve la pelota prendida y su golpe. Datos puros, sin Phaser.
  *
- * - FUEGO es el de siempre y es de todos. HIELO, VIENTO y RAYO se compran en la Tienda (dinero o CLP).
+ * - FUEGO es el de siempre y es de todos. HIELO, VIENTO, RAYO, SOMBRA y LUZ se compran en la Tienda (dinero o CLP); COMETA (épica) solo con dinero real.
  * - Se elige en PERSONALIZACIÓN (tarjeta SMASH → PODERES) y se guarda en `PlayerState.equipped.smash`.
  * - Cambia lo que se ve: la pelota, su estela, el aura al armarlo, la cinemática del golpe y el impacto. El golpe es el mismo
  *   (misma potencia, mismo aturdido). Lo ve también el rival en el 1v1 (acciones `smash-armed` / `smash-cine`, `data.element`).
  */
-export type SmashPower = 'fire' | 'ice' | 'wind' | 'lightning' | 'shadow' | 'light';
+export type SmashPower = 'fire' | 'ice' | 'wind' | 'lightning' | 'shadow' | 'light' | 'comet'; // comet = COMETA (17-11-2026, primer ESPECIAL épico)
 
 export interface SmashPowerDef {
   id: SmashPower;
@@ -28,6 +28,9 @@ export const SMASH_POWERS: SmashPowerDef[] = [
   { id: 'shadow', name: 'SOMBRA', ball: 'SMASH DE SOMBRA', desc: 'Esfera oscura envuelta en humo negro y llamas moradas. Si el rival la toca, sale despedido.', color: 0x9b4dff, css: '#c9a3ff' },
   // (12-11-2026) LUZ (antes ESTRELLA): luz pura, sin estrellas. El id guardado cambió de 'star' a 'light' (domain/migrate.ts lo convierte)
   { id: 'light', name: 'LUZ', ball: 'SMASH DE LUZ', desc: 'Esfera de luz pura que deslumbra con rayos y destellos. Si el rival la toca, sale despedido.', color: 0xfff0b0, css: '#fff6cc' },
+  // (17-11-2026) COMETA (ÉPICA, decisión del usuario): la pelota cae envuelta en un meteorito con cola de fuego azul y estrellas; al impactar deja un
+  // cráter con estrellas y un destello. Solo visual: el golpe es el mismo.
+  { id: 'comet', name: 'COMETA', ball: 'SMASH COMETA', desc: 'Un meteorito con cola de fuego azul y estrellas. Al impactar deja un cráter. Si el rival lo toca, sale despedido.', color: 0x4f8dff, css: '#9cc4ff' },
 ];
 
 const IDS = new Set<string>(SMASH_POWERS.map((p) => p.id));

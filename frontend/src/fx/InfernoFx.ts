@@ -4,6 +4,9 @@ import { project } from '../view/projection';
 import { INFERNO, INFERNO_CINE, shakeLevel } from '../logic/InfernoDrive';
 import { type InfernoPower, infernoPowerOf } from '../domain/infernoPowers';
 import type { CineProfile } from './SmashCinematic';
+import { DropZeroFx } from './smashElementFx';
+import { BarrageTrail, addBarragePreview, barrageFan, isShown } from './barrageFx';
+import { EnergyBallFx, addEnergyPreview, energyBurst } from './energyBallFx';
 
 /**
  * Efectos de INFERNO DRIVE (procedurales, sin hojas de sprites nuevas):
@@ -71,6 +74,14 @@ export const ICEBALL_ART = { key: 'inferno-ball-ice', file: 'assets/inferno-ball
 /** Bolas de VIENTO y RAYO (tools/build-power-ball.mjs): 10 frames (5 + 5), mismo ritmo; fill con el mismo criterio que el hielo. */
 const WINDBALL_ART = { key: 'inferno-ball-wind', file: 'assets/inferno-ball-wind.webp', cell: 192, frames: 10, fps: 14, anim: 'inferno-ball-wind-spin', fill: 0.67 };
 const LIGHTNINGBALL_ART = { key: 'inferno-ball-lightning', file: 'assets/inferno-ball-lightning.webp', cell: 192, frames: 10, fps: 14, anim: 'inferno-ball-lightning-spin', fill: 0.64 };
+/**
+ * (17-11-2026) Bola de SOMBRA (tools/build-power-ball.mjs, 10 frames de 192 px): núcleo negro, brillo morado y llamas negras.
+ * La herramienta midió cuerpo/celda = 0,93 (sus llamas casi llenan la celda); fill 0,66 como viento y rayo para que se vea
+ * de un tamaño parecido a las demás.
+ */
+const SHADOWBALL_ART = { key: 'inferno-ball-shadow', file: 'assets/inferno-ball-sombra.webp', cell: 192, frames: 10, fps: 14, anim: 'inferno-ball-shadow-spin', fill: 0.66 };
+/** (17-11-2026) Bola de LUZ (10 frames de 192 px): núcleo blanco, halo dorado, rayos cortos y anillos de oro; fill 0,66 como la sombra. */
+const LIGHTBALL_ART = { key: 'inferno-ball-light', file: 'assets/inferno-ball-luz.webp', cell: 192, frames: 10, fps: 14, anim: 'inferno-ball-light-spin', fill: 0.66 };
 
 /**
  * Hoja de una bola. Las cuadradas (fuego, hielo, viento, rayo) usan solo key…fill. Las bolas CON RASTRO (tulipán) añaden:
@@ -122,17 +133,75 @@ const TULIPBALL_ART: BallArt = {
 /** Elemento de la bola del INFERNO = el poder que eligió el jugador (domain/infernoPowers.ts). */
 export type InfernoElement = InfernoPower;
 /** Elemento de CUALQUIER bola de poder: los de la ULTI más los que solo existen en el ESPECIAL (sombra, estrella). */
-export type FxElement = InfernoElement | 'shadow' | 'light';
-/** Colores del destello de golpe de los poderes que solo tiene el ESPECIAL (los demás, INFERNO_LOOK[el].hit). */
-const EXTRA_HIT: Record<'shadow' | 'light', { ring: number; star: number; flash: [number, number, number] }> = {
+export type FxElement = InfernoElement | 'shadow' | 'light' | 'comet'; // comet = COMETA (solo ESPECIAL, 17-11-2026)
+/** Colores del destello de golpe de SOMBRA y LUZ (ESPECIAL y ULTI; los demás, INFERNO_LOOK[el].hit). OJO: INFERNO_LOOK.shadow.hit y .light.hit no se usan: el destello se cambia aquí. */
+const EXTRA_HIT: Record<'shadow' | 'light' | 'comet', { ring: number; star: number; flash: [number, number, number] }> = {
   shadow: { ring: 0x9b4dff, star: 0xd0a8ff, flash: [170, 110, 255] },
   light: { ring: 0xfff0b0, star: 0xffffff, flash: [255, 250, 220] },
+  comet: { ring: 0x4f8dff, star: 0xeaf4ff, flash: [150, 190, 255] }, // (17-11-2026) COMETA: aro azul y estrellas blancas
 };
 /** Destello de golpe de un poder (ULTI o ESPECIAL). */
 export function hitLookOf(el: FxElement = 'fire') {
-  return el === 'shadow' || el === 'light' ? EXTRA_HIT[el] : INFERNO_LOOK[el].hit;
+  return el === 'shadow' || el === 'light' || el === 'comet' ? EXTRA_HIT[el] : INFERNO_LOOK[el].hit;
 }
-export const BALL_ART: Record<InfernoElement, BallArt> = { fire: FIREBALL_ART, ice: ICEBALL_ART, wind: WINDBALL_ART, lightning: LIGHTNINGBALL_ART, tulip: TULIPBALL_ART };
+/**
+ * (17-11-2026) Bolas SIN hoja de sprites (se dibujan por código): ULTRA EFECTO = pelota normal + aire de ventilador gigante;
+ * RÁFAGA = pelota normal + ráfaga de pelotas fantasma (fx/barrageFx.ts).
+ */
+export type ProceduralBall = 'ultra' | 'barrage' | 'energy'; // (17-11-2026) energy = BOLA DE ENERGÍA (LEGENDARIA, fx/energyBallFx.ts)
+export function isProceduralBall(el: InfernoElement): el is ProceduralBall {
+  return el === 'ultra' || el === 'barrage' || el === 'energy';
+}
+export const BALL_ART: Record<Exclude<InfernoElement, ProceduralBall>, BallArt> = { fire: FIREBALL_ART, ice: ICEBALL_ART, wind: WINDBALL_ART, lightning: LIGHTNINGBALL_ART, tulip: TULIPBALL_ART, shadow: SHADOWBALL_ART, light: LIGHTBALL_ART };
+/** Hoja de la bola de un poder; undefined en las procedurales (ULTRA EFECTO, RÁFAGA). */
+export function ballArtOf(el: InfernoElement): BallArt | undefined {
+  return isProceduralBall(el) ? undefined : BALL_ART[el];
+}
+
+/**
+ * (17-11-2026) ULTRA EFECTO: el aire de ventilador del DROP SHOT 0 (DropZeroFx) en GRANDE: ~3 veces su tamaño, 6 aspas, 5
+ * aros, el doble de líneas de aire y algo más brillante.
+ */
+const ULTRA_AIR = { scale: 3, blades: 6, rings: 5, streaksPerSec: 110, bright: 1.25 };
+
+/** Pelota de tenis dibujada por código (vistas previas de ULTRA EFECTO, sin la textura del partido): radio `r`, centrada en 0,0. */
+function drawTennisBall(g: Phaser.GameObjects.Graphics, r: number) {
+  g.fillStyle(0x0a1638, 1).fillCircle(0, 0, r * 1.12);
+  g.fillStyle(0xd7f53a, 1).fillCircle(0, 0, r);
+  g.fillStyle(0xa9c91e, 0.6).fillCircle(r * 0.22, r * 0.25, r * 0.78);
+  g.fillStyle(0xeefe7a, 0.9).fillCircle(-r * 0.12, -r * 0.14, r * 0.68);
+  g.lineStyle(Math.max(1.2, r * 0.13), 0xffffff, 0.95);
+  g.beginPath().arc(-r * 1.25, 0, r * 0.95, -0.75, 0.75).strokePath();
+  g.beginPath().arc(r * 1.25, 0, r * 0.95, Math.PI - 0.75, Math.PI + 0.75).strokePath();
+  g.fillStyle(0xffffff, 0.55).fillCircle(-r * 0.38, -r * 0.42, r * 0.24);
+}
+
+/**
+ * Vista previa de ULTRA EFECTO: la pelota de tenis con el aire de ventilador gigante girando a su alrededor (DropZeroFx con
+ * menos alcance en las líneas para no salirse de la tarjeta). Con `animate`, se mueve con el `update` de la escena hasta
+ * que se destruye el contenedor.
+ */
+function addUltraPreview(scene: Phaser.Scene, c: Phaser.GameObjects.Container, maxW: number, maxH: number, animate: boolean) {
+  const m = Math.min(maxW, maxH);
+  const fx = new DropZeroFx(scene, { ...ULTRA_AIR, reach: 0.45 });
+  const k = (m * 0.46) / (58 * ULTRA_AIR.scale); // el aro más grande llega casi al borde
+  c.add(fx.gfx);
+  const ball = scene.add.graphics();
+  drawTennisBall(ball, m * 0.15);
+  c.add(ball);
+  fx.drawAt(0.12, 0, 0, k, 0);
+  if (!animate) return;
+  const tick = (_t: number, delta: number) => {
+    if (!c.active || !isShown(c)) return;
+    const dt = Math.min(0.05, delta / 1000);
+    fx.drawAt(dt, 0, 0, k, 0);
+    ball.rotation += dt * 9;
+  };
+  scene.events.on(Phaser.Scenes.Events.UPDATE, tick);
+  const off = () => scene.events.off(Phaser.Scenes.Events.UPDATE, tick);
+  c.once(Phaser.GameObjects.Events.DESTROY, off);
+  scene.events.once(Phaser.Scenes.Events.SHUTDOWN, off);
+}
 
 /** Tamaño en pantalla [ancho, alto] de una bola de alto `h` (las cuadradas, h × h). */
 export function ballDims(art: BallArt, h: number): [number, number] {
@@ -145,8 +214,15 @@ export function ballDims(art: BallArt, h: number): [number, number] {
  * círculo de `color`.
  */
 export function addBallPreview(scene: Phaser.Scene, x: number, y: number, el: InfernoElement, maxW: number, maxH: number, animate: boolean, color: number) {
-  const art = BALL_ART[el];
+  const art = ballArtOf(el);
   const c = scene.add.container(x, y);
+  if (!art) {
+    // (17-11-2026) ULTRA EFECTO y RÁFAGA: sin hoja, por código
+    if (el === 'barrage') addBarragePreview(scene, c, maxW, maxH, animate);
+    else if (el === 'energy') addEnergyPreview(scene, c, maxW, maxH, animate); // (17-11-2026) BOLA DE ENERGÍA
+    else addUltraPreview(scene, c, maxW, maxH, animate);
+    return c;
+  }
   if (!scene.textures.exists(art.key)) {
     c.add(scene.add.circle(0, 0, Math.min(maxW, maxH) * 0.3, color, 1));
     return c;
@@ -250,6 +326,81 @@ export const INFERNO_LOOK: Record<InfernoElement, InfernoLook> = {
     },
     hit: { ring: 0xff8fc4, star: 0xfff0f7, flash: [255, 190, 220] },
   },
+  // (17-11-2026) SOMBRA: oscuridad con brillo morado (sombras del desplazamiento de negro-morado a lila)
+  shadow: {
+    ghostTint: 0x9b4dff,
+    ghostRamp: [0x14002e, 0xc79bff],
+    cine: {
+      colors: { core: 0xf0e2ff, gold: 0xc79bff, hot: 0x5a1fb8, cyan: 0x9b4dff },
+      aura: [
+        [1.3, 0x2a0a5e, 0.26],
+        [1.08, 0x6a2fd0, 0.24],
+        [0.86, 0xb27dff, 0.22],
+      ],
+      flashTint: 0xe2c8ff,
+    },
+    hit: { ring: 0x9b4dff, star: 0xe2c8ff, flash: [150, 80, 255] },
+  },
+  // (17-11-2026) LUZ: luz sagrada blanca y dorada pálida (menos naranja que el fuego)
+  light: {
+    ghostTint: 0xffe9a0,
+    ghostRamp: [0xb08a1e, 0xfff8dc],
+    cine: {
+      colors: { core: 0xffffff, gold: 0xffe48a, hot: 0xffc94a, cyan: 0xfff1b8 },
+      aura: [
+        [1.3, 0xffc94a, 0.2],
+        [1.08, 0xffe48a, 0.24],
+        [0.86, 0xfff8dc, 0.24],
+      ],
+      flashTint: 0xfffbea,
+    },
+    hit: { ring: 0xffd86b, star: 0xffffff, flash: [255, 240, 190] },
+  },
+  // (17-11-2026) ULTRA EFECTO: aire blanco y menta (el del DROP SHOT 0)
+  ultra: {
+    ghostTint: 0xc8ffe8,
+    ghostRamp: [0x1f6a58, 0xf4fffa],
+    cine: {
+      colors: { core: 0xffffff, gold: 0xe0fff0, hot: 0x5fe0b8, cyan: 0x9cf5d8 },
+      aura: [
+        [1.3, 0x5fe0b8, 0.2],
+        [1.08, 0x9cf5d8, 0.24],
+        [0.86, 0xe0fff0, 0.26],
+      ],
+      flashTint: 0xf4fffa,
+    },
+    hit: { ring: 0xe0fff0, star: 0xffffff, flash: [220, 255, 240] },
+  },
+  // (17-11-2026) RÁFAGA: amarillo lima de pelota de tenis y destellos dorados
+  barrage: {
+    ghostTint: 0xeaff8a,
+    ghostRamp: [0x6a7a10, 0xf8ffd0],
+    cine: {
+      colors: { core: 0xffffff, gold: 0xeaff8a, hot: 0xd8ff3a, cyan: 0xf4ffc0 },
+      aura: [
+        [1.3, 0xb8e020, 0.2],
+        [1.08, 0xd8ff3a, 0.24],
+        [0.86, 0xf4ffc0, 0.26],
+      ],
+      flashTint: 0xf8ffd8,
+    },
+    hit: { ring: 0xd8ff3a, star: 0xffffff, flash: [240, 255, 170] },
+  },
+  // (17-11-2026) BOLA DE ENERGÍA (LEGENDARIA): energía blanca y celeste
+  energy: {
+    ghostTint: 0x9fefff,
+    ghostRamp: [0x0a3a8a, 0xe8fdff],
+    cine: {
+      colors: { core: 0xffffff, gold: 0xc8f8ff, hot: 0x1f8cff, cyan: 0x5fe8ff },
+      aura: [
+        [1.45, 0x1f8cff, 0.26],
+        [1.18, 0x5fe8ff, 0.3],
+        [0.92, 0xe8fdff, 0.3],
+      ],
+      flashTint: 0xf0fdff,
+    },
+    hit: { ring: 0x5fe8ff, star: 0xffffff, flash: [200, 245, 255] },
+  },
 };
 
 const CINES: Partial<Record<InfernoElement, CineProfile>> = { fire: INFERNO_CINE };
@@ -265,7 +416,7 @@ export function infernoCine(el: InfernoElement): CineProfile {
 
 /** Crea (una vez) la animación de cada bola cargada: la usan el partido y la vista previa de PERSONALIZACIÓN. */
 export function ensureBallAnims(scene: Phaser.Scene) {
-  for (const a of Object.values(BALL_ART)) {
+  for (const a of Object.values(BALL_ART) as BallArt[]) {
     if (scene.textures.exists(a.key) && !scene.anims.exists(a.anim)) {
       const frames = scene.anims.generateFrameNumbers(a.key, a.seq ? { frames: a.seq } : { start: 0, end: a.frames - 1 });
       scene.anims.create({ key: a.anim, frames, frameRate: a.fps, repeat: -1 });
@@ -275,7 +426,7 @@ export function ensureBallAnims(scene: Phaser.Scene) {
 
 /** Encola las hojas de las bolas (y de sus rastros) que aún no están cargadas. */
 export function queueInfernoArt(load: Phaser.Loader.LoaderPlugin) {
-  for (const art of Object.values(BALL_ART)) {
+  for (const art of Object.values(BALL_ART) as BallArt[]) {
     const size = { frameWidth: art.cell, frameHeight: art.cellH ?? art.cell };
     if (!load.scene.textures.exists(art.key)) load.spritesheet(art.key, art.file, size);
     if (art.trail && !load.scene.textures.exists(art.trail.key)) load.spritesheet(art.trail.key, art.trail.file, size);
@@ -433,6 +584,12 @@ export class GhostTrail {
 // ---------------------------------------------------------------- pelota de fuego
 /** la esfera de fuego mide esto × la pelota (radio de la pelota en pantalla = 12 × escala) */
 export const FIREBALL_SCALE = 3;
+/** (17-11-2026) la BOLA DE ENERGÍA (LEGENDARIA) mide esto × la esfera de la ULTI normal */
+export const ENERGY_BALL_SCALE = 1.6;
+/** (17-11-2026) radio en pantalla de la BOLA DE ENERGÍA en vuelo (el mismo cálculo de InfernoFire.update): `s` = escala de perspectiva, `z` = altura */
+export function energyBallRadius(s: number, z: number) {
+  return FIREBALL_SCALE * 12 * s * 0.8 * (1 + Math.min(z, 220) / 700) * ENERGY_BALL_SCALE;
+}
 const TONGUES = 14;
 /** estela de siluetas de la bola de fuego (hoja de sprites), brasas que salen por detras y su ritmo */
 const TRAIL = 6;
@@ -468,6 +625,16 @@ const BALL_FX: Record<InfernoElement, { halo: number; core: number; trail: [numb
   lightning: { halo: 0x2f6bff, core: 0xfffbe0, trail: [0xbfe0ff, 0x3a7bff], bits: [0xfff36b, 0x7fc8ff], rise: 0, glow: [0xfffbe0, 0x3a7bff], sparks: [0xffffff, 0xfff36b, 0x5aa8ff] },
   // tulipán: pétalos rosados que caen despacio detrás de la estela
   tulip: { halo: 0xff5fa8, core: 0xfff0f7, trail: [0xffd0e6, 0xff8fc4], bits: [0xff9fcf, 0xffd0e6], rise: -0.1, glow: [0xfff0f7, 0xff8fc4], sparks: [0xffffff, 0xffb3d6, 0xff6fae] },
+  // (17-11-2026) sombra: brillo morado y jirones oscuros que suben un poco como humo
+  shadow: { halo: 0x7a2fd6, core: 0xe2c8ff, trail: [0xb27dff, 0x4a1a9e], bits: [0x9b4dff, 0x2a0a5e], rise: 0.3, glow: [0xe2c8ff, 0x9b4dff], sparks: [0xffffff, 0xd1a8ff, 0x7a2fd6] },
+  // (17-11-2026) luz: chispas doradas y blancas que suben despacio
+  light: { halo: 0xffc94a, core: 0xffffff, trail: [0xfff1b8, 0xffd86b], bits: [0xffffff, 0xffe48a], rise: 0.25, glow: [0xfffbea, 0xffd86b], sparks: [0xffffff, 0xfff1b8, 0xffd86b] },
+  // (17-11-2026) ULTRA EFECTO: aire blanco y menta
+  ultra: { halo: 0x9cf5d8, core: 0xffffff, trail: [0xffffff, 0xc8ffd8], bits: [0xffffff, 0xc8ffd8], rise: 0, glow: [0xffffff, 0x9cf5d8], sparks: [0xffffff, 0xe0fff0, 0x9cf5d8] },
+  // (17-11-2026) RÁFAGA: amarillo lima y dorado
+  barrage: { halo: 0xd8ff3a, core: 0xffffff, trail: [0xf4ffc0, 0xd8ff3a], bits: [0xffffff, 0xeaff8a], rise: 0, glow: [0xfbffe0, 0xd8ff3a], sparks: [0xffffff, 0xeaff8a, 0xd8ff3a] },
+  // (17-11-2026) BOLA DE ENERGÍA: blanco y celeste
+  energy: { halo: 0x5fe8ff, core: 0xffffff, trail: [0xc8f8ff, 0x5fe8ff], bits: [0xffffff, 0xc8f8ff], rise: 0, glow: [0xf0fdff, 0x5fe8ff], sparks: [0xffffff, 0xc8f8ff, 0x5fe8ff] },
 };
 
 /**
@@ -495,6 +662,21 @@ export class InfernoFire {
   private emberAcc = 0;
   /** elemento de la bola en vuelo (setElement): cambia la hoja de sprites y los colores de sus efectos */
   private el: InfernoElement = 'fire';
+  /** (17-11-2026) ULTRA EFECTO (sin hoja): aire de ventilador gigante + pelota de tenis encima + halo menta (se crean al usarse) */
+  private ultraAir?: DropZeroFx;
+  private ultraBall?: Phaser.GameObjects.Container;
+  private ultraFelt?: Phaser.GameObjects.Image;
+  private ultraGlow?: Phaser.GameObjects.Image;
+  /** (17-11-2026) RÁFAGA (sin hoja): pelotas fantasma alrededor y detrás de la pelota real (se crean al usarse) */
+  private barrage?: BarrageTrail;
+  /** (17-11-2026) BOLA DE ENERGÍA (sin hoja): esfera blanca y celeste más grande (se crea al usarse) */
+  private energy?: EnergyBallFx;
+  /**
+   * (17-11-2026, usuario) la BOLA DE ENERGÍA sale CHICA y crece en vuelo hasta su tamaño máximo (ENERGY_BALL_SCALE) al llegar al rival:
+   * `energyGrowSec` = segundos de vuelo en los que crece (el que la lanza pone su tiempo de vuelo); `energyT` = tiempo volando
+   */
+  energyGrowSec = 0.6;
+  private energyT = 0;
 
   constructor(private readonly scene: Phaser.Scene) {
     ensureBallAnims(scene); // animación de cada bola con hoja cargada (fuego, hielo, viento, rayo)
@@ -528,12 +710,14 @@ export class InfernoFire {
    * Si la hoja de ese elemento no cargó, sigue la de fuego.
    */
   setElement(el: InfernoElement) {
-    const want: InfernoElement = this.scene.textures.exists(BALL_ART[el].key) ? el : 'fire';
+    const elArt = ballArtOf(el);
+    // ULTRA EFECTO no tiene hoja: se dibuja por código (updateUltra)
+    const want: InfernoElement = !elArt || this.scene.textures.exists(elArt.key) ? el : 'fire';
     if (want === this.el) return;
     this.hide(); // la bola anterior ya terminó: la nueva empieza su animación desde cero
     this.el = want;
-    if (!this.art) return;
-    const ART = BALL_ART[want];
+    const ART = ballArtOf(want);
+    if (!this.art || !ART) return;
     const [ox, oy] = ART.origin ?? [0.5, 0.5];
     this.art.setTexture(ART.key, 0).setOrigin(ox, oy);
     this.trail.forEach((g) => g.setTexture(ART.key, 0).setOrigin(ox, oy));
@@ -557,6 +741,23 @@ export class InfernoFire {
     const k = air.s * 0.8 * (1 + Math.min(ball.z, 220) / 700);
     const R = FIREBALL_SCALE * 12 * k;
     const d = ground.sy + 2.5; // por encima de la pelota real
+    if (this.el === 'barrage') {
+      this.updateBarrage(ball, air, k, d, dt);
+      return;
+    }
+    if (this.el === 'energy') {
+      // (17-11-2026) BOLA DE ENERGÍA: ENERGY_BALL_SCALE veces la esfera de la ULTI normal
+      this.energy ??= new EnergyBallFx(this.scene);
+      this.energyT += dt;
+      const gq = Math.min(1, this.energyT / Math.max(0.1, this.energyGrowSec));
+      const grow = 0.3 + 0.7 * (1 - (1 - gq) * (1 - gq)); // 30 % al salir -> 100 % al llegar (nunca más)
+      this.energy.draw(dt, air.sx, air.sy, R * ENERGY_BALL_SCALE * grow, d);
+      return;
+    }
+    if (isProceduralBall(this.el)) {
+      this.updateUltra(air, k, d, dt);
+      return;
+    }
     if (this.art) {
       this.updateArt(ball, air, R, d, dt);
       return;
@@ -607,7 +808,7 @@ export class InfernoFire {
     }
     const bx = sp > 0.05 ? -vx / sp : 0, by = sp > 0.05 ? -vy / sp : 1; // hacia atras
     const pulse = 1 + 0.05 * Math.sin(this.t * 26) + 0.03 * Math.sin(this.t * 13);
-    const ART = BALL_ART[this.el];
+    const ART: BallArt = ballArtOf(this.el) ?? FIREBALL_ART;
     const P = BALL_FX[this.el];
     const size = ((R * 2) / ART.fill) * pulse;
     const [dw, dh] = ballDims(ART, size);
@@ -681,7 +882,65 @@ export class InfernoFire {
     }
   }
 
+  /**
+   * (17-11-2026) ULTRA EFECTO: la pelota de tenis NORMAL (tapa el núcleo de color de la pelota real) envuelta en el aire de
+   * ventilador del DROP SHOT 0 en grande (DropZeroFx con ULTRA_AIR), detrás de ella, y un halo menta que late.
+   */
+  private updateUltra(air: { sx: number; sy: number }, k: number, d: number, dt: number) {
+    const sc = this.scene;
+    if (!this.ultraAir) this.ultraAir = new DropZeroFx(sc, ULTRA_AIR);
+    this.ensureTennisBall();
+    this.ultraGlow!.setTint(BALL_FX.ultra.halo);
+    const pulse = 1 + 0.08 * Math.sin(this.t * 24);
+    this.ultraGlow!.setPosition(air.sx, air.sy).setDisplaySize(120 * k * pulse, 120 * k * pulse).setAlpha(0.45 + 0.15 * Math.sin(this.t * 18)).setDepth(d - 0.03).setVisible(true);
+    this.ultraAir.drawAt(dt, air.sx, air.sy, k, d - 0.02);
+    this.ultraAir.gfx.setVisible(true);
+    if (this.ultraFelt) this.ultraFelt.rotation += dt * 14; // la pelota gira con el efecto
+    this.ultraBall!.setPosition(air.sx, air.sy).setScale(k).setDepth(d + 0.01).setVisible(true);
+  }
+
+  /**
+   * (17-11-2026) Pelota de tenis NORMAL encima de la real (tapa su núcleo de color) + halo (ULTRA EFECTO y RÁFAGA la
+   * comparten; se crean una vez).
+   */
+  private ensureTennisBall() {
+    if (this.ultraBall) return;
+    const sc = this.scene;
+    this.ultraGlow = sc.add.image(0, 0, GLOW).setBlendMode(Phaser.BlendModes.ADD);
+    const c = sc.add.container(0, 0);
+    if (sc.textures.exists('ball-felt') && sc.textures.exists('ball-shade')) {
+      // las texturas de la pelota del partido (objects/Ball.ts makeBallArt): mismo dibujo y tamaño
+      this.ultraFelt = sc.add.image(0, 0, 'ball-felt').setDisplaySize(19.6, 19.6);
+      c.add([sc.add.circle(0, 0, 12, 0x0a1638), this.ultraFelt, sc.add.image(0, 0, 'ball-shade').setDisplaySize(19.6, 19.6)]);
+    } else {
+      const g = sc.add.graphics();
+      drawTennisBall(g, 9.8);
+      c.add(g);
+    }
+    this.ultraBall = c;
+  }
+
+  /**
+   * (17-11-2026) RÁFAGA: la pelota real va en el CENTRO como siempre (pelota de tenis normal + halo lima) y detrás y alrededor
+   * las pelotas fantasma por su mismo camino (BarrageTrail, en perspectiva). Solo visual.
+   */
+  private updateBarrage(ball: BallState, air: { sx: number; sy: number }, k: number, d: number, dt: number) {
+    this.barrage ??= new BarrageTrail(this.scene);
+    this.ensureTennisBall();
+    this.barrage.draw(dt, ball.x, ball.y, ball.z, d - 0.02);
+    const pulse = 1 + 0.08 * Math.sin(this.t * 24);
+    this.ultraGlow!.setTint(BALL_FX.barrage.halo).setPosition(air.sx, air.sy).setDisplaySize(90 * k * pulse, 90 * k * pulse).setAlpha(0.4 + 0.15 * Math.sin(this.t * 18)).setDepth(d - 0.03).setVisible(true);
+    if (this.ultraFelt) this.ultraFelt.rotation += dt * 16;
+    this.ultraBall!.setPosition(air.sx, air.sy).setScale(k).setDepth(d + 0.01).setVisible(true);
+  }
+
   private hide() {
+    this.barrage?.hide();
+    this.energy?.hide();
+    this.energyT = 0;
+    this.ultraAir?.hide();
+    this.ultraGlow?.setVisible(false);
+    this.ultraBall?.setVisible(false);
     this.body.forEach((o) => o.setVisible(false));
     this.tongues.forEach((o) => o.setVisible(false));
     if (this.art?.visible) {
@@ -706,7 +965,7 @@ export class InfernoFire {
 
   /** Objetos visibles (pruebas). */
   get visibleParts() {
-    return this.body.filter((o) => o.visible).length + this.tongues.filter((o) => o.visible).length + (this.art?.visible ? 1 : 0);
+    return this.body.filter((o) => o.visible).length + this.tongues.filter((o) => o.visible).length + (this.art?.visible ? 1 : 0) + (this.ultraBall?.visible ? 1 : 0);
   }
 }
 
@@ -741,6 +1000,18 @@ export function infernoImpactFx(scene: Phaser.Scene, x: number, y: number, k: nu
   }
   if (el === 'wind') {
     leafBurst(scene, x, y, k);
+    return;
+  }
+  if (el === 'ultra') {
+    airBurst(scene, x, y, k);
+    return;
+  }
+  if (el === 'barrage') {
+    barrageFan(scene, x, y, k); // (17-11-2026) RÁFAGA: abanico de pelotas que salen de la raqueta
+    return;
+  }
+  if (el === 'energy') {
+    energyBurst(scene, x, y, k); // (17-11-2026) BOLA DE ENERGÍA: aros y rayos blancos y celestes
     return;
   }
   for (let i = 0; i < 18; i++) {
@@ -846,6 +1117,29 @@ function leafBurst(scene: Phaser.Scene, x: number, y: number, k: number) {
   }
   const ring = scene.add.ellipse(x, y, 40 * kk, 30 * kk).setStrokeStyle(4 * kk, 0xe0ffe8, 0.9).setDepth(3651).setBlendMode(Phaser.BlendModes.ADD);
   scene.tweens.add({ targets: ring, scale: 3.6, angle: 120, alpha: 0, duration: 360, ease: 'Cubic.easeOut', onComplete: () => ring.destroy() });
+}
+
+/** (17-11-2026) Golpe de ULTRA EFECTO en la raqueta: aros de aire blancos y menta que se abren + líneas de aire en espiral. */
+function airBurst(scene: Phaser.Scene, x: number, y: number, k: number) {
+  const kk = Math.max(0.6, k);
+  const ADD = Phaser.BlendModes.ADD;
+  for (let i = 0; i < 3; i++) {
+    const ring = scene.add.circle(x, y, 22 * kk).setStrokeStyle((6 - i * 1.5) * kk, i % 2 ? 0x9cf5d8 : 0xffffff, 0.95).setDepth(3651).setBlendMode(ADD);
+    scene.tweens.add({ targets: ring, scale: 4.5 + i, alpha: 0, delay: i * 50, duration: 380, ease: 'Cubic.easeOut', onComplete: () => ring.destroy() });
+  }
+  const g = scene.add.graphics({ x, y }).setDepth(3652).setBlendMode(ADD);
+  for (let i = 0; i < 16; i++) {
+    const a0 = (i / 16) * Math.PI * 2;
+    const pts: { x: number; y: number }[] = [];
+    for (let j = 0; j <= 6; j++) {
+      const r = (18 + j * 11) * kk;
+      const a = a0 + j * 0.14;
+      pts.push({ x: Math.cos(a) * r, y: Math.sin(a) * r * 0.8 });
+    }
+    g.lineStyle(3 * kk, i % 3 ? 0xffffff : 0xc8ffd8, 0.9).strokePoints(pts, false);
+  }
+  g.setScale(0.4);
+  scene.tweens.add({ targets: g, scale: 1.7, angle: 70, alpha: 0, duration: 420, ease: 'Cubic.easeOut', onComplete: () => g.destroy() });
 }
 
 /** Vibración breve de la cámara del mundo que se reduce sola (el HUD va en otra cámara). */

@@ -81,7 +81,7 @@ simulaciones nunca baja de 7.
 | Premio repetido del pase | 3 |
 | Paquetes (dinero real) | sección 5 |
 
-**Regla del dinero virtual (14-11-2026):** se compran con dinero virtual los ítems de rareza **normal** y **especial** (excepto las ULTIS). La rareza **épica** y la **legendaria** y las **ULTIS** solo con dinero real. Hoy son 11 ítems comprables con dinero virtual (590 de dinero: Cargando Fuego y Energía, Destello, 5 especiales y 4 defensivos especiales) y solo con dinero real las 4 ULTIS y el Cargando Tulipán. El dinero llega despacio, así que nadie tiene la Tienda de golpe. Simulado (20 semillas): casual junta ~274 de dinero en 60 días y compra ~6 ítems hasta el nivel 20 (día 57); regular compra ~5 hasta el nivel 20 (día 22) y los 11 hacia el día 50; intenso los 11 hacia el día 36. El Pase Premium sigue dando más que el gratis (60 contra 40).
+**Regla del dinero virtual (14-11-2026):** se compran con dinero virtual los ítems de rareza **normal** y **especial** (excepto las ULTIS). La rareza **épica** y la **legendaria** y las **ULTIS** solo con dinero real. Hoy son 11 ítems comprables con dinero virtual (590 de dinero: Cargando Fuego y Energía, Destello, 5 especiales y 4 defensivos especiales) y solo con dinero real las 9 ULTIS (17-11-2026: + Sombra, Luz, Ultra Efecto, la primera ULTI épica, Ráfaga, también épica, y Bola de Energía, la primera ULTI legendaria) y el Cargando Tulipán. El dinero llega despacio, así que nadie tiene la Tienda de golpe. Simulado (20 semillas): casual junta ~274 de dinero en 60 días y compra ~6 ítems hasta el nivel 20 (día 57); regular compra ~5 hasta el nivel 20 (día 22) y los 11 hacia el día 50; intenso los 11 hacia el día 36. El Pase Premium sigue dando más que el gratis (60 contra 40).
 
 **Sale:** solo en la Tienda. El Pase Premium se paga con dinero real ($3.990 CLP), no con billetes.
 
@@ -105,9 +105,17 @@ Techo semanal sin pagar: ~165 (30 del diario con anuncio + 125 de Challenger Top
 | ULTI Viento | 60 | $1.990 | 1 |
 | ULTI Rayo | 80 | $2.490 | 1 |
 | ULTI Tulipán | 80 | $2.490 | 1 |
+| ULTI Sombra (17-11-2026) | 80 | $2.490 | 1 |
+| ULTI Luz (17-11-2026) | 80 | $2.490 | 1 |
+| ULTI Ultra Efecto (17-11-2026; épica, solo dinero real) | 100 | $2.790 | 1 |
+| ULTI Ráfaga (17-11-2026; épica, solo dinero real) | 100 | $2.790 | 1 |
+| ULTI Bola de Energía (17-11-2026; LEGENDARIA, la primera ULTI legendaria; solo dinero real; no se puede VER en la Tienda) | 130 | $2.990 | 1 |
 | ESPECIAL (SMASH) Hielo | 45 | $1.390 | 1 |
 | ESPECIAL Viento | 50 | $1.490 | 1 |
 | ESPECIAL Rayo | 55 | $1.990 | 1 |
+| ESPECIAL Sombra (14-11-2026) | 60 | $1.990 | 1 |
+| ESPECIAL Luz (12-11-2026) | 60 | $1.990 | 1 |
+| ESPECIAL Cometa (17-11-2026, **épica**, solo dinero real; el 85 es de referencia) | 85 | $2.490 | 1 |
 | CARGA Fuego | 35 | $1.290 | 1 |
 | CARGA Energía | 35 | $1.290 | 1 |
 | CARGA Tulipán | 45 | $1.390 | 1 |
@@ -146,7 +154,7 @@ intenso tiene toda la tienda recién el día ~50.
 
 (Simulador, mediana de 20 semillas, 14-11-2026. El intenso llega al nivel 20 el día 2. Ojo: con la curva plana el nivel 20 llega MUY pronto y el pase de la temporada se completa en 2-8 días. El dinero y los premios diarios dependen de los días, no del nivel: los ~6 ítems de dinero virtual que se pensaron "hasta el nivel 20" llegan ahora hacia el día 45-57 (casual). Si se quiere frenar, se puede hacer la curva más lenta desde el nivel 10.)
 
-**Rarezas (14-11-2026):** normal · especial · épica · legendaria (`ItemRarity` en `shopCatalog.ts`). Hoy solo están clasificadas las ULTIS: todas son **especial** y se compran **solo con dinero real (CLP)**: con dinero virtual `purchase` las rechaza (`real_money_only`) y la Tienda muestra su precio en CLP como botón. Aún no hay ULTIS gratuitas (el fuego de la ULTI no se vende: viene con el personaje). También son **especiales** todos los poderes del ESPECIAL y del DEFENSIVO, salvo el DESTELLO (**normal**); el DASH y el FUEGO vienen gratis y no están en la Tienda. Efecto pelota: Brasas, Hielo, Neón y Humo especiales; Tulipanes y Corazones épicas; Estrellas y Arcoíris legendarias; los 4 de color de siempre (Rojo, Verde, Oro, Rosado) normales. Al Pase de Batalla solo van los normales (Rosado 5, Oro 10, Verde 15 y Rojo 20). Cargando golpe: Fuego normal, Energía especial, Tulipán épica. **Regla:** cada habilidad o poder nuevo se crea preguntando antes al usuario su rareza. El price en dinero de las ULTIS queda solo como referencia (regla de precios en CLP y total de la tienda); el simulador ya no las compra.
+**Rarezas (14-11-2026):** normal · especial · épica · legendaria (`ItemRarity` en `shopCatalog.ts`). Están clasificados los ítems de todas las categorías. Las ULTIS son **especial** (Ultra Efecto y Ráfaga, **épicas**; Bola de Energía, **legendaria**). En el ESPECIAL, COMETA es el primero **épico** (solo dinero real, $2.490: a más rareza, más precio) y se compran **solo con dinero real (CLP)**: con dinero virtual `purchase` las rechaza (`real_money_only`) y la Tienda muestra su precio en CLP como botón. Aún no hay ULTIS gratuitas (el fuego de la ULTI no se vende: viene con el personaje). También son **especiales** todos los poderes del ESPECIAL y del DEFENSIVO, salvo el DESTELLO (**normal**); el DASH y el FUEGO vienen gratis y no están en la Tienda. Efecto pelota: Brasas, Hielo, Neón y Humo especiales; Tulipanes y Corazones épicas; Estrellas y Arcoíris legendarias; los 4 de color de siempre (Rojo, Verde, Oro, Rosado) normales. Al Pase de Batalla solo van los normales (Rosado 5, Oro 10, Verde 15 y Rojo 20). Cargando golpe: Fuego normal, Energía especial, Tulipán épica. **Regla:** cada habilidad o poder nuevo se crea preguntando antes al usuario su rareza. El price en dinero de las ULTIS queda solo como referencia (regla de precios en CLP y total de la tienda); el simulador ya no las compra.
 
 **Jugador sin nada (MODO DESARROLLO apagado):** nivel 1, solo el personaje inicial, DASH y SMASH de fuego (bloqueados por nivel), estilo clásico y 5.000 monedas. Desde 12-11-2026 la Tienda tampoco vende antes de tiempo: un poder del DEFENSIVO se compra desde el nivel 2, del ESPECIAL desde el 4, de la ULTI desde el 6, el EFECTO PELOTA (estilos) desde el 10 y CARGANDO GOLPE desde el 12 (shopCatalog.ts toma el nivel de unlocks.ts; el nivel propio del ítem solo cuenta si es mayor).
 

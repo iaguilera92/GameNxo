@@ -3,7 +3,7 @@ import { FONT } from './theme';
 import { roundedPoly } from './shapes';
 import { fitText } from './fitText';
 import { arcadeButton } from './modeButtons';
-import { drawCoinIcon } from './wheelArt';
+import { coinIcon } from './wheelArt';
 import { fmtCoins } from './leagueStyle';
 import type { BoardEntry } from '../domain/rankedBots';
 import { rankedView } from '../logic/Ranked';
@@ -73,8 +73,7 @@ function globalRow(scene: Phaser.Scene, e: BoardEntry, rw: number, rh: number, p
   const lv = scene.add.text(ax + 28, 13, `NV ${e.level} · ${fmtCoins(e.wins)} VICTORIAS`, { fontFamily: FONT, fontSize: '12px', color: '#9fb4e0' }).setOrigin(0, 0.5);
   fitText(lv, rw * 0.42);
   const ct = scene.add.text(rw / 2 - 16, 0, fmtCoins(e.coins), { fontFamily: FONT, fontSize: '21px', color: '#ffd23f' }).setOrigin(1, 0.5);
-  const ci = scene.add.graphics({ x: ct.x - ct.width - 16, y: 0 });
-  drawCoinIcon(ci, 10);
+  const ci = coinIcon(scene, ct.x - ct.width - 16, 0, 10); // (17-11-2026) moneda: imagen moneda-1.webp
   c.add([pos, nm, lv, ct, ci]);
   return c;
 }

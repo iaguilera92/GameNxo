@@ -57,8 +57,10 @@ function crown(g: Phaser.GameObjects.Graphics, cx: number, cy: number, s: number
  * Dibuja el marco de `rarity` sobre el rectángulo (x, y, w, h) de esquinas `r`. `tint` = además tiñe el fondo (tarjetas de la Tienda; va
  * debajo del contenido: dibujar en el Graphics del fondo).
  */
-export function drawRarityFrame(g: Phaser.GameObjects.Graphics, x: number, y: number, w: number, h: number, r: number, rarity: ItemRarity, tint = false) {
-  const S = RARITY_STYLE[rarity];
+export function drawRarityFrame(g: Phaser.GameObjects.Graphics, x: number, y: number, w: number, h: number, r: number, rarity: ItemRarity, tint = false, soft = false) {
+  // soft (huecos chicos de las listas): marco más leve: borde más fino, casi sin brillo exterior y sin gemas en las esquinas ni corona
+  const B = RARITY_STYLE[rarity];
+  const S = soft ? { ...B, width: Math.max(2.5, B.width * 0.6), glow: B.glow * 0.25, studs: false } : B;
   const t = TIER[rarity];
   if (tint) {
     // degradado desde abajo: capas apiladas, cada una algo más baja y del color de la rareza
@@ -97,7 +99,7 @@ export function drawRarityFrame(g: Phaser.GameObjects.Graphics, x: number, y: nu
   }
   // gema central arriba (sello de la rareza); la legendaria lleva corona
   if (!small) {
-    gem(g, x + w / 2, y, 7 + t * 1.2, S);
-    if (t === 3) crown(g, x + w / 2, y - 17, 9, S);
+    gem(g, x + w / 2, y, soft ? 4.5 : 7 + t * 1.2, S);
+    if (t === 3 && !soft) crown(g, x + w / 2, y - 17, 9, S);
   }
 }

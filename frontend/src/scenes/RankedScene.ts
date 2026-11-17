@@ -5,7 +5,7 @@ import { stadiumBg } from '../ui/ui';
 import { arcadeButton } from '../ui/modeButtons';
 import { fitText } from '../ui/fitText';
 import { RankBadge, preloadRankBadges } from '../ui/RankBadge';
-import { drawChestIcon, drawCoinIcon, drawGiftIcon } from '../ui/wheelArt';
+import { coinIcon, drawChestIcon, drawGiftIcon } from '../ui/wheelArt';
 import { drawCashIcon } from './BattlePassScene';
 import { LEAGUE_STYLE, fmtCoins, fmtLeft, fmtNet } from '../ui/leagueStyle';
 import { navLigaLabel } from '../ui/navLabel';
@@ -162,8 +162,7 @@ export class RankedScene extends Phaser.Scene {
       const gw = cur.width + 6 + cr * 2;
       const gx = Phaser.Math.Clamp(curX - gw / 2, bx, bx + bw - gw);
       cur.setX(gx);
-      const coin = this.add.graphics({ x: gx + cur.width + 6 + cr, y: lblY - cur.height / 2 + 1 });
-      drawCoinIcon(coin, cr);
+      coinIcon(this, gx + cur.width + 6 + cr, lblY - cur.height / 2 + 1, cr); // (17-11-2026) moneda: imagen moneda-1.webp
       if (goal && gx + gw > goal.x - goal.width - 10) goal.setVisible(false);
     }
 
@@ -331,10 +330,15 @@ export class RankedScene extends Phaser.Scene {
     let cxp = prizeX + 6;
     for (const c of chips) {
       rg.fillStyle(elig ? 0x2a1c00 : 0x1e1a10, 1).fillRoundedRect(cxp, bodyY - 17, c.w, 34, 12);
-      const ic = this.add.graphics({ x: cxp + 10 + 11, y: bodyY });
-      if (c.it.kind === 'coin') drawCoinIcon(ic, 11);
-      else if (c.it.kind === 'cash') drawCashIcon(ic, 0.55);
-      else ic.fillStyle(0x46dfff, 1).fillPoints([{ x: 2, y: -11 }, { x: 10, y: -11 }, { x: 5, y: -2 }, { x: 11, y: -2 }, { x: -1, y: 12 }, { x: 3, y: 2 }, { x: -3, y: 2 }], true);
+      // (17-11-2026) moneda: imagen moneda-1.webp
+      let ic: Phaser.GameObjects.Image | Phaser.GameObjects.Graphics;
+      if (c.it.kind === 'coin') ic = coinIcon(this, cxp + 10 + 11, bodyY, 11);
+      else {
+        const icg = this.add.graphics({ x: cxp + 10 + 11, y: bodyY });
+        if (c.it.kind === 'cash') drawCashIcon(icg, 0.55);
+        else icg.fillStyle(0x46dfff, 1).fillPoints([{ x: 2, y: -11 }, { x: 10, y: -11 }, { x: 5, y: -2 }, { x: 11, y: -2 }, { x: -1, y: 12 }, { x: 3, y: 2 }, { x: -3, y: 2 }], true);
+        ic = icg;
+      }
       if (!elig) ic.setAlpha(0.55);
       c.tt.setPosition(cxp + 10 + 22 + 6, bodyY);
       this.children.bringToTop(c.tt);
@@ -454,8 +458,7 @@ export class RankedScene extends Phaser.Scene {
       fitText(nm, colW - 12);
       const coins = this.add.text(0, podiumBottom - 18, fmtNet(entry.coins), { fontFamily: FONT, fontSize: i === 0 ? '20px' : '17px', color: '#ffd23f' }).setOrigin(0, 0.5);
       const coinsW = coins.width + 24;
-      const coin = this.add.graphics({ x: x - coinsW / 2 + 9, y: podiumBottom - 18 });
-      drawCoinIcon(coin, 8);
+      coinIcon(this, x - coinsW / 2 + 9, podiumBottom - 18, 8); // (17-11-2026) moneda: imagen moneda-1.webp
       coins.setX(x - coinsW / 2 + 22);
     });
     // FILAS: 4.º, 5.º y la tuya (seleccionada). Si estás en el top 5, la 6.ª; si estás en el top 3, tu card ya se resalta
@@ -484,8 +487,7 @@ export class RankedScene extends Phaser.Scene {
       const nm = this.add.text(nx, yy, me ? `${entry.name} (TÚ)` : entry.name, { fontFamily: FONT, fontSize: '17px', color: me ? '#ffd23f' : '#ffffff' }).setOrigin(0, 0.5);
       fitText(nm, rw3 * 0.5);
       const ct = this.add.text(L + rw3 - 14, yy, fmtNet(entry.coins), { fontFamily: FONT, fontSize: '19px', color: '#ffd23f' }).setOrigin(1, 0.5);
-      const ci = this.add.graphics({ x: L + rw3 - 14 - ct.width - 13, y: yy });
-      drawCoinIcon(ci, 9);
+      coinIcon(this, L + rw3 - 14 - ct.width - 13, yy, 9); // (17-11-2026) moneda: imagen moneda-1.webp
     });
     arcadeButton(this, W / 2, top100Y, Math.min(480, W - 80), 46, 'VER TOP 100', () => this.leaderboard(), { palette: 'blue' });
 
@@ -818,9 +820,7 @@ export class RankedScene extends Phaser.Scene {
       rg.fillStyle(0x1a1306, 1).fillRoundedRect(-pw / 2 + 40, -ph / 2 + 380, pw - 80, 96, 18);
       rg.lineStyle(3, GOLD, 1).strokeRoundedRect(-pw / 2 + 40, -ph / 2 + 380, pw - 80, 96, 18);
       p.add(rg);
-      const ci = this.add.graphics({ x: -110, y: -ph / 2 + 428 });
-      drawCoinIcon(ci, 20);
-      p.add(ci);
+      p.add(coinIcon(this, -110, -ph / 2 + 428, 20)); // (17-11-2026) moneda: imagen moneda-1.webp
       p.add(this.add.text(-82, -ph / 2 + 428, fmtCoins(w.coins), { fontFamily: FONT, fontSize: '36px', color: '#ffd23f' }).setOrigin(0, 0.5));
       if (w.cash) {
         const cc = this.add.graphics({ x: 100, y: -ph / 2 + 428 });
@@ -927,8 +927,7 @@ export class RankedScene extends Phaser.Scene {
     const g = this.add.graphics();
     g.fillStyle(NAVY, 0.94).fillRoundedRect(right - w, y - 22, w, 44, 22);
     g.lineStyle(2, GOLD, 1).strokeRoundedRect(right - w, y - 22, w, 44, 22);
-    const ic = this.add.graphics({ x: right - w + 22, y });
-    drawCoinIcon(ic, 14);
+    coinIcon(this, right - w + 22, y, 14); // (17-11-2026) moneda: imagen moneda-1.webp
     this.children.bringToTop(t);
   }
 

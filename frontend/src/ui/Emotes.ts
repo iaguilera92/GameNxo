@@ -10,6 +10,8 @@ import { EMOTES, type EmoteKind } from '../domain/emotes';
  */
 export const EMOTE_COOLDOWN_MS = 10000;
 const BUBBLE_MS = 2200;
+/** (17-11-2026, usuario) el globo del RIVAL va más arriba de su cabeza (antes 14 px: chocaba con ella; el rival está al fondo, más chico) */
+const REMOTE_LIFT = 40;
 const PANEL_AUTOCLOSE_MS = 4000;
 
 export type { EmoteKind } from '../domain/emotes';
@@ -153,7 +155,7 @@ export class Emotes {
     const c = this.makeBubble(kind as EmoteKind);
     this.remote = { c, until: performance.now() + BUBBLE_MS, head };
     const h = head();
-    c.setPosition(h.x, h.y - 14).setScale(0.2);
+    c.setPosition(h.x, h.y - REMOTE_LIFT).setScale(0.2);
     this.scene.tweens.add({ targets: c, scale: 1, duration: 260, ease: 'Back.easeOut' });
   }
 
@@ -208,7 +210,7 @@ export class Emotes {
         this.remote = undefined;
       } else {
         const h = r.head();
-        r.c.setPosition(h.x, h.y - 14);
+        r.c.setPosition(h.x, h.y - REMOTE_LIFT);
         if (left < 300) r.c.setAlpha(left / 300);
       }
     }

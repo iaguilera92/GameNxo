@@ -27,6 +27,7 @@ import { INFERNO_LOOK, InfernoFire, type FxElement, type InfernoElement, inferno
 import { powerImpactFx } from './ImpactFx';
 import type { DemoRect, PowerDemo } from '../ui/PowerDialog';
 import { type TrailFx, type TrailLook, TrailParticles, drawRibbon } from './ballTrailFx';
+import { EnergyDemo } from './energyDemo';
 
 /**
  * DEMOSTRACIÓN DEL DEFENSIVO (selector de PERSONALIZAR, página 2 de la televisión): tu personaje, de espaldas, contra una MÁQUINA DE PELOTAS que
@@ -52,6 +53,13 @@ const BOX = { xMin: P_X[0] - DASH_BACK_REACH, xMax: P_X[1] + 30, yMin: Y_MIN - 3
 /** de dónde sale la pelota (boca de la máquina) y dónde está su base */
 const MACHINE_X = COURT.right + 55;
 const MUZZLE_Z = 59;
+/**
+ * (17-11-2026, usuario: "la máquina tira muy lento") velocidad del tiro de la máquina en las demos de ESPECIAL / ULTI / CARGANDO GOLPE
+ * (× SHOT_SPEED). Antes 0,8: la pelota tardaba ~1,95 s en llegar a la raqueta; con 1,15, ~1,35 s (le llega a ~48 de alto tras el bote)
+ */
+export const SPECIAL_SERVE_K = 1.15;
+/** dónde bota el ESPECIAL antes de llegar a la máquina (su cancha, entre la línea de saque y el fondo) */
+const SPECIAL_BOUNCE_X = COURT.right - 200;
 /** altura a la que la bola de la ULTI llega a la máquina (su cuerpo) */
 const MACHINE_HIT_Z = 60;
 /** segundos entre que acaba un ciclo y sale la siguiente pelota, y tras devolverla antes del corte */
@@ -113,6 +121,8 @@ class DefensiveDemo implements PowerDemo {
   private bounces = 0;
   /** botes reales de la pelota devuelta (del otro lado) y cuánto lleva ya quieta: el ciclo espera a que termine de botear */
   private afterBounces = 0;
+  /** botes de la pelota del ESPECIAL en el lado de la máquina antes de alcanzarla (como en el partido: bota y luego llega al rival) */
+  private specialBounces = 0;
   private settle = 0;
   private ballOn = false;
   private activated = false;
@@ -158,6 +168,11 @@ class DefensiveDemo implements PowerDemo {
   private readonly fxParts: TrailParticles | null = null;
   private readonly ribbon: { x: number; y: number; col: number }[] = [];
   private lastDt = 1 / 60;
+  /** (17-11-2026) ULTI LEGENDARIA BOLA DE ENERGÍA: su secuencia propia con 4 máquinas (fx/energyDemo.ts); se crea la primera vez que hace falta */
+  private energy: EnergyDemo | null = null;
+  private get energyOn() {
+    return this.special?.kind === 'inferno' && this.el === 'energy';
+  }
 
   constructor(
     private readonly scene: Phaser.Scene,
@@ -267,6 +282,7 @@ class DefensiveDemo implements PowerDemo {
     this.curtain = scene.add.rectangle(outer.x + outer.w / 2, outer.y + outer.h / 2, outer.w, outer.h, 0x000000, 1).setAlpha(0);
     parent.add(this.curtain);
     this.layout();
+    if (this.energyOn) this.syncEnergy();
     scene.events.on(Phaser.Scenes.Events.UPDATE, this.tick);
   }
 
@@ -332,6 +348,8 @@ class DefensiveDemo implements PowerDemo {
     this.scene.tweens.killTweensOf(all);
     this.clearStun();
     this.stopSpecial();
+    this.energy?.destroy();
+    this.energy = null;
     if (this.cine) this.scene.events.off(Phaser.Scenes.Events.POST_UPDATE, (this.cine as unknown as { tailTick: () => void }).tailTick, this.cine);
     this.dashFx.clear();
     this.infDash?.clear();
@@ -346,7 +364,10 @@ class DefensiveDemo implements PowerDemo {
     this.shakeX *= 0.82;
     this.shakeY *= 0.82;
     // cinemática del ESPECIAL / ULTI (la del partido): mientras dura, la demostración se congela como el partido (pelota quieta)
-    if (this.cine?.active) {
+    if (this.energyOn && this.energy) {
+      // (17-11-2026) BOLA DE ENERGÍA: su secuencia con las 4 máquinas (fx/energyDemo.ts; la cinemática la mueve ella)
+      if (this.phase !== 'cut') this.energy.update(dt);
+    } else if (this.cine?.active) {
       this.cine.update();
     } else if (this.phase === 'wait') {
       this.clock += dt;
@@ -421,6 +442,7 @@ class DefensiveDemo implements PowerDemo {
     this.clock = 0;
     this.bounces = 0;
     this.afterBounces = 0;
+    this.specialBounces = 0;
     this.settle = 0;
     this.activated = false;
     this.swung = false;
@@ -432,6 +454,7 @@ class DefensiveDemo implements PowerDemo {
     this.machine.setAngle(0).setX(project(MACHINE_X, LAT_C).sx).setVisible(true).setAlpha(1);
     this.wreck.forEach((o) => o.scene && o.destroy());
     this.wreck = [];
+    this.syncEnergy();
     this.runT = 0;
     this.targetZoom = 1;
     this.zoom = 1;
@@ -469,7 +492,7 @@ class DefensiveDemo implements PowerDemo {
       // ESPECIAL / ULTI: la máquina tira DIRECTO al personaje (bota delante de él y le llega a la raqueta): no hace falta moverse
       // (bota a 340 de él: le llega a media altura, ~60 en el ESPECIAL y ~85 donde arranca la ULTI)
       // (la ULTI también: avanza lo justo desde donde está y sus sombras quedan separadas detrás de él, así se ven aunque el avance sea corto)
-      aimShot(b, this.pa.x + 340, this.pa.y, SHOT_SPEED * 0.8, 18);
+      aimShot(b, this.pa.x + 340, this.pa.y, SHOT_SPEED * SPECIAL_SERVE_K, 18);
       this.armSpecial();
     } else {
       // destino: en el fondo de su lado, a un costado (alterna): obliga a moverse
@@ -505,6 +528,7 @@ class DefensiveDemo implements PowerDemo {
       const ev = stepBall(this.ball, dt / n);
       // un bote de verdad (la pelota rodando también da "bote" en cada paso: no cuenta)
       const real = ev === 'bounce' && vz0 < -120;
+      if (real && this.special && !this.impacted && this.ball.x > NET_X) this.specialBounces++;
       if (real && this.struck && (!this.special || this.impacted)) this.afterBounces++;
       else if (real && this.ball.x < NET_X) this.bounces++;
       if (real) {
@@ -1256,8 +1280,10 @@ class DefensiveDemo implements PowerDemo {
       this.shake(4);
       return;
     }
-    // la ULTI atraviesa la máquina y sigue de largo (sale de la pantalla); el ESPECIAL le pega y vuelve en globo
-    aimShot(b, MACHINE_X + (inf ? 700 : 120), LAT_C, SHOT_SPEED * SMASH_SPEED_MULT * (inf ? INFERNO.speedMult : 1), 6);
+    // la ULTI atraviesa la máquina y sigue de largo (sale de la pantalla); el ESPECIAL (17-11-2026, usuario) BOTA en la cancha de la máquina
+    // y luego le llega, como el ESPECIAL del partido al rival (antes iba directo a la máquina por el aire); le pega y vuelve en globo
+    if (inf) aimShot(b, MACHINE_X + 700, LAT_C, SHOT_SPEED * SMASH_SPEED_MULT * INFERNO.speedMult, 6);
+    else aimShot(b, SPECIAL_BOUNCE_X, LAT_C, SHOT_SPEED * SMASH_SPEED_MULT, 6);
     if (inf) {
       // tiro TENSO: que llegue a la máquina a la altura de su cuerpo (antes pasaba alta en globo y "la tocaba" en pantalla mucho antes de explotar)
       const T = Math.max(0.2, (MACHINE_X - 40 - b.x) / b.vx);
@@ -1301,7 +1327,10 @@ class DefensiveDemo implements PowerDemo {
     const at = kind === 'inferno' ? project(s.x, s.y, s.z) : { sx: mp.sx, sy: mp.sy - 70 * ks };
     powerImpactFx(this.st, kind, at.sx, at.sy, mp.s, this.el as FxElement);
     s.z = Math.max(s.z, 22);
-    aimShot(s, COURT.left + 300, LAT_C - this.side * 70, SHOT_SPEED * 0.55, 70);
+    // (17-11-2026, usuario) la pelota NO vuelve al jugador: rebota en la máquina y cae hacia un lado (fuera de la cancha), botando allí
+    const off = this.side >= 0 ? 1 : -1;
+    aimShot(s, MACHINE_X - 90, LAT_C + off * (COURT.bottom - COURT.top) * 0.62, SHOT_SPEED * 0.4, 0);
+    s.vz = Math.max(s.vz, 260); // sale despedida hacia arriba un poco antes de caer
     rb.setPower(false);
     rb.setKind('lob');
     this.targetZoom = 1;
@@ -1343,6 +1372,7 @@ class DefensiveDemo implements PowerDemo {
   private stopSpecial() {
     this.stopChargeSnd();
     if (!this.special) return;
+    this.energy?.stop();
     this.chargeT = null;
     this.chargeFx?.hide();
     this.chargeRing?.setVisible(false);
@@ -1372,6 +1402,8 @@ class DefensiveDemo implements PowerDemo {
   private hitsMachine(): boolean {
     const b = this.ball;
     if (b.x < NET_X) return false;
+    // el ESPECIAL primero bota (en pantalla podía "tocar" la máquina al pasar alto antes del bote); si no botara, al llegar a ella igual
+    if (this.special?.kind === 'smash' && this.specialBounces < 1 && b.x < MACHINE_X - 45) return false;
     if (b.x >= MACHINE_X - 45) return true;
     const mp = project(MACHINE_X, LAT_C);
     const ks = mp.s * VIEW.CHAR_K;
@@ -1389,13 +1421,14 @@ class DefensiveDemo implements PowerDemo {
    */
   private destroyMachine() {
     const el = this.el as InfernoElement;
-    // la bola sigue DERECHO (sin caer ni botar) hasta salir de la pantalla
-    this.ball.vz = 0;
-    this.ball.g = 0;
+    // (17-11-2026, usuario) tras destruir la máquina la bola sigue con su efecto pero sale un poco hacia arriba y DA UN BOTE detrás de
+    // ella antes de salir de la pantalla (antes seguía derecho, sin caer ni botar)
+    this.ball.vx *= 0.55;
+    this.ball.vz = 230;
     const mp = project(MACHINE_X, LAT_C);
     const ks = mp.s * VIEW.CHAR_K;
     const my = mp.sy - 70 * ks;
-    powerImpactFx(this.st, 'inferno', mp.sx, my, mp.s * 1.2, el as FxElement);
+    powerImpactFx(this.st, 'inferno', mp.sx, my, mp.s * 1.2, el as FxElement, mp.sy);
     infernoImpactFx(this.st, mp.sx, my, mp.s * 1.3, el);
     this.shake(12);
     this.flash(120, INFERNO_LOOK[el].cine.flashTint ?? 0xfff1c8);
@@ -1463,6 +1496,41 @@ class DefensiveDemo implements PowerDemo {
     this.scene.tweens.killTweensOf(a);
     a.squat = 1;
     this.scene.tweens.add({ targets: a, squat: 0, duration: 280, ease: 'Quad.easeOut' });
+  }
+
+  /**
+   * (17-11-2026) BOLA DE ENERGÍA elegida: la máquina de siempre se esconde y salen las 4 (en su sitio, la secuencia desde el principio). Con otra
+   * ULTI: las 4 se esconden y vuelve la de siempre.
+   */
+  private syncEnergy() {
+    if (!this.energyOn) {
+      this.energy?.hide();
+      return;
+    }
+    this.energy ??= new EnergyDemo({
+      scene: this.scene,
+      st: this.st,
+      pl: this.pl,
+      pa: this.pa,
+      rb: this.rb!,
+      fire: this.fireBall!,
+      cine: this.cine!,
+      machineX: MACHINE_X,
+      buildMachine: (x, y) => this.buildMachine(x, y),
+      focus: () => this.focus(),
+      shake: (a) => this.shake(a),
+      flash: (ms, col) => this.flash(ms, col),
+      snd: (n, v) => this.snd(n, v),
+      playCharge: (v) => this.playCharge(v),
+      stopCharge: () => this.stopChargeSnd(),
+      setBall: (on, inf) => {
+        this.ballOn = on;
+        this.infernoFlight = inf;
+      },
+      done: () => this.cut(true),
+    });
+    this.machine.setVisible(false);
+    this.energy.reset();
   }
 
   private cleanupRun() {
@@ -1535,8 +1603,8 @@ class DefensiveDemo implements PowerDemo {
   }
 
   /** Máquina de pelotas (de frente, quieta al fondo en medio): chasis con ruedas, cuerpo, tolva con pelotas y boca. Mide unos 140 de alto, como un personaje. */
-  private buildMachine() {
-    const foot = project(MACHINE_X, LAT_C);
+  private buildMachine(x = MACHINE_X, y = LAT_C) {
+    const foot = project(x, y);
     const ks = foot.s * VIEW.CHAR_K;
     const c = this.st.add.container(foot.sx, foot.sy).setScale(ks).setDepth(foot.sy);
     const g = this.st.add.graphics();

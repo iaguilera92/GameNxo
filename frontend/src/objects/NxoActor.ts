@@ -17,6 +17,10 @@ import maiMove from '../characters/mai-move.json';
 import maiExtra from '../characters/mai-extra.json';
 import maiInferno from '../characters/mai-inferno.json';
 import maiFInferno from '../characters/mai-front-inferno.json';
+import maiFHits from '../characters/mai-front-hits.json';
+import maiFSpecial from '../characters/mai-front-special.json';
+import maiFMove from '../characters/mai-front-move.json';
+import maiFExtra from '../characters/mai-front-extra.json';
 import { runAnimRate } from '../logic/PlayerMotion';
 
 /**
@@ -194,7 +198,7 @@ const INF = nxoInferno as InfCfg;
 const infernoKey = (pk = 'nxo') => `${pk}-inferno-swing`;
 const infernoReady = (scene: Phaser.Scene, pk = 'nxo') => scene.textures.exists(infernoKey(pk)) && scene.anims.exists(infernoKey(pk));
 /** si la cinemÃ¡tica no llega a golpear (cancelada sin aviso), la pose de espera se suelta sola pasado este tiempo real */
-const INFERNO_HOLD_MAX_MS = 3500;
+const INFERNO_HOLD_MAX_MS = 7500; // (17-11-2026) antes 3500: la carga de la ULTI LEGENDARIA (BOLA DE ENERGÍA) dura 6 s
 
 /**
  * Juego de hojas v2 de un personaje: tiras en assets/characters/<dir>/ y sus JSON. `key` prefija las texturas/animaciones.
@@ -252,7 +256,21 @@ const PACKS = {
     inf: maiInferno as InfCfg,
     infDir: 'mai-inferno',
   },
-} as Record<'nxo' | 'nxo-front' | 'mai', Pack> & Partial<Record<SheetId, Pack>>;
+  // (17-11-2026) MAI de FRENTE (rival) en alta: tools/build-hd.mjs mai-front (+ --ulti). Sin bote ni lanzamiento propio del saque
+  // (el lanzamiento es el principio de su saque, como NXO de espaldas). Sin `walk` todavía (usa la carrera).
+  'mai-front': {
+    dir: 'mai-front-v2',
+    key: 'maif',
+    hits: maiFHits as typeof HITS,
+    special: maiFSpecial as typeof SPECIAL,
+    move: maiFMove as typeof MOVE,
+    extra: maiFExtra as ExtraCfg,
+    bounce: null,
+    ownToss: false,
+    inf: maiFInferno as unknown as InfCfg,
+    infDir: 'mai-front-inferno',
+  },
+} as Record<'nxo' | 'nxo-front' | 'mai' | 'mai-front', Pack> & Partial<Record<SheetId, Pack>>;
 const PACK_LIST = Object.values(PACKS) as Pack[];
 /** frame (0 = el primero) en que se CONGELA la celebración de victoria de cada personaje de espaldas (la mano / raqueta arriba) */
 const VICTORY_HOLD: Record<string, number> = { nxo: 3 };
@@ -452,6 +470,8 @@ export class NxoActor {
   /** estirada: lado y si ya va la recuperaciÃ³n */
   private diveSide = 1;
   private recovering = false;
+  /** (17-11-2026) estirada que termina TENDIDO (no se levanta): BOLA DE ENERGÍA */
+  private diveHold = false;
   private looseRacket?: Phaser.GameObjects.Image;
   private looseAt = -1;
   /** sin raqueta (ULTI recibida, raqueta en el suelo): reposo y carrera usan idle-nr / run-nr si la hoja los trae */
@@ -590,7 +610,9 @@ export class NxoActor {
   }
   /** hojas nuevas (sin volteos) y con las animaciones extra cargadas */
   private get v2() {
-    return !!this.pk && this.xr('run-left');
+    // (17-11-2026) la marca es la estirada (todos los packs nuevos la traen); antes era `run-left`, que no se reproduce y las hojas
+    // HD ya no dibujan (MAI de frente no la tiene)
+    return !!this.pk && this.xr('dive-right');
   }
   /** volteo de carrera hacia la izquierda (la fila "run-left" de la hoja nueva corre a la derecha: se usa run volteado) */
   private flip(on: boolean) {
@@ -962,7 +984,8 @@ export class NxoActor {
 
   // ------------------------------------------------------------ hojas nuevas: estiradas, aturdido, emotes
   /** Estirada hacia `side` (1 derecha, -1 izquierda) y recuperaciÃ³n. false = sin hoja (el llamador inclina el cuerpo). */
-  lunge(side: number): boolean {
+  /** `hold` (17-11-2026, BOLA DE ENERGÍA): se queda TENDIDO en el último frame de la estirada (con la raqueta), sin levantarse. */
+  lunge(side: number, hold = false): boolean {
     if (!this.v2 || this.state === 'victory') return false;
     this.stopShake();
     this.stopLean();
@@ -970,6 +993,7 @@ export class NxoActor {
     this.state = 'dive';
     this.diveSide = side >= 0 ? 1 : -1;
     this.recovering = false;
+    this.diveHold = hold;
     this.sprite.anims.timeScale = 1;
     this.playClip(this.xk(this.diveSide > 0 ? 'dive-right' : 'dive-left'));
     return true;
@@ -1550,6 +1574,7 @@ export class NxoActor {
       return;
     }
     if (this.state === 'dive') {
+      if (!this.recovering && this.diveHold) return; // (17-11-2026) tendido en el suelo hasta que otra animación lo saque
       if (!this.recovering) {
         // tras la estirada, se levanta (recuperaciÃ³n del mismo lado)
         this.recovering = true;

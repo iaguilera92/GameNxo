@@ -180,14 +180,14 @@ export interface HitMsg {
 /**
  * Acciones visuales y de habilidades (no cambian la pelota ni el marcador):
  *  toss / catch                 lanzamiento del saque / lo atrapa sin golpear
- *  sprint-start / sprint-end    DASH del emisor (data: dirX)
+ *  sprint-start / sprint-end    DASH del emisor (data: dirX, element = su ESPECIAL equipado: con RAYO el rival oye el DASH eléctrico)
  *  stunned                      el emisor quedó aturdido por una bola de fuego (data: ms, kind = smash | inferno)
  *  duel-start / duel-tap / duel-round / duel-result / duel-aim   DUELO RED: el juez (el que recibe la pelota) lo empieza (data: x, y, a, b, c = golpes del peloteo de cada ronda) · error en ms de cada toque contra el cierre de SU aro (r, ms) · resultado de cada ronda (r, w: 1 = ganó el jugador del emisor, 2 = su rival, 0 = empate; p, b = errores en ms, 9999 = sin toque) · ganador del duelo (w = 1: el emisor) · lado del globo (side = -1 | 1)
  *  bump                         el emisor recibió un golpe cargado al máximo y retrocede un poco (data: ms)
  *  emote                        carita del chat (data: kind = happy | cool | wow)
- *  smash-armed / smash-disarmed el emisor arma / consume su SMASH (aura en el rival)
- *  smash-cine                   empieza la cinemática del SMASH del emisor (data: x, y, overhead, ms)
- *  inferno-cine                 empieza la cinemática del INFERNO del emisor (data: x, y, tx, ty, ms, power)
+ *  smash-armed / smash-disarmed el emisor arma / consume su SMASH (aura en el rival; data de smash-armed: element = su poder)
+ *  smash-cine                   empieza la cinemática del SMASH del emisor (data: x, y, overhead, ms, element = su poder)
+ *  inferno-cine                 empieza la cinemática del INFERNO del emisor (data: x, y, tx, ty, ms, power; con la ULTI LEGENDARIA power = energy además bx, by = el rival visto por el emisor y seed = semilla del peloteo automático, 17-11-2026)
  *  defensive                    SOMBRA / SUPERSALTO / VOLTERETA / PATINAJE / DESTELLO / teletransporte del emisor (data: kind = shadow | jump | flip | skate | blink | warp, x, y, tx, ty, ms | out, in, delay)
  *  racket                       raqueta del emisor tras recibir la ULTI (data: lost = true + x, y donde cae · lost = false: la recogió)
  *  timing                       nota del golpe del emisor (data: grade = perfect | good | early | late, streak, ms)

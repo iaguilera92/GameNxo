@@ -102,7 +102,8 @@ export class HyperAura {
   }
 
   /** Enciende el aura con los colores del poder del SMASH (el); si cambió respecto al anterior, se rehace. */
-  start(el: SmashPower = 'fire') {
+  /** `quiet` (17-11-2026): sin el estallido de activación (con la escena congelada por una cinemática se quedaba quieto encima). */
+  start(el: SmashPower = 'fire', quiet = false) {
     if (this.active) return;
     if (el !== this.el) {
       this.destroyParts();
@@ -112,6 +113,7 @@ export class HyperAura {
     this.active = true;
     this.flames.start();
     this.sparks.start();
+    if (quiet) return;
 
     // estallido de activación
     const k = this.ch.scaleX || 1;
@@ -123,6 +125,16 @@ export class HyperAura {
       .setScale(0.5);
     this.scene.tweens.add({ targets: blast, scale: 6 * k, alpha: 0, duration: 380, ease: 'Quad.easeOut', onComplete: () => blast.destroy() });
     this.sparks.explode(18, this.ch.x, this.ch.y);
+  }
+
+  /**
+   * (17-11-2026) Aura MÁS FUERTE (cinemática de la ULTI LEGENDARIA BOLA DE ENERGÍA): `k` veces más llamas y chispas por segundo.
+   * 1 = la de siempre. Lo deshace start si cambia de poder (rehace los emisores).
+   */
+  setBoost(k: number) {
+    const b = Math.max(1, k);
+    this.flames.setFrequency(28 / b, b > 1.2 ? 3 : 2);
+    this.sparks.setFrequency(90 / b);
   }
 
   stop() {

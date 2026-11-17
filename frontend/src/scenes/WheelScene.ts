@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import { FONT, restartOnResize } from '../ui/theme';
-import { GOLD, NAVY, SECTOR, TIER_LOOK, addSectorContent, drawSlotIcon, drawWheelFace, ensureTierTexture, isSpecial, sectorCenter } from '../ui/wheelArt';
+import { GOLD, NAVY, SECTOR, TIER_LOOK, CHEST_TEX, addSectorContent, chestImage, coinIcon, drawSlotIcon, drawWheelFace, ensureTierTexture, isSpecial, sectorCenter } from '../ui/wheelArt';
 import { WHEEL, type WheelSlot } from '../domain/wheelConfig';
 import type { WheelReward, WheelTier } from '../domain/wheelState';
 import { slotById } from '../domain/dailyWheel';
@@ -29,6 +29,14 @@ export interface WheelSceneData {
 
 /** Toques máximos y, por número de toques, vueltas completas y duración (ms) del giro. Solo visual. */
 const MAX_TAPS = WHEEL.tiers.maxTaps;
+/** (17-11-2026, usuario) pausa de toques tras subir la ruleta de nivel (dorada / épica), para que se vea la evolución (1 s -> 0,8 s) */
+const TIER_LOCK_MS = 800;
+/** (17-11-2026, usuario) color del fondo en cada nivel de la ruleta: velo encima del fondo azul (null = sin velo) */
+const TIER_BG: Record<WheelTier, { color: number; alpha: number } | null> = {
+  normal: null,
+  gold: { color: 0xb8860b, alpha: 0.42 },
+  epic: { color: 0x6a22c8, alpha: 0.42 },
+};
 const SPIN_TURNS = [0, 5, 7, 9, 11];
 const SPIN_MS = [0, 3400, 4000, 4700, 5500];
 const BG_KEY = 'wheel-bg';
@@ -54,6 +62,10 @@ export class WheelScene extends Phaser.Scene {
   private cy = 0;
   private R = 0;
   private busy = false;
+  /** hasta cuándo (time.now) se ignoran los toques tras subir de nivel (TIER_LOCK_MS) */
+  private tierLockUntil = 0;
+  /** velo de color del fondo según el nivel de la ruleta (TIER_BG) */
+  private tierTint?: Phaser.GameObjects.Rectangle;
   private phase: 'idle' | 'spin' | 'result' = 'idle';
   private taps = 0;
   private res: { slot: WheelSlot; reward: WheelReward } | null = null;
@@ -94,6 +106,7 @@ export class WheelScene extends Phaser.Scene {
     this.force = undefined;
     this.picker = undefined;
     this.busy = false;
+    this.tierLockUntil = 0;
     this.phase = 'idle';
     this.taps = 0;
     this.res = null;
@@ -238,6 +251,9 @@ export class WheelScene extends Phaser.Scene {
     } else {
       this.keep.add(this.add.rectangle(0, 0, W, H, 0x0b1733, 1).setOrigin(0));
     }
+    // velo de color del NIVEL de la ruleta (dorada / épica) sobre el fondo; applyTier lo enciende
+    this.tierTint = this.add.rectangle(0, 0, W, H, 0x000000, 1).setOrigin(0).setAlpha(0);
+    this.keep.add(this.tierTint);
     this.ensureGlow();
     // destellos que suben despacio
     for (let i = 0; i < 28; i++) {
@@ -423,6 +439,8 @@ export class WheelScene extends Phaser.Scene {
       return;
     }
     if (this.taps >= MAX_TAPS) return;
+    // (17-11-2026, usuario) tras SUBIR DE NIVEL la ruleta no acepta toques durante 1 s: así se alcanza a ver la evolución
+    if (this.time.now < this.tierLockUntil) return;
     if (this.phase === 'idle') {
       // 1) el premio se decide y se guarda ANTES de animar (aleatorio seguro y ponderado)
       const res = spinWheel(this.index, this.bonus, this.test ? this.force : undefined);
@@ -440,13 +458,17 @@ export class WheelScene extends Phaser.Scene {
       wheelStart(this);
       this.lastSector = Math.floor((this.wheel.rotation + SECTOR / 2) / SECTOR);
       // la 1.ª tirada de nivel ya viene con el giro: si la ruleta nace dorada o épica, se transforma al instante
-      if (res.tier !== 'normal') this.applyTier(res.tier, true);
+      if (res.tier !== 'normal') {
+        this.applyTier(res.tier, true);
+        this.tierLockUntil = this.time.now + TIER_LOCK_MS;
+      }
     } else {
       // toques 2.º a 4.º: cada uno tira una vez para subir la ruleta de nivel (decide y guarda domain/dailyWheel)
       const up = boostWheel(this.index, this.bonus);
       if (up?.upgraded && this.res) {
         this.res.reward = up.reward;
         this.applyTier(up.tier, true);
+        this.tierLockUntil = this.time.now + TIER_LOCK_MS;
       }
     }
     this.taps++;
@@ -470,6 +492,13 @@ export class WheelScene extends Phaser.Scene {
       const key = ensureTierTexture(this, FRAME.key, tier);
       this.frameImg.setTexture(key);
       this.frameGlow?.setTexture(key);
+    }
+    // (17-11-2026, usuario) el FONDO también se tiñe: dorado en la ruleta dorada, morado en la épica
+    if (this.tierTint?.active) {
+      const tint = TIER_BG[tier];
+      this.tweens.killTweensOf(this.tierTint);
+      if (tint) this.tierTint.setFillStyle(tint.color, 1);
+      this.tweens.add({ targets: this.tierTint, alpha: tint ? tint.alpha : 0, duration: animate ? 450 : 0, ease: 'Sine.easeOut' });
     }
     if (!animate || tier === 'normal') return;
     const W = this.scale.width;
@@ -639,9 +668,21 @@ export class WheelScene extends Phaser.Scene {
     const glow = this.add.image(cx, cy, GLOW_KEY).setTint(this.tier !== 'normal' && !special ? TIER_LOOK[this.tier].glow : special ? 0xff9bd8 : 0xffd23f).setBlendMode(Phaser.BlendModes.ADD).setAlpha(0).setScale(0.5);
     this.tweens.add({ targets: glow, alpha: 0.95, scale: 4.2, delay: t0, duration: 520, ease: 'Cubic.easeOut' });
     this.tweens.add({ targets: glow, scale: 4.6, alpha: 0.75, delay: t0 + 520, duration: 900, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
-    const icon = this.add.graphics({ x: cx, y: cy });
+    // (17-11-2026) contenedor: la MONEDA es una imagen (moneda-1.webp); el resto de premios, dibujados
+    const icon = this.add.container(cx, cy);
     const iconSlot = reward.kind === 'coins' && slot.prize.kind !== 'coins' ? WHEEL.slots.find((s) => s.prize.kind === 'coins')! : reward.kind === 'xp' && slot.prize.kind !== 'xp' ? WHEEL.slots.find((s) => s.prize.kind === 'xp')! : reward.kind === 'cash' && slot.prize.kind !== 'cash' ? WHEEL.slots.find((s) => s.prize.kind === 'cash')! : reward.kind === 'item' ? WHEEL.slots.find((s) => s.prize.kind === 'cosmetic')! : reward.kind === 'chest' ? WHEEL.slots.find((s) => s.prize.kind === 'chest')! : slot;
-    drawSlotIcon(icon, iconSlot, Math.min(150, W * 0.2));
+    const iconR = Math.min(150, W * 0.2);
+    const cashKey = iconSlot.prize.kind === 'cash' ? (iconSlot.prize.amount > 1 ? 'cash-pack' : 'cash-1') : null;
+    if (iconSlot.prize.kind === 'coins' && this.textures.exists('coin-1')) icon.add(coinIcon(this, 0, 0, iconR));
+    // (17-11-2026) DINERO: billete (1) o fardo chico (más de 1)
+    else if (cashKey && this.textures.exists(cashKey)) icon.add(this.add.image(0, 0, cashKey).setDisplaySize(iconR * 2.4, iconR * 2.4));
+    // (17-11-2026, usuario) COFRE: la imagen del NIVEL que quedó (el premio puede subir el cofre a oro o épico)
+    else if (reward.kind === 'chest' && this.textures.exists(CHEST_TEX[0])) icon.add(chestImage(this, 0, 0, iconR * 2.6, (getPlayer() as { chest?: { level: number } }).chest?.level ?? 0));
+    else {
+      const ig = this.add.graphics();
+      drawSlotIcon(ig, iconSlot, iconR);
+      icon.add(ig);
+    }
     icon.setScale(0).setAngle(-25);
     this.tweens.add({ targets: icon, scale: 1, angle: 0, delay: t0, duration: 560, ease: 'Back.easeOut' });
     this.tweens.add({ targets: icon, y: cy - 10, delay: t0 + 600, duration: 1100, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });

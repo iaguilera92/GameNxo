@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import type { FxElement } from './InfernoFx';
+import { ballSpray } from './barrageFx';
 
 /** Colores del choque de una pelota con poder según su elemento (destello y onda). */
 const POWER_WALL: Record<FxElement, { hot: number; ring: number }> = {
@@ -10,6 +11,10 @@ const POWER_WALL: Record<FxElement, { hot: number; ring: number }> = {
   tulip: { hot: 0xffd0e6, ring: 0xff6fae },
   shadow: { hot: 0xd0a8ff, ring: 0x7a2fd6 },
   light: { hot: 0xffffff, ring: 0xfff0b0 },
+  ultra: { hot: 0xffffff, ring: 0x9cf5d8 }, // (17-11-2026) ULTRA EFECTO: aire blanco y menta
+  barrage: { hot: 0xfbffe0, ring: 0xd8ff3a }, // (17-11-2026) RÁFAGA: amarillo lima
+  energy: { hot: 0xffffff, ring: 0x5fe8ff }, // (17-11-2026) BOLA DE ENERGÍA: blanco y celeste
+  comet: { hot: 0xeaf4ff, ring: 0x2f6bff }, // (17-11-2026) COMETA: azul y blanco
 };
 
 /**
@@ -80,6 +85,7 @@ export class WallFx {
    *   rayo     descarga en zigzag que recorre la pared y parpadea
    *   viento   remolino que se abre + hojas y ráfagas a los lados
    *   tulipán  pétalos que caen
+   *   sombra   jirones negros con borde morado que suben (17-11-2026)
    */
   private elementHit(el: FxElement, x: number, y: number, k: number, depth: number) {
     const sc = this.scene;
@@ -152,6 +158,55 @@ export class WallFx {
       for (let i = 0; i < 12; i++) {
         const p = sc.add.ellipse(x + R(-20, 20) * k, y + R(-10, 10) * k, 10 * k, 6 * k, [0xff6fae, 0xffb3d6, 0xe0457f][i % 3], 1).setRotation(R(0, 3)).setDepth(depth + 2);
         this.fade(p, { x: p.x + R(-60, 60) * k, y: p.y + R(40, 90) * k, rotation: p.rotation + R(2, 5), alpha: 0 }, R(600, 900));
+      }
+    } else if (el === 'shadow') {
+      // (17-11-2026) sombra (ULTI o ESPECIAL): jirones negros con borde morado que suben como humo
+      for (let i = 0; i < 8; i++) {
+        const w = sc.add.ellipse(x + R(-22, 22) * k, y + R(-6, 6) * k, R(12, 20) * k, R(8, 13) * k, 0x14002e, 0.85).setStrokeStyle(2 * k, [0x9b4dff, 0xb27dff][i % 2], 0.9).setDepth(depth + 2);
+        this.fade(w, { y: w.y - R(40, 80) * k, x: w.x + R(-16, 16) * k, scale: R(1.3, 1.8), alpha: 0 }, R(520, 820), R(0, 120));
+      }
+    } else if (el === 'ultra') {
+      // (17-11-2026) ULTRA EFECTO: aros de aire blancos y menta + líneas de aire que salen girando
+      for (let i = 0; i < 2; i++) {
+        const ring = sc.add.circle(x, y, 18 * k, 0xffffff, 0).setStrokeStyle((4 - i) * k, i ? 0x9cf5d8 : 0xffffff, 0.95).setDepth(depth + 1).setBlendMode(ADD);
+        this.fade(ring, { scale: 3.4 + i, alpha: 0 }, 360 + i * 80);
+      }
+      for (let i = 0; i < 10; i++) {
+        const a = (i / 10) * Math.PI * 2;
+        const l = sc.add.rectangle(x + Math.cos(a) * 14 * k, y + Math.sin(a) * 8 * k, 16 * k, 2.4 * k, i % 3 ? 0xffffff : 0xc8ffd8, 0.95).setRotation(a).setDepth(depth + 2).setBlendMode(ADD);
+        this.fade(l, { x: x + Math.cos(a) * 70 * k, y: y + Math.sin(a) * 40 * k, rotation: a + 0.6, alpha: 0 }, R(300, 440));
+      }
+    } else if (el === 'barrage') {
+      // (17-11-2026) RÁFAGA: unas pocas pelotas rebotan en la pared hacia la cancha (abajo y a los lados) y caen
+      const g = ballSpray(sc, x, y, k, depth + 2, 5, { dist: [50, 110], ms: 560, fall: 50, angle: [0.25, Math.PI - 0.25], flat: 0.7, size: 6, ring: true }, (o) => this.kill(o));
+      this.live.add(g);
+    } else if (el === 'energy') {
+      // (17-11-2026) BOLA DE ENERGÍA: aros blancos y celestes y chispas eléctricas que saltan de la pared
+      for (let i = 0; i < 2; i++) {
+        const ring = sc.add.circle(x, y, 18 * k, 0xffffff, 0).setStrokeStyle((4 - i) * k, i ? 0x5fe8ff : 0xffffff, 0.95).setDepth(depth + 1).setBlendMode(ADD);
+        this.fade(ring, { scale: 3.6 + i, alpha: 0 }, 360 + i * 80);
+      }
+      for (let i = 0; i < 8; i++) {
+        const st = sc.add.star(x + R(-22, 22) * k, y + R(-6, 6) * k, 4, 1.4 * k, 5 * k, [0xffffff, 0xc8f8ff, 0x5fe8ff][i % 3], 1).setDepth(depth + 2).setBlendMode(ADD);
+        this.fade(st, { y: st.y - R(30, 70) * k, x: st.x + R(-20, 20) * k, angle: R(-120, 120), alpha: 0 }, R(380, 620), R(0, 100));
+      }
+    } else if (el === 'comet') {
+      // (17-11-2026) COMETA: llamarada azul que se abre en la pared y estrellas blancas y azules que saltan y caen
+      for (let i = 0; i < 2; i++) {
+        const ring = sc.add.circle(x, y, 16 * k, 0xffffff, 0).setStrokeStyle((4 - i) * k, i ? 0x2f6bff : 0x9cc4ff, 0.95).setDepth(depth + 1).setBlendMode(ADD);
+        this.fade(ring, { scale: 3.4 + i, alpha: 0 }, 360 + i * 80);
+      }
+      for (let i = 0; i < 9; i++) {
+        const st = sc.add.star(x + R(-20, 20) * k, y + R(-6, 6) * k, 5, 1.6 * k, 5 * k, [0xffffff, 0xcfe2ff, 0x6fa4ff][i % 3], 1).setDepth(depth + 2).setBlendMode(ADD);
+        this.fade(st, { y: st.y + R(20, 70) * k, x: st.x + R(-50, 50) * k, angle: R(-180, 180), alpha: 0 }, R(480, 720), R(0, 100));
+      }
+    } else if (el === 'light') {
+      // (17-11-2026) luz (ULTI o ESPECIAL): anillo dorado y estrellitas blancas y doradas que suben
+      const ring = sc.add.circle(x, y, 18 * k, 0xffffff, 0).setStrokeStyle(3 * k, 0xffd86b, 0.9).setDepth(depth + 1).setBlendMode(ADD);
+      this.fade(ring, { scale: 3, alpha: 0 }, 380);
+      for (let i = 0; i < 8; i++) {
+        const st = sc.add.star(x + R(-24, 24) * k, y + R(-6, 6) * k, 4, 1.5 * k, 4.5 * k, [0xffffff, 0xffe48a, 0xfff1b8][i % 3], 1).setDepth(depth + 2).setBlendMode(ADD);
+        this.fade(st, { y: st.y - R(40, 80) * k, x: st.x + R(-14, 14) * k, angle: R(-90, 90), alpha: 0 }, R(500, 760), R(0, 120));
       }
     } else {
       // fuego: brasas que suben despacio

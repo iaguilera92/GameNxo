@@ -292,6 +292,6 @@ Acciones (`ActionKind`):
 - `duel-tap {r,ms}`: cada teléfono manda solo su diferencia en ms (9999 = sin toque).
 - `duel-round {r,w,p,b}`: el juez avisa cada ronda (w: 1 = jugador del emisor, 2 = su rival, 0 = empate).
 - `duel-result {w}`: resultado final del juez.
-- `duel-aim {side}`: lado del globo.
+- `duel-aim {side}`: lado del globo. Solo lo usa el teléfono del perdedor por si no llega el globo: **no se le muestra** (17-11-2026: misterio, ve los dos lados iguales hasta que sale el globo).
 
 El globo del ganador llega como `game:hit` (shock + lob); el que lo recibe cancela el duelo (`duelAbort('hit')`) y no lo intercepta durante `lobGraceMs`. Si algo no llega: espera `netWaitMs` y usa su propio recuento; si no llega el globo, lo simula tras `hitWaitMs`. Se cancela en `netResume`, punto o fin de partido. Constantes en `frontend/src/logic/NetDuel.ts` (`NET_DUEL`). Prueba: `node tools/test-net-duel.mjs`. Apagar: `localStorage 'dev.netDuelOff'`.

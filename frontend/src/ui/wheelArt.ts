@@ -31,6 +31,15 @@ export function drawCoinIcon(g: Phaser.GameObjects.Graphics, r: number, x = 0, y
   g.fillStyle(0xffffff, 0.55).fillEllipse(x - r * 0.35, y - r * 0.42, r * 0.7, r * 0.32);
 }
 
+// (17-11-2026) moneda: imagen moneda-1.webp
+/** Moneda como imagen (textura 'coin-1') del mismo tamaño visual que drawCoinIcon (diámetro 2*(r+2.5)); si falta la textura, la dibuja. */
+export function coinIcon(scene: Phaser.Scene, x: number, y: number, r: number): Phaser.GameObjects.Image | Phaser.GameObjects.Graphics {
+  if (scene.textures.exists('coin-1')) return scene.add.image(x, y, 'coin-1').setDisplaySize(2 * (r + 2.5), 2 * (r + 2.5));
+  const g = scene.add.graphics({ x, y });
+  drawCoinIcon(g, r);
+  return g;
+}
+
 function starPts(x: number, y: number, r: number, inner = 0.48, n = 5, rot = -Math.PI / 2) {
   const pts: { x: number; y: number }[] = [];
   for (let i = 0; i < n * 2; i++) {
@@ -49,6 +58,21 @@ export function drawXpIcon(g: Phaser.GameObjects.Graphics, r: number, x = 0, y =
 }
 
 /** Cofre (premio épico). */
+/** (17-11-2026) texturas del COFRE por nivel (0 normal · 1 oro · 2 épico): assets/cofre-normal|oro|epico.webp (las carga BootScene) */
+export const CHEST_TEX = ['chest-0', 'chest-1', 'chest-2'] as const;
+
+/**
+ * (17-11-2026, usuario) COFRE en IMAGEN del nivel `level` (0 normal, 1 oro, 2 épico) centrado en (x, y) con `size` px de lado (la imagen
+ * es cuadrada con el cofre ocupándola casi entera). Sin textura, el cofre dibujado de siempre (radio ~size/2.6).
+ */
+export function chestImage(scene: Phaser.Scene, x: number, y: number, size: number, level = 0): Phaser.GameObjects.Image | Phaser.GameObjects.Graphics {
+  const key = CHEST_TEX[Math.max(0, Math.min(2, level))];
+  if (scene.textures.exists(key)) return scene.add.image(x, y, key).setDisplaySize(size, size);
+  const g = scene.add.graphics({ x, y });
+  drawChestIcon(g, size / 2.6);
+  return g;
+}
+
 export function drawChestIcon(g: Phaser.GameObjects.Graphics, r: number, x = 0, y = 0) {
   const w = r * 2;
   const h = r * 1.5;
@@ -273,9 +297,18 @@ export function addSectorContent(scene: Phaser.Scene, parent: Phaser.GameObjects
     if (s.prize.kind === 'xp') {
       c.add(scene.add.text(0, -r * 0.7, 'EXP', { fontFamily: FONT, fontSize: `${Math.round(r * 0.055)}px`, color: '#cfe9ff', stroke: '#0a1638', strokeThickness: 3 }).setOrigin(0.5));
     }
-    const g = scene.add.graphics();
-    drawSlotIcon(g, s, r * 0.105, 0, -r * 0.52);
-    c.add(g);
+    // (17-11-2026) moneda: imagen moneda-1.webp en el sector de MONEDAS; el resto, dibujado
+    const cashKey = s.prize.kind === 'cash' ? (s.prize.amount > 1 ? 'cash-pack' : 'cash-1') : null;
+    if (s.prize.kind === 'coins' && scene.textures.exists('coin-1')) c.add(coinIcon(scene, 0, -r * 0.52, r * 0.105));
+    // (17-11-2026) DINERO: billete (1) o fardo chico (más de 1)
+    else if (cashKey && scene.textures.exists(cashKey)) c.add(scene.add.image(0, -r * 0.52, cashKey).setDisplaySize(r * 0.27, r * 0.27));
+    // (17-11-2026, usuario) COFRE: la imagen del cofre normal (assets/cofre-normal.webp)
+    else if (s.prize.kind === 'chest' && scene.textures.exists(CHEST_TEX[0])) c.add(chestImage(scene, 0, -r * 0.52, r * 0.3, 0));
+    else {
+      const g = scene.add.graphics();
+      drawSlotIcon(g, s, r * 0.105, 0, -r * 0.52);
+      c.add(g);
+    }
     parent.add(c);
   });
 }

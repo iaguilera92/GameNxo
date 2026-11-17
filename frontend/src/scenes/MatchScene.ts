@@ -67,7 +67,10 @@ import { type SmashPower, isSmashPower } from '../domain/smashPowers';
 import { elementTexture } from '../ui/AbilityButton';
 import { INFERNO, INFERNO_CINE, InfernoDrive, planInfernoContact } from '../logic/InfernoDrive';
 import { GhostTrail, INFERNO_LOOK, InfernoFire, infernoCine, infernoElementFor, infernoImpactFx, infernoShake, infernoSound, queueInfernoArt, hitLookOf, type FxElement, type InfernoElement } from '../fx/InfernoFx';
-import { isInfernoPower } from '../domain/infernoPowers';
+import { isInfernoPower, isLegendaryInferno } from '../domain/infernoPowers';
+import { ENERGY_CINE, ENERGY_MATCH_CINE, ENERGY_MATCH_K, ENERGY_RALLY, attackerAt, mirrorP, planEnergyRally, shotAt, shotBallAt, victimAt, type EnergyRallyPlan, type P2, type P3, type RallyShot } from '../logic/EnergyRally';
+import { EnergyCineFx } from '../fx/energyBallCine';
+import { EnergyImpactFx } from '../fx/energyBallFx';
 import { MAX_PUSH, POWER_IMPACT, type PowerKind, RACKET_LOSS, knockbackX, stunMsFor, stunSeconds } from '../logic/PowerImpact';
 import { LOOSE_RACKET, ensureLooseRacket } from '../objects/NxoActor';
 import { type BotKit, botKitFor, randomBotKit } from '../ai/botKit';
@@ -121,6 +124,35 @@ import { NET_DUEL, NO_TAP, botTapMs, cleanPlan, defaultAimSide, diffLabel, duelH
 import { DUEL_CINE, createDuelGaze, createDuelScore, createDuelPressure, createDuelVignette, showDuelDecisive, showDuelLag, type DuelGaze, type DuelPressure, type DuelScore, type DuelVignette } from '../fx/NetDuelFx';
 
 type Who = 'player' | 'bot';
+
+/** (17-11-2026) ULTI LEGENDARIA BOLA DE ENERGÍA en curso (logic/EnergyRally.ts, fx/energyBallCine.ts). Nace en legendCharge y muere en legendEnd. */
+interface LegendRun {
+  /** quién la lanza en ESTE teléfono: 'player' (yo) o 'bot' (el rival en red) */
+  att: Who;
+  plan: EnergyRallyPlan;
+  /** el guion está en las coordenadas del otro teléfono (soy la víctima): se espeja */
+  mirror: boolean;
+  /** 'charge' = carga de 6 s (SmashCinematic activa) · 'rally' = peloteo automático (tickLegend) */
+  stage: 'charge' | 'rally';
+  /** ms del peloteo (con el tiempo de los fotogramas: se para con la pausa) */
+  t: number;
+  /** por tiro del guion: 1 = golpe empezado, 2 = contacto, 4 = estirada del rival */
+  done: Uint8Array;
+  /** salió la BOLA DE ENERGÍA final */
+  finalFired: boolean;
+  /** la ZONA / el aura ya estaban encendidas (no se apagan al terminar) */
+  zoneWas: boolean;
+  auraWas: boolean;
+  lastAt: number;
+  /** puntos de trabajo (sin crear objetos por fotograma) */
+  pb: P3;
+  pa: P2;
+  pv: P2;
+  /** sitio de peloteo del que la lanza, posición inicial del rival y su sitio de peloteo (en ESTE teléfono) */
+  to: P2;
+  v0: P2;
+  vTo: P2;
+}
 
 /** Bandera de desarrollo apagada a propósito (localStorage = '0'); sin definir cuenta como encendida. */
 function devFlagOff(key: string) {
@@ -517,7 +549,7 @@ export class MatchScene extends Phaser.Scene {
   private netRivalInferno: InfernoElement | null = null;
   /** poder del SMASH (ESPECIAL) elegido en Personalización: aspecto de la pelota, aura, cinemática e impacto */
   private smashEl: SmashPower = 'fire';
-  /** poder del SMASH de la pelota que vuela ahora (la tuya, la del BOT = fuego o la del rival en red) */
+  /** poder del SMASH de la pelota que vuela ahora (la tuya, la del BOT según su kit o la del rival en red) */
   private smashFlightEl: SmashPower = 'fire';
   /** en red: poder del último SMASH del rival (llega en 'smash-armed' / 'smash-cine') */
   private netRivalSmashEl: SmashPower = 'fire';
@@ -534,6 +566,21 @@ export class MatchScene extends Phaser.Scene {
   private infernoPending = false;
   /** la pelota en vuelo es un INFERNO DRIVE (fuego en espiral) */
   private infernoFlight = false;
+  /** (17-11-2026) ULTI LEGENDARIA (BOLA DE ENERGÍA) en curso: el partido está congelado (cineLock) */
+  private legend: LegendRun | null = null;
+  private energyCine!: EnergyCineFx;
+  /** (17-11-2026) impacto final DESTRUCTIVO de la BOLA DE ENERGÍA (pool, fx/energyBallFx.ts) */
+  private energyImpact!: EnergyImpactFx;
+  /** la penumbra del peloteo se está yendo (tras el impacto) */
+  private legendFade = false;
+  /** (17-11-2026) la BOLA DE ENERGÍA está creciendo en la raqueta (antes del golpe final) */
+  private legendGrow = false;
+  /** red (víctima): hasta aquí se ignora el golpe de la ULTI del rival que llegue tarde (ya se vio en la cinemática) */
+  private legendDropHitUntil = 0;
+  /** red (el que la lanza): cuándo se vio aquí el impacto final (el 'stunned' del rival no lo repite) */
+  private legendStunShownAt = 0;
+  /** red (el que la lanza): golpe / aturdido / raqueta del rival que llegan durante la cinemática: se aplican al terminar */
+  private legendTodo: Array<() => void> = [];
   /** salto del saque en curso (solo visual: desplaza el `rig` del personaje) */
   private serveJumpState?: { a: Actor; t: number; up: number; rise: number; dx: number };
   /** desplazamiento lateral (mundo) de la pelota respecto al sacador al lanzarla */
@@ -860,6 +907,13 @@ export class MatchScene extends Phaser.Scene {
     this.inferno = new InfernoDrive();
     this.ghosts = new GhostTrail(this);
     this.fire = new InfernoFire(this);
+    this.energyCine = new EnergyCineFx(this); // (17-11-2026) ULTI LEGENDARIA
+    this.energyImpact = new EnergyImpactFx(this);
+    this.legend = null;
+    this.legendFade = false;
+    this.legendTodo = [];
+    this.legendDropHitUntil = 0;
+    this.legendStunShownAt = 0;
     this.infernoEl = 'fire';
     this.netRivalInferno = null;
     this.infernoPending = false;
@@ -1083,7 +1137,7 @@ export class MatchScene extends Phaser.Scene {
 
   /** PRUEBA del DUELO RED: punto en juego, los dos junto a la red y una volea del rival llegando a ti → duelo. */
   private devDuelTest() {
-    if (this.net || this.phase === 'over' || this.phase === 'intro' || this.cine.active || this.duel) return;
+    if (this.net || this.phase === 'over' || this.phase === 'intro' || this.cineLock || this.duel) return;
     const pl = this.player;
     const bt = this.bot;
     this.endRemate();
@@ -1123,7 +1177,7 @@ export class MatchScene extends Phaser.Scene {
    * 2) ~1,3 s después le mandas tu ESPECIAL directo → sale volando al cielo y es tu punto.
    */
   private devSkyTest() {
-    if (this.net || this.phase === 'over' || this.phase === 'intro' || this.cine.active || this.duel) return;
+    if (this.net || this.phase === 'over' || this.phase === 'intro' || this.cineLock || this.duel) return;
     const bt = this.bot;
     const pl = this.player;
     // punto en juego (aunque estuviera en el saque)
@@ -1256,7 +1310,7 @@ export class MatchScene extends Phaser.Scene {
 
   /** Cada fotograma del AUTO: dirección de golpe, saque y habilidades. */
   private autoTick(dt: number) {
-    if (!this.autoPlay || this.paused || this.cine.active) return;
+    if (!this.autoPlay || this.paused || this.cineLock) return;
     const now = this.time.now;
     if (now > this.autoAimAt) {
       const r = Math.random();
@@ -1336,7 +1390,7 @@ export class MatchScene extends Phaser.Scene {
   }
 
   private openSurrender() {
-    if (this.paused || this.phase === 'over' || this.cine.active) return;
+    if (this.paused || this.phase === 'over' || this.cineLock) return;
     if (!this.net) {
       this.paused = true;
       this.time.paused = true;
@@ -1658,7 +1712,7 @@ export class MatchScene extends Phaser.Scene {
   // ---------------------------------------------------------------- habilidades
   /** DASH: desaparece y reaparece donde llegará la pelota. */
   private activateDash(): boolean {
-    if (this.paused || this.cine.active || this.duel || !this.unlocked('defensive')) return false;
+    if (this.paused || this.cineLock || this.duel || !this.unlocked('defensive')) return false;
     if (this.player.racket) return this.noRacketHint();
     if (this.serveLock) return this.serveLockHint();
     if (this.phase !== 'rally' || this.lastHitter !== 'bot' || this.player.vanished) {
@@ -2228,7 +2282,7 @@ export class MatchScene extends Phaser.Scene {
     this.dashRun = createRun({ x: pl.x, y: pl.y }, plan, PLAYER_SPEED);
     this.dashHit = { t: plan.t, elapsed: 0, x: plan.x, y: plan.y, sprint: true };
     pl.ch.setSprint(true, this.dashRun.dirX);
-    this.net?.sendAction('sprint-start', { dirX: this.dashRun.dirX });
+    this.net?.sendAction('sprint-start', { dirX: this.dashRun.dirX, element: this.smashEl }); // element: su ESPECIAL equipado (el rival oye el DASH eléctrico con RAYO desde el primer dash)
     const p = project(pl.x, pl.y);
     this.dashFx.burst(p.sx, p.sy, p.s * VIEW.CHAR_K, pl.ch.depth);
     sfx(this, dashSfx(this.smashEl));
@@ -2245,7 +2299,7 @@ export class MatchScene extends Phaser.Scene {
     const r = this.dashRun;
     if (!r) return;
     const pl = this.player;
-    if (shouldCancelRun({ rally: this.phase === 'rally', playerHit: this.lastHitter === 'player', specialActive: this.cine.active || this.inferno.executing })) {
+    if (shouldCancelRun({ rally: this.phase === 'rally', playerHit: this.lastHitter === 'player', specialActive: this.cineLock || this.inferno.executing })) {
       this.dashRun = null;
       pl.ch.setSprint(false, r.dirX, false); // si ya hay un golpe en marcha, el golpe manda
       this.net?.sendAction('sprint-end');
@@ -2330,7 +2384,7 @@ export class MatchScene extends Phaser.Scene {
 
   /** SMASH: la pelota se prende fuego; el siguiente golpe es una bola de fuego. */
   private activateSmash(): boolean {
-    if (this.paused || this.cine.active || this.duel || this.phase === 'over' || this.phase === 'intro' || this.smashArmed || !this.unlocked('special')) return false;
+    if (this.paused || this.cineLock || this.duel || this.phase === 'over' || this.phase === 'intro' || this.smashArmed || !this.unlocked('special')) return false;
     if (this.player.racket) return this.noRacketHint();
     if (this.serveLock) return this.serveLockHint();
     // REMATE en el aire contra un rival SIN RAQUETA (ULTI recibida): el ESPECIAL cancela el salto. Baja enseguida y el
@@ -2374,7 +2428,7 @@ export class MatchScene extends Phaser.Scene {
 
   /** Botón en modo INFERNO: arma la técnica (no consume la carga). */
   private armInferno(): boolean {
-    if (this.paused || this.cine.busy || this.duel || this.phase !== 'rally' || this.smashArmed || this.player.vanished || !this.unlocked('ulti')) return false;
+    if (this.paused || this.cine.busy || this.legend || this.duel || this.phase !== 'rally' || this.smashArmed || this.player.vanished || !this.unlocked('ulti')) return false;
     if (this.player.racket) return this.noRacketHint();
     if (this.serveLock) return this.serveLockHint();
     if (!this.inferno.arm()) return false;
@@ -2384,7 +2438,7 @@ export class MatchScene extends Phaser.Scene {
 
   /** Valida el contacto con el alcance especial (+25 %) y, si es viable, lanza la cinemática. */
   private tryInferno(): boolean {
-    if (this.cine.active || this.phase !== 'rally') return false;
+    if (this.cineLock || this.phase !== 'rally') return false;
     const pl = this.player;
     if (pl.vanished || pl.stun > 0) return false;
     const c = planInfernoContact({
@@ -2406,6 +2460,11 @@ export class MatchScene extends Phaser.Scene {
    * hasta la posición de contacto validada · 1650 golpe (una vez) y el partido sigue · hasta 2000 la luz vuelve.
    */
   private startInferno(c: { x: number; y: number }) {
+    // (17-11-2026) ULTI LEGENDARIA (BOLA DE ENERGÍA): su cinemática extra (carga de 6 s, peloteo automático y bola final)
+    if (isLegendaryInferno(getProfile().inferno)) {
+      this.startLegend(c);
+      return;
+    }
     const pl = this.player;
     this.inferno.begin();
     this.stopCharge();
@@ -2566,6 +2625,477 @@ export class MatchScene extends Phaser.Scene {
     this.infernoBounced = false; // su primer bote tendrá explosión de fuego
   }
 
+  // ================================================================ ULTI LEGENDARIA: BOLA DE ENERGÍA (17-11-2026)
+  // Guion: logic/EnergyRally.ts · dibujo: fx/energyBallCine.ts y fx/energyBallFx.ts. Encima de la ULTI de siempre:
+  //   carga de 1,8 s (ENERGY_MATCH_CINE, la de 6 s de ENERGY_CINE acortada: el motor de la cinemática con la pantalla más negra) con la ZONA del que la lanza y un aura
+  //   más fuerte → peloteo automático fondo a fondo (pelota del golpe cargado al máximo) con 3 estiradas del rival, que queda
+  //   tendido → la BOLA DE ENERGÍA gigante le pega → lo de siempre de la ULTI (aturdido + raqueta fuera; fireImpact /
+  //   playerImpact). SOLO VISUAL: el partido queda congelado mientras dura (como en la cinemática) y no cambia puntos ni
+  //   estadísticas. El bot no la usa (ai/botKit.ts).
+  // Red: 'inferno-cine' lleva power = 'energy', bx/by (el rival según el que la lanza) y seed: el otro teléfono calcula el MISMO
+  //   guion (espejado) y lo ve desde su lado; allí la víctima es su jugador (de espaldas). Al terminar, el teléfono de la víctima
+  //   aplica el impacto (playerImpact → 'stunned' + devolución floja); el golpe de la ULTI que llegó durante su cinemática se
+  //   descarta (ya se vio). En el del que la lanza, el impacto se ve al terminar y el 'stunned' del rival ya no lo repite.
+
+  /** Partido congelado por una cinemática: la de golpe (fx/SmashCinematic.ts) o el peloteo de la ULTI LEGENDARIA. */
+  private get cineLock(): boolean {
+    return this.cine.active || this.legend !== null;
+  }
+
+  /** ULTI LEGENDARIA propia (este teléfono la lanza): guion con semilla y la carga de 6 s. `c` = contacto validado de la ULTI. */
+  private startLegend(c: { x: number; y: number }) {
+    const pl = this.player;
+    this.inferno.begin();
+    this.stopCharge();
+    // la semilla viaja como número de 'inferno-cine' (el servidor recorta los números a ±1e5)
+    const seed = Math.floor(Math.random() * 99991);
+    const bot = { x: this.bot.x, y: this.bot.y };
+    const from = { x: pl.x, y: pl.y };
+    // (17-11-2026, usuario) el que la lanza se ACERCA a la pelota como en las demás ULTIS (desplazamiento al contacto c) y desde ahí
+    // pelotea; el rival se queda en su sitio (su fila)
+    const plan = planEnergyRally({ x: c.x, y: c.y }, bot, seed);
+    this.legendCharge('player', from, plan, false);
+    this.net?.sendAction('inferno-cine', { x: from.x, y: from.y, tx: c.x, ty: c.y, ms: ENERGY_MATCH_CINE.hitAtMs, power: 'energy', bx: bot.x, by: bot.y, seed });
+  }
+
+  /** ULTI LEGENDARIA del rival (red): el mismo guion, espejado, visto desde aquí (mi jugador es la víctima, de espaldas). */
+  private netRemoteLegend(d: ActionMsg['data']) {
+    if (this.cine.active || this.legend || this.duel || this.phase !== 'rally') return;
+    const from = this.netBotPos(d?.x, d?.y);
+    const tx = Number(d?.tx);
+    const ty = Number(d?.ty);
+    const bx = Number(d?.bx);
+    const by = Number(d?.by);
+    const seed = Number(d?.seed);
+    if (!from || ![tx, ty, bx, by, seed].every(Number.isFinite)) {
+      this.netRemoteInfernoCine(d); // sin los datos del guion: la cinemática de la ULTI de siempre
+      return;
+    }
+    // tx, ty = su contacto de la ULTI (en SUS coordenadas, las canónicas del guion): el mismo plan que calculó él
+    const plan = planEnergyRally({ x: tx, y: ty }, { x: bx, y: by }, seed);
+    this.netBotSnap(from);
+    this.netDeferred = [];
+    this.netRemoteCine = true; // su golpe (la ULTI) llega durante la cinemática: se descarta al terminar (ya se vio)
+    // mi jugador queda donde lo veía el rival (los dos teléfonos ven el mismo peloteo)
+    const pl = this.player;
+    const vp = mirrorP({ x: bx, y: by }, { x: 0, y: 0 });
+    this.stopCharge();
+    stopMotion(this.motion);
+    pl.x = vp.x;
+    pl.y = vp.y;
+    pl.ch.setMoving(false, 0);
+    this.renderActors();
+    this.legendCharge('bot', from, plan, true);
+  }
+
+  /** Punto del guion (canónico: el del teléfono que lanza) en ESTE teléfono. */
+  private legendLocal<T extends { x: number; y: number }>(run: LegendRun, p: T, out: T): T {
+    if (run.mirror) return mirrorP(p, out);
+    out.x = p.x;
+    out.y = p.y;
+    return out;
+  }
+
+  /** Carga de 6 s (los dos teléfonos): mirada, ZONA + aura fuerte, la carga propia y el desplazamiento al sitio de peloteo. */
+  private legendCharge(att: Who, from: { x: number; y: number }, plan: EnergyRallyPlan, mirror: boolean) {
+    const A = att === 'player' ? this.player : this.bot;
+    const V = att === 'player' ? this.bot : this.player;
+    const run: LegendRun = {
+      att,
+      plan,
+      mirror,
+      stage: 'charge',
+      t: 0,
+      done: new Uint8Array(plan.shots.length),
+      finalFired: false,
+      zoneWas: false,
+      auraWas: false,
+      lastAt: performance.now(),
+      pb: { x: 0, y: 0, z: 0 },
+      pa: { x: 0, y: 0 },
+      pv: { x: 0, y: 0 },
+      to: { x: 0, y: 0 },
+      v0: { x: V.x, y: V.y },
+      vTo: { x: 0, y: 0 },
+    };
+    this.legendLocal(run, plan.att, run.to);
+    this.legendLocal(run, plan.vic, run.vTo);
+    const to = run.to;
+    this.legend = run;
+    this.legendTodo = [];
+    if (!A.ch.infernoHold()) A.ch.setCharging(true);
+    const sprites = spritesIn(A.ch);
+    const D = INFERNO.dash;
+    const dashSt = { sound: false };
+    infernoSound.charge(this);
+    // (17-11-2026, usuario) la mirada dura LO MISMO que en las otras ULTIS (antes, casi toda la carga de 6 s)
+    showInfernoGaze(this, INFERNO_CINE.hitAtMs - GAZE_END_BEFORE_HIT_MS, this.gazeY(), att === 'player' ? getProfile().skin : this.rivalSkin(), 'energy');
+    this.ghosts.setLook(INFERNO_LOOK.energy.ghostTint, INFERNO_LOOK.energy.ghostRamp);
+    this.legendZoneOn(run);
+    this.energyCine.start();
+    this.cine.start({
+      profile: ENERGY_MATCH_CINE, // (17-11-2026) 1,8 s (antes 6 s)
+      freeze: [...sprites, ...spritesIn(V.ch)],
+      executor: sprites,
+      leadMs: 0,
+      focus: () => this.cineFocus(A),
+      onCancel: () => {
+        A.ch.infernoRelease();
+        A.ch.setCharging(false);
+        this.ghosts.clear();
+        this.legendEnd(true);
+      },
+      onFrame: (e) => {
+        this.legendChargeFrame(run, A, e);
+        if (e >= ENERGY_MATCH_CINE.hitAtMs - INFERNO_PRE_MS) A.ch.infernoPre();
+        // el desplazamiento fantasma de la ULTI al final de la carga: el MISMO acercamiento a la pelota que las demás ULTIS (hasta el contacto).
+        // El rival se queda en su sitio (solo se corre lo justo si el guion acotó su posición, pegado a una banda)
+        const de = e - ENERGY_RALLY.dashShiftMs;
+        if (de >= D.fromMs) {
+          const u = Math.min(1, (de - D.fromMs) / (D.toMs - D.fromMs));
+          V.x = run.v0.x + (run.vTo.x - run.v0.x) * u;
+          V.y = run.v0.y + (run.vTo.y - run.v0.y) * u;
+          this.infernoDashStep(de, A, from, to, sprites, dashSt, 'energy');
+        }
+      },
+      onHit: () => this.legendRallyStart(run),
+    });
+  }
+
+  /** Un fotograma de la carga: la carga propia de la ULTI LEGENDARIA y la ZONA del que la lanza. */
+  private legendChargeFrame(run: LegendRun, A: Actor, e: number) {
+    const now = performance.now();
+    const dt = Math.min(0.05, (now - run.lastAt) / 1000);
+    run.lastAt = now;
+    const f = this.cineFocus(A);
+    const feet = project(A.x, A.y);
+    // la línea de tiempo del dibujo es la de 6 s (ENERGY_CINE): se le pasa el tiempo reescalado
+    this.energyCine.drawCharge(e / ENERGY_MATCH_K, { x: f.x, y: f.y, racketX: f.racketX, racketY: f.racketY, s: f.s, hh: f.hh, depth: f.depth, feetY: feet.sy });
+    this.legendZoneFrame(run, dt);
+  }
+
+  /** Enciende la ZONA del que la lanza (su ESTILO DE ZONA: rayo de los ojos + aura) con el aura más fuerte. */
+  private legendZoneOn(run: LegendRun) {
+    const side: ZoneSide = run.att;
+    const fx = this.zoneFx[side];
+    run.zoneWas = !!fx?.active;
+    if (fx && !fx.active) fx.start();
+    const aura = side === 'player' ? this.aura : this.botAura;
+    run.auraWas = !!aura?.active;
+    if (aura && !aura.active) aura.start(this.zoneLook[side].aura, true); // también la ELÉCTRICA (que no trae aura): la LEGENDARIA sí la enciende
+    aura?.setBoost(1.9);
+  }
+
+  /** Aura y rayo de los ojos del que la lanza durante la cinemática (el update normal no corre). */
+  private legendZoneFrame(run: LegendRun, dt: number) {
+    const side: ZoneSide = run.att;
+    const a = side === 'player' ? this.player : this.bot;
+    const aura = side === 'player' ? this.aura : this.botAura;
+    aura?.update(dt);
+    const fx = this.zoneFx[side];
+    if (!fx?.active) return;
+    const p = project(a.x, a.y);
+    const look = side === 'player' ? a.ch.facing : -a.ch.facing;
+    const k = p.s * VIEW.CHAR_K;
+    const eyes = side === 'player' ? zoneEyes(getProfile().skin, 'back') : zoneEyes(this.rivalSkin(), 'front');
+    fx.update(dt, this.headPos(a), { x: p.sx, y: p.sy }, k, a.ch.depth, look >= 0 ? 1 : -1, side === 'player', eyes, k * 1.1);
+  }
+
+  /** Apaga la ZONA de la cinemática (si no estaba ya en ZONA de verdad). */
+  private legendZoneOff(run: LegendRun) {
+    const side: ZoneSide = run.att;
+    const aura = side === 'player' ? this.aura : this.botAura;
+    aura?.setBoost(1);
+    const inZone = this.zone.active(side);
+    if (aura?.active && !run.auraWas && !inZone) aura.stop();
+    const fx = this.zoneFx[side];
+    if (fx?.active && !run.zoneWas && !inZone) fx.stop();
+  }
+
+  /** Fin de la carga: empieza el peloteo automático (el partido sigue congelado: lo mueve tickLegend). */
+  private legendRallyStart(run: LegendRun) {
+    if (this.legend !== run) return;
+    const A = run.att === 'player' ? this.player : this.bot;
+    A.x = run.to.x;
+    A.y = run.to.y;
+    A.ch.setCharging(false);
+    this.ghosts.end();
+    if (this.phase !== 'rally') {
+      this.legendEnd(true);
+      return;
+    }
+    run.stage = 'rally';
+    run.t = 0;
+    this.energyCine.hideCharge();
+    this.energyCine.setDark(ENERGY_CINE.darken);
+    // la pelota del peloteo: la del golpe cargado al máximo (brillo y rayos, sin estela)
+    this.fire.clear();
+    this.infernoFlight = false;
+    this.ball.quietFx = false;
+    this.ball.setPower(false);
+    this.ball.setKind('normal');
+    this.ball.setMaxCharge(true);
+    this.netCineSeen = true;
+  }
+
+  /** Cada fotograma del peloteo (partido congelado). `deltaMs` = tiempo del fotograma (se para con la pausa). */
+  private tickLegend(deltaMs: number) {
+    const run = this.legend!;
+    if (run.stage !== 'rally') return;
+    if (this.phase === 'over') {
+      this.legendEnd(true);
+      return;
+    }
+    const dtMs = Math.min(deltaMs, 50);
+    run.t += dtMs;
+    const t = run.t;
+    const plan = run.plan;
+    const R = ENERGY_RALLY;
+    const A = run.att === 'player' ? this.player : this.bot;
+    const V = run.att === 'player' ? this.bot : this.player;
+    // posiciones del guion
+    this.legendLocal(run, attackerAt(plan, t, run.pa), run.pa);
+    A.x = run.pa.x;
+    A.y = run.pa.y;
+    this.legendLocal(run, victimAt(plan, t, run.pv), run.pv);
+    V.x = run.pv.x;
+    V.y = run.pv.y;
+    // golpes, estiradas y contactos (cada uno una vez: bits de run.done)
+    for (let i = 0; i < plan.shots.length; i++) {
+      if (this.legend !== run) return; // el golpe final pudo cerrarla
+      const sh = plan.shots[i];
+      const d = run.done[i];
+      if (sh.by === 'att' && !(d & 1) && t >= sh.t0 - R.swingLeadMs) {
+        run.done[i] |= 1;
+        if (sh.final) this.legendFinalSwing(run, sh);
+        else {
+          A.ch.setCharging(false);
+          A.ch.swing(true, false, false, false);
+        }
+      }
+      if (!(d & 2) && t >= sh.t0) {
+        run.done[i] |= 2;
+        if (sh.final) this.legendFinalLaunch(run, sh);
+        else {
+          shotBallAt(sh, sh.t0, run.pb);
+          this.legendLocal(run, run.pb, run.pb);
+          this.legendHitFx(run.pb.x, run.pb.y, run.pb.z);
+        }
+      }
+      // estirada del rival (la última lo deja tendido): lado de la pantalla hacia el que va la pelota
+      if (sh.side && !(d & 4) && t >= sh.t1 - R.diveLeadMs) {
+        run.done[i] |= 4;
+        this.legendLocal(run, sh.to, run.pb);
+        const side = run.pb.y > V.y ? 1 : -1;
+        V.ch.facing = side;
+        if (!V.ch.lunge(side, !!sh.lie)) this.legendLeanFallback(V, side, !!sh.lie);
+      }
+    }
+    if (this.legend !== run) return;
+    // la pelota
+    const sh = shotAt(plan, t);
+    shotBallAt(sh, t, run.pb);
+    this.legendLocal(run, run.pb, run.pb);
+    const s = this.ball.s;
+    const fl = Math.max(1, sh.t1 - sh.t0) / 1000;
+    const m = run.mirror ? -1 : 1;
+    s.vx = (m * (sh.to.x - sh.from.x)) / fl;
+    s.vy = (m * (sh.to.y - sh.from.y)) / fl;
+    s.vz = 0;
+    s.x = run.pb.x;
+    s.y = run.pb.y;
+    s.z = run.pb.z;
+    this.ball.render(dtMs / 1000);
+    this.fire.update(s, run.finalFired, true);
+    this.renderActors();
+    this.legendZoneFrame(run, dtMs / 1000);
+    // (17-11-2026) antes del golpe final la BOLA DE ENERGÍA CRECE en la raqueta (ENERGY_RALLY.growMs; la pelota espera ahí)
+    const fin = plan.shots[plan.shots.length - 1];
+    const g0 = fin.t0 - R.growMs;
+    if (!run.finalFired && t >= g0 && t < fin.t0) {
+      // (17-11-2026, usuario) el golpe final usa el swing de la ULTI (hoja ulti-1, inferno-swing), no el golpe potenciado:
+      // al empezar a crecer la bola, el atacante vuelve a la pose de espera de la ULTI; su swing (legendFinalSwing) sale de ella
+      if (!this.legendGrow) {
+        A.ch.setCharging(false);
+        A.ch.infernoHold();
+      }
+      if (t >= fin.t0 - INFERNO_PRE_MS) A.ch.infernoPre();
+      this.legendGrow = true;
+      // (17-11-2026, usuario) sin esfera en el personaje: partículas hacia él y rayos que le salen (energyBallCine.drawGrow); la bola
+      // sale chica y crece durante su vuelo (finalMs) hasta su tamaño máximo
+      const af = this.cineFocus(A);
+      const afeet = project(A.x, A.y);
+      this.energyCine.drawGrow(dtMs / 1000, (t - g0) / R.growMs, { x: af.x, y: af.y, racketX: af.racketX, racketY: af.racketY, s: af.s, hh: af.hh, depth: af.depth, feetY: afeet.sy });
+      this.fire.energyGrowSec = R.finalMs / 1000;
+    } else if (this.legendGrow) {
+      this.legendGrow = false;
+      this.energyCine.hideCharge(); // sale volando: la dibuja InfernoFire
+    }
+    this.energyCine.drawDark(t >= plan.endMs - 250 ? 0.12 : 0.38, dtMs / 1000);
+    if (t >= plan.endMs) this.legendFinish(run);
+  }
+
+  /**
+   * Estirada del peloteo para un personaje SIN hoja de estiradas (hoy, MAI de frente: sus hojas nuevas están pendientes): el golpe de siempre
+   * y el cuerpo que se tira hacia el lado de la pelota (como playerLunge sin hoja). En la última (lie) se queda caído hasta el golpe final.
+   */
+  private legendLeanFallback(a: Actor, side: number, lie: boolean) {
+    a.ch.swing();
+    const rig = a.ch.rig;
+    this.tweens.killTweensOf(rig);
+    if (lie) {
+      this.tweens.add({ targets: rig, angle: 72 * side, duration: 160, ease: 'Quad.easeOut' });
+      return;
+    }
+    this.tweens.chain({
+      targets: rig,
+      tweens: [
+        { angle: 42 * side, duration: 140, ease: 'Quad.easeOut' },
+        { angle: 42 * side, duration: 120 },
+        { angle: -8 * side, duration: 200, ease: 'Sine.easeInOut' },
+        { angle: 0, duration: 160, ease: 'Sine.easeOut' },
+      ],
+    });
+  }
+
+  /** Golpe del peloteo (los dos): el del golpe cargado al máximo (destello fuerte, choque eléctrico y sonido). */
+  private legendHitFx(x: number, y: number, z: number) {
+    this.hitFx(x, y, z, false, 1);
+    const p = project(x, y, z);
+    shockFx(this, p.sx, p.sy, p.s);
+    sfx(this, 'electricidad', 0.6);
+    this.maxContactFlash(p.sx, p.sy, p.s);
+  }
+
+  /** Empieza el golpe final (antes del contacto: la raqueta llega a su frame). La pelota espera en la raqueta. */
+  private legendFinalSwing(run: LegendRun, sh: RallyShot) {
+    shotBallAt(sh, sh.t0, run.pb);
+    this.legendLocal(run, run.pb, run.pb);
+    const s = this.ball.s;
+    s.x = run.pb.x;
+    s.y = run.pb.y;
+    s.z = run.pb.z;
+    this.ball.setMaxCharge(false);
+    if (run.att === 'player') {
+      // el golpe REAL de la ULTI (consume la carga; golpe y efectos de siempre con la bola de energía); su vuelo lo lleva el guion
+      const pl = this.player;
+      this.infernoImpact({ x: pl.x, y: pl.y });
+      if (!this.infernoFlight) {
+        this.legendEnd(true); // no pudo golpear (el punto cambió): se cancela sin más
+        return;
+      }
+      run.finalFired = true;
+    } else {
+      // el rival (red): su golpe de la ULTI, como lo ve aquí netApplyHit (su golpe real se descarta al terminar)
+      const bt = this.bot;
+      bt.ch.setCharging(false);
+      bt.ch.swing(true, false, false, false);
+    }
+  }
+
+  /** Sale la BOLA DE ENERGÍA (contacto del golpe final). */
+  private legendFinalLaunch(run: LegendRun, sh: RallyShot) {
+    if (run.att === 'player') return; // aquí ya lo hizo infernoImpact (efectos del golpe incluidos)
+    shotBallAt(sh, sh.t0, run.pb);
+    this.legendLocal(run, run.pb, run.pb);
+    this.infernoEl = 'energy';
+    this.fire.setElement('energy');
+    this.ball.setPower(true);
+    this.ball.quietFx = true;
+    const b = project(run.pb.x, run.pb.y, run.pb.z);
+    this.hitFx(run.pb.x, run.pb.y, run.pb.z, true, 0.15, true, 'energy');
+    infernoImpactFx(this, b.sx, b.sy, b.s, 'energy');
+    infernoShake(this);
+    infernoSound.impact(this, 'energy');
+    run.finalFired = true;
+  }
+
+  /** Llegó la BOLA DE ENERGÍA al rival tendido: el impacto de siempre de la ULTI y el partido sigue. */
+  private legendFinish(run: LegendRun) {
+    const s = this.ball.s;
+    this.legendLocal(run, run.plan.hit, run.pb);
+    s.x = run.pb.x;
+    s.y = run.pb.y;
+    s.z = run.plan.hit.z;
+    // (17-11-2026) llegada DESTRUCTIVA (EnergyImpactFx: estrella, columna, ondas y grietas en el suelo, esquirlas, brasas y trozos de
+    // cancha) + destello y sacudida fuertes, además del impacto de siempre de la ULTI. Sin hit-stop: el partido/red siguen su reloj
+    const hp = project(run.pb.x, run.pb.y, run.plan.hit.z);
+    this.energyImpact.play(hp.sx, hp.sy, project(run.pb.x, run.pb.y).sy, hp.s);
+    this.cameras.main.flash(220, 240, 253, 255);
+    this.cameras.main.shake(420, 0.024);
+    this.legendEnd(false);
+    if (run.att === 'player') {
+      if (!this.net) {
+        this.fireImpact(); // aturdido + raqueta fuera + devolución floja (lo de siempre de la ULTI)
+        return;
+      }
+      // red: el impacto lo aplica el teléfono del rival (al terminar su cinemática); aquí se ve ya
+      this.netBotStunned(stunMsFor('inferno'), 'inferno');
+      this.legendStunShownAt = performance.now();
+      this.ball.setPower(false);
+      s.vx = 0;
+      s.vy = 0;
+      s.vz = 0;
+      const todo = this.legendTodo;
+      this.legendTodo = [];
+      for (const f of todo) f();
+      return;
+    }
+    // soy la víctima: el golpe de la ULTI que llegó durante la cinemática ya se vio (se descarta) y recibo el impacto
+    this.netEndRemoteCine(true);
+    this.legendDropHitUntil = performance.now() + 2500;
+    this.lastHitter = 'bot';
+    this.infernoFlight = true;
+    this.infernoEl = 'energy';
+    this.ball.setPower(true);
+    this.playerImpact();
+  }
+
+  /** Cierra la cinemática LEGENDARIA. `cancel` = cortada (punto repetido, fin de partido…): sin impacto. */
+  private legendEnd(cancel: boolean) {
+    const run = this.legend;
+    if (!run) return;
+    this.legend = null;
+    this.legendGrow = false;
+    this.energyCine.hideCharge();
+    this.legendFade = true; // la penumbra se va sola (update)
+    this.legendZoneOff(run);
+    this.netCineSeen = true;
+    {
+      // sin hoja de estiradas (legendLeanFallback) quedó caído de lado: se endereza
+      const rig = (run.att === 'player' ? this.bot : this.player).ch.rig;
+      if (Math.abs(rig.angle) > 40) {
+        this.tweens.killTweensOf(rig);
+        this.tweens.add({ targets: rig, angle: 0, duration: 260, ease: 'Back.easeOut' });
+      }
+    }
+    if (!cancel) return;
+    this.energyCine.hide();
+    this.legendFade = false;
+    const V = run.att === 'player' ? this.bot : this.player;
+    if (run.stage === 'rally') {
+      V.ch.resetPose(); // por si quedó tendido
+      this.ball.setMaxCharge(false);
+      if (!run.finalFired) {
+        this.fire.clear();
+        this.ball.quietFx = false;
+      }
+    }
+    if (run.att === 'player' && !run.finalFired) this.inferno.abort();
+    if (run.att === 'bot') this.netEndRemoteCine(true);
+    const todo = this.legendTodo;
+    this.legendTodo = [];
+    for (const f of todo) f();
+  }
+
+  /** Corta la cinemática LEGENDARIA si hay una (punto repetido, duelo, fin). */
+  private legendCancel() {
+    const run = this.legend;
+    if (!run) return;
+    if (run.stage === 'charge' && this.cine.active) this.cine.cancel(); // su onCancel la cierra
+    else this.legendEnd(true);
+  }
+
   /** SMASH / INFERNO: ¿remate por arriba (con salto)? SOLO si la pelota llega en globo; si no, golpe fuerte. */
   private powerOverhead(s: BallState) {
     return this.ball.shotKind === 'lob' || this.lob.qualifies('player', this.player.x, this.player.y, s);
@@ -2591,7 +3121,7 @@ export class MatchScene extends Phaser.Scene {
   }
 
   private startSmashCine(): boolean {
-    if (!smashCineEnabled() || this.cine.active || this.phase !== 'rally') return false;
+    if (!smashCineEnabled() || this.cineLock || this.phase !== 'rally') return false;
     const pl = this.player;
     // misma llamada que hará playerHit con el SMASH: arranca el clip en su preparación y se congela ahí;
     // al reanudar, la segunda llamada no reinicia el clip (ya está golpeando) → sin saltos visuales
@@ -2634,7 +3164,7 @@ export class MatchScene extends Phaser.Scene {
     const feet = project(b.x, b.y);
     const head = this.headPos(b);
     const at = kind === 'inferno' ? project(s.x, s.y, s.z) : { sx: feet.sx, sy: (feet.sy + head.y) / 2 };
-    powerImpactFx(this, kind, at.sx, at.sy, feet.s, kind === 'inferno' ? this.infernoEl : this.smashFlightEl);
+    powerImpactFx(this, kind, at.sx, at.sy, feet.s, kind === 'inferno' ? this.infernoEl : this.smashFlightEl, kind === 'inferno' ? feet.sy : undefined); // ULTI: el suelo real bajo sus pies (la huella del impacto)
     b.ch.swing();
     // devolución débil (globo al centro)
     const tx = NET_X - (NET_X - COURT.left) * rand(0.3, 0.6);
@@ -2821,7 +3351,7 @@ export class MatchScene extends Phaser.Scene {
     const feet = project(pl.x, pl.y);
     const head = this.headPos(pl);
     const at = kind === 'inferno' ? project(s.x, s.y, s.z) : { sx: feet.sx, sy: (feet.sy + head.y) / 2 };
-    powerImpactFx(this, kind, at.sx, at.sy, feet.s, kind === 'inferno' ? this.infernoEl : this.smashFlightEl);
+    powerImpactFx(this, kind, at.sx, at.sy, feet.s, kind === 'inferno' ? this.infernoEl : this.smashFlightEl, kind === 'inferno' ? feet.sy : undefined); // ULTI: el suelo real bajo sus pies (la huella del impacto)
     // devolución débil (globo al centro del campo rival)
     const tx = NET_X + (COURT.right - NET_X) * rand(0.3, 0.6);
     const ty = LAT_C + rand(-0.5, 0.5) * HALF_W;
@@ -2915,6 +3445,7 @@ export class MatchScene extends Phaser.Scene {
     const rx = receiver === 'player' ? pl : bt;
     const busy =
       this.cine.busy ||
+      this.legend !== null ||
       this.remateCine !== null ||
       this.botRemate !== null ||
       this.netRemateOn ||
@@ -2962,7 +3493,7 @@ export class MatchScene extends Phaser.Scene {
 
   /** Empieza el duelo. `remote` = lo que llegó en 'duel-start' (red: este teléfono no es el juez): posición del rival y plan de golpes. */
   private duelStart(receiver: Who, remote?: { pos: { x: number; y: number }; plan: number[] }) {
-    if (this.duel || this.cine.active) return;
+    if (this.duel || this.cineLock) return;
     this.duelUsed = true;
     const pl = this.player;
     const bt = this.bot;
@@ -3242,10 +3773,11 @@ export class MatchScene extends Phaser.Scene {
     const h = this.duelHitInfo(d, i, j);
     rr.hits++;
     const a = h.who === 'player' ? this.player : this.bot;
-    // SIEMPRE un sprite de GOLPE (volea), también en las estiradas: nunca el del personaje tirado en el suelo
     a.ch.setMoving(false, 0);
-    a.ch.facing = (h.who === 'player' ? 1 : -1) * h.side; // derecha / izquierda alternando
-    a.ch.swing(false, false, false, true);
+    a.ch.facing = (h.who === 'player' ? 1 : -1) * h.side; // derecha / izquierda alternando (lado de la pantalla)
+    // (17-11-2026, usuario) que se vean REVESES y ESTIRADAS: del lado de la derecha, la volea; del revés, el golpe de revés (la volea es un
+    // solo clip y antes todo se veía igual); en los golpes de estirada (duelLungeHit), el sprite de la estirada (sin hoja, el golpe de siempre)
+    if (!(h.lunge && a.ch.lunge(a.ch.facing))) a.ch.swing(false, false, false, a.ch.facing > 0);
     if (h.lunge) this.dustFx(a.x, a.y);
     const c = this.duelContact(h.who, h.side, h.lunge);
     // DESTELLO: el primer golpe del GANADOR de la ronda anterior (si ya se decidió y no fue empate) es más fuerte
@@ -3483,13 +4015,23 @@ export class MatchScene extends Phaser.Scene {
     const loser = w === 'player' ? this.bot : this.player;
     const g = d.aimG ?? (d.aimG = this.add.graphics().setDepth(0.8));
     g.clear();
-    const chosen = d.side ?? defaultAimSide(loser.y, LAT_C);
+    // (17-11-2026, usuario) MISTERIO: el que perdió el duelo NO ve qué lado eligió el ganador (bot o rival online). Ve los dos lados iguales,
+    // latiendo a la vez, hasta que sale el globo. Solo el ganador ve su lado resaltado.
+    const mine = w === 'player';
+    const chosen = mine ? (d.side ?? defaultAimSide(loser.y, LAT_C)) : 0;
+    const beat = mine ? 1 : 0.55 + 0.45 * Math.sin(performance.now() / 140);
     const half = w === 'player' ? COURT.right - NET_X : NET_X - COURT.left;
     const x0 = w === 'player' ? NET_X + half * 0.55 : COURT.left;
     const x1 = w === 'player' ? COURT.right : NET_X - half * 0.55;
     for (const sd of [-1, 1] as const) {
       const [y0, y1] = sd < 0 ? [COURT.top, LAT_C] : [LAT_C, COURT.bottom];
       const pts = [this.P(x0, y0), this.P(x0, y1), this.P(x1, y1), this.P(x1, y0)];
+      if (!mine) {
+        // los dos lados iguales: no se sabe adónde irá
+        g.fillStyle(0xffffff, 0.1 * beat).fillPoints(pts, true);
+        g.lineStyle(3, 0xffffff, 0.35 + 0.35 * beat).strokePoints(pts, true);
+        continue;
+      }
       const on = sd === chosen;
       if (on) g.fillStyle(0xffd23f, 0.35).fillPoints(pts, true);
       g.lineStyle(on ? 4 : 2, on ? 0xffd23f : 0xffffff, on ? 0.95 : 0.4).strokePoints(pts, true);
@@ -3675,7 +4217,7 @@ export class MatchScene extends Phaser.Scene {
   // ---- red
   /** El juez (el que recibe la pelota) empezó el duelo: aquí se ve el mismo inicio y el mismo peloteo (su plan de golpes). */
   private netRemoteDuelStart(d: ActionMsg['data']) {
-    if (this.duel || this.cine.active || this.phase !== 'rally') return;
+    if (this.duel || this.cineLock || this.phase !== 'rally') return;
     const pos = this.netBotPos(d?.x, d?.y);
     if (!pos) return;
     this.duelUsed = true;
@@ -4681,7 +5223,7 @@ export class MatchScene extends Phaser.Scene {
       this.remateHit();
       return;
     }
-    if (this.paused || this.cine.active) return;
+    if (this.paused || this.cineLock) return;
     // DASH sprint en curso: no se carga (frenaría en seco), pero el gesto cuenta para Perfect Timing
     if (this.dashRun) {
       if (this.phase === 'rally') this.timing.registerTap(this.tapClock(eventMs));
@@ -4760,7 +5302,7 @@ export class MatchScene extends Phaser.Scene {
       this.phase === 'rally' &&
       !this.serving &&
       !this.charging &&
-      !this.cine.active &&
+      !this.cineLock &&
       !b.power &&
       this.lastHitter !== 'player' &&
       b.s.vx < 0 &&
@@ -5138,7 +5680,7 @@ export class MatchScene extends Phaser.Scene {
    * (el golpe lo da la cinemática al terminar).
    */
   private botUlti(s: BallState): boolean {
-    if (this.cine.active || this.phase !== 'rally' || this.serveLock) return false; // sin ULTI en el resto del saque
+    if (this.cineLock || this.phase !== 'rally' || this.serveLock) return false; // sin ULTI en el resto del saque
     const bt = this.bot;
     const ctx = { playerX: this.player.x, playerY: this.player.y, botX: bt.x, botY: bt.y };
     if (!this.brain.wantsUlti(s, ctx)) return false;
@@ -5608,7 +6150,7 @@ export class MatchScene extends Phaser.Scene {
     const shot = this.brain.planShot(s, { playerX: this.player.x, playerY: this.player.y, botX: this.bot.x, botY: this.bot.y }, ulti, this.serveLock, forcePower);
     // ESPECIAL del BOT: la misma cinemática que el tuyo (pantalla oscura y foco en él, partido congelado); el golpe sale
     // al terminar, una sola vez. Su clip arranca ya en la preparación (la segunda llamada a swing no lo reinicia).
-    if (shot.power && !ulti && !this.net && smashCineEnabled() && !this.cine.active && this.phase === 'rally') {
+    if (shot.power && !ulti && !this.net && smashCineEnabled() && !this.cineLock && this.phase === 'rally') {
       const over = false; // ESPECIAL del BOT: golpe fuerte de derecha / revés, como el tuyo
       const lead = this.bot.ch.swing(true, over, over, false, true); // pose de carga (frame 4), como el tuyo
       this.cine.start({
@@ -5990,6 +6532,18 @@ export class MatchScene extends Phaser.Scene {
       this.cine.update();
       return;
     }
+    // (17-11-2026) ULTI LEGENDARIA: peloteo automático con el partido congelado
+    if (this.legend) {
+      this.flu.lastFrame = 0;
+      if (this.net) {
+        this.diagStateAt = performance.now();
+        this.flu.lastIn = 0;
+        this.fluSkip = true;
+      }
+      this.tickLegend(deltaMs);
+      return;
+    }
+    if (this.legendFade) this.legendFade = this.energyCine.drawDark(0, Math.min(deltaMs / 1000, 0.05));
     // DUELO EN LA RED: tras el cara a cara el partido sigue parado (voleas, elección del lado, globo final)
     if (this.duel) {
       this.tickDuel(deltaMs);
@@ -6247,7 +6801,7 @@ export class MatchScene extends Phaser.Scene {
         if (this.phase === 'rally') this.checkHits();
         if (this.phase === 'rally') this.checkDropZeroBack();
         this.checkBackWall(px); // después de los golpes: si el rival llegaba, ya devolvió
-        if (this.cine.active) break; // contacto reservado: la pelota no avanza más
+        if (this.cineLock) break; // contacto reservado: la pelota no avanza más
       }
       this.updateDashHit(dt);
     }
@@ -6362,7 +6916,7 @@ export class MatchScene extends Phaser.Scene {
       pl.stun <= 0 &&
       !pl.vanished &&
       !this.dashRun &&
-      !this.cine.active
+      !this.cineLock
     );
   }
 
@@ -7345,6 +7899,7 @@ export class MatchScene extends Phaser.Scene {
     this.netPendingToss = null;
     this.faults = 0;
     this.duelAbort('resume'); // un duelo a medias tampoco
+    this.legendCancel(); // (17-11-2026) la ULTI LEGENDARIA a medias tampoco
     if (this.cine.active) this.cine.cancel(); // una cinemática a medias no sigue en el punto repetido
     showSideNotice(this, 'Se repite el punto', 0xff9a1f, 1300);
     this.phase = 'pointover';
@@ -7358,7 +7913,7 @@ export class MatchScene extends Phaser.Scene {
 
   /** ¿Señal débil? Más de 1 s sin ningún mensaje del rival (su estado llega al menos cada 250 ms aunque esté quieto). */
   private netSignalWeak() {
-    if (this.phase === 'over' || this.phase === 'intro' || this.netRemoteCine || this.cine.active || this.paused) return false;
+    if (this.phase === 'over' || this.phase === 'intro' || this.netRemoteCine || this.cineLock || this.paused) return false;
     return performance.now() - this.netLastMsgAt > 1000;
   }
 
@@ -7725,6 +8280,13 @@ export class MatchScene extends Phaser.Scene {
   /** `recvAt` = llegada (performance.now); sin él (golpe aplicado tras una cinemática) no se compensa el retraso. */
   private netApplyHit(h: HitMsg, recvAt?: number) {
     if (this.phase === 'over') return;
+    // (17-11-2026) ULTI LEGENDARIA propia en curso: su devolución (el impacto) se aplica al terminar la cinemática
+    if (this.legend && this.legend.att === 'player') {
+      this.legendTodo.push(() => this.netApplyHit(h));
+      return;
+    }
+    // (17-11-2026) su golpe de la ULTI LEGENDARIA llegó tarde: ya se vio (y se aplicó el impacto) en la cinemática
+    if (h.inferno && performance.now() < this.legendDropHitUntil) return;
     this.duelAbort('hit'); // el golpe del ganador del duelo (o cualquier golpe del rival) cierra el duelo y se aplica normal
     this.netRemoteRemate(false); // por si no llegó 'remate-end': su golpe termina la cámara lenta
     this.netEndBotFly(true); // su golpe llegó: la SOMBRA / SUPERSALTO ya terminó en su teléfono
@@ -7865,6 +8427,11 @@ export class MatchScene extends Phaser.Scene {
 
   private netApplyAction(a: ActionMsg) {
     const bt = this.bot;
+    // (17-11-2026) ULTI LEGENDARIA propia en curso: su aturdido y su raqueta se ven al terminar la cinemática
+    if (this.legend && this.legend.att === 'player' && (a.kind === 'stunned' || a.kind === 'racket')) {
+      this.legendTodo.push(() => this.netApplyAction(a));
+      return;
+    }
     if (a.kind === 'toss') {
       const kind = (a.data?.kind as ServeKind) ?? 'normal';
       this.netEarlyStart();
@@ -7892,6 +8459,7 @@ export class MatchScene extends Phaser.Scene {
       // Su posición se dibuja netInterp.delayMs en el pasado: el sprint arranca cuando aquí empieza a correr (antes
       // corría en el sitio y la frenada caía con el cuerpo aún lanzado).
       const dirX = -(Number(a.data?.dirX) || 0);
+      if (isSmashPower(a.data?.element)) this.netRivalSmashEl = a.data.element; // su poder equipado, antes de que arme el primer ESPECIAL
       const hitter = this.lastHitter;
       this.time.delayedCall(this.netInterp.delayMs, () => {
         if (this.phase !== 'rally' || this.lastHitter !== hitter) return; // ya golpeó o acabó el punto: el golpe manda
@@ -7934,7 +8502,9 @@ export class MatchScene extends Phaser.Scene {
       // poder de su INFERNO (antes de la cinemática: aunque aquí no se pueda mostrar, su bola debe ser la suya)
       const power = a.data?.power;
       this.netRivalInferno = isInfernoPower(power) ? power : null;
-      this.netRemoteInfernoCine(a.data);
+      // (17-11-2026) su ULTI LEGENDARIA: la cinemática extra (mismo guion, espejado)
+      if (isInfernoPower(power) && isLegendaryInferno(power)) this.netRemoteLegend(a.data);
+      else this.netRemoteInfernoCine(a.data);
     }
   }
 
@@ -8176,7 +8746,7 @@ export class MatchScene extends Phaser.Scene {
    * El golpe real llega con game:hit: si llega durante la cinemática se aplica al terminar (una sola vez).
    */
   private netRemoteSmashCine(d: ActionMsg['data']) {
-    if (!smashCineEnabled() || this.cine.active || this.phase === 'over') return;
+    if (!smashCineEnabled() || this.cineLock || this.phase === 'over') return;
     const pos = this.netBotPos(d?.x, d?.y);
     if (!pos) return;
     const bt = this.bot;
@@ -8202,7 +8772,7 @@ export class MatchScene extends Phaser.Scene {
    * contacto y reanudación al golpear (misma cinemática y mismas sombras: fx/SmashCinematic.ts + fx/InfernoFx.ts).
    */
   private netRemoteInfernoCine(d: ActionMsg['data']) {
-    if (this.cine.active || this.phase === 'over') return;
+    if (this.cineLock || this.phase === 'over') return;
     const from = this.netBotPos(d?.x, d?.y);
     const to = this.netBotPos(d?.tx, d?.ty);
     if (!from || !to) return;
@@ -8261,6 +8831,12 @@ export class MatchScene extends Phaser.Scene {
     // el tipo lo manda quien recibe el golpe; si no llega (versión vieja), el de la bola en vuelo aquí
     const kind: PowerKind = sent === 'inferno' || sent === 'smash' ? sent : this.infernoFlight ? 'inferno' : 'smash';
     const dur = clamp(Number.isFinite(ms) ? ms : stunMsFor(kind), 200, 2000);
+    // (17-11-2026) ULTI LEGENDARIA: el impacto ya se vio aquí al terminar la cinemática; su aviso solo ajusta la duración
+    if (kind === 'inferno' && this.legendStunShownAt && performance.now() - this.legendStunShownAt < 4000) {
+      this.legendStunShownAt = 0;
+      b.stun = dur / 1000;
+      return;
+    }
     // la bola de fuego desaparece en el impacto (como fireImpact)
     this.infernoFlight = false;
     this.infernoBounced = true;
@@ -8269,7 +8845,7 @@ export class MatchScene extends Phaser.Scene {
     const feet = project(b.x, b.y);
     const head = this.headPos(b);
     const at = kind === 'inferno' ? project(s.x, s.y, s.z) : { sx: feet.sx, sy: (feet.sy + head.y) / 2 };
-    powerImpactFx(this, kind, at.sx, at.sy, feet.s, kind === 'inferno' ? this.infernoEl : this.smashFlightEl);
+    powerImpactFx(this, kind, at.sx, at.sy, feet.s, kind === 'inferno' ? this.infernoEl : this.smashFlightEl, kind === 'inferno' ? feet.sy : undefined); // ULTI: el suelo real bajo sus pies (la huella del impacto)
     b.stun = dur / 1000; // estrellas de aturdido (renderActors) y fin sincronizado (netBotTick)
     if (kind === 'inferno') this.ultiStunOn(b, dur);
     // con la ULTI su raqueta la dibuja la acción 'racket' (cae en la cancha), no el clip

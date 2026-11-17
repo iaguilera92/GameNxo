@@ -56,6 +56,11 @@ const GAZE_FX: Record<InfernoPower, { edge: number; edgeIn: number; glowIn: numb
   wind: { edge: 0x2fbf6a, edgeIn: 0xd0ffe0, glowIn: 0xf0fff0, glow: 0x3fd68a, spark: 0xeaffe0, line: 0x9cf06a },
   lightning: { edge: 0x2f6bff, edgeIn: 0xfff36b, glowIn: 0xfffbe0, glow: 0x3a7bff, spark: 0xfff36b, line: 0x7fc8ff },
   tulip: { edge: 0xe0457f, edgeIn: 0xffd0e6, glowIn: 0xfff0f7, glow: 0xff6fae, spark: 0xffffff, line: 0xffb3d6 },
+  shadow: { edge: 0x5a1fb8, edgeIn: 0xd1a8ff, glowIn: 0xf0e2ff, glow: 0x9b4dff, spark: 0xe2c8ff, line: 0xb27dff }, // (17-11-2026) SOMBRA
+  light: { edge: 0xffc94a, edgeIn: 0xfff8dc, glowIn: 0xffffff, glow: 0xffd86b, spark: 0xffffff, line: 0xffe48a }, // (17-11-2026) LUZ
+  ultra: { edge: 0x5fe0b8, edgeIn: 0xe0fff0, glowIn: 0xffffff, glow: 0x9cf5d8, spark: 0xffffff, line: 0xc8ffd8 }, // (17-11-2026) ULTRA EFECTO
+  barrage: { edge: 0xb8e020, edgeIn: 0xf4ffc0, glowIn: 0xffffff, glow: 0xd8ff3a, spark: 0xffffff, line: 0xeaff8a }, // (17-11-2026) RÁFAGA
+  energy: { edge: 0x1f8cff, edgeIn: 0xc8f8ff, glowIn: 0xffffff, glow: 0x5fe8ff, spark: 0xffffff, line: 0x9fefff }, // (17-11-2026) BOLA DE ENERGÍA
 };
 
 /**

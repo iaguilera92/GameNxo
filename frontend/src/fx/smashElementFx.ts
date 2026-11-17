@@ -34,6 +34,7 @@ const GLOW: Record<SmashPower, [number, number]> = {
   lightning: [0x2f6bff, 0xfff36b],
   shadow: [0x9b4dff, 0xd0a8ff],
   light: [0xffd86a, 0xffffff],
+  comet: [0x2f6bff, 0xcfe2ff], // (17-11-2026) COMETA
 };
 
 const R = Phaser.Math.FloatBetween;
@@ -59,10 +60,16 @@ export class SmashElementFx {
   }
 
   setElement(el: SmashPower) {
+    // al cambiar de poder las partículas vivas (hasta ~0,9 s) eran del anterior y se dibujaban con la forma del nuevo
+    if (el !== this.el) {
+      this.parts.length = 0;
+      this.bolts.length = 0;
+    }
     this.el = el;
   }
 
   update(dt: number, ball: BallState, on: boolean, strong: boolean, visible = true) {
+    dt = Math.min(dt, 0.05); // al volver de segundo plano un dt enorme haría girar sin fin los bucles de emisión
     const g = this.g;
     g.clear();
     this.dark.clear();
@@ -95,6 +102,7 @@ export class SmashElementFx {
       else if (this.el === 'shadow') this.drawShadow(bx, by, k * S, dx, dy, dt);
       else if (this.el === 'light') this.drawLight(bx, by, k * S, dx, dy, dt);
       else if (this.el === 'fire') this.drawFire(bx, by, k * S, dx, dy, dt, strong);
+      else if (this.el === 'comet') this.drawMeteor(bx, by, k * S, dx, dy, dt, strong);
       else this.drawLightning(bx, by, k * S, dt);
     } else {
       this.hist.length = 0;
@@ -115,7 +123,8 @@ export class SmashElementFx {
       if (this.el === 'ice') p.vy += 260 * dt;
       else if (this.el === 'light') p.vy -= 25 * dt; // las motas de luz flotan hacia arriba
       else if (this.el === 'fire') p.vy -= 70 * dt; // las brasas suben
-      else if (this.el === 'shadow') p.vy -= 30 * dt; // las esquirlas caen
+      else if (this.el === 'shadow') p.vy -= 30 * dt; // el humo y las esquirlas suben un poco
+      else if (this.el === 'comet') p.vy += 40 * dt; // las estrellas de la cola caen despacio
       const a = 1 - f;
       this.drawPart(p, a);
     }
@@ -179,6 +188,19 @@ export class SmashElementFx {
       // mota de luz: núcleo blanco con un halo suave que se agranda al apagarse
       g.fillStyle(p.col, 0.28 * a).fillCircle(p.x, p.y, p.size * (1.8 - a * 0.4));
       g.fillStyle(0xffffff, 0.9 * a).fillCircle(p.x, p.y, p.size * (0.4 + a * 0.4));
+      return;
+    }
+    if (this.el === 'comet') {
+      // (17-11-2026) estrella de 5 puntas que gira y se apaga, con un brillo suave detrás
+      const R0 = p.size * (0.6 + a * 0.4);
+      g.fillStyle(0x6fa4ff, 0.25 * a).fillCircle(p.x, p.y, R0 * 1.5);
+      const pts: { x: number; y: number }[] = [];
+      for (let i = 0; i < 10; i++) {
+        const ang = p.rot + (i * Math.PI) / 5 - Math.PI / 2;
+        const rr = i % 2 ? R0 * 0.42 : R0;
+        pts.push({ x: p.x + Math.cos(ang) * rr, y: p.y + Math.sin(ang) * rr });
+      }
+      g.fillStyle(p.col, 0.95 * a).fillPoints(pts, true);
       return;
     }
     if (this.el === 'shadow') {
@@ -472,6 +494,65 @@ export class SmashElementFx {
     }
   }
 
+  // ------------------------------------------------------------------ COMETA
+  /**
+   * (17-11-2026) COMETA (ESPECIAL ÉPICO): la pelota es la cabeza de un METEORITO (roca oscura con grietas al rojo azul y un halo blanco-azul que late)
+   * y detrás lleva una COLA de fuego azul larga en capas (azul profundo, azul, celeste, blanco) que ondula, con ESTRELLAS de 5 puntas que se
+   * desprenden y caen girando. Más grande y vistoso que los ESPECIALES de rareza especial. Todo en el mismo Graphics (sin tweens).
+   */
+  private drawMeteor(x: number, y: number, k: number, dx: number, dy: number, dt: number, strong: boolean) {
+    const g = this.g;
+    const back = Math.atan2(-dy, -dx);
+    const ca = Math.cos(back);
+    const sa = Math.sin(back);
+    const pulse = 1 + Math.sin(this.t * 16) * 0.07;
+    // halo de entrada en la atmósfera
+    g.fillStyle(0x2f6bff, 0.22).fillCircle(x, y, 30 * k * pulse);
+    g.fillStyle(0x9cc4ff, 0.3).fillCircle(x, y, 19 * k * pulse);
+    // COLA: 4 capas de llama (de la más larga y oscura a la más corta y clara), en forma de gota alargada que ondula
+    const layers = [
+      { len: 120, w: 20, col: 0x1f3fd6, a: 0.42 },
+      { len: 95, w: 15, col: 0x4f8dff, a: 0.55 },
+      { len: 66, w: 10, col: 0x9cc4ff, a: 0.7 },
+      { len: 38, w: 6, col: 0xffffff, a: 0.85 },
+    ];
+    for (let li = 0; li < layers.length; li++) {
+      const L = layers[li];
+      const len = L.len * k * (strong ? 1.2 : 1) * (0.9 + 0.1 * Math.sin(this.t * 20 + li));
+      const w = L.w * k;
+      const wob = Math.sin(this.t * 13 + li * 0.8) * w * 0.35;
+      const pt = (u: number, side: number) => {
+        // ancho que se afina hacia la punta; la línea central ondula un poco
+        const ww = w * (1 - u) ** 0.7 * side + wob * u;
+        return { x: x + ca * len * u - sa * ww, y: y + sa * len * u + ca * ww };
+      };
+      const pts: { x: number; y: number }[] = [];
+      for (let i = 0; i <= 6; i++) pts.push(pt(i / 6, 1));
+      for (let i = 6; i >= 0; i--) pts.push(pt(i / 6, -1));
+      g.fillStyle(L.col, L.a).fillPoints(pts, true);
+    }
+    // CABEZA: roca oscura con grietas azules y brillo blanco por delante (de cara al avance)
+    const r = 11 * k;
+    this.dark.fillStyle(0x141a33, 0.95).fillCircle(x, y, r);
+    this.dark.fillStyle(0x283258, 1).fillCircle(x - ca * r * 0.25, y - sa * r * 0.25, r * 0.7);
+    const rot = this.t * 3;
+    g.lineStyle(1.6 * k, 0x6fa4ff, 0.95);
+    for (let i = 0; i < 3; i++) {
+      const a = rot + (i * Math.PI * 2) / 3;
+      g.lineBetween(x + Math.cos(a) * r * 0.15, y + Math.sin(a) * r * 0.15, x + Math.cos(a + 0.4) * r * 0.85, y + Math.sin(a + 0.4) * r * 0.85);
+    }
+    g.fillStyle(0xffffff, 0.85).fillCircle(x - ca * r * 0.55, y - sa * r * 0.55, r * 0.42);
+    g.lineStyle(2 * k, 0xcfe2ff, 0.9).strokeCircle(x, y, r * 1.05);
+    // ESTRELLAS que se desprenden de la cola y caen girando
+    this.emit -= dt;
+    while (this.emit <= 0) {
+      this.emit += strong ? 0.028 : 0.04;
+      const u = R(0.2, 0.9);
+      const off = R(-12, 12) * k;
+      this.add({ x: x + ca * 95 * k * u - sa * off, y: y + sa * 95 * k * u + ca * off, vx: ca * R(10, 40) + R(-20, 20), vy: sa * R(10, 40) + R(-10, 20), life: R(0.45, 0.8), rot: R(0, 6.28), vr: R(-6, 6), size: R(3.5, 6.5) * k, col: Phaser.Utils.Array.GetRandom([0xffffff, 0xeaf4ff, 0xcfe2ff, 0x9cc4ff]) });
+    }
+  }
+
   clear() {
     this.dark.clear();
     this.parts.length = 0;
@@ -484,42 +565,84 @@ export class SmashElementFx {
 /**
  * (14-11-2026) DROP SHOT 0 en vuelo: AIRE DE VENTILADOR que irradia de la pelota: aspas curvas que giran muy rápido
  * alrededor, aros de aire que se abren y líneas de aire que salen hacia fuera en todas direcciones.
+ * (17-11-2026) Opciones (DropZeroOpts) para reutilizarlo en grande en la ULTI ULTRA EFECTO (fx/InfernoFx.ts); sin opciones
+ * es exactamente el del DROP SHOT 0 de siempre.
  */
+export interface DropZeroOpts {
+  /** tamaño (radios de aros, aspas y líneas) respecto al del drop shot 0 */
+  scale?: number;
+  /** cantidad de aspas, aros y líneas de aire por segundo */
+  blades?: number;
+  rings?: number;
+  streaksPerSec?: number;
+  /** multiplica la opacidad (más brillante; tope 1) */
+  bright?: number;
+  /** cuánto se alejan las líneas de aire (1 = como el drop shot 0; menos en las vistas previas para no salirse de la tarjeta) */
+  reach?: number;
+}
 export class DropZeroFx {
   private g: Phaser.GameObjects.Graphics;
   private t = 0;
   private streaks: { a: number; r: number; v: number; life: number; age: number }[] = [];
   private emit = 0;
+  private readonly S: number;
+  private readonly W: number;
+  private readonly blades: number;
+  private readonly rings: number;
+  private readonly every: number;
+  private readonly bright: number;
+  private readonly reach: number;
 
-  constructor(scene: Phaser.Scene) {
+  constructor(scene: Phaser.Scene, o: DropZeroOpts = {}) {
     this.g = scene.add.graphics().setBlendMode(Phaser.BlendModes.ADD);
+    this.S = o.scale ?? 1;
+    this.W = 1 + (this.S - 1) * 0.5; // grosor de los trazos: crece menos que el tamaño
+    this.blades = o.blades ?? 4;
+    this.rings = o.rings ?? 3;
+    this.every = 1 / (o.streaksPerSec ?? 50);
+    this.bright = o.bright ?? 1;
+    this.reach = o.reach ?? 1;
+  }
+
+  /** El Graphics del efecto (para meterlo en un contenedor: vistas previas). */
+  get gfx() {
+    return this.g;
   }
 
   update(dt: number, ball: BallState, on: boolean, visible = true) {
-    const g = this.g;
-    g.clear();
-    if (!on || !visible) {
-      this.streaks.length = 0;
-      return;
-    }
-    this.t += dt;
+    if (!on || !visible) return this.hide();
     const air = project(ball.x, ball.y, ball.z);
     const ground = project(ball.x, ball.y, 0);
     const k = air.s * 0.8 * (1 + Math.min(ball.z, 220) / 700);
-    const x = air.sx;
-    const y = air.sy;
-    g.setDepth(ground.sy + 3);
-    // aros de aire que se abren (3, desfasados)
-    for (let i = 0; i < 3; i++) {
-      const u = (this.t * 2.6 + i / 3) % 1;
-      g.lineStyle(3 * k * (1 - u) + 0.5, 0xe0fff0, 0.6 * (1 - u)).strokeCircle(x, y, (12 + u * 46) * k);
+    this.drawAt(dt, air.sx, air.sy, k, ground.sy + 3);
+  }
+
+  /** Borra el dibujo y las líneas de aire en curso. */
+  hide() {
+    this.g.clear();
+    this.streaks.length = 0;
+  }
+
+  /** Dibuja el efecto centrado en (x, y) de pantalla, con escala de pelota `k` y profundidad `depth`. */
+  drawAt(dt: number, x: number, y: number, k: number, depth: number) {
+    const g = this.g;
+    g.clear();
+    this.t += dt;
+    const S = this.S;
+    const W = this.W;
+    const A = (a: number) => Math.min(1, a * this.bright);
+    g.setDepth(depth);
+    // aros de aire que se abren (desfasados)
+    for (let i = 0; i < this.rings; i++) {
+      const u = (this.t * 2.6 + i / this.rings) % 1;
+      g.lineStyle(3 * W * k * (1 - u) + 0.5, 0xe0fff0, A(0.6 * (1 - u))).strokeCircle(x, y, (12 + u * 46) * S * k);
     }
-    // ASPAS del ventilador: 4 aspas curvas que giran muy rápido
+    // ASPAS del ventilador: aspas curvas que giran muy rápido
     const spin = this.t * 22;
-    const R0 = 9 * k;
-    const R1 = 30 * k;
-    for (let b = 0; b < 4; b++) {
-      const a0 = spin + (b * Math.PI) / 2;
+    const R0 = 9 * S * k;
+    const R1 = 30 * S * k;
+    for (let b = 0; b < this.blades; b++) {
+      const a0 = spin + (b * Math.PI * 2) / this.blades;
       const pts: { x: number; y: number }[] = [];
       for (let i = 0; i <= 8; i++) {
         const u = i / 8;
@@ -533,15 +656,15 @@ export class DropZeroFx {
         const a = a0 + u * 0.9 + 0.45 * (1 - u * 0.6); // ancho del aspa
         pts.push({ x: x + Math.cos(a) * r, y: y + Math.sin(a) * r });
       }
-      g.fillStyle(0xc8ffd8, 0.32).fillPoints(pts, true);
-      g.lineStyle(2 * k, 0xffffff, 0.8).strokePoints(pts.slice(0, 9), false);
+      g.fillStyle(0xc8ffd8, A(0.32)).fillPoints(pts, true);
+      g.lineStyle(2 * W * k, 0xffffff, A(0.8)).strokePoints(pts.slice(0, 9), false);
     }
-    g.fillStyle(0xffffff, 0.5).fillCircle(x, y, 6 * k);
+    g.fillStyle(0xffffff, A(0.5)).fillCircle(x, y, 6 * W * k);
     // líneas de aire que IRRADIAN hacia fuera
     this.emit -= dt;
     while (this.emit <= 0) {
-      this.emit += 0.02;
-      this.streaks.push({ a: R(0, Math.PI * 2), r: R(14, 22), v: R(110, 170), life: R(0.22, 0.34), age: 0 });
+      this.emit += this.every;
+      this.streaks.push({ a: R(0, Math.PI * 2), r: R(14, 22), v: R(110, 170) * this.reach, life: R(0.22, 0.34), age: 0 });
     }
     for (let i = this.streaks.length - 1; i >= 0; i--) {
       const st = this.streaks[i];
@@ -551,19 +674,23 @@ export class DropZeroFx {
         continue;
       }
       const f = st.age / st.life;
-      const r0 = (st.r + st.v * st.age) * k;
-      const r1 = r0 + 22 * k * (1 - f * 0.4);
+      const r0 = (st.r + st.v * st.age) * S * k;
+      const r1 = r0 + 22 * S * k * (1 - f * 0.4);
       // (15-11-2026) líneas CURVAS en espiral que siguen girando con las aspas (antes rectas): el ángulo avanza con el radio
       // (curvatura) y con el tiempo (giro)
       const a0 = st.a + this.t * 5;
       const pts: { x: number; y: number }[] = [];
       for (let j = 0; j <= 6; j++) {
         const rr = r0 + ((r1 - r0) * j) / 6;
-        const aa = a0 + (rr / k) * 0.045;
+        const aa = a0 + (rr / (S * k)) * 0.045;
         pts.push({ x: x + Math.cos(aa) * rr, y: y + Math.sin(aa) * rr });
       }
-      g.lineStyle(2.4 * k * (1 - f) + 0.6, 0xffffff, 0.85 * (1 - f)).strokePoints(pts, false);
+      g.lineStyle(2.4 * W * k * (1 - f) + 0.6, 0xffffff, A(0.85 * (1 - f))).strokePoints(pts, false);
     }
+  }
+
+  destroy() {
+    this.g.destroy();
   }
 }
 

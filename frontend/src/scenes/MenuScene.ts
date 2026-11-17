@@ -1121,17 +1121,20 @@ export class MenuScene extends Phaser.Scene {
     g.fillStyle(0xffffff, 0.08).fillRoundedRect(8, 3, w - 16, h * 0.35, h * 0.17);
     g.lineStyle(2.5, accent, 1).strokeRoundedRect(0, 0, w, h, h / 2);
     // icono
-    if (kind === 'coin') {
+    // (17-11-2026) moneda: imagen moneda-1.webp (la dibujada solo si falta la textura)
+    if (kind === 'coin' && !this.textures.exists('coin-1')) {
       g.fillStyle(C.outline).fillCircle(h / 2, h / 2, 15 * k);
       g.fillStyle(C.yellow).fillCircle(h / 2, h / 2, 11 * k);
       g.fillStyle(C.yellowDark).fillRect(h / 2 - 2 * k, h / 2 - 6 * k, 4 * k, 12 * k);
-    } else if (!this.textures.exists('cash-pack')) {
+    } else if (kind === 'cash' && !this.textures.exists('cash-pack')) {
       // billete dibujado (si no cargó la imagen)
       g.fillStyle(C.outline).fillRoundedRect(h / 2 - 15 * k, h / 2 - 9 * k, 30 * k, 18 * k, 4 * k);
       g.fillStyle(0x3fae5a).fillRoundedRect(h / 2 - 13 * k, h / 2 - 7 * k, 26 * k, 14 * k, 3 * k);
       g.fillStyle(0xcdeccf).fillCircle(h / 2, h / 2, 4 * k);
     }
     c.add(g);
+    // (17-11-2026) moneda: imagen moneda-1.webp
+    if (kind === 'coin' && this.textures.exists('coin-1')) c.add(this.add.image(h / 2, h / 2, 'coin-1').setDisplaySize(32 * k, 32 * k));
     // (16-11-2026, usuario) el DINERO con el fardo chico; algo más chico y corrido a la derecha para no tocar el borde redondeado
     if (kind === 'cash' && this.textures.exists('cash-pack')) c.add(this.add.image(h / 2 + 3 * k, h / 2, 'cash-pack').setDisplaySize(32 * k, 32 * k));
     // (16-11-2026, usuario) cantidad alineada a la DERECHA, pegada al botón (i) / (+)
@@ -1178,15 +1181,21 @@ export class MenuScene extends Phaser.Scene {
     // icono grande
     g.fillStyle(0x0a1638, 1).fillCircle(0, -ph / 2 + 64, 36);
     g.fillStyle(accent, 1).fillCircle(0, -ph / 2 + 64, 32);
+    // (17-11-2026) moneda: imagen moneda-1.webp (la dibujada solo si falta la textura)
+    const coinImg = coin && this.textures.exists('coin-1');
     if (coin) {
-      g.fillStyle(0xd99400, 1).fillCircle(0, -ph / 2 + 64, 22);
-      g.fillStyle(0xffd23f, 1).fillCircle(0, -ph / 2 + 62, 20);
+      // con la imagen, se agrega justo después del fondo (abajo)
+      if (!coinImg) {
+        g.fillStyle(0xd99400, 1).fillCircle(0, -ph / 2 + 64, 22);
+        g.fillStyle(0xffd23f, 1).fillCircle(0, -ph / 2 + 62, 20);
+      }
     } else {
       g.fillStyle(0x0a1638, 1).fillRoundedRect(-22, -ph / 2 + 50, 44, 28, 5);
       g.fillStyle(0x2f8f48, 1).fillRoundedRect(-19, -ph / 2 + 53, 38, 22, 4);
       g.fillStyle(0xcdeccf, 1).fillCircle(0, -ph / 2 + 64, 6);
     }
     p.add(g);
+    if (coinImg) p.add(this.add.image(0, -ph / 2 + 64, 'coin-1').setDisplaySize(44, 44));
     p.add(this.add.text(0, -ph / 2 + 126, coin ? 'MONEDAS' : 'DINERO', { fontFamily: FONT, fontSize: '34px', color: '#ffffff', stroke: '#0a1638', strokeThickness: 6 }).setOrigin(0.5).setLetterSpacing(3));
     const section = (y: number, title: string, body: string) => {
       p.add(this.add.text(-pw / 2 + 34, y, title, { fontFamily: FONT, fontSize: '18px', color: coin ? '#ffd23f' : '#9fe8a0' }).setOrigin(0, 0.5).setLetterSpacing(1));

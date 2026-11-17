@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { BALL_ART, ballDims, type InfernoElement } from './InfernoFx';
+import { ballArtOf, ballDims, type InfernoElement } from './InfernoFx';
 
 /**
  * Impactos PROPIOS de la ULTI de RAYO y de VIENTO (cada poder tiene sus efectos; fuego, hielo y tulipán usan las
@@ -73,8 +73,8 @@ function softGlow(scene: Phaser.Scene, x: number, y: number, col: number, w: num
 
 /** La propia bola (rayo / viento) revienta agrandándose. */
 function ballBurst(scene: Phaser.Scene, x: number, y: number, s: number, D: number, el: InfernoElement) {
-  const art = BALL_ART[el];
-  if (!scene.textures.exists(art.key)) return;
+  const art = ballArtOf(el); // (17-11-2026) undefined en ULTRA EFECTO (sin hoja)
+  if (!art || !scene.textures.exists(art.key)) return;
   const [bw, bh] = ballDims(art, 90 * s);
   const ball = scene.add.sprite(x, y, art.key, art.seq?.[0] ?? 0).setDisplaySize(bw, bh).setDepth(D + 1).setBlendMode(Phaser.BlendModes.ADD);
   if (scene.anims.exists(art.anim)) ball.play(art.anim);
@@ -357,14 +357,21 @@ export type FxAnchor = { x: number; y: number; headY: number };
  * Efecto que se queda sobre el personaje aturdido por la ULTI, con el estilo de cada poder:
  *   RAYO    electrocutado: arcos eléctricos que le recorren el cuerpo y chispas que parpadean
  *   VIENTO  un remolino de aire y hojas gira a su alrededor
- * Fuego, hielo y tulipán no llevan (su aturdido ya es el dibujado). `at` devuelve null si el personaje ya no está.
+ * HIELO caparazón de cristales · FUEGO brasas y resplandor · SOMBRA hilos oscuros · LUZ halo y anillos · TULIPÁN pétalos (17-11-2026).
+ * `at` devuelve null si el personaje ya no está.
  */
+/** Elementos de la ULTI con efecto que se queda sobre el aturdido (rayo y viento desde siempre; el resto, 17-11-2026). */
+const STUN_BODY = new Set<string>(['lightning', 'wind', 'ice', 'fire', 'shadow', 'light', 'tulip']);
+
 export function ultiStunFx(scene: Phaser.Scene, el: InfernoElement, at: () => FxAnchor | null, ms: number) {
-  if (el !== 'lightning' && el !== 'wind') return;
+  if (!STUN_BODY.has(el)) return;
   const g = scene.add.graphics().setBlendMode(Phaser.BlendModes.ADD);
   const t0 = scene.time.now;
   let next = 0;
   const leaves = Array.from({ length: 5 }, () => ({ a: Math.random() * Math.PI * 2, h: FB(0.1, 0.9), col: pick(LEAF) }));
+  // (17-11-2026) piezas fijas del efecto sobre el cuerpo de HIELO / FUEGO / SOMBRA / LUZ / TULIPÁN (se sortean una vez; cada fotograma solo se mueven)
+  const bits = Array.from({ length: 10 }, (_, i) => ({ u: Math.random(), x: FB(-0.38, 0.38), ph: Math.random() * 6.28, sp: FB(0.35, 0.75), sz: FB(0.8, 1.5), i }));
+  const crystals = Array.from({ length: 8 }, (_, i) => ({ x: (i / 7 - 0.5) * 0.8 + FB(-0.05, 0.05), h: FB(0.08, 0.92), L: FB(0.16, 0.3), tilt: FB(-0.6, 0.6) + (i % 2 ? 0.5 : -0.5), col: pick([ICE.white, ICE.pale, ICE.mid]) }));
   const tick = () => {
     const now = scene.time.now;
     const p = (now - t0) / ms;
@@ -390,6 +397,82 @@ export function ultiStunFx(scene: Phaser.Scene, el: InfernoElement, at: () => Fx
         zap(g, x0, cy, x0 + Math.cos(ang) * L, cy + Math.sin(ang) * L * 0.7, H * 0.05, Math.max(1.2, H * 0.014), 0, fade);
       }
       for (let i = 0; i < 4; i++) g.fillStyle(pick(ELEC.spark), 0.9 * fade).fillCircle(a.x + FB(-0.35, 0.35) * H, a.y - Math.random() * H, FB(1.5, 3));
+    } else if (el !== 'wind') {
+      g.clear();
+      const T = (now - t0) / 1000;
+      const grow = Math.min(1, p * 5); // lo que brota (cristales, brillo) tarda ~1/5 del aturdido en salir
+      const bodyX = a.x;
+      if (el === 'ice') {
+        // CAPARAZÓN DE HIELO: cristales que brotan del cuerpo, niebla fría a los pies y copos que bajan
+        g.fillStyle(ICE.mid, 0.16 * fade).fillEllipse(bodyX, a.y - H * 0.05, H * 0.9, H * 0.16);
+        for (const c of crystals) {
+          const cx = bodyX + c.x * H;
+          const cy = a.y - c.h * H;
+          const L = c.L * H * grow;
+          const w = L * 0.3;
+          const ang = -Math.PI / 2 + c.tilt + (c.x < 0 ? -0.5 : 0.5);
+          const tx = cx + Math.cos(ang) * L;
+          const ty = cy + Math.sin(ang) * L;
+          const nx = -Math.sin(ang) * w;
+          const ny = Math.cos(ang) * w;
+          g.fillStyle(c.col, 0.7 * fade).fillPoints([{ x: cx + nx, y: cy + ny }, { x: tx, y: ty }, { x: cx - nx, y: cy - ny }, { x: cx - Math.cos(ang) * w, y: cy - Math.sin(ang) * w }], true);
+          g.lineStyle(Math.max(1, H * 0.008), ICE.white, 0.85 * fade).lineBetween(cx, cy, tx, ty);
+        }
+        for (const b of bits) {
+          const v = (T * b.sp * 0.5 + b.u) % 1;
+          const fx = bodyX + (b.x + Math.sin(T * 2 + b.ph) * 0.06) * H;
+          const fy = a.y - H * (1.05 - v * 1.0);
+          g.fillStyle(ICE.white, (0.35 + 0.5 * Math.abs(Math.sin(T * 6 + b.ph))) * fade).fillCircle(fx, fy, Math.max(1.2, H * 0.012 * b.sz));
+        }
+      } else if (el === 'fire') {
+        // BRASAS: llama que lame el cuerpo y brasas que suben, con un resplandor naranja que parpadea
+        g.fillStyle(0xff6a12, (0.13 + 0.07 * Math.sin(T * 22)) * fade).fillEllipse(bodyX, a.y - H * 0.5, H * 0.7, H * 1.05);
+        for (const b of bits) {
+          const v = (T * b.sp + b.u) % 1;
+          const fx = bodyX + (b.x + Math.sin(T * 5 + b.ph) * 0.07) * H;
+          const fy = a.y - H * (0.05 + v * 1.0);
+          const col = v < 0.4 ? 0xfff1a0 : v < 0.75 ? 0xffa21a : 0xff4a12;
+          g.fillStyle(col, (1 - v) * 0.95 * fade).fillCircle(fx, fy, Math.max(1.5, H * 0.02 * b.sz * (1 - v * 0.5)));
+        }
+      } else if (el === 'shadow') {
+        // SOMBRA: hilos de oscuridad que se enroscan hacia arriba y motas moradas
+        for (let i = 0; i < 4; i++) {
+          const x0 = bodyX + (i - 1.5) * H * 0.2;
+          g.lineStyle(Math.max(2, H * 0.03), i % 2 ? 0x7a2fd6 : 0x9b4dff, 0.55 * fade).beginPath();
+          for (let j = 0; j <= 10; j++) {
+            const u = j / 10;
+            const px = x0 + Math.sin(T * 3 + i * 1.7 + u * 6) * H * 0.07 * (0.4 + u);
+            const py = a.y - u * H * (0.8 + 0.15 * Math.sin(T * 2 + i));
+            if (j === 0) g.moveTo(px, py);
+            else g.lineTo(px, py);
+          }
+          g.strokePath();
+        }
+        for (const b of bits) {
+          const v = (T * b.sp * 0.7 + b.u) % 1;
+          g.fillStyle(pick([0xd1a8ff, 0x9b4dff]), (1 - v) * 0.85 * fade).fillCircle(bodyX + (b.x + Math.sin(T * 3 + b.ph) * 0.06) * H, a.y - H * v * 1.05, Math.max(1.3, H * 0.014 * b.sz));
+        }
+      } else if (el === 'light') {
+        // LUZ: halo dorado que respira, dos anillos de luz que suben por el cuerpo y motas que flotan
+        g.fillStyle(0xffe9a0, (0.14 + 0.06 * Math.sin(T * 7)) * fade).fillEllipse(bodyX, a.y - H * 0.5, H * 0.75, H * 1.1);
+        for (let i = 0; i < 2; i++) {
+          const v = (T * 0.9 + i * 0.5) % 1;
+          g.lineStyle(Math.max(1.5, H * 0.02), 0xfff1b8, (1 - v) * 0.8 * fade).strokeEllipse(bodyX, a.y - v * H, H * (0.55 + 0.1 * v), H * 0.13);
+        }
+        for (const b of bits) {
+          const v = (T * b.sp * 0.6 + b.u) % 1;
+          g.fillStyle(pick([0xffffff, 0xfff1b8]), (1 - v) * fade).fillCircle(bodyX + (b.x + Math.sin(T * 2.5 + b.ph) * 0.05) * H, a.y - H * v * 1.05, Math.max(1.3, H * 0.014 * b.sz));
+        }
+      } else {
+        // TULIPÁN: pétalos que giran alrededor y caen despacio
+        for (const b of bits) {
+          const v = (T * b.sp * 0.5 + b.u) % 1;
+          const th = T * 2.2 + b.ph;
+          const px = bodyX + Math.cos(th) * H * (0.28 + 0.1 * b.sz);
+          const py = a.y - H * (1.05 - v * 1.0) + Math.sin(th) * H * 0.05;
+          g.fillStyle(pick([0xff6fae, 0xffb3d6, 0xffe6f2]), 0.9 * fade).fillEllipse(px, py, H * 0.06 * b.sz, H * 0.032 * b.sz);
+        }
+      }
     } else {
       g.clear();
       const spin = ((now - t0) / 1000) * 7;
@@ -629,6 +712,97 @@ export function iceBlast(scene: Phaser.Scene, x: number, y: number, s0: number, 
     scene.tweens.add({ targets: f, alpha: { from: 1, to: 0 }, y: f.y + FB(40, 80) * s, x: f.x + FB(-20, 20) * s, angle: FB(-180, 180), delay: IB(150, 350), duration: IB(700, 1000), ease: 'Sine.easeIn', onComplete: kill(f) });
   }
   burstSparks(scene, x, y, s, [ICE.white, ICE.pale, ICE.mid], 10, D);
+}
+
+// ---------------------------------------------------------------- COMETA (ESPECIAL ÉPICO)
+const COMET = { deep: 0x1f3fd6, blue: 0x4f8dff, pale: 0x9cc4ff, star: 0xeaf4ff, white: 0xffffff } as const;
+
+/** Estrella de 5 puntas centrada en (0, 0) en un Graphics. */
+function star5(g: Phaser.GameObjects.Graphics, r: number, col: number, a = 1) {
+  const pts: { x: number; y: number }[] = [];
+  for (let i = 0; i < 10; i++) {
+    const ang = (i * Math.PI) / 5 - Math.PI / 2;
+    const rr = i % 2 ? r * 0.42 : r;
+    pts.push({ x: Math.cos(ang) * rr, y: Math.sin(ang) * rr });
+  }
+  g.fillStyle(col, a).fillPoints(pts, true);
+}
+
+/**
+ * (17-11-2026) ESPECIAL COMETA alcanza a un personaje: DESTELLO blanco-azul que deslumbra (con destello de pantalla), el meteorito revienta en una
+ * llamarada azul (lenguas de fuego azul hacia fuera), onda de choque doble, ROCAS que salen despedidas y una lluvia de ESTRELLAS de 5 puntas que
+ * giran y caen. Es épica: algo más grande que los de rareza especial. El cráter con estrellas lo deja smashAftermath (ImpactFx).
+ */
+export function cometBlast(scene: Phaser.Scene, x: number, y: number, s0: number, D: number) {
+  const s = s0 * 1.25;
+  const ADD = Phaser.BlendModes.ADD;
+  scene.cameras.main.flash(110, 170, 205, 255);
+  // destello
+  const flash = softGlow(scene, x, y, COMET.white, 210 * s, 210 * s, D + 3);
+  scene.tweens.add({ targets: flash, scale: flash.scale * 1.8, alpha: 0, duration: 130, ease: 'Quad.easeOut', onComplete: kill(flash) });
+  const core = softGlow(scene, x, y, COMET.pale, 140 * s, 140 * s, D + 2);
+  scene.tweens.add({ targets: core, scale: core.scale * 2.6, alpha: 0, duration: 360, ease: 'Cubic.easeOut', onComplete: kill(core) });
+  // llamarada azul: lenguas de fuego hacia fuera (una sola capa de Graphics que se abre)
+  const flames = scene.add.graphics({ x, y }).setDepth(D + 1).setBlendMode(ADD);
+  for (let i = 0; i < 12; i++) {
+    const a = (i / 12) * Math.PI * 2 + FB(-0.15, 0.15);
+    const L = FB(70, 120) * s;
+    const w = FB(12, 18) * s;
+    const ca = Math.cos(a);
+    const sa = Math.sin(a) * 0.85;
+    flames.fillStyle(pick([COMET.deep, COMET.blue, COMET.pale]), 0.85).fillTriangle(-sa * w, ca * w, sa * w, -ca * w, ca * L, sa * L);
+  }
+  flames.setScale(0.3);
+  scene.tweens.add({ targets: flames, scale: 1.15, duration: 170, ease: 'Cubic.easeOut' });
+  scene.tweens.add({ targets: flames, alpha: 0, delay: 140, duration: 260, onComplete: kill(flames) });
+  // onda de choque doble
+  for (let i = 0; i < 2; i++) {
+    const ring = scene.add.ellipse(x, y, 50 * s, 42 * s).setStrokeStyle((6 - i * 2) * s, i ? COMET.blue : COMET.star, 1).setDepth(D).setBlendMode(ADD);
+    scene.tweens.add({ targets: ring, scale: 4.8 + i * 1.2, alpha: 0, delay: i * 90, duration: 420, ease: 'Cubic.easeOut', onComplete: kill(ring) });
+  }
+  // rocas del meteorito que salen despedidas y caen
+  for (let i = 0; i < 7; i++) {
+    const a = Math.random() * Math.PI * 2;
+    const d = FB(70, 150) * s;
+    const rock = scene.add.circle(x, y, FB(4, 7) * s, pick([0x141a33, 0x283258, 0x1a2a66]), 1).setStrokeStyle(1.5 * s, COMET.blue, 0.9).setDepth(D + 2);
+    scene.tweens.add({ targets: rock, x: x + Math.cos(a) * d, y: y + Math.sin(a) * d * 0.7 + 40 * s, alpha: 0, duration: IB(450, 650), ease: 'Quad.easeOut', onComplete: kill(rock) });
+  }
+  // lluvia de estrellas
+  for (let i = 0; i < 14; i++) {
+    const a = Math.random() * Math.PI * 2;
+    const d = FB(60, 170) * s;
+    const st = scene.add.graphics({ x, y }).setDepth(D + 2).setBlendMode(ADD);
+    star5(st, FB(5, 9) * s, pick([COMET.white, COMET.star, COMET.pale]));
+    scene.tweens.add({ targets: st, x: x + Math.cos(a) * d, y: y + Math.sin(a) * d * 0.7 + 30 * s, angle: FB(-360, 360), scale: 0.3, alpha: 0, delay: IB(0, 80), duration: IB(500, 800), ease: 'Cubic.easeOut', onComplete: kill(st) });
+  }
+}
+
+/**
+ * (17-11-2026) CRÁTER del COMETA en el suelo (lo llama smashAftermath): hueco oscuro con borde azul brillante que se enfría, grietas que salen de él y
+ * ESTRELLAS que titilan dentro y alrededor antes de apagarse. `T` alarga los tiempos. ~16 objetos.
+ */
+export function cometCrater(scene: Phaser.Scene, x: number, gy: number, s: number, T = 1) {
+  const ADD = Phaser.BlendModes.ADD;
+  const pit = scene.add.ellipse(x, gy, 150 * s, 46 * s, 0x070a18, 0.7).setDepth(gy - 2).setScale(0.3);
+  const rim = scene.add.ellipse(x, gy, 150 * s, 46 * s).setStrokeStyle(4 * s, COMET.blue, 0.95).setDepth(gy - 1.8).setBlendMode(ADD).setScale(0.3);
+  scene.tweens.add({ targets: [pit, rim], scale: 1, duration: 150, ease: 'Back.easeOut' });
+  scene.tweens.add({ targets: rim, alpha: 0.35, delay: 200, duration: 500 * T, ease: 'Sine.easeOut' }); // el borde se enfría
+  scene.tweens.add({ targets: [pit, rim], alpha: 0, delay: 1000 * T, duration: 700 * T, onComplete: () => { pit.destroy(); rim.destroy(); } });
+  // grietas brillantes
+  const cracks = scene.add.graphics({ x, y: gy }).setDepth(gy - 1.5).setBlendMode(ADD);
+  cracks.lineStyle(Math.max(1.5, 2 * s), COMET.pale, 0.9);
+  for (let i = 0; i < 7; i++) {
+    const a = (i / 7) * Math.PI * 2 + FB(-0.25, 0.25);
+    const L = FB(55, 95) * s;
+    cracks.beginPath().moveTo(Math.cos(a) * 60 * s * 0.5, Math.sin(a) * 18 * s * 0.5).lineTo(Math.cos(a) * L * 0.75, Math.sin(a) * L * 0.25 + FB(-3, 3)).lineTo(Math.cos(a) * L, Math.sin(a) * L * 0.32).strokePath();
+  }
+  scene.tweens.add({ targets: cracks, alpha: 0, delay: 700 * T, duration: 700 * T, onComplete: kill(cracks) });
+  // estrellas que titilan en el cráter
+  for (let i = 0; i < 8; i++) {
+    const st = scene.add.graphics({ x: x + FB(-70, 70) * s, y: gy + FB(-16, 12) * s }).setDepth(gy - 1).setBlendMode(ADD).setAlpha(0).setScale(0.4);
+    star5(st, FB(4, 7) * s, pick([COMET.white, COMET.star, COMET.pale]));
+    scene.tweens.add({ targets: st, alpha: 1, scale: 1, angle: FB(-90, 90), delay: IB(80, 400), duration: 220, yoyo: true, hold: IB(150, 400) * T, repeat: 1, onComplete: kill(st) });
+  }
 }
 
 // ---------------------------------------------------------------- SOMBRA (ESPECIAL)

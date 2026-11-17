@@ -4,7 +4,7 @@ import { fitText } from './fitText';
 import { arcadeButton } from './modeButtons';
 import { RankBadge } from './RankBadge';
 import { LEAGUE_STYLE, fmtCoins } from './leagueStyle';
-import { drawCoinIcon } from './wheelArt';
+import { coinIcon } from './wheelArt';
 import { rankDef } from '../domain/ranks';
 import { owns } from '../domain/player';
 import { SHOP_ITEMS } from '../domain/shopCatalog';
@@ -127,9 +127,7 @@ export function openProfileDialog(scene: Phaser.Scene, onToast: (m: string) => v
       fitText(v, cw2 - 50);
       body.add(v);
       if (st.label === 'MONEDAS') {
-        const ci = scene.add.graphics({ x: x + cw2 - 26, y: y + rh / 2 });
-        drawCoinIcon(ci, 11);
-        body.add(ci);
+        body.add(coinIcon(scene, x + cw2 - 26, y + rh / 2, 11)); // (17-11-2026) moneda: imagen moneda-1.webp
       }
     });
 

@@ -139,13 +139,22 @@ export class AbilityButton extends Phaser.GameObjects.Container {
     this.subText.setVisible(false);
   }
 
-  /** `sub` = nombre del poder de la ULTI mientras el botón está en ese modo. */
-  setInferno(on: boolean, sub = '') {
-    if (on === this.infernoMode) {
+  /** destellos que titilan sobre el botón DORADO (ULTI legendaria) */
+  private goldSparks: Phaser.GameObjects.Star[] = [];
+  private goldMode = false;
+
+  /**
+   * `sub` = nombre del poder de la ULTI mientras el botón está en ese modo. `legend` (17-11-2026, usuario) = la ULTI equipada es LEGENDARIA:
+   * el botón se pone DORADO y brillante (arte, aro, onda y destellos dorados) en vez del morado de siempre.
+   */
+  setInferno(on: boolean, sub = '', legend = false) {
+    if (on === this.infernoMode && (!on || legend === this.goldMode)) {
       if (on) this.subText.setText(sub);
       return;
     }
     this.infernoMode = on;
+    this.goldMode = on && legend;
+    const gold = this.goldMode;
     const R = this.radius;
     for (const o of this.face.list) {
       const img = o as Phaser.GameObjects.Image;
@@ -154,8 +163,11 @@ export class AbilityButton extends Phaser.GameObjects.Container {
       if (on) {
         const src = img.texture.key;
         if (!img.getData('baseKey')) img.setData('baseKey', src);
-        const key = hyperTexture(this.scene, img.getData('baseKey') as string);
+        const base = img.getData('baseKey') as string;
+        const key = gold ? goldTexture(this.scene, base) : hyperTexture(this.scene, base);
+        img.clearTint();
         if (key) img.setTexture(key);
+        else if (gold) img.setTint(0xffe27a, 0xfff1b8, 0xd99400, 0xffc42e);
         else img.setTint(0xb46bff, 0xe0b0ff, 0x6a1fe0, 0x9a45ff);
       } else {
         const base = img.getData('baseKey') as string | undefined;
@@ -170,6 +182,10 @@ export class AbilityButton extends Phaser.GameObjects.Container {
       this.hyperWave = this.scene.add.circle(0, 0, R + 6, 0x000000, 0).setStrokeStyle(5, 0xb46bff, 1).setVisible(false);
       this.addAt(this.hyperWave, 1);
     }
+    // colores: morado (hipercarga) o DORADO (ULTI legendaria)
+    this.fireRing.setFillStyle(gold ? 0xd99400 : 0x7a2dff, 0.45).setStrokeStyle(6, gold ? 0xffe27a : 0xc77dff, 1);
+    this.hyperWave!.setStrokeStyle(5, gold ? 0xfff1b8 : 0xb46bff, 1);
+    this.setGoldSparks(gold);
     this.scene.tweens.killTweensOf(this.hyperWave!);
     this.hyperWave!.setVisible(on).setScale(1).setAlpha(1);
     if (on) this.scene.tweens.add({ targets: this.hyperWave, scale: 1.75, alpha: 0, duration: 750, repeat: -1, ease: 'Cubic.easeOut' });
@@ -180,9 +196,27 @@ export class AbilityButton extends Phaser.GameObjects.Container {
       // disponible: rebote + destello
       this.scene.tweens.add({ targets: this.face, scale: { from: 1.3, to: 1 }, duration: 420, ease: 'Back.easeOut' });
     }
-    this.labelText.setText(on ? 'ULTI' : this.baseLabel).setColor(on ? '#e0b0ff' : '#ffffff');
-    this.subText.setText(on ? sub : this.baseSub).setColor(on ? '#e0b0ff' : '#cfe0ff');
+    this.labelText.setText(on ? 'ULTI' : this.baseLabel).setColor(on ? (gold ? '#ffe27a' : '#e0b0ff') : '#ffffff');
+    this.subText.setText(on ? sub : this.baseSub).setColor(on ? (gold ? '#fff1b8' : '#e0b0ff') : '#cfe0ff');
     this.redraw();
+  }
+
+  /** Destellos de estrella que titilan alrededor del botón dorado (el brillo "shiny" de lo legendario). */
+  private setGoldSparks(on: boolean) {
+    for (const s of this.goldSparks) {
+      this.scene.tweens.killTweensOf(s);
+      s.destroy();
+    }
+    this.goldSparks = [];
+    if (!on) return;
+    const R = this.radius;
+    const spots: [number, number, number][] = [[-0.62, -0.68, 7], [0.72, -0.4, 5.5], [0.35, 0.74, 6], [-0.8, 0.3, 4.5]];
+    spots.forEach(([fx, fy, r], i) => {
+      const st = this.scene.add.star(fx * R, fy * R, 4, r * 0.32, r, 0xffffff, 1).setBlendMode(Phaser.BlendModes.ADD).setAlpha(0).setScale(0.4);
+      this.add(st);
+      this.goldSparks.push(st);
+      this.scene.tweens.add({ targets: st, alpha: { from: 0, to: 1 }, scale: { from: 0.4, to: 1.2 }, angle: 90, duration: 420, delay: i * 260, yoyo: true, repeat: -1, repeatDelay: 500 + i * 120, ease: 'Sine.easeInOut' });
+    });
   }
 
   /**
@@ -371,6 +405,36 @@ export class AbilityButton extends Phaser.GameObjects.Container {
  * Copia de una textura con el tono girado a morado (canvas con filtro hue-rotate). null si no se puede
  * (sin canvas / sin filtros): entonces se usa un tinte.
  */
+/** (17-11-2026) Copia DORADA brillante del arte (ULTI legendaria), como hyperTexture. null si no hay filtros de canvas (se usa un tinte). */
+export function goldTexture(scene: Phaser.Scene, key: string): string | null {
+  const out = `${key}-gold`;
+  if (scene.textures.exists(out)) return out;
+  const srcImg = scene.textures.get(key)?.getSourceImage() as HTMLImageElement | HTMLCanvasElement | undefined;
+  if (!srcImg || !srcImg.width) return null;
+  const tex = scene.textures.createCanvas(out, srcImg.width, srcImg.height);
+  const ctx = tex?.getContext();
+  if (!tex || !ctx || !('filter' in ctx)) {
+    if (tex) scene.textures.remove(out);
+    return null;
+  }
+  ctx.filter = 'grayscale(1) sepia(1) saturate(3.2) hue-rotate(-10deg) brightness(1.35) contrast(1.1)';
+  ctx.drawImage(srcImg, 0, 0);
+  ctx.filter = 'none';
+  // brillo diagonal de metal pulido (solo sobre el dibujo)
+  ctx.globalCompositeOperation = 'source-atop';
+  const g = ctx.createLinearGradient(0, 0, srcImg.width, srcImg.height);
+  g.addColorStop(0.25, 'rgba(255,255,255,0)');
+  g.addColorStop(0.42, 'rgba(255,250,220,0.5)');
+  g.addColorStop(0.5, 'rgba(255,255,255,0.7)');
+  g.addColorStop(0.58, 'rgba(255,250,220,0.5)');
+  g.addColorStop(0.75, 'rgba(255,255,255,0)');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, srcImg.width, srcImg.height);
+  ctx.globalCompositeOperation = 'source-over';
+  tex.refresh();
+  return out;
+}
+
 export function hyperTexture(scene: Phaser.Scene, key: string): string | null {
   const out = `${key}-hyper`;
   if (scene.textures.exists(out)) return out;
@@ -378,7 +442,11 @@ export function hyperTexture(scene: Phaser.Scene, key: string): string | null {
   if (!srcImg || !srcImg.width) return null;
   const tex = scene.textures.createCanvas(out, srcImg.width, srcImg.height);
   const ctx = tex?.getContext();
-  if (!tex || !ctx || !('filter' in ctx)) return null;
+  if (!tex || !ctx || !('filter' in ctx)) {
+    // sin filtros de canvas: quita la textura vacía recién creada (si no, la siguiente llamada la daría por buena y el botón se vería invisible)
+    if (tex) scene.textures.remove(out);
+    return null;
+  }
   // rojo/naranja → morado
   ctx.filter = 'hue-rotate(-95deg) saturate(1.25) brightness(1.05)';
   ctx.drawImage(srcImg, 0, 0);
@@ -395,6 +463,7 @@ const ELEMENT_FILTER: Record<Exclude<SmashPower, 'fire'>, string> = {
   lightning: 'grayscale(1) sepia(1) saturate(5) hue-rotate(14deg) brightness(1.45)',
   shadow: 'hue-rotate(255deg) saturate(1.3) brightness(0.8)', // morado oscuro
   light: 'grayscale(1) sepia(1) saturate(1.6) hue-rotate(-8deg) brightness(2.1)', // blanco dorado luminoso
+  comet: 'hue-rotate(195deg) saturate(1.5) brightness(1.2)', // (17-11-2026) COMETA: azul intenso
 };
 
 /**
@@ -409,7 +478,10 @@ export function elementTexture(scene: Phaser.Scene, key: string, el: SmashPower)
   if (!srcImg || !srcImg.width) return null;
   const tex = scene.textures.createCanvas(out, srcImg.width, srcImg.height);
   const ctx = tex?.getContext();
-  if (!tex || !ctx || !('filter' in ctx)) return null;
+  if (!tex || !ctx || !('filter' in ctx)) {
+    if (tex) scene.textures.remove(out); // igual que hyperTexture: sin textura vacía registrada
+    return null;
+  }
   // el arte es rojo/naranja: se gira el tono al color de cada poder
   ctx.filter = ELEMENT_FILTER[el];
   ctx.drawImage(srcImg, 0, 0);

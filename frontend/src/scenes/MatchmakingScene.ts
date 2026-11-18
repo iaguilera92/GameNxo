@@ -40,7 +40,18 @@ export class MatchmakingScene extends Phaser.Scene {
   /** viene de una búsqueda ONLINE que ya se agotó (LanSearchScene): pasa directo a la pantalla VS, sin buscar otra vez */
   private skipSearch = false;
 
-  init(data?: { ranked?: { bet: number }; unranked?: boolean; from?: string; skipSearch?: boolean }) {
+  /** (21-11-2026) 2v2 contra bots: tú + 1 aliado BOT contra 2 rivales BOT (sin Ranked ni red) */
+  private doubles = false;
+  private allyName = 'Aliado';
+  private rival2Name = 'Rival 2';
+
+  init(data?: { ranked?: { bet: number }; unranked?: boolean; from?: string; skipSearch?: boolean; mode?: '2v2' }) {
+    this.doubles = data?.mode === '2v2';
+    {
+      const names = Phaser.Utils.Array.Shuffle([...BOT_NAMES.filter((n) => n.length <= 9)]);
+      this.allyName = names[0];
+      this.rival2Name = names[1];
+    }
     this.skipSearch = !!data?.skipSearch;
     this.rankedBet = data?.ranked?.bet ?? null;
     this.unranked = !this.rankedBet && !!data?.unranked;
@@ -115,7 +126,7 @@ export class MatchmakingScene extends Phaser.Scene {
       cancel.destroy();
       if (ranked) this.tweens.add({ targets: ranked, alpha: 0, duration: 220, onComplete: () => ranked.forEach((o) => o.destroy()) });
       this.tweens.add({ targets: searching, alpha: 0, scale: 0.85, duration: 220, onComplete: () => searching.destroy() });
-      this.showVersus(rk ? this.rankedRivalName() : Phaser.Utils.Array.GetRandom(BOT_NAMES));
+      this.showVersus(rk ? this.rankedRivalName() : this.doubles ? this.rival1Name() : Phaser.Utils.Array.GetRandom(BOT_NAMES));
     });
   }
 
@@ -154,9 +165,15 @@ export class MatchmakingScene extends Phaser.Scene {
           if (!res.ok) return this.back(res.error === 'not_enough_coins' ? 'No te alcanzan las monedas' : 'No se pudo entrar a la Liga');
         }
         this.toMatch = true;
-        this.scene.start('Match', { botName, rivalLevel, ambiente: this.ambiente });
+        this.scene.start('Match', this.doubles ? { botName, rivalLevel, ambiente: this.ambiente, mode: '2v2', allyName: this.allyName, rival2Name: this.rival2Name } : { botName, rivalLevel, ambiente: this.ambiente });
       });
     });
+  }
+
+  /** 2v2: el nombre del rival 1 (distinto del aliado y del rival 2) */
+  private rival1Name() {
+    const rest = BOT_NAMES.filter((n) => n !== this.allyName && n !== this.rival2Name && n.length <= 9);
+    return Phaser.Utils.Array.GetRandom(rest.length ? rest : BOT_NAMES) as string;
   }
 
   /** Rival Ranked: un participante (simulado) de tu tabla con una posición cercana a la tuya. */

@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { queueUiSounds } from '../fx/uiSound';
 import { queueSfx } from '../fx/sfx';
+import { TORNADO_ART } from '../fx/hurricaneFx';
 import { FONT } from '../ui/theme';
 import { UI } from '../ui/ui';
 import { bakeSkins, queueSkinLoads } from '../characters/skins';
@@ -38,6 +39,8 @@ export class BootScene extends Phaser.Scene {
     this.load.image('nav-bar', 'assets/nav-bar.webp');
     // (17-11-2026) moneda: imagen moneda-1.webp (textura global de la moneda)
     if (!this.textures.exists('coin-1')) this.load.image('coin-1', 'assets/moneda-1.webp');
+    // (18-11-2026) TORNADO de la ULTI LEGENDARIA HURACÁN (8 cuadros de 192 × 256, fx/hurricaneFx.ts TornadoSprite)
+    if (!this.textures.exists(TORNADO_ART.key)) this.load.spritesheet(TORNADO_ART.key, TORNADO_ART.file, { frameWidth: TORNADO_ART.w, frameHeight: TORNADO_ART.h });
     // (17-11-2026) DINERO: billete (1) y fardo chico (más de 1), globales (ruleta, menú, tienda)
     if (!this.textures.exists('cash-1')) this.load.image('cash-1', 'assets/dinero-virtual-1.webp');
     if (!this.textures.exists('cash-pack')) this.load.image('cash-pack', 'assets/dinero-fardo-chico.webp');

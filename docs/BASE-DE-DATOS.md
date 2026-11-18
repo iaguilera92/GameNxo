@@ -16,6 +16,8 @@ fija lo que ya existe, lo que falta y las reglas para no complicar la migración
 | Poderes | `domain/smashPowers.ts`, `defensivePowers.ts`, `infernoPowers.ts`, `chargeFx.ts`, `charColors.ts` | Cada uno con su lista de ids y su función `...Owned` |
 | Servidor | `backend/` | Sin cuentas ni base de datos. No sabe qué poder tiene cada jugador |
 
+DEFENSIVO RELÁMPAGO (`defensive:lightning`, 18-11-2026, ÉPICO, solo dinero real): azul neón, rayo y rastro de rayos en el suelo (`fx/elementImpactFx.ts` `lightningFloorTrail`, `lightningBodyFx(..., neon)`), tiempos `LIGHTNING` en `logic/DefensiveMoves.ts`. Red: acción `defensive` con `kind: 'lightning'` (+ `chg`, `out`, `in`). El bot no lo usa (épica).
+
 Cada ítem de la Tienda tiene `rarity` (normal · especial · épica · legendaria; hoy: ULTIS, ESPECIAL y DEFENSIVO especiales salvo el DESTELLO, normal, y el ESPECIAL COMETA (`smash:comet`), épica; cargando golpe: Fuego normal, Energía especial, Tulipán épica; EFECTOS DE PELOTA: Brasas, Hielo, Neón y Humo especiales, Tulipanes y Corazones épicas, Estrellas legendaria, Arcoíris y Estrellas legendarias; Rojo, Verde, Oro y Rosado normales. `style:classic` es POR DEFECTO: sin estela) y `realMoneyOnly` (solo dinero real: las ULTIS y la rareza épica o legendaria). Esas dos marcas son datos de catálogo, no de la cuenta: el servidor las lee del mismo catálogo.
 
 El tutorial por nivel guarda en la cuenta los avisos ya vistos (`PlayerState.tutorial`, ids de `domain/tutorial.ts`: no se cambian nunca).
@@ -54,7 +56,7 @@ del rival al empezar el partido, en vez de que el rival lo descubra al usarlo.
    marca en el suelo y sonidos. Sustituye a las tablas sueltas del punto 3.2.
 2. **Sonidos propios por poder.** Hoy:
    - ESPECIAL: ninguno propio. Todos comparten `cargando`, `golpe-fuerte`, `stun` y `electricidad`.
-   - ULTI: propio en fuego, rayo y hielo (`ulti-*`, `impacto-ulti-*`). Viento, tulipán, sombra, luz, ultra efecto y ráfaga (17-11-2026) usan el genérico. ULTRA EFECTO (`inferno:ultra`) y RÁFAGA (`inferno:barrage`, 17-11-2026) no tienen hoja de sprites: se dibujan por código (`fx/InfernoFx.ts`, `fx/barrageFx.ts`, `ballArtOf` = undefined). BOLA DE ENERGÍA (`inferno:energy`, 17-11-2026, LEGENDARIA) tampoco: esfera por código (`fx/energyBallFx.ts`) y cinemática extra (`logic/EnergyRally.ts`, `fx/energyBallCine.ts`).
+   - ULTI: propio en fuego, rayo y hielo (`ulti-*`, `impacto-ulti-*`). Viento, tulipán, sombra, luz, ultra efecto y ráfaga (17-11-2026) usan el genérico. ULTRA EFECTO (`inferno:ultra`) y RÁFAGA (`inferno:barrage`, 17-11-2026) no tienen hoja de sprites: se dibujan por código (`fx/InfernoFx.ts`, `fx/barrageFx.ts`, `ballArtOf` = undefined). BOLA DE ENERGÍA (`inferno:energy`, 17-11-2026, LEGENDARIA) tampoco: esfera por código (`fx/energyBallFx.ts`) y cinemática extra (`logic/EnergyRally.ts`, `fx/energyBallCine.ts`). HURACÁN (`inferno:hurricane`, 17-11-2026, LEGENDARIA): misma cinemática con viento, tornado y esfera amarilla (`fx/hurricaneFx.ts`, `planHurricane`); `inferno-cine` lleva `power`.
    - DEFENSIVO: `dash-1`, `dash-destello`, `dash-shadow`, `dash-jump`. VOLTERETA y PATINAJE reutilizan otros. El sonido del DASH
      cambia según el ESPECIAL equipado (`dashSfx`, eléctrico con rayo): separarlo.
 3. **Efectos de los defensivos fuera de `MatchScene`** (hoy están dentro de `startShadow`, `startJump`, `startFlip`,

@@ -7,7 +7,7 @@
  * - Se elige en PERSONALIZACIÓN (tarjeta DEFENSIVO › PODERES) y se guarda en `PlayerState.equipped.defensive`.
  *   Todos usan el mismo botón y la misma recarga (DASH_COOLDOWN); solo cambia lo que hace al activarse.
  */
-export type DefensivePower = 'dash' | 'blink' | 'shadow' | 'jump' | 'flip' | 'skate';
+export type DefensivePower = 'dash' | 'blink' | 'shadow' | 'jump' | 'flip' | 'skate' | 'lightning' | 'slowmo';
 
 export interface DefensivePowerDef {
   id: DefensivePower;
@@ -27,6 +27,10 @@ export const DEFENSIVE_POWERS: DefensivePowerDef[] = [
   // (12-11-2026) VOLTERETA y PATINAJE: lo mismo (te dejan en la pelota y devuelves) con otro movimiento, como una skin
   { id: 'flip', name: 'VOLTERETA', desc: 'Llegas a la pelota con dos volteretas laterales en arco, caes agachado y devuelves con un revés.', color: 0x5dff8a, css: '#c4ffd4' },
   { id: 'skate', name: 'PATINAJE', desc: 'Patinas hasta la pelota dejando un camino de hielo que se derrite.', color: 0xa6dcff, css: '#e6f7ff' },
+  // (18-11-2026) RELÁMPAGO: DEFENSIVO ÉPICO (solo dinero real)
+  { id: 'lightning', name: 'RELÁMPAGO', desc: 'Te vuelves azul neón y te conviertes en un rayo que llega a la pelota dejando una estela de rayos en el suelo; devuelves con un revés.', color: 0x2f9bff, css: '#bfe3ff' },
+  // (18-11-2026) TIEMPO LENTO: DEFENSIVO LEGENDARIO (precio de toda legendaria)
+  { id: 'slowmo', name: 'TIEMPO LENTO', desc: 'El tiempo se frena mientras corres a la pelota; al llegar, la cámara se acerca y la devuelves con una estirada y un golpe a máxima potencia.', color: 0x9be7ff, css: '#e3f8ff' },
 ];
 
 const IDS = new Set<string>(DEFENSIVE_POWERS.map((p) => p.id));

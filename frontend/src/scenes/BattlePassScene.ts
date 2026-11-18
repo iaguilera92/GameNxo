@@ -1,4 +1,4 @@
-import { installTapSound } from '../fx/uiSound';
+import { installTapSound, uiSound } from '../fx/uiSound';
 import Phaser from 'phaser';
 import { FONT, restartOnResize, textStyle } from '../ui/theme';
 import { stadiumBg } from '../ui/ui';
@@ -645,14 +645,170 @@ export class BattlePassScene extends Phaser.Scene {
     const res = commit((s) => bpClaim(s, track, tier));
     if (!res.ok) return this.toast(res.error === 'not_premium' ? 'Necesitas el Pase Premium' : 'Aún no disponible');
     this.burst(x, y, track === 'prem' ? GOLD : 0x8fd0ff);
-    this.toast(`¡${rewardLabel(res.given).top}!`);
+    this.rewardFx(res.given, x, y);
+  }
+
+  /**
+   * (18-11-2026, usuario) Animación del premio: DINERO / RAYOS vuelan en tandas a la billetera (arriba a la derecha) y su contador
+   * sube con cada tanda; el PERSONAJE final tiene su celebración a pantalla completa; el resto, el aviso de siempre.
+   */
+  private rewardFx(r: BpReward, x: number, y: number) {
+    if (r.kind === 'cash' || r.kind === 'rays') this.flyToWallet(r, x, y);
+    else if (r.kind === 'character') this.characterUnlock(r);
+    else this.toast(`¡${rewardLabel(r).top}!`);
+  }
+
+  private walletIcon(r: Extract<BpReward, { kind: 'cash' | 'rays' }>, x: number, y: number, size: number): Phaser.GameObjects.Image | Phaser.GameObjects.Graphics {
+    if (r.kind === 'cash' && this.textures.exists('bp-cash-1')) return this.add.image(x, y, 'bp-cash-1').setDisplaySize(size, size);
+    const g = this.add.graphics({ x, y }).setScale(size / 48);
+    this.drawReward(g, r);
+    return g;
+  }
+
+  private flyToWallet(r: Extract<BpReward, { kind: 'cash' | 'rays' }>, x: number, y: number) {
+    const W = this.scale.width;
+    const p = getPlayer() as PlayerState;
+    const total = r.kind === 'cash' ? p.gems : p.zone.rays;
+    let shown = Math.max(0, total - r.amount);
+    // billetera: pastilla que baja desde arriba a la derecha con el saldo anterior
+    const wx = W - 96;
+    const wy = 40;
+    const pill = this.add.container(wx, wy - 120).setDepth(9500);
+    const bg = this.add.graphics();
+    bg.fillStyle(0x061431, 0.95).fillRoundedRect(-84, -28, 168, 56, 28).lineStyle(3, GOLD, 1).strokeRoundedRect(-84, -28, 168, 56, 28);
+    const icon = this.walletIcon(r, -50, 0, 50);
+    const num = this.add.text(18, 0, String(shown), { fontFamily: FONT, fontSize: '30px', color: '#ffffff', stroke: '#061431', strokeThickness: 5 }).setOrigin(0.5);
+    pill.add([bg, icon, num]);
+    this.tweens.add({ targets: pill, y: wy, duration: 260, ease: 'Back.easeOut' });
+    // tandas: hasta 12 piezas; cada una suma su parte al llegar
+    const n = Math.max(1, Math.min(12, r.amount));
+    const step = r.amount / n;
+    let arrived = 0;
+    for (let i = 0; i < n; i++) {
+      const piece = this.walletIcon(r, x, y, 44).setDepth(9400).setAlpha(0);
+      const a = Math.random() * Math.PI * 2;
+      const sx = x + Math.cos(a) * Phaser.Math.Between(30, 80);
+      const sy = y + Math.sin(a) * Phaser.Math.Between(20, 60);
+      this.tweens.add({
+        targets: piece,
+        x: sx,
+        y: sy,
+        alpha: 1,
+        angle: Phaser.Math.Between(-30, 30),
+        delay: i * 35,
+        duration: 220,
+        ease: 'Cubic.easeOut',
+        onComplete: () =>
+          this.tweens.add({
+            targets: piece,
+            x: wx - 50,
+            y: wy,
+            scale: piece.scale * 0.6,
+            angle: 0,
+            delay: 120 + i * 70,
+            duration: 420,
+            ease: 'Cubic.easeIn',
+            onComplete: () => {
+              piece.destroy();
+              arrived++;
+              shown = arrived === n ? total : Math.round(total - r.amount + step * arrived);
+              num.setText(String(shown));
+              uiSound(this, 'duel-tick');
+              this.tweens.add({ targets: pill, scale: { from: 1.15, to: 1 }, duration: 160, ease: 'Quad.easeOut' });
+              // destellito en la billetera
+              const sp = this.add.star(wx - 50, wy, 5, 5, 14, 0xffffff).setDepth(9501).setBlendMode(Phaser.BlendModes.ADD);
+              this.tweens.add({ targets: sp, scale: 2, alpha: 0, angle: 90, duration: 280, onComplete: () => sp.destroy() });
+              if (arrived === n) {
+                const plus = this.add.text(wx, wy + 44, `+${r.amount}`, { fontFamily: FONT, fontSize: '26px', color: '#9fe8a0', stroke: '#0a3a18', strokeThickness: 5 }).setOrigin(0.5).setDepth(9501);
+                this.tweens.add({ targets: plus, y: plus.y + 14, alpha: { from: 1, to: 0 }, delay: 500, duration: 500, onComplete: () => plus.destroy() });
+                this.tweens.add({ targets: pill, y: wy - 120, delay: 1100, duration: 280, ease: 'Back.easeIn', onComplete: () => pill.destroy(true) });
+              }
+            },
+          }),
+      });
+    }
+  }
+
+  /** (18-11-2026, usuario) PERSONAJE final del pase: celebración a pantalla completa (que se sienta un premio valioso). Tocar cierra. */
+  private characterUnlock(r: Extract<BpReward, { kind: 'character' }>) {
+    const W = this.scale.width;
+    const H = this.scale.height;
+    const cx = W / 2;
+    const cy = H * 0.44;
+    const all: Phaser.GameObjects.GameObject[] = [];
+    const add = <T extends Phaser.GameObjects.GameObject>(o: T) => {
+      all.push(o);
+      (o as unknown as Phaser.GameObjects.Components.Depth).setDepth?.(9600 + all.length * 0.01);
+      return o;
+    };
+    uiSound(this, 'duel-win');
+    this.cameras.main.flash(350, 255, 240, 190);
+    this.cameras.main.shake(260, 0.008);
+    const dim = add(this.add.rectangle(cx, H / 2, W, H, 0x02060f, 0.85).setAlpha(0).setInteractive());
+    this.tweens.add({ targets: dim, alpha: 1, duration: 250 });
+    // rayos de luz dorados que giran detrás
+    const rays = add(this.add.graphics({ x: cx, y: cy }).setBlendMode(Phaser.BlendModes.ADD).setAlpha(0));
+    const R = Math.max(W, H);
+    for (let i = 0; i < 14; i++) {
+      const a = (i / 14) * Math.PI * 2;
+      rays.fillStyle(i % 2 ? GOLD : 0xfff1b8, 0.22).fillTriangle(0, 0, Math.cos(a - 0.09) * R, Math.sin(a - 0.09) * R, Math.cos(a + 0.09) * R, Math.sin(a + 0.09) * R);
+    }
+    this.tweens.add({ targets: rays, alpha: 1, duration: 400 });
+    this.tweens.add({ targets: rays, angle: 360, duration: 14000, repeat: -1 });
+    const glow = add(this.add.circle(cx, cy, 190, GOLD, 0.35).setBlendMode(Phaser.BlendModes.ADD).setScale(0));
+    this.tweens.add({ targets: glow, scale: 1, duration: 500, ease: 'Back.easeOut' });
+    this.tweens.add({ targets: glow, alpha: { from: 0.35, to: 0.15 }, scale: { from: 1, to: 1.12 }, delay: 500, duration: 900, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
+    // el personaje entra creciendo con rebote y luego flota
+    const key = this.textures.exists(`portrait-${r.skin}`) ? `portrait-${r.skin}` : 'portrait-mai';
+    if (this.textures.exists(key)) {
+      const ph = Math.min(H * 0.46, 420);
+      const img = add(this.add.image(cx, cy, key));
+      const k = ph / img.height;
+      img.setScale(0);
+      this.tweens.add({
+        targets: img,
+        scale: k,
+        delay: 250,
+        duration: 650,
+        ease: 'Back.easeOut',
+        onComplete: () => this.tweens.add({ targets: img, y: cy - 10, duration: 1300, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' }),
+      });
+    }
+    // textos
+    const t1 = add(this.add.text(cx, H * 0.1, '¡PERSONAJE DESBLOQUEADO!', { fontFamily: FONT, fontSize: '34px', color: '#ffe36b', stroke: '#5a3200', strokeThickness: 8, align: 'center' }).setOrigin(0.5).setAlpha(0));
+    fitText(t1, W - 40);
+    const s1 = t1.scale;
+    t1.setScale(s1 * 3);
+    this.tweens.add({ targets: t1, scale: s1, alpha: 1, delay: 150, duration: 380, ease: 'Back.easeOut' });
+    const name = add(this.add.text(cx, H * 0.75, r.name.toUpperCase(), { fontFamily: FONT, fontSize: '56px', color: '#ffffff', stroke: '#5a3200', strokeThickness: 10 }).setOrigin(0.5).setAlpha(0));
+    this.tweens.add({ targets: name, alpha: 1, y: { from: H * 0.75 + 40, to: H * 0.75 }, delay: 700, duration: 400, ease: 'Back.easeOut' });
+    const sub = add(this.add.text(cx, H * 0.75 + 48, rewardLabel(r).sub, { fontFamily: FONT, fontSize: '20px', color: '#ffd86a', stroke: '#061431', strokeThickness: 5 }).setOrigin(0.5).setLetterSpacing(2).setAlpha(0));
+    this.tweens.add({ targets: sub, alpha: 1, delay: 950, duration: 300 });
+    const tap = add(this.add.text(cx, H * 0.9, 'Toca para continuar', { fontFamily: FONT, fontSize: '18px', color: '#d1e3ff' }).setOrigin(0.5).setAlpha(0));
+    this.tweens.add({ targets: tap, alpha: { from: 0, to: 1 }, delay: 1600, duration: 600, yoyo: true, repeat: -1 });
+    // confeti y estrellas
+    const cols = [GOLD, 0xffffff, 0xff5f7e, 0x5fe8ff, 0x9fe8a0];
+    for (let i = 0; i < 70; i++) {
+      const c = add(this.add.rectangle(Phaser.Math.Between(0, W), -20 - Math.random() * H * 0.5, Phaser.Math.Between(6, 12), Phaser.Math.Between(10, 18), Phaser.Utils.Array.GetRandom(cols)));
+      this.tweens.add({ targets: c, y: H + 40, x: (c as Phaser.GameObjects.Rectangle).x + Phaser.Math.Between(-80, 80), angle: Phaser.Math.Between(-540, 540), delay: 200 + Math.random() * 900, duration: Phaser.Math.Between(1800, 3000), ease: 'Sine.easeIn' });
+    }
+    this.time.delayedCall(250, () => this.burst(cx, cy, GOLD));
+    this.time.delayedCall(550, () => this.burst(cx, cy, 0xffffff));
+    // cerrar (tras un instante, para no saltarla sin querer)
+    this.time.delayedCall(900, () =>
+      (dim as Phaser.GameObjects.Rectangle).once('pointerup', () => {
+        this.tweens.killTweensOf(all);
+        this.tweens.add({ targets: all, alpha: 0, duration: 220, onComplete: () => all.forEach((o) => o.destroy()) });
+      }),
+    );
   }
 
   private claimWelcome(track: BpTrack, x: number, y: number) {
     const res = commit((s) => bpClaimWelcome(s, track));
     if (!res.ok) return this.toast(res.error === 'not_premium' ? 'Necesitas el Pase Premium' : 'Regalo ya reclamado');
     this.burst(x, y, track === 'prem' ? GOLD : 0x8fd0ff);
-    this.toast(`¡${rewardLabel(res.given).top} ${rewardLabel(res.given).sub}!`);
+    if (res.given.kind === 'item') this.toast(`¡${rewardLabel(res.given).top} ${rewardLabel(res.given).sub}!`);
+    else this.rewardFx(res.given, x, y);
   }
 
   private buyPremium() {

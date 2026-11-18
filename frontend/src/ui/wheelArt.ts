@@ -272,7 +272,15 @@ export function drawWheelFace(g: Phaser.GameObjects.Graphics, r: number, detail 
 }
 
 /** Contenido (icono + texto) de cada sector, orientado hacia fuera. Para la ruleta grande. */
-export function addSectorContent(scene: Phaser.Scene, parent: Phaser.GameObjects.Container, r: number) {
+/** (18-11-2026) texto de la cantidad de un sector (monedas / EXP / dinero) y su ancho máximo: la escena lo sube al evolucionar la ruleta */
+export interface SectorAmountLabel {
+  slot: (typeof WHEEL.slots)[number];
+  label: Phaser.GameObjects.Text;
+  maxW: number;
+}
+
+export function addSectorContent(scene: Phaser.Scene, parent: Phaser.GameObjects.Container, r: number): SectorAmountLabel[] {
+  const amounts: SectorAmountLabel[] = [];
   WHEEL.slots.forEach((s, i) => {
     const a = sectorCenter(i);
     const c = scene.add.container(0, 0).setRotation(a + Math.PI / 2);
@@ -291,6 +299,7 @@ export function addSectorContent(scene: Phaser.Scene, parent: Phaser.GameObjects
     const maxW = 2 * r * 0.8 * Math.sin(SECTOR / 2) * 0.82;
     if (label.width > maxW) label.setScale(maxW / label.width);
     c.add(label);
+    if (s.prize.kind === 'coins' || s.prize.kind === 'xp' || s.prize.kind === 'cash') amounts.push({ slot: s, label, maxW });
     if (s.prize.kind === 'cash') {
       c.add(scene.add.text(0, -r * 0.7, 'DINERO', { fontFamily: FONT, fontSize: `px`, color: '#b8ffc8', stroke: '#0a1638', strokeThickness: 3 }).setOrigin(0.5));
     }
@@ -311,4 +320,5 @@ export function addSectorContent(scene: Phaser.Scene, parent: Phaser.GameObjects
     }
     parent.add(c);
   });
+  return amounts;
 }

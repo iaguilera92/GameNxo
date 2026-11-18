@@ -1336,3 +1336,60 @@ MAI HD ESPALDAS COMPLETA (16-11-2026): mai-ulti-6 (pickup) instalada; todas las 
 17-11-2026 Claude: Mai rival HD: mai-rival-ulti-3 (ulti-stun) revisada OK. Sin instalar hasta conectar el pack.
 17-11-2026 Claude: Mai rival HD: mai-rival-ulti-4 (idle-nr) revisada OK. Sin instalar hasta conectar el pack.
 17-11-2026 Claude: Mai rival HD: mai-rival-ulti-5 (run-nr) revisada OK. Sin instalar hasta conectar el pack.
+18-11-2026 Claude: Mai rival HD: mai-rival-ulti-6 (pickup) revisada OK. Hojas de MAI rival terminadas (conexion del pack: Kiro).
+18-11-2026 (Claude) Personalizar/Tienda: la demo de BOLA DE ENERGIA ya no se crea al deslizar a EN ACCION (powerDemo ctor), se crea en reset() tras la cortinilla.
+18-11-2026 (Claude) BOLA DE ENERGIA: peloteo el doble de rapido (EnergyRally flightMs 557->279, diveLeadMs 180, recuperacion; energyDemo backA/backB/out a la mitad).
+18-11-2026 (Claude) Partido: reaccion al punto (point-won / point-lost) ya no se corta: en pointover jugador y bot quietos (frozen, bot sin cerebro) y se paran carrera/carga antes de pointEnd.
+18-11-2026 (Claude) Pase de batalla: dinero/rayos vuelan en tandas a una billetera con contador (flyToWallet); personaje final con celebracion a pantalla completa (characterUnlock).
+18-11-2026 (Claude) Cortita cargada (no maxima): mas bote (damp 0,22->0,36, fric 0,6).
+18-11-2026 (Claude) Remate del rival (bot y online): sin texto REMATE; vineta oscura en los bordes mientras salta (rivalSmashDim); remate del bot con onda y destello de impacto como el del jugador.
+18-11-2026 (Claude) Devolucion tras recibir ESPECIAL/ULTI (fireImpact/playerImpact): globo de verdad (smashableLob, apex 440) que genera el circulo del SMASH.
+18-11-2026 (Claude) Pantalla VS: rival arriba (rojo), tu abajo (azul).
+18-11-2026 (Claude) Victoria grande: clip nuevo victory-big = <pack>-extras-4.png (build-hd NEW_CLIPS/APPEND/SCALE_AS); NxoActor.victory lo usa si existe. Falta generar las imagenes.
+18-11-2026 (Claude) AVISO: tsc falla en src/domain/shopCatalog.ts(139-145) (no tocado por Claude).
+18-11-2026 (Claude) Saque: golpe bajo a la red ya no da el punto directo (era como doble falta en el 1.er servicio): ahora es FALTA. El reloj de 5 s se pausa con la pelota lanzada (toss).
+18-11-2026 (Claude) Fin del partido: la pelota sigue botando/rebotando en la pared hasta pararse (antes quedaba congelada, a veces pegada a la pared).
+18-11-2026 (Claude) Resultado (MatchEndScene): oculta la fila +1 MAESTRIA (SHOW_MASTERY_ROW=false); el punto se sigue ganando.
+18-11-2026 (Claude) Ruleta: al evolucionar (dorada/epica) las cantidades de los sectores pasan al valor con bonus (scaleReward), color del nivel, salto y +N (WheelScene.showTierAmounts; addSectorContent devuelve los textos).
+18-11-2026 (Claude) Menu EXP ganada: 2 oleadas de EXP sin mostrar +0 y la maestria; 3 sonidos (aparece el total, 1.a oleada, maestria; sin maestria: 2.a oleada).
+18-11-2026 (Claude) Rendimiento ULTI legendaria: impacto 34/16/12 particulas, estela 4, orbes 12, refuerzo del aura topado x1,5 y 2 llamas por tanda.
+18-11-2026 (Claude) ESPECIAL LEGENDARIO DRAGON (smash:dragon, solo dinero real, se ve en Tienda): smashPowers, shopCatalog, botKit (excluido), SMASH_LOOK.dragon + cine 1,6 s mas oscura; SmashCinematic.drawDragon (dragon gigante que se alza y ruge); smashElementFx.drawDragon (pelota = cabeza + cuerpo serpenteante); elementImpactFx dragonBlast/dragonScorch; wallFx, InfernoFx (FxElement/EXTRA_HIT), AbilityButton filtro rojo.
+18-11-2026 (Claude) COMETA (epico): efecto extra al impactar, un cometa sube al cielo con estrellas (cometToSky). DRAGON: cinematica con dragon por codigo APAGADA (DRAGON_CINE_ON=false) hasta tener imagenes.
+18-11-2026 (Claude) COMETA: el remate al impactar es la misma energia de la pelota (meteorito) al doble de tamano, sube recto al cielo en 0,45 s.
+18-11-2026 (Claude) ULTI HURACAN/tornado: sin sfx cargando al subir (partido y demo, no se cortaba). Demo: golpe cargado a la maquina -> globo alto desde la maquina (sin circulo) -> el pj quieto -> salta con remateJump (clip smash desde f0, se congela en pies atras) + tornado -> se desarma, esfera, espera 0,2 s -> smash. NxoActor/Character.remateJump nuevos.
+18-11-2026 (Claude) Demo HURACAN: al saltar el pj se oculta y es un circulo amarillo brillante (WindSphereFx solid); arriba se desarma (sphereBreakFx) y se ve 0,5 s con pose de smash; impacto con hurricaneBurst al golpear.
+18-11-2026 (Claude) Demo HURACAN: 0,3 s tras el 1.er golpe corre a la T (0,6 s) y salta al smash desde ahi; el globo cae en la T (fly 1,8 s).
+18-11-2026 (Claude) Demo HURACAN: carga 1,3 s (H_CINE, solo demo), salto 190 de alto y 0,75 s, la bola amarilla cubre al pj desde 0,3 s del salto; globo 2,0 s.
+18-11-2026 (Claude) Demo HURACAN: el smash final va al medio de las 2 maquinas del centro, las destruye y empuja las esquinas (blast con impacto de huracan); hurBlast eliminado. AVISO: tsc MatchScene 2212-2310 funciones duplicadas (no Claude).
+18-11-2026 (Claude) Tornado en imagen: ulti-legendaria-tornado.png -> .webp sin fondo magenta, 768x512 (8 cuadros 192x256), cargado en BootScene (TORNADO_ART). hurricaneFx.TornadoSprite. Demo HURACAN: el tornado dura 0,96 s y cubre al pj; desde el cuadro 5 es la esfera amarilla; al terminar se desarma y se ve 0,5 s antes del smash (globo 2,2 s). Partido sin cambios (sigue el tornado por codigo).
+18-11-2026 (Claude) Demo HURACAN: posicion un poco detras de la T (0,64) y salto 240.
+18-11-2026 (Claude) Bola del smash final del HURACAN (drawHurricaneBall): nucleo blanco, halo amarillo, 4 brazos en espiral girando y 6 rayos blancos en zigzag que giran alrededor.
+18-11-2026 (Claude) Circulo amarillo del HURACAN: limpio (solo relleno + borde, sin arcos de viento) y mas grande (1,5 hh, centro +0,3 hh) para cubrir el cuerpo con la raqueta arriba; demo y partido.
+18-11-2026 (Claude) Rendimiento demo HURACAN: quitado hurricaneBurst duplicado (ya va en infernoImpactFx) en el smash y en el impacto final; TornadoSprite.warm sube la hoja a la GPU en reset (tras la cortinilla) en vez de al saltar.
+18-11-2026 (Claude) Partido HURACAN = demo: planHurricane con move (0,3 s tras su golpe corre 0,6 s a detras de la T, 0,64), globito cae ahi (apex 330), salto 240 en 0,75 s que empieza fin0-1460; tickHurricane usa TornadoSprite (0,96 s), oculta al pj desde el cuadro 5 (esfera solida), sphereBreakFx y 0,5 s de pose antes del smash; legendEnd restaura alpha/moving. Carga del partido sin tocar (1,8 s, por el desplazamiento fantasma).
+18-11-2026 (Claude) Duelo red: al abrirse el aro, quien venia de estirada queda congelado en el cuadro del contacto (holdDiveReach, DIVE_REACH=3). Texto SMASH! sobre la cabeza contando el salto (aboveHeadPos). Reaccion al punto pendiente si estaba aturdido: sale al acabar el stun (pendingPoint).
+18-11-2026 (Claude) Aturdido: escala propia del clip stunned (SCALE_OF desde scale del JSON: nxo 1,1, nxo-front 1,07, mai 1,05; medido contra idle). Botones de habilidades apagados mientras el jugador esta aturdido (stunLockOn). Remate del bot: el swing empieza 0,13 s antes del contacto (BOT_REMATE_LEAD_S).
+18-11-2026 (Claude) Zona: ojos de frente remedidos en el idle HD (nxo 132, mai 110). Ruleta: sin aviso flotante al subir de nivel; el titulo pasa a RULETA DORADA/EPICA y el subtitulo a "n / 4 · +X% EN LOS PREMIOS" (mas abajo); al cobrar ya no sale la etiqueta del nivel.
+18-11-2026 (Claude) Menu EXP: la maestria sale 300 ms despues de la ultima oleada de EXP (antes una oleada entera despues).
+18-11-2026 (Claude) ZONA vs ESPECIAL: en vez de devolverlo normal, ¡RESISTE! y aturdido 1 s (RESIST_STUN_MS) para bot, jugador y online (stunned.resist); la devolucion PERFECT del jugador sigue valiendo.
+18-11-2026 (Claude) Ruleta: "toca para continuar" cierra al levantar el dedo (antes al apoyarlo: el soltar caia en el boton de la ruleta del menu y la reabria).
+[Claude 18-11-2026] docs/AUDIO.md nuevo: los soundtrack de los partidos se crean con Mureka; dónde van los audios (public/mp3, fx/sfx.ts, fx/uiSound.ts).
+[Claude 18-11-2026] ULTI ULTRA EFECTO: suena mp3/ulti-epica-1.m4a al lanzarla (InfernoFx.infernoSound.impact; registrado en fx/sfx.ts).
+[Claude 18-11-2026] ULTI HURACÁN: el smash final suena con mp3/ulti-legendaria-1.m4a (InfernoFx.infernoSound.impact; partido y demo).
+[Claude 18-11-2026] Pared: si choca la bola de la ULTI o del ESPECIAL suena mp3/ball-impacto-pared.m4a (MatchScene.checkBackWall; reemplaza a ball-ulti-pared). La pelota normal sigue sin sonido.
+[Claude 18-11-2026] ULTI HURACÁN: golpe-fuerte suena solo en el 1.er golpe (cargado con viento). Quitado del disparo de la máquina, del choque contra la pared, del salto, de la esfera que se desarma y del smash final (ese ya tiene ulti-legendaria-1). MatchScene (pared, salto, esfera) y fx/energyDemo.ts.
+[Claude 18-11-2026] Demo ULTI BOLA DE ENERGÍA: sin golpe-fuerte cuando la pelota choca con la máquina y vuelve (energyDemo.knock).
+[Claude 18-11-2026] Demo ULTI HURACÁN (blast): las máquinas de las esquinas se empujan más (120 en vez de 55) y casi se voltean (~60° hacia fuera) y vuelven de pie con un balanceo (1,1 s). La de energía sigue igual.
+[Claude 18-11-2026] Demo ULTI HURACÁN/ENERGÍA (energyDemo): los tweens del golpe final que mueven las máquinas (sobre objetos {u}, killTweensOf(m.c) no los cortaba) se guardan en fxTw y se cortan en stop() (al salir, al reiniciar y al destruir). Arreglo por "se pega al salir de la demo del huracán"; causa no confirmada.
+[Claude 18-11-2026] ULTI de SOMBRA y de LUZ: el golpe suena con mp3/ulti-sombra-luz.m4a (antes inferno.mp3). InfernoFx.infernoSound.impact + fx/sfx.ts.
+[Claude 18-11-2026] Arreglado el cuelgue al cerrar la demo de la ULTI LEGENDARIA: HyperAura.setBoost/stop lanzaban TypeError (emisores ya destruidos por el diálogo) y cortaban DefensiveDemo.destroy a medias. Ahora se salta si ya no tienen escena.
+[Claude 18-11-2026] ESPECIAL de SOMBRA y de LUZ: el golpe suena con mp3/especial-sombra-luz.m4a (MatchScene.hitFx: jugador, bot y rival en red; powerDemo en la demo). El resto de ESPECIALES sigue con golpe-fuerte.
+[Claude 18-11-2026] ULTI BOLA DE ENERGÍA: el golpe final suena con mp3/ulti-legendaria-energia.m4a (antes inferno.mp3). InfernoFx.infernoSound.impact; partido y demo.
+[Claude 18-11-2026] ULTI de LUZ: tras la carga ya no hay sombras (clones); se teletransporta como la de RAYO pero sin electricidad: el personaje todo blanco con halo y partículas blancas (lightningBodyFx modo light) y una estela blanca con estallido de partículas (lightDashFlash nuevo, fx/elementImpactFx.ts). MatchScene.infernoDashStep (jugador, bot, rival en red) y powerDemo.
+[Claude 18-11-2026] ULTI de SOMBRA: sin sombras (clones) tras la carga; se teletransporta como la de LUZ pero en oscuridad: cuerpo negro con halo morado y jirones oscuros que irradian (lightningBodyFx modo shadow) + estela oscura (shadowDashFlash). Partido (todos) y demo.
+[Claude 18-11-2026] Mai rival: nueva hoja del smash (personajes/Mai/rival/hd/mai-rival-golpes-8.webp, más intensa y seria); borrado el .png viejo. tools/build-hd.mjs ahora lee también la imagen de origen en .webp (si no hay .png). Recortado con build-hd mai-front: las celdas crecieron 2 px (120x157 -> 122x159).
+[Claude 18-11-2026] Mai rival: nueva espera (personajes/Mai/rival/hd/mai-rival-movimientos-1.webp, seria y en guardia); borrado el .png viejo; recortado con build-hd mai-front.
+[Claude 18-11-2026] Mai rival: nuevo golpe de la ULTI (personajes/Mai/rival/hd/mai-rival-ulti-1.png, 3x3, colores y diseño de la nueva espera); recortado con build-hd mai-front --ulti.
+[Claude 18-11-2026] Mai rival: nueva derecha cargada (personajes/Mai/rival/hd/mai-rival-golpes-3.png); recortado con build-hd mai-front.
+[Claude 18-11-2026] Mai rival: nuevo revés cargado (personajes/Mai/rival/hd/mai-rival-golpes-4); recortado con build-hd mai-front.
+[Claude 18-11-2026] Mai rival: nueva derecha normal (personajes/Mai/rival/hd/mai-rival-golpes-1, con sonrisa leve); recortado con build-hd mai-front.

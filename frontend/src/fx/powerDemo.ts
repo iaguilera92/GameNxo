@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { ALLEY, COURT, GRAVITY, HIT_MAX_Z, HIT_RANGE, NET_HEIGHT, NET_X, PLAYER_SPEED, SHOT_SPEED, SIDE_MARGIN, SMASH_SPEED_MULT } from '../config';
+import { ALLEY, COURT, GRAVITY, HIT_MAX_Z, HIT_RANGE, LUNGE_ARM, NET_HEIGHT, NET_X, PLAYER_SPEED, SHOT_SPEED, SIDE_MARGIN, SMASH_SPEED_MULT } from '../config';
 import { Character, playerLook } from '../objects/Character';
 import { Ball, type BallState, aimShot, stepBall } from '../objects/Ball';
 import { SmashCinematic } from './SmashCinematic';
@@ -8,11 +8,14 @@ import type { ChargeFxId } from '../domain/chargeFx';
 import { SmokeTrail } from './SmokeTrail';
 import { SmashElementFx } from './smashElementFx';
 import { INFERNO, INFERNO_CINE, planInfernoContact } from '../logic/InfernoDrive';
-import { lightningBodyFx, lightningDashFlash } from './elementImpactFx';
+import { lightDashFlash, shadowDashFlash, lightningBodyFx, lightningDashFlash, lightningFloorTrail } from './elementImpactFx';
 import { VIEW, project } from '../view/projection';
 import { DashFx } from './dashFx';
 import { DASH, type DashRun, createRun, planSprint, sampleTrajectory, stepRun } from '../logic/DashSprint';
-import { BLINK, FLIP, JUMP, SHADOW, SKATE, flipPose, skateEase, skateLean } from '../logic/DefensiveMoves';
+import { SLOWMO_CINE } from './slowmoCine';
+import { EnergyCineFx } from './energyBallCine';
+import { runAnimRate } from '../logic/PlayerMotion';
+import { BLINK, FLIP, JUMP, LIGHTNING, SLOWMO, SHADOW, SKATE, flipPose, skateEase, skateLean } from '../logic/DefensiveMoves';
 import * as defFx from './defensiveFx';
 import { type PoseActor, placeActor } from './actorPose';
 import { IceTrail, iceSprayFx } from './iceTrailFx';
@@ -171,7 +174,7 @@ class DefensiveDemo implements PowerDemo {
   /** (17-11-2026) ULTI LEGENDARIA BOLA DE ENERGÍA: su secuencia propia con 4 máquinas (fx/energyDemo.ts); se crea la primera vez que hace falta */
   private energy: EnergyDemo | null = null;
   private get energyOn() {
-    return this.special?.kind === 'inferno' && this.el === 'energy';
+    return this.special?.kind === 'inferno' && (this.el === 'energy' || this.el === 'hurricane');
   }
 
   constructor(
@@ -282,7 +285,9 @@ class DefensiveDemo implements PowerDemo {
     this.curtain = scene.add.rectangle(outer.x + outer.w / 2, outer.y + outer.h / 2, outer.w, outer.h, 0x000000, 1).setAlpha(0);
     parent.add(this.curtain);
     this.layout();
-    if (this.energyOn) this.syncEnergy();
+    // (18-11-2026, usuario: "se pega al ver la ULTI legendaria") la secuencia de la BOLA DE ENERGÍA (4 máquinas, pools, aura) ya NO se
+    // crea aquí (en el mismo fotograma del deslizamiento a EN ACCIÓN): se crea en reset() al activarse, con la cortinilla en negro
+    if (this.energyOn) this.machine.setVisible(false);
     scene.events.on(Phaser.Scenes.Events.UPDATE, this.tick);
   }
 
@@ -361,9 +366,13 @@ class DefensiveDemo implements PowerDemo {
   private frame(dt: number) {
     if (!this.active || this.destroyed || !this.stage.scene) return;
     this.zoom += (this.targetZoom - this.zoom) * Math.min(1, dt * 4);
+    this.focusK += ((this.focusOn ? 1 : 0) - this.focusK) * Math.min(1, dt * 4);
+    const realDt = dt;
+    dt *= this.slowK; // TIEMPO LENTO: el mundo va lento mientras corre (el zoom y la cámara siguen en tiempo real)
     this.shakeX *= 0.82;
     this.shakeY *= 0.82;
     // cinemática del ESPECIAL / ULTI (la del partido): mientras dura, la demostración se congela como el partido (pelota quieta)
+    if (this.dk && (this.darkWant > 0 || this.darkOn)) this.darkOn = this.dk.drawDark(this.darkWant, realDt);
     if (this.energyOn && this.energy) {
       // (17-11-2026) BOLA DE ENERGÍA: su secuencia con las 4 máquinas (fx/energyDemo.ts; la cinemática la mueve ella)
       if (this.phase !== 'cut') this.energy.update(dt);
@@ -396,12 +405,29 @@ class DefensiveDemo implements PowerDemo {
   }
 
   private targetZoom = 1;
+  /** TIEMPO LENTO: velocidad del mundo (1 = normal) y cámara fija en el personaje (focusOn) con su avance suave (focusK) */
+  private slowK = 1;
+  /** TIEMPO LENTO: penumbra (solo se ven los personajes y la pelota) */
+  private dk: EnergyCineFx | null = null;
+  private darkWant = 0;
+  private darkOn = false;
+  private focusOn = false;
+  private focusK = 0;
 
   private layout() {
     const i = this.inner;
     const k = Math.min(i.w / this.crop.w, i.h / this.crop.h) * this.zoom;
+    // TIEMPO LENTO: el centro del encuadre se va al personaje mientras dura su cinemática
+    let cx = this.crop.cx;
+    let cy = this.crop.cy;
+    if (this.focusK > 0.001) {
+      const f = project(this.pa.x, this.pa.y);
+      const e = this.focusK * this.focusK * (3 - 2 * this.focusK);
+      cx += (f.sx - cx) * e;
+      cy += (f.sy - 70 * f.s * VIEW.CHAR_K - cy) * e;
+    }
     this.stage.setScale(k);
-    this.stage.setPosition(i.x + i.w / 2 - k * this.crop.cx + this.shakeX, i.y + i.h / 2 - k * this.crop.cy + this.shakeY);
+    this.stage.setPosition(i.x + i.w / 2 - k * cx + this.shakeX, i.y + i.h / 2 - k * cy + this.shakeY);
   }
 
   private shake(amp: number) {
@@ -458,6 +484,12 @@ class DefensiveDemo implements PowerDemo {
     this.runT = 0;
     this.targetZoom = 1;
     this.zoom = 1;
+    this.slowK = 1;
+    this.focusOn = false;
+    this.focusK = 0;
+    this.darkWant = 0;
+    this.darkOn = false;
+    this.dk?.hide();
     this.side = -this.side; // derecha / revés alternando
   }
 
@@ -675,6 +707,10 @@ class DefensiveDemo implements PowerDemo {
     switch (this.power) {
       case 'blink':
         return this.execBlink();
+      case 'lightning':
+        return this.execLightning();
+      case 'slowmo':
+        return this.execSlowmo();
       case 'shadow':
         return this.execShadow();
       case 'jump':
@@ -819,6 +855,158 @@ class DefensiveDemo implements PowerDemo {
     };
   }
 
+  /** RELÁMPAGO (épico): azul neón, rayo hasta la pelota con rastro de rayos en el suelo, reaparece y devuelve de revés (como en el partido). */
+  private execLightning(): Run | null {
+    const normal = this.plan(LIGHTNING.chg + LIGHTNING.out + LIGHTNING.in + LIGHTNING.swingLead + 0.02);
+    const plan = normal ?? this.plan(LIGHTNING.fastChg + LIGHTNING.fastOut + LIGHTNING.fastIn + 0.1);
+    if (!plan) return null;
+    const fast = !normal;
+    const from = { x: this.pa.x, y: this.pa.y };
+    const tx = clamp(plan.x - 18, P_X[0], P_X[1]);
+    const ty = clamp(plan.y + LIGHTNING.side, Y_MIN, Y_MAX);
+    const chg = fast ? LIGHTNING.fastChg : LIGHTNING.chg;
+    const out = fast ? LIGHTNING.fastOut : LIGHTNING.out;
+    const inn = fast ? LIGHTNING.fastIn : LIGHTNING.in;
+    const a = project(from.x, from.y);
+    const b = project(tx, ty);
+    const pl = this.pl;
+    this.snd('dash-electirco-1', 0.8);
+    lightningBodyFx(this.st, () => {
+      const f = project(this.pa.x, this.pa.y);
+      return { x: f.sx, y: f.sy, headY: f.sy - 150 * f.s * VIEW.CHAR_K * 0.9 };
+    }, (chg + out + inn) * 1000 + 220, pl, this.stage, true);
+    let t = 0;
+    let flashed = false;
+    let moved = false;
+    return {
+      hitAt: plan.t,
+      swingAt: plan.t - LIGHTNING.swingLead,
+      facing: -1,
+      update: (dt) => {
+        t += dt;
+        if (t < chg) return;
+        if (!flashed) {
+          flashed = true;
+          lightningDashFlash(this.st, a.sx, a.sy, b.sx, b.sy, a.s, 150 * a.s * VIEW.CHAR_K * 0.9);
+          lightningFloorTrail(this.st, a.sx, a.sy, b.sx, b.sy, a.s * VIEW.CHAR_K);
+        }
+        if (t < chg + out) this.pa.warp = 1 - easeIn((t - chg) / out);
+        else {
+          if (!moved) {
+            moved = true;
+            this.pa.x = tx;
+            this.pa.y = ty;
+          }
+          this.pa.warp = t < chg + out + inn ? clamp(backOut((t - chg - out) / inn), 0, 1) : 1;
+        }
+      },
+      cleanup: () => {
+        this.pa.warp = 1;
+      },
+    };
+  }
+
+  /**
+   * TIEMPO LENTO (legendario): corre a la pelota en cámara lenta (el mundo a SLOWMO.k, pantalla en penumbra) y para un poco antes de ella; la
+   * cinemática de 2 s (partido congelado, cámara cerca del personaje) lo AVANZA con la estirada hasta la pelota y al final devuelve. Es la
+   * misma coreografía del partido (MatchScene.startSlowmo / updateSlowmoHit).
+   */
+  private execSlowmo(): Run | null {
+    const plan = this.plan(SLOWMO.minT);
+    if (!plan) return null;
+    const cine = (this.cine ??= new SmashCinematic(this.st));
+    const from = { x: this.pa.x, y: this.pa.y };
+    const side = plan.y > from.y ? 1 : -1;
+    const tx = clamp(plan.x - 18 - SLOWMO.ax, P_X[0], P_X[1]);
+    const ty = clamp(plan.y - side * (LUNGE_ARM + SLOWMO.ay), Y_MIN, Y_MAX);
+    const runT = Math.max(0.3, plan.t - SLOWMO.lead);
+    // ritmo de las zancadas = lo que avanza en pantalla (el mundo va a SLOWMO.k)
+    const rate = runAnimRate(((Math.hypot(tx - from.x, ty - from.y) / runT) * SLOWMO.k) / PLAYER_SPEED);
+    const pl = this.pl;
+    this.slowK = SLOWMO.k;
+    this.dk ??= new EnergyCineFx(this.st);
+    this.dk.hide();
+    this.darkWant = SLOWMO.dark;
+    this.darkOn = true;
+    pl.setSprint(true, Math.sign(ty - from.y) || 1);
+    const p0 = project(from.x, from.y);
+    this.dashFx.burst(p0.sx, p0.sy, p0.s * VIEW.CHAR_K, pl.depth, 0x9be7ff);
+    this.snd('dash-destello', 0.6);
+    this.flash(120, 0xbfe6ff);
+    let t = 0;
+    let stage = 0;
+    let ghosts = 0;
+    const run: Run = {
+      hitAt: 1e9, // lo fija la cinemática al terminar
+      swingAt: 1e9,
+      facing: 0,
+      update: (dt) => {
+        if (stage !== 0) return;
+        for (const sp of spritesIn(pl)) if (sp.anims) sp.anims.timeScale = rate;
+        t += dt;
+        const k = Math.min(1, t / runT);
+        const e = k * k * (3 - 2 * k);
+        this.pa.x = from.x + (tx - from.x) * e;
+        this.pa.y = from.y + (ty - from.y) * e;
+        if (ghosts < 3 && k >= (ghosts + 1) / 4) {
+          placeActor(pl, this.pa);
+          this.ghost(ghosts++);
+        }
+        if (k < 1) return;
+        stage = 1;
+        this.slowK = 1;
+        pl.setSprint(false, 0);
+        pl.facing = side;
+        if (!pl.lunge(side)) pl.swing(false, false, false, false);
+        const sprites = spritesIn(pl);
+        for (const sp of sprites) if (sp.anims) sp.anims.timeScale = SLOWMO.spriteK;
+        // la pelota queda quieta durante la cinemática: la estirada termina junto a ella
+        const b = this.ball;
+        const to = { x: clamp(b.x - 18, P_X[0], P_X[1]), y: clamp(b.y - side * LUNGE_ARM, Y_MIN, Y_MAX) };
+        const st0 = { x: this.pa.x, y: this.pa.y };
+        this.targetZoom = SLOWMO.demoZoom;
+        this.focusOn = true;
+        this.snd('cargando', 0.6);
+        cine.start({
+          profile: SLOWMO_CINE,
+          freeze: sprites,
+          executor: sprites,
+          leadMs: SLOWMO.leadMs,
+          focus: () => this.focus(),
+          onFrame: (e) => {
+            const u = Math.min(1, e / (SLOWMO.hitMs - 150));
+            const m = u * u * (3 - 2 * u);
+            this.pa.x = st0.x + (to.x - st0.x) * m;
+            this.pa.y = st0.y + (to.y - st0.y) * m;
+            this.targetZoom = SLOWMO.demoZoom + 0.35 * Math.max(0, (e - SLOWMO.zoomInMs) / (SLOWMO.hitMs - SLOWMO.zoomInMs));
+          },
+          onCancel: () => {
+            this.focusOn = false;
+            this.darkWant = 0;
+          },
+          onHit: () => {
+            stage = 2;
+            this.focusOn = false;
+            this.darkWant = 0;
+            this.pa.x = to.x;
+            this.pa.y = to.y;
+            this.targetZoom = 1.06;
+            run.hitAt = 0; // el contacto: strike() en el próximo fotograma (pelota fuerte hacia la máquina)
+            this.shake(5);
+            this.snd('electricidad', 0.6);
+          },
+        });
+      },
+      cleanup: () => {
+        this.slowK = 1;
+        this.focusOn = false;
+        this.darkWant = 0;
+        cine.cancel();
+        pl.setSprint(false, 0);
+      },
+    };
+    return run;
+  }
   /** SOMBRA: un clon oscuro corre hasta la pelota y cambias tu lugar con él. */
   private execShadow(): Run | null {
     const plan = this.plan(SHADOW.runMin + 0.08);
@@ -1194,17 +1382,20 @@ class DefensiveDemo implements PowerDemo {
         if (e >= INFERNO_CINE.hitAtMs - 45) pl.infernoPre();
         if (e < D.fromMs) return;
         const u = Math.min(1, (e - D.fromMs) / (D.toMs - D.fromMs - 120));
-        if (el === 'lightning') {
+        // (18-11-2026, usuario) LUZ: como el RAYO (se teletransporta, sin sombras) pero todo blanco y con partículas blancas, sin electricidad
+        // SOMBRA (18-11-2026): lo mismo en oscuridad
+        if (el === 'lightning' || el === 'light' || el === 'shadow') {
+          const light = el === 'light' || el === 'shadow';
           if (!sound) {
             sound = true;
             infernoSound.dash(this.st);
-            lightningBodyFx(this.st, anchor, D.toMs - D.fromMs + 450, pl, this.stage);
+            lightningBodyFx(this.st, anchor, D.toMs - D.fromMs + 450, pl, this.stage, el === 'shadow' ? 'shadow' : light ? 'light' : false);
           }
           if (u >= 0.5 && !flashed) {
             flashed = true;
             const pa = project(start.x, start.y);
             const pb = project(to.x, to.y);
-            lightningDashFlash(this.st, pa.sx, pa.sy, pb.sx, pb.sy, pa.s, 150 * pa.s * VIEW.CHAR_K * 0.9);
+            (el === 'shadow' ? shadowDashFlash : light ? lightDashFlash : lightningDashFlash)(this.st, pa.sx, pa.sy, pb.sx, pb.sy, pa.s, 150 * pa.s * VIEW.CHAR_K * 0.9);
           }
           this.pa.x = u < 0.5 ? start.x : to.x;
           this.pa.y = u < 0.5 ? start.y : to.y;
@@ -1306,7 +1497,9 @@ class DefensiveDemo implements PowerDemo {
       this.elFx?.setElement(el);
       rb.setPower(true);
       rb.setKind('normal', true);
-      this.snd('golpe-fuerte', 0.9);
+      // (18-11-2026, usuario) ESPECIAL de SOMBRA o de LUZ: su propio golpe (especial-sombra-luz)
+      const own = (el === 'shadow' || el === 'light') && this.scene.cache.audio.exists('especial-sombra-luz');
+      this.snd(own ? 'especial-sombra-luz' : 'golpe-fuerte', 0.9);
       this.shake(5);
     }
   }
@@ -1530,6 +1723,7 @@ class DefensiveDemo implements PowerDemo {
       done: () => this.cut(true),
     });
     this.machine.setVisible(false);
+    this.energy.setPower(this.el === 'hurricane' ? 'hurricane' : 'energy');
     this.energy.reset();
   }
 

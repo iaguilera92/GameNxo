@@ -31,7 +31,7 @@ export function ensureEnergyGlow(scene: Phaser.Scene) {
 }
 
 /** estela: siluetas de la esfera en posiciones anteriores */
-const TRAIL = 6;
+const TRAIL = 4; // (18-11-2026) 6 → 4 (rendimiento)
 const TRAIL_STEP = 0.035;
 
 /**
@@ -224,9 +224,10 @@ export function addEnergyPreview(scene: Phaser.Scene, c: Phaser.GameObjects.Cont
 }
 
 // ---------------------------------------------------------------- (17-11-2026) IMPACTO FINAL DE LA BOLA DE ENERGÍA
-const IMP_SHARDS = 56;
-const IMP_EMBERS = 28;
-const IMP_DEBRIS = 18;
+// (18-11-2026, usuario: "se pega") menos partículas en el impacto (56 / 28 / 18 → 34 / 16 / 12): se ve igual de lleno y pesa menos en el teléfono
+const IMP_SHARDS = 34;
+const IMP_EMBERS = 16;
+const IMP_DEBRIS = 12;
 const IMP_CRACKS = 10;
 const IMP_CRACK_PTS = 6;
 const IMP_LIFE = 1.2;

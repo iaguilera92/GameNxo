@@ -13,7 +13,7 @@ import { ENERGY_COL, EnergyBallFx, ensureEnergyGlow } from './energyBallFx';
  *                 justo antes de salir disparada.
  * Todo se crea UNA vez (pool) y se anima con tiempo real (el partido está congelado).
  */
-const ORBS = 18;
+const ORBS = 12; // (18-11-2026) 18 → 12 (rendimiento)
 const GLOW = 'fx-energy-glow';
 
 export interface EnergyFocus {
@@ -50,14 +50,22 @@ export class EnergyCineFx {
   private growing = false;
   private growT = 0;
 
+  /** (17-11-2026) colores de la carga: los de la BOLA DE ENERGÍA o, con setPalette, los de otra ULTI LEGENDARIA (HURACÁN: oro y viento) */
+  private C: { core: number; light: number; cyan: number; deep: number } = ENERGY_COL;
+  setPalette(p: { core: number; light: number; cyan: number; deep: number } = ENERGY_COL) {
+    this.C = p;
+    this.bodyHalo.setTint(p.cyan);
+    this.bodyCore.setTint(p.core);
+  }
+
   constructor(private scene: Phaser.Scene) {
     ensureEnergyGlow(scene);
     const ADD = Phaser.BlendModes.ADD;
     this.dark = scene.add.rectangle(0, 0, 10, 10, 0x02040c, 1).setOrigin(0.5).setDepth(0.95).setVisible(false);
     this.rings = scene.add.graphics().setBlendMode(ADD).setVisible(false);
     this.bolts = scene.add.graphics().setBlendMode(ADD).setVisible(false);
-    this.bodyHalo = scene.add.image(0, 0, GLOW).setTint(ENERGY_COL.cyan).setBlendMode(ADD).setVisible(false);
-    this.bodyCore = scene.add.image(0, 0, GLOW).setTint(ENERGY_COL.core).setBlendMode(ADD).setVisible(false);
+    this.bodyHalo = scene.add.image(0, 0, GLOW).setTint(this.C.cyan).setBlendMode(ADD).setVisible(false);
+    this.bodyCore = scene.add.image(0, 0, GLOW).setTint(this.C.core).setBlendMode(ADD).setVisible(false);
     for (let i = 0; i < ORBS; i++) this.orbs.push(scene.add.image(0, 0, GLOW).setBlendMode(ADD).setVisible(false));
     this.sphere = new EnergyBallFx(scene);
     this.resetOrbs();
@@ -103,7 +111,7 @@ export class EnergyCineFx {
       }
       const r = this.orbR[i] * far;
       const size = (10 + 16 * (1 - this.orbR[i])) * (0.7 + 0.4 * k);
-      o.setTint(i % 3 === 0 ? ENERGY_COL.core : i % 3 === 1 ? ENERGY_COL.cyan : ENERGY_COL.light)
+      o.setTint(i % 3 === 0 ? this.C.core : i % 3 === 1 ? this.C.cyan : this.C.light)
         .setPosition(cx + Math.cos(this.orbA[i]) * r, cy + Math.sin(this.orbA[i]) * r * 0.8)
         .setDisplaySize(size, size)
         .setAlpha(Math.min(1, 0.3 + (1 - this.orbR[i])))
@@ -155,13 +163,13 @@ export class EnergyCineFx {
         const ry = rx * 0.32;
         const a0 = e / (260 - i * 50) + i * 2.1;
         const cy = f.y + hh * (0.35 - 0.45 * i);
-        g.lineStyle((5 - i) * k + 1, i === 1 ? ENERGY_COL.core : ENERGY_COL.cyan, 0.75 * ringsK);
+        g.lineStyle((5 - i) * k + 1, i === 1 ? this.C.core : this.C.cyan, 0.75 * ringsK);
         g.strokeEllipse(f.x, cy, rx * 2, ry * 2, 24);
         // destello que recorre cada aro
-        g.fillStyle(ENERGY_COL.core, 0.95 * ringsK).fillCircle(f.x + Math.cos(a0) * rx, cy + Math.sin(a0) * ry, (4 + 2 * i) * k);
+        g.fillStyle(this.C.core, 0.95 * ringsK).fillCircle(f.x + Math.cos(a0) * rx, cy + Math.sin(a0) * ry, (4 + 2 * i) * k);
       }
       const beat = (e % 900) / 900;
-      g.lineStyle(6 * k * (1 - beat) + 1, ENERGY_COL.cyan, 0.7 * (1 - beat) * ringsK);
+      g.lineStyle(6 * k * (1 - beat) + 1, this.C.cyan, 0.7 * (1 - beat) * ringsK);
       g.strokeEllipse(f.x, f.feetY, hh * (1 + 3.5 * beat) * 2, hh * (0.3 + 1.05 * beat) * 2);
     }
 
@@ -185,9 +193,9 @@ export class EnergyCineFx {
       const tx = cx + (Math.random() - 0.5) * rin * 0.6;
       const ty = cy + (Math.random() - 0.5) * rin * 0.9;
       for (const [w, col, al] of [
-        [6 * k + 1, ENERGY_COL.deep, 0.35],
-        [2.6 * k + 1, ENERGY_COL.cyan, 0.9],
-        [1.2 * k + 0.6, ENERGY_COL.core, 1],
+        [6 * k + 1, this.C.deep, 0.35],
+        [2.6 * k + 1, this.C.cyan, 0.9],
+        [1.2 * k + 0.6, this.C.core, 1],
       ] as const) {
         b.lineStyle(w, col, al).beginPath().moveTo(sx, sy);
         for (let j = 1; j <= 5; j++) {
@@ -257,9 +265,9 @@ export class EnergyCineFx {
       const tx = cx + Math.cos(a + (Math.random() - 0.5) * 0.5) * r1;
       const ty = cy + Math.sin(a + (Math.random() - 0.5) * 0.5) * r1 * 0.9;
       for (const [w, col, al] of [
-        [6 * k + 1, ENERGY_COL.deep, 0.35],
-        [2.6 * k + 1, ENERGY_COL.cyan, 0.9],
-        [1.2 * k + 0.6, ENERGY_COL.core, 1],
+        [6 * k + 1, this.C.deep, 0.35],
+        [2.6 * k + 1, this.C.cyan, 0.9],
+        [1.2 * k + 0.6, this.C.core, 1],
       ] as const) {
         b.lineStyle(w, col, al).beginPath().moveTo(sx, sy);
         for (let j = 1; j <= 5; j++) {

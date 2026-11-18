@@ -61,6 +61,18 @@ export const ENERGY_MATCH_CINE: CineProfile = {
   flashMs: ENERGY_CINE.flashMs * ENERGY_MATCH_K,
 };
 
+/** (17-11-2026) carga del HURACÁN: la misma (1,8 s) con su color (oro y viento) */
+export const HURRICANE_MATCH_CINE: CineProfile = {
+  ...ENERGY_MATCH_CINE,
+  colors: { core: 0xffffff, gold: 0xffd23f, hot: 0xe0a400, cyan: 0x9cf5c8 },
+  aura: [
+    [1.6, 0xe0a400, 0.24],
+    [1.25, 0xffd23f, 0.28],
+    [0.95, 0xfff6c8, 0.3],
+  ],
+  flashTint: 0xfff6c8,
+};
+
 export const ENERGY_RALLY = {
   /**
    * el desplazamiento fantasma de la ULTI (INFERNO.dash 1000-1650, el MISMO acercamiento a la pelota que las demás ULTIS) se corre a este
@@ -71,7 +83,8 @@ export const ENERGY_RALLY = {
   startMs: 160,
   /** vuelo de cada pelota del peloteo (fondo a fondo, rapidísimo) */
   // (17-11-2026, usuario) los 3 peloteos duran 3,5 s: startMs + 6 vuelos = 160 + 6 × 557 ≈ 3500 ms (antes 450 → 2,9 s; antes aún 620)
-  flightMs: 557,
+  // (18-11-2026, usuario) el doble de rápido: 279 ms (antes 557)
+  flightMs: 279,
   /** vuelo de la BOLA DE ENERGÍA final (más lenta: se tiene que ver) */
   finalMs: 900,
   /**
@@ -82,7 +95,7 @@ export const ENERGY_RALLY = {
   /** estiradas del rival (la última lo deja tendido) */
   returns: 3,
   /** el rival empieza a tirarse este tiempo antes de llegar la pelota */
-  diveLeadMs: 300,
+  diveLeadMs: 180, // (18-11-2026) < flightMs (paleteo x2)
   /** los golpes del que lanza la ULTI empiezan este tiempo antes del contacto (la raqueta llega a su frame) */
   swingLeadMs: 110,
   /** la pelota llega a esta distancia lateral del sitio del rival (fuera de su alcance normal: solo llega estirándose) */
@@ -144,6 +157,103 @@ export interface EnergyRallyPlan {
   hit: P3;
   /** fin del guion (llega la bola final) en ms desde el inicio del peloteo */
   endMs: number;
+  /** (17-11-2026) 'hurricane' = guion del HURACÁN (planHurricane); sin él, el de la BOLA DE ENERGÍA */
+  kind?: 'energy' | 'hurricane';
+  /** HURACÁN: el rival sale despedido de `vic` a `knockTo` entre t0 y t1 (ms) y queda tendido; `side` = hacia dónde cae */
+  knock?: { t0: number; t1: number; to: P2; side: 1 | -1 };
+  /** HURACÁN: el tornado sube al que la lanza `lift` (z) entre t0 y t1; baja tras el smash (de down0 a endMs) */
+  lift?: { t0: number; t1: number; down0: number; z: number };
+  /** (18-11-2026) HURACÁN: el que la lanza corre de `from` a `to` (detrás de la T) entre t0 y t1 */
+  move?: { t0: number; t1: number; from: P2; to: P2 };
+}
+
+/**
+ * (17-11-2026) ULTI LEGENDARIA HURACÁN: los MISMOS tiempos que la BOLA DE ENERGÍA (carga 1,8 s; 3,5 s de "peloteo"; 0,7 s; 0,9 s de vuelo
+ * final) con otro guion:
+ *   1) golpe cargado al máximo con viento potente al rival (shot 0) → sale despedido contra el fondo y queda en el suelo (knock)
+ *   2) la pelota vuelve en un GLOBITO que se queda alto sobre el que la lanza (shot 1, hasta el final de los 3,5 s)
+ *   3) un TORNADO lo sube hasta la pelota (lift, durante growMs) y sale envuelto en una esfera amarilla
+ *   4) SMASH final desde arriba al rival tendido (shot final, finalMs) → el impacto de siempre de la ULTI
+ */
+export const HURRICANE = {
+  /** vuelo del golpe de viento hasta el rival */
+  shotMs: 650,
+  /** el rival sale despedido hasta el fondo en este tiempo */
+  knockMs: 420,
+  /** hasta dónde sale despedido (canónico: x del fondo del rival) */
+  backX: COURT.right + 125,
+  /** altura (z) a la que queda el globito y donde se pega el smash; y cuánto sube el tornado al jugador */
+  // (18-11-2026, usuario) salto más alto (120 → 240) y el smash más arriba (240 → 330), como en la demostración
+  apexZ: 330,
+  liftZ: 240,
+  /** el que la lanza baja tras el smash a partir de aquí (ms después de su contacto) */
+  downAfterMs: 260,
+  /**
+   * (18-11-2026, usuario) como en la demostración: `toTMs` después de su golpe se va corriendo (`runMs`) a un poco detrás de la T (`tDepth` del
+   * campo desde la red) y desde ahí salta; el salto sube en `riseMs`; el TORNADO (hoja de 8 cuadros) dura `tornadoMs` (desde la mitad ya es la
+   * esfera amarilla) y luego se le ve `hoverMs` con la pose del smash antes de golpear.
+   */
+  toTMs: 300,
+  runMs: 600,
+  tDepth: 0.64,
+  riseMs: 750,
+  tornadoMs: 960,
+  hoverMs: 500,
+};
+
+/** Guion del HURACÁN. `a` = sitio del que la lanza (su contacto de la ULTI); `v` = el rival (canónico, como planEnergyRally). */
+export function planHurricane(a: P2, v: P2, seed: number): EnergyRallyPlan {
+  const R = ENERGY_RALLY;
+  const H = HURRICANE;
+  const rnd = seeded(seed);
+  const att: P2 = { x: clamp(a.x, COURT.left - 120, NET_X - 60), y: clamp(a.y, COURT.top, COURT.bottom) };
+  const vic: P2 = { x: clamp(v.x, NET_X + 60, COURT.right + 140), y: clamp(v.y, COURT.top - ALLEY + R.diveReach * 0.5, COURT.bottom + ALLEY - R.diveReach * 0.5) };
+  // cae hacia el centro de la cancha (si está al medio, a un lado al azar)
+  const side: 1 | -1 = Math.abs(vic.y - LAT_C) > HALF_W * 0.2 ? (vic.y < LAT_C ? 1 : -1) : rnd() < 0.5 ? 1 : -1;
+  const peloteo = 2 * R.returns * R.flightMs; // lo que duran los 3 peloteos de la BOLA DE ENERGÍA
+  // golpe, despedida y globito caben en ese tiempo (se reparten en proporción; el globito, como mínimo 0,45 s)
+  const fit = Math.min(1, Math.max(0.35, (peloteo - 450) / (H.shotMs + H.knockMs)));
+  const rallyEnd = R.startMs + peloteo;
+  const t0 = R.startMs;
+  const t1 = t0 + H.shotMs * fit;
+  const knockTo: P2 = { x: Math.max(vic.x, H.backX), y: vic.y + side * R.diveBody * 0.6 };
+  const k1 = t1 + H.knockMs * fit;
+  // (18-11-2026) se va a un poco detrás de la T de su campo; el globito cae ahí
+  const spot: P2 = { x: NET_X - (NET_X - COURT.left) * H.tDepth, y: LAT_C };
+  const move = { t0: t0 + H.toTMs, t1: t0 + H.toTMs + H.runMs, from: { ...att }, to: spot };
+  const apex: P3 = { x: spot.x + 26, y: spot.y, z: H.apexZ };
+  const shots: RallyShot[] = [
+    { by: 'att', from: { x: att.x + 18, y: att.y, z: R.zHit }, to: { x: vic.x - 12, y: vic.y, z: 52 }, t0, t1, arc: 26 },
+    // el globito: rebota en el rival y sube despacio hasta quedar alto sobre el que la lanza
+    { by: 'vic', from: { x: knockTo.x - 10, y: knockTo.y, z: 40 }, to: apex, t0: k1, t1: rallyEnd, arc: 150 },
+  ];
+  const fin0 = rallyEnd + R.growMs;
+  const lie: P2 = { ...knockTo };
+  const hit: P3 = { x: lie.x - 6, y: lie.y, z: 12 };
+  shots.push({ by: 'att', from: apex, to: hit, t0: fin0, t1: fin0 + R.finalMs, arc: 20, final: true });
+  return {
+    kind: 'hurricane',
+    att,
+    vic,
+    shots,
+    lie,
+    hit,
+    endMs: fin0 + R.finalMs,
+    knock: { t0: t1, t1: k1, to: knockTo, side },
+    // (18-11-2026) salta antes: tornado + pose del smash terminan justo en el golpe final (fin0)
+    lift: { t0: fin0 - H.tornadoMs - H.hoverMs, t1: fin0 - H.tornadoMs - H.hoverMs + H.riseMs, down0: fin0 + H.downAfterMs, z: H.liftZ },
+    move,
+  };
+}
+
+/** HURACÁN: altura extra (z) del que la lanza en `t` (el tornado lo sube; baja tras el smash). 0 en la BOLA DE ENERGÍA. */
+export function attackerLiftAt(plan: EnergyRallyPlan, t: number): number {
+  const L = plan.lift;
+  if (!L || t < L.t0) return 0;
+  if (t < L.t1) return L.z * easeOut((t - L.t0) / Math.max(1, L.t1 - L.t0));
+  if (t < L.down0) return L.z;
+  const u = clamp((t - L.down0) / Math.max(1, plan.endMs - L.down0), 0, 1);
+  return L.z * (1 - u * u);
 }
 
 /** PRNG pequeño y determinista (mulberry32): mismo `seed` → misma secuencia en los dos teléfonos. */
@@ -244,6 +354,15 @@ export function victimAt(plan: EnergyRallyPlan, t: number, out: P2): P2 {
   const R = ENERGY_RALLY;
   out.x = plan.vic.x;
   out.y = plan.vic.y;
+  if (plan.knock) {
+    // HURACÁN: en su sitio hasta el golpe; sale despedido hacia el fondo (frenando) y se queda tendido allí
+    const K = plan.knock;
+    if (t <= K.t0) return out;
+    const u = easeOut(clamp((t - K.t0) / Math.max(1, K.t1 - K.t0), 0, 1));
+    out.x = plan.vic.x + (K.to.x - plan.vic.x) * u;
+    out.y = plan.vic.y + (K.to.y - plan.vic.y) * u;
+    return out;
+  }
   for (const sh of plan.shots) {
     if (sh.by !== 'att' || sh.final || !sh.side) continue;
     const d0 = sh.t1 - R.diveLeadMs;
@@ -258,8 +377,8 @@ export function victimAt(plan: EnergyRallyPlan, t: number, out: P2): P2 {
       return out;
     }
     // recuperación: vuelve a su sitio antes de la siguiente estirada
-    const back = R.flightMs * 2 - R.diveLeadMs - 80;
-    const u = clamp((t - sh.t1 - 200) / Math.max(1, back - 200), 0, 1);
+    const back = R.flightMs * 2 - R.diveLeadMs - 40;
+    const u = clamp((t - sh.t1 - 80) / Math.max(1, back - 80), 0, 1);
     out.y = body + (plan.vic.y - body) * u;
   }
   return out;
@@ -267,6 +386,15 @@ export function victimAt(plan: EnergyRallyPlan, t: number, out: P2): P2 {
 
 /** Dónde está el que lanza en `t`: va de lado a la raqueta de cada golpe suyo (cuerpo = raqueta − 18 en x). */
 export function attackerAt(plan: EnergyRallyPlan, t: number, out: P2): P2 {
+  // (18-11-2026) HURACÁN: en su sitio, corre a detrás de la T y se queda ahí (salta desde ahí)
+  const M = plan.move;
+  if (M) {
+    const u = clamp((t - M.t0) / Math.max(1, M.t1 - M.t0), 0, 1);
+    const e = u * u * (3 - 2 * u);
+    out.x = M.from.x + (M.to.x - M.from.x) * e;
+    out.y = M.from.y + (M.to.y - M.from.y) * e;
+    return out;
+  }
   out.x = plan.att.x;
   out.y = plan.att.y;
   let prevY = plan.att.y;
@@ -274,9 +402,9 @@ export function attackerAt(plan: EnergyRallyPlan, t: number, out: P2): P2 {
     if (sh.by !== 'att') continue;
     const y = sh.from.y;
     // llega a su raqueta durante el vuelo de la pelota anterior (los 400 ms antes del contacto)
-    const m0 = sh.t0 - 400;
+    const m0 = sh.t0 - 250; // (18-11-2026) paleteo x2 (antes 400)
     if (t < m0) break;
-    out.y = t >= sh.t0 ? y : prevY + (y - prevY) * easeOut((t - m0) / 400);
+    out.y = t >= sh.t0 ? y : prevY + (y - prevY) * easeOut((t - m0) / 250);
     prevY = y;
     if (t < sh.t0) break;
   }

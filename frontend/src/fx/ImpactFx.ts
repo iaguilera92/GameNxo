@@ -6,7 +6,7 @@ import { barrageSlam } from './barrageFx';
 import { SMASH_LOOK } from './smashFx';
 import { smashPowerOf, type SmashPower } from '../domain/smashPowers';
 import { sfx } from './sfx';
-import { cometBlast, cometCrater, flicker, zap, iceBlast, lightningBlast, lightningGroundFx, shadowBlast, lightBlast, windBlast, windGroundFx } from './elementImpactFx';
+import { cometBlast, cometCrater, dragonBlast, dragonScorch, flicker, zap, iceBlast, lightningBlast, lightningGroundFx, shadowBlast, lightBlast, windBlast, windGroundFx } from './elementImpactFx';
 
 const FB = Phaser.Math.FloatBetween;
 const IB = Phaser.Math.Between;
@@ -32,6 +32,8 @@ const BLAST: Record<InfernoElement, { flash: number; tongues: number[]; puffs: n
   barrage: { flash: 0xfbffe0, tongues: [0xb8e020, 0xd8ff3a, 0xeaff8a, 0xffffff], puffs: [0xd8ff3a, 0xeaff8a, 0xf8ffd8], wave: 0xeaff8a, frags: [0xffffff, 0xeaff8a, 0xd8ff3a], ground: 0xd8ff3a, groundFlash: 0xfbffe0 },
   // (17-11-2026) BOLA DE ENERGÍA (LEGENDARIA): lenguas de azul intenso a blanco
   energy: { flash: 0xffffff, tongues: [0x1f8cff, 0x5fe8ff, 0xc8f8ff, 0xffffff], puffs: [0x5fe8ff, 0x9fefff, 0xe8fdff], wave: 0xc8f8ff, frags: [0xffffff, 0xc8f8ff, 0x5fe8ff], ground: 0x5fe8ff, groundFlash: 0xf0fdff },
+  // (17-11-2026) HURACÁN (LEGENDARIA): lenguas de oro a blanco y viento menta
+  hurricane: { flash: 0xffffff, tongues: [0xe0a400, 0xffd23f, 0xfff6b0, 0xe8fff0], puffs: [0xffd23f, 0xfff1a0, 0xe8fff0], wave: 0xfff6b0, frags: [0xffffff, 0xfff1a0, 0x9cf5c8], ground: 0xffd23f, groundFlash: 0xfff6c8 },
 };
 
 /**
@@ -62,6 +64,7 @@ export function powerImpactFx(scene: Phaser.Scene, kind: PowerKind, x: number, y
   else if (sp === 'shadow') shadowBlast(scene, x, y, s * 0.85, D);
   else if (sp === 'light') lightBlast(scene, x, y, s * 0.85, D);
   else if (sp === 'comet') cometBlast(scene, x, y, s * 0.95, D); // (17-11-2026) ÉPICA: algo más grande que los especiales (×0,85)
+  else if (sp === 'dragon') dragonBlast(scene, x, y, s * 1.05, D); // (18-11-2026) LEGENDARIA: el más grande de los ESPECIALES
   else if (kind === 'smash') {
     // colores según el poder del SMASH (el: fuego = blanco y dorado de siempre; hielo = blanco azulado + cristales)
     const B = SMASH_LOOK[smashPowerOf(el)].blast;
@@ -104,6 +107,10 @@ export function powerImpactFx(scene: Phaser.Scene, kind: PowerKind, x: number, y
     // (17-11-2026) ULTRA EFECTO: el estallido de la ULTI en blanco y menta + un ventilador de aire gigante que se abre girando
     infernoBlast(scene, x, y, s, D, 'ultra');
     fanBurst(scene, x, y, s * 1.4, D + 2);
+  } else if (el === 'hurricane') {
+    // (17-11-2026) HURACÁN: el torbellino del VIENTO (más grande) y el estallido de la ULTI en oro
+    windBlast(scene, x, y, s * 1.3, D + 1);
+    infernoBlast(scene, x, y, s * 1.2, D, 'hurricane');
   } else if (el === 'energy') {
     // (17-11-2026) BOLA DE ENERGÍA: el estallido de la ULTI en blanco y celeste, MÁS GRANDE, con la descarga eléctrica del rayo
     infernoBlast(scene, x, y, s * 1.35, D, 'energy');
@@ -136,6 +143,7 @@ const AFTER: Record<SmashPower | 'tulip', { main: number; light: number; flash: 
   light: { main: 0xffd86a, light: 0xffffff, flash: [255, 250, 225] },
   tulip: { main: 0xff6fae, light: 0xffe6f2, flash: [255, 205, 228] }, // (17-11-2026) solo la ULTI de TULIPÁN
   comet: { main: 0x4f8dff, light: 0xcfe2ff, flash: null }, // (17-11-2026) COMETA: cometBlast ya da su destello
+  dragon: { main: 0xff3b1e, light: 0xffd23f, flash: null }, // (18-11-2026) DRAGÓN: dragonBlast ya da su destello
 };
 
 /** Elementos de la ULTI que dejan también la huella del ESPECIAL (suelo y cuerpo). Ultra efecto, ráfaga y energía tienen la suya propia. */
@@ -231,6 +239,8 @@ function smashAftermath(scene: Phaser.Scene, sp: string, x: number, y: number, s
     }
   } else if (sp === 'comet') {
     cometCrater(scene, x, gy, s, T); // (17-11-2026) cráter con estrellas
+  } else if (sp === 'dragon') {
+    dragonScorch(scene, x, gy, s, T); // (18-11-2026) cancha quemada con lenguas de fuego
   } else if (sp === 'light') {
     mark(170, 50, 0xfff0b0, 0.5, 550, 700).setBlendMode(ADD); // (17-11-2026) se queda un poco más (antes 300 ms)
   } else if (sp === 'lightning') {

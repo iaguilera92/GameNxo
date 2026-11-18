@@ -55,13 +55,14 @@ mkdirSync(TMP, { recursive: true });
  * (14-11-2026) Clips NUEVOS que no están en las hojas viejas (sin fila en ROWS_NXO): se crean en su JSON la primera vez que llega
  * su imagen HD. `walk-intro` = caminata lenta de la ENTRADA al partido (NxoActor.runKey, walkFor).
  */
-const NEW_CLIPS = { 'walk-intro': { json: 'extra', fps: 8, loop: true } };
+// (18-11-2026, usuario) `victory-big` = VICTORIA de verdad al ganar el PARTIDO (se tira al suelo de rodillas, "¡VAMOS!"): `<pack>-extras-4`
+const NEW_CLIPS = { 'walk-intro': { json: 'extra', fps: 8, loop: true }, 'victory-big': { json: 'extra', fps: 10, loop: false } };
 const CLIPS = ULTI ? ULTI_CLIPS : [...Object.values(ROWS_NXO).flatMap((r) => Object.values(r)), ...Object.keys(NEW_CLIPS)];
 /** clips que NO empiezan de pie: se miden con la carrera (frame 1) o con su último frame (recuperaciones) */
 const RUN_LIKE = new Set(['runstop', 'brake-turn', 'run-left', 'dash']);
 const LAST_STAND = new Set(['recover-right', 'recover-left']);
 /** clips cuyo frame 1 tampoco es "de pie" normal: copian la escala de otro clip */
-const SCALE_AS = { 'inferno-hit': 'idle', stunned: 'idle', defeat: 'idle', 'dive-right': 'idle', 'dive-left': 'idle' };
+const SCALE_AS = { 'victory-big': 'idle', 'inferno-hit': 'idle', stunned: 'idle', defeat: 'idle', 'dive-right': 'idle', 'dive-left': 'idle' };
 
 // ------------------------------------------------------------------ croma (igual que build-moves.mjs)
 function chroma(px, i) {
@@ -289,26 +290,37 @@ const SHEET_NAME = { 1: 'movimientos', 2: 'golpes', 3: 'reacciones', 4: 'extras'
 /** filas que NO se hacen (el juego no las reproduce): docs/COMO-TRABAJAR-SPRITES-MOVIMIENTOS.md ★ */
 const SKIP = new Set(['run-left', 'wait', 'dropshot', 'intro', 'greet', 'serve-bounce']); // serve-bounce: descartado (14-11-2026)
 /** clips de OTRA hoja que el usuario pidió numerar al final de una hoja (walk = hoja 4 fila 3, se ve al moverse): `nxo-movimientos-8` */
-const APPEND = { 1: ['walk', 'dive-right', 'dive-left', 'recover-right', 'recover-left'], 2: ['serve-toss'] }; // estiradas = movimiento (usuario, 14-11-2026)
+const APPEND = { 1: ['walk', 'dive-right', 'dive-left', 'recover-right', 'recover-left'], 2: ['serve-toss'], 4: ['victory-big'] }; // estiradas = movimiento (usuario, 14-11-2026)
 /** clips que van AL PRINCIPIO de una hoja: `nxo-extras-1` = caminata de entrada (reemplaza al bote, descartado) */
 const PREPEND = { 4: ['walk-intro'] };
 const MOVED = new Set(Object.values(APPEND).flat());
+/**
+ * (18-11-2026) Imagen HD de origen `<base>.png` o, si no hay, `<base>.webp` (se pasa a PNG en TMP para leerla): así una hoja rehecha
+ * se puede dejar directamente en WebP (más liviana) y borrar el PNG.
+ */
+function srcImg(base) {
+  const png = join(SRC, `${base}.png`);
+  if (existsSync(png)) return png;
+  const webp = join(SRC, `${base}.webp`);
+  if (!existsSync(webp)) return null;
+  const out = join(TMP, `src-${base}.png`);
+  webpToPng(webp, out);
+  return out;
+}
 function hdFile(clip) {
   if (ULTI) {
     const n = ULTI_CLIPS.indexOf(clip) + 1;
-    const f = join(SRC, `${FID}-ulti-${n}.png`);
-    return n > 0 && existsSync(f) ? f : null;
+    return n > 0 ? srcImg(`${FID}-ulti-${n}`) : null;
   }
   for (const [sheet, rows] of Object.entries(ROWS_NXO)) {
     const made = [...(PREPEND[sheet] ?? []), ...Object.keys(rows).sort((a, b) => a - b).map((r) => rows[r]).filter((c) => !SKIP.has(c) && !MOVED.has(c)), ...(APPEND[sheet] ?? [])];
     const n = made.indexOf(clip) + 1;
     if (n > 0 && SHEET_NAME[sheet]) {
-      const f = join(SRC, `${FID}-${SHEET_NAME[sheet]}-${n}.png`);
-      if (existsSync(f)) return f;
+      const f = srcImg(`${FID}-${SHEET_NAME[sheet]}-${n}`);
+      if (f) return f;
     }
   }
-  const f = join(SRC, `${clip}.png`);
-  return existsSync(f) ? f : null;
+  return srcImg(clip);
 }
 
 const data = {};

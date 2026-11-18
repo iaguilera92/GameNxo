@@ -1,11 +1,12 @@
 import Phaser from 'phaser';
-import { COURT, SHOT_SPEED } from '../config';
+import { COURT, NET_X, SHOT_SPEED } from '../config';
 import { VIEW, project } from '../view/projection';
 import type { Character } from '../objects/Character';
 import type { Ball } from '../objects/Ball';
 import { HyperAura } from '../objects/HyperAura';
 import { type CineFocus, type CineProfile, type SmashCinematic, spritesIn } from './SmashCinematic';
-import { ENERGY_MATCH_CINE, ENERGY_MATCH_K } from '../logic/EnergyRally';
+import { ENERGY_MATCH_CINE, ENERGY_MATCH_K, HURRICANE_MATCH_CINE } from '../logic/EnergyRally';
+import { HURRICANE_COL, TORNADO_ART, TornadoFx, TornadoSprite, WindSphereFx, sphereBreakFx, wallKnockFx, windShotFx } from './hurricaneFx';
 import { SPECIAL_SERVE_K } from './powerDemo';
 import { EnergyCineFx } from './energyBallCine';
 import { ENERGY_COL, EnergyImpactFx } from './energyBallFx';
@@ -35,6 +36,19 @@ import type { PoseActor } from './actorPose';
 // (17-11-2026, usuario) la MISMA carga que en el partido (ENERGY_MATCH_CINE, 1,8 s): Tienda, PERSONALIZAR y partido iguales
 const CINE_K = ENERGY_MATCH_K;
 const DEMO_CINE: CineProfile = ENERGY_MATCH_CINE;
+/** (18-11-2026, usuario) HURACÁN en la demo: la carga 0,5 s más corta (1,8 → 1,3 s) para que se vea más el salto del smash */
+const H_CHARGE_K = 1300 / 1800;
+const H_CINE: CineProfile = {
+  ...HURRICANE_MATCH_CINE,
+  durationMs: HURRICANE_MATCH_CINE.durationMs * H_CHARGE_K,
+  hitAtMs: HURRICANE_MATCH_CINE.hitAtMs * H_CHARGE_K,
+  activateMs: HURRICANE_MATCH_CINE.activateMs * H_CHARGE_K,
+  focusMs: HURRICANE_MATCH_CINE.focusMs * H_CHARGE_K,
+  peakMs: HURRICANE_MATCH_CINE.peakMs * H_CHARGE_K,
+  releaseFromMs: HURRICANE_MATCH_CINE.releaseFromMs * H_CHARGE_K,
+  flashAtMs: HURRICANE_MATCH_CINE.flashAtMs * H_CHARGE_K,
+  flashMs: HURRICANE_MATCH_CINE.flashMs * H_CHARGE_K,
+};
 
 const LAT_C = (COURT.top + COURT.bottom) / 2;
 /** sitio lateral de las 4 máquinas (izq. → der. en pantalla) */
@@ -42,12 +56,33 @@ const M_Y = [COURT.top - 15, LAT_C - 85, LAT_C + 85, COURT.bottom + 15];
 /** la que lanza la única pelota y a quién se le pega en cada golpe (−1 = la BOLA DE ENERGÍA a las dos del centro) */
 const LAUNCHER = 1;
 const TARGET = [0, 3, 2, -1];
+/** (17-11-2026) HURACÁN: la máquina que recibe el viento (centro-derecha), la altura del salto del tornado (la del partido, HURRICANE.liftZ) y sus tiempos (s) */
+const H_VIC = 2;
+/** hasta dónde sale despedido (hacia el fondo) respecto de las máquinas */
+const H_BACK_X = 110;
+const H_LIFT = 240; // (18-11-2026, usuario) salto más alto (120 → 190 → 240): se ve más arriba dentro del tornado
+// (18-11-2026, usuario) fly = vuelo del GLOBO desde la máquina hasta el smash; lift = salto con el tornado; hover = quieto en el aire (pies atrás)
+// (18-11-2026, usuario) toT = espera tras el golpe antes de correr a la T; run = lo que tarda en llegar a la T
+// (18-11-2026, usuario) salto más largo (0,55 → 0,75 s) y la bola amarilla lo cubre recién a los `cover` s del salto (se ve cómo salta)
+// (18-11-2026) tornado = lo que dura la hoja del tornado (8 cuadros); el globo vuela fly (más largo para que todo calce)
+const H_T = { lift: 0.75, fly: 2.2, hover: 0.5, tornado: 0.96, knockMs: 420, toT: 0.3, run: 0.6 };
+/** (18-11-2026) la T de su campo (línea de saque con la línea central): desde ahí salta al smash */
+// (18-11-2026, usuario) un poco más atrás de la T (0,538 → 0,64 del campo desde la red)
+const T_POS = { x: NET_X - (NET_X - COURT.left) * 0.64, y: (COURT.top + COURT.bottom) / 2 };
+/** altura extra del contacto del smash sobre el salto y altura del arco del globo */
+const H_SMASH_Z = 45;
+/** (18-11-2026) círculo amarillo: radio y cuánto sube su centro (en medios altos del personaje): cubre el cuerpo con la raqueta arriba */
+const SPHERE_R = 1.5;
+const SPHERE_UP = 0.3;
+const H_LOB_ARC = 230;
+/** colores de la carga del HURACÁN (los mismos del partido) */
+const H_PAL = { core: HURRICANE_COL.core, light: HURRICANE_COL.light, cyan: HURRICANE_COL.gold, deep: HURRICANE_COL.deep };
 /**
  * tiempos (s): espera antes de lanzar; pelota de la máquina (hasta el bote / del bote a la raqueta); rebote desde la máquina noqueada
  * (hasta el bote / a la raqueta); devolución; la bola crece en la raqueta; vuelo de la bola final; pausa antes del corte
  */
 // (17-11-2026, usuario) los 3 peloteos duran 3,5 s, como en el partido: 3 × (out + backA + backB) = 3 × 1,167 s (antes 3 × 1,0 s)
-const T = { wait: 0.3, inA: 0.32, inB: 0.18, /* (17-11-2026, usuario) la pelota de la máquina llega antes */ backA: 0.385, backB: 0.257, out: 0.525, grow: 0.5, final: 0.6, endHold: 1.0 };
+const T = { wait: 0.3, inA: 0.32, inB: 0.18, /* (17-11-2026, usuario) la pelota de la máquina llega antes */ /* (18-11-2026, usuario) peloteo el doble de rápido */ backA: 0.193, backB: 0.128, out: 0.263, grow: 0.5, final: 0.6, endHold: 1.0 };
 const SWING_LEAD = 0.14;
 const MUZZLE_Z = 59;
 const HIT_Z = 60;
@@ -128,7 +163,30 @@ export class EnergyDemo {
   private readonly sVy = new Float32Array(SMOKE);
   private sNext = 0;
   private readonly scorch: Phaser.GameObjects.Ellipse;
-  private phase: 'serve' | 'in' | 'cine' | 'out' | 'grow' | 'end' | 'idle' = 'idle';
+  private phase: 'serve' | 'in' | 'cine' | 'out' | 'grow' | 'lift' | 'end' | 'idle' = 'idle';
+  /** qué ULTI LEGENDARIA muestra (la elige powerDemo.syncEnergy): BOLA DE ENERGÍA o HURACÁN */
+  private power: 'energy' | 'hurricane' = 'energy';
+  private readonly tornado: TornadoFx;
+  /** (18-11-2026) el tornado en imagen (si la hoja está cargada; si no, el de código) */
+  private readonly tornImg: TornadoSprite;
+  private readonly sphere: WindSphereFx;
+  /** HURACÁN: 1 = ya viene el smash final */
+  private hStage = 0;
+  /**
+   * (18-11-2026, usuario: "se pega al salir de la demo del HURACÁN") tweens del golpe final que mueven objetos sueltos ({u}) en vez de la
+   * máquina: killTweensOf(m.c) no los corta y seguían vivos tras salir. Se cortan en stop().
+   */
+  private fxTw: Phaser.Tweens.Tween[] = [];
+  /** HURACÁN: el personaje está en el aire (se dibujan el tornado y la esfera), progreso del tornado (−1 = sin tornado) y opacidad de la esfera */
+  private hAir = false;
+  /** HURACÁN: ya saltó a por el globo / ya se desarmó la esfera */
+  private jumped = false;
+  private broke = false;
+  private tornU = -1;
+  private sphereA = 0;
+  private get hur() {
+    return this.power === 'hurricane';
+  }
   private round = 0;
   private t = 0;
   private swung = false;
@@ -162,13 +220,23 @@ export class EnergyDemo {
     for (let i = 0; i < SMOKE; i++) this.smoke.push(st.add.circle(0, 0, 10, 0x5a5a66, 0.5).setVisible(false));
     this.cineFx = new EnergyCineFx(st);
     this.impact = new EnergyImpactFx(st);
+    this.tornado = new TornadoFx(st);
+    this.tornImg = new TornadoSprite(st);
+    this.sphere = new WindSphereFx(st);
     this.setVisible(false);
   }
 
   // ------------------------------------------------------------------ ciclo
+  /** Elige la ULTI LEGENDARIA que se muestra (antes de `reset`). */
+  setPower(p: 'energy' | 'hurricane') {
+    this.power = p;
+    this.cineFx.setPalette(p === 'hurricane' ? H_PAL : undefined);
+  }
+
   /** Todo en su sitio (máquinas en pie y encendidas) y la pelota a punto de salir. */
   reset() {
     this.stop();
+    this.hStage = 0;
     const tw = this.h.scene.tweens;
     for (const m of this.m) {
       tw.killTweensOf(m.c);
@@ -186,14 +254,30 @@ export class EnergyDemo {
     this.round = 0;
     this.t = 0;
     this.phase = 'serve';
+    // (18-11-2026, rendimiento) la hoja del tornado se sube a la GPU ahora (tras la cortinilla), no al saltar
+    if (this.hur) {
+      const p = project(T_POS.x, T_POS.y);
+      this.tornImg.warm(p.sx, p.sy, p.sy);
+    }
   }
 
   /** Corta lo que esté en marcha (cinemática, carga, aura, penumbra, pelota) sin tocar las máquinas. */
   stop() {
     this.phase = 'idle';
+    for (const tw of this.fxTw) tw.remove();
+    this.fxTw = [];
     this.h.stopCharge();
     this.cineFx.hide();
     this.impact.stop();
+    this.tornado.hide();
+    this.tornImg.hide();
+    this.sphere.hide();
+    this.h.scene.tweens.killTweensOf(this.h.pa);
+    this.h.pa.lift = 0;
+    this.h.pl.setAlpha(1); // (18-11-2026) por si se cortó convertido en la esfera
+    this.tornadoSndStop(false);
+    this.hAir = false;
+    this.tornU = -1;
     this.darkOn = false;
     this.aura?.stop();
     this.aura?.setBoost(1);
@@ -238,6 +322,7 @@ export class EnergyDemo {
       return;
     }
     this.aura?.update(dt);
+    if (this.hur && this.hAir) this.drawAir(dt);
     // penumbra de la cinemática durante todo el peloteo; se aclara tras la BOLA DE ENERGÍA
     if (this.darkOn && !this.cineFx.drawDark(this.phase === 'end' ? 0 : 0.6, dt)) this.darkOn = false;
     switch (this.phase) {
@@ -247,6 +332,8 @@ export class EnergyDemo {
         return this.stepIn(dt);
       case 'grow':
         return this.stepGrow(dt);
+      case 'lift':
+        return this.stepLift(dt);
       case 'out':
         return this.stepOut(dt);
       case 'end':
@@ -284,7 +371,7 @@ export class EnergyDemo {
     this.placeBall(this.from);
     this.h.setBall(true, false);
     this.h.pl.setReady(true);
-    this.h.snd('golpe-fuerte', 0.5);
+    if (!this.hur) this.h.snd('golpe-fuerte', 0.5); // (18-11-2026, usuario) HURACÁN: la máquina dispara sin golpe-fuerte
     // retroceso de la máquina y fogonazo en la boca
     const ks = L.ks;
     this.h.scene.tweens.add({ targets: L.c, scaleX: ks * 1.07, scaleY: ks * 0.93, duration: 70, yoyo: true, ease: 'Quad.easeOut' });
@@ -324,7 +411,7 @@ export class EnergyDemo {
       this.placeBall(arcAt(this.bounce, this.racket, (t - this.inA) / this.inB, 24, this.pos), this.bounce, this.racket, this.inB);
     }
     const hitAt = this.inA + this.inB;
-    const final = TARGET[this.round] === -1;
+    const final = !this.hur && TARGET[this.round] === -1;
     if (this.round === 0 || final) {
       // 1.ª: la carga LEGENDARIA; última: la BOLA DE ENERGÍA crece en la raqueta. La pelota queda en la raqueta mientras tanto
       if (t < hitAt) return;
@@ -354,6 +441,8 @@ export class EnergyDemo {
   private startCharge() {
     const h = this.h;
     const pl = h.pl;
+    const cp = this.hur ? H_CINE : DEMO_CINE;
+    const ck = this.hur ? CINE_K * H_CHARGE_K : CINE_K;
     this.phase = 'cine';
     if (!pl.infernoHold()) pl.setCharging(true);
     h.playCharge(0.8);
@@ -362,7 +451,7 @@ export class EnergyDemo {
     this.lastCine = performance.now();
     const sprites = spritesIn(pl);
     h.cine.start({
-      profile: DEMO_CINE,
+      profile: cp,
       freeze: sprites,
       executor: sprites,
       leadMs: 0,
@@ -376,15 +465,15 @@ export class EnergyDemo {
         const now = performance.now();
         const dt = Math.min(0.05, (now - this.lastCine) / 1000);
         this.lastCine = now;
-        if (e >= DEMO_CINE.hitAtMs - 45) pl.infernoPre();
+        if (e >= cp.hitAtMs - 45) pl.infernoPre();
         const f = h.focus();
         const feet = project(h.pa.x, h.pa.y);
-        this.cineFx.drawCharge(e / CINE_K, { x: f.x, y: f.y, racketX: f.racketX, racketY: f.racketY, s: f.s, hh: f.hh, depth: f.depth, feetY: feet.sy });
+        this.cineFx.drawCharge(e / ck, { x: f.x, y: f.y, racketX: f.racketX, racketY: f.racketY, s: f.s, hh: f.hh, depth: f.depth, feetY: feet.sy });
         this.aura?.update(dt);
       },
       onHit: () => {
         this.cineFx.hideCharge();
-        this.cineFx.setDark(DEMO_CINE.darken);
+        this.cineFx.setDark(cp.darken);
         this.darkOn = true;
         pl.infernoRelease();
         pl.setCharging(false);
@@ -431,14 +520,59 @@ export class EnergyDemo {
     const rb = h.rb;
     h.stopCharge();
     h.pl.setReady(false);
-    const final = TARGET[this.round] === -1;
+    const final = this.hur ? this.hStage === 1 : TARGET[this.round] === -1;
     this.from.x = this.racket.x;
     this.from.y = this.racket.y;
     this.from.z = this.racket.z;
     this.aim.x = h.machineX - 30;
     this.aim.z = HIT_Z;
     const p = project(this.racket.x, this.racket.y, this.racket.z);
-    if (final) {
+    if (this.hur) {
+      const v = this.m[H_VIC];
+      this.aim.y = v.y;
+      if (final) {
+        // (18-11-2026, usuario) el SMASH del HURACÁN va al MEDIO de las 2 máquinas del centro: las destruye y empuja las de las esquinas (blast)
+        this.aim.y = (M_Y[1] + M_Y[2]) / 2;
+        rb.setKind('normal', true);
+        rb.setPower(true);
+        h.fire.setElement('hurricane');
+        h.setBall(true, true);
+        // (18-11-2026) impacto del smash en la raqueta, más grande (infernoImpactFx ya trae hurricaneBurst: no se repite, rendimiento)
+        infernoImpactFx(h.st, p.sx, p.sy, p.s * 1.4, 'hurricane');
+        infernoSound.impact(h.st, 'hurricane');
+        this.tornadoSndStop(true); // el tornado termina con el golpe final
+        h.flash(80, 0xfff6b0);
+        h.shake(8);
+      } else {
+        // el golpe CARGADO al máximo con viento potente: sale una ráfaga hacia el rival
+        const to = project(this.aim.x, this.aim.y, HIT_Z);
+        const len = Math.hypot(to.sx - p.sx, to.sy - p.sy) || 1;
+        rb.setPower(false);
+        rb.setKind('normal');
+        rb.setMaxCharge(true);
+        h.setBall(true, false);
+        windShotFx(h.st, p.sx, p.sy, p.s, (to.sx - p.sx) / len, (to.sy - p.sy) / len);
+        h.snd('golpe-fuerte', 0.9);
+        h.shake(6);
+        // (18-11-2026, usuario) 0,3 s después del golpe se va corriendo a la T de su campo: desde ahí salta a por el globo
+        h.scene.time.delayedCall(H_T.toT * 1000, () => {
+          if (!this.hur || this.phase === 'idle') return;
+          const pa = h.pa;
+          h.pl.setMoving(true, Math.sign(T_POS.y - pa.y) || 1);
+          h.scene.tweens.add({
+            targets: pa,
+            x: T_POS.x,
+            y: T_POS.y,
+            duration: H_T.run * 1000,
+            ease: 'Sine.easeInOut',
+            onComplete: () => {
+              h.pl.setMoving(false, 0);
+              h.pl.facing = 1;
+            },
+          });
+        });
+      }
+    } else if (final) {
       // la BOLA DE ENERGÍA, al hueco entre las dos del centro
       this.aim.y = (M_Y[1] + M_Y[2]) / 2;
       rb.setKind('normal', true);
@@ -467,10 +601,22 @@ export class EnergyDemo {
 
   private stepOut(dt: number) {
     this.t += dt;
-    const final = TARGET[this.round] === -1;
+    const final = this.hur ? this.hStage === 1 : TARGET[this.round] === -1;
     const dur = final ? T.final : T.out;
     this.placeBall(arcAt(this.from, this.aim, this.t / dur, final ? 30 : 40, this.pos), this.from, this.aim, dur);
     if (this.t < dur) return;
+    if (this.hur) {
+      if (final) {
+        this.blast(); // (18-11-2026) las 2 del centro destruidas, las de las esquinas empujadas hacia fuera
+        this.round++;
+        this.t = 0;
+        this.phase = 'end';
+      } else {
+        this.hurKnock();
+        this.startLift();
+      }
+      return;
+    }
     if (final) {
       this.blast();
       this.round++;
@@ -487,6 +633,172 @@ export class EnergyDemo {
     this.h.rb.setKind('normal');
     this.h.rb.setMaxCharge(false);
     this.comeBack(T.backA, T.backB);
+  }
+
+  // ------------------------------------------------------------------ HURACÁN
+  /** El rival sale despedido al FONDO (contra la pared), choca y queda tendido en el suelo. */
+  private hurKnock() {
+    const h = this.h;
+    const m = this.m[H_VIC];
+    const back = project(h.machineX + H_BACK_X, m.y);
+    const bk = back.s * VIEW.CHAR_K;
+    m.ko = true;
+    m.koT = 0;
+    m.smokeT = 0;
+    m.dir = m.y < LAT_C ? -1 : 1;
+    const tw = h.scene.tweens;
+    tw.killTweensOf(m.c);
+    tw.add({ targets: m.c, x: back.sx, y: back.sy, scale: bk, duration: H_T.knockMs, ease: 'Quad.easeOut' });
+    tw.chain({
+      targets: m.c,
+      tweens: [
+        { angle: -m.dir * 20, duration: H_T.knockMs * 0.6, ease: 'Quad.easeOut' },
+        { angle: m.dir * 84, duration: 480, ease: 'Bounce.easeOut' },
+      ],
+    });
+    tw.add({ targets: m.shade, alpha: SHADE, duration: 360, delay: 200 });
+    h.scene.time.delayedCall(H_T.knockMs, () => {
+      if (!this.hur || this.phase === 'idle') return;
+      wallKnockFx(h.st, back.sx, back.sy, back.s * 1.3); // (18-11-2026, usuario) sin golpe-fuerte: suena solo en el 1.er golpe
+      h.shake(10);
+      this.puffs(m, 4, 0.8);
+    });
+  }
+
+  /**
+   * (18-11-2026, usuario) Al pegarle a la máquina, la pelota REBOTA en GLOBO hacia el personaje (el globo del círculo del smash, sin dibujar
+   * el círculo). El personaje se queda QUIETO esperándolo (sin pose de carga ni sonido de cargando); el salto con el tornado lo hace stepLift.
+   */
+  /** Sonido del tornado: dura hasta el golpe final del smash (con un cierre rápido), o hasta que se corta la demo. */
+  private tSnd: Phaser.Sound.BaseSound | null = null;
+  private tornadoSndStart() {
+    this.tornadoSndStop(false);
+    try {
+      if (!this.h.scene.cache.audio.exists('tornado-1')) return;
+      this.tSnd = this.h.scene.sound.add('tornado-1', { volume: 0.8 });
+      this.tSnd.play();
+    } catch {
+      this.tSnd = null;
+    }
+  }
+  private tornadoSndStop(fade: boolean) {
+    const s = this.tSnd;
+    this.tSnd = null;
+    if (!s) return;
+    if (fade) this.h.scene.tweens.add({ targets: s, volume: 0, duration: 120, onComplete: () => { s.stop(); s.destroy(); } });
+    else {
+      s.stop();
+      s.destroy();
+    }
+  }
+
+  private startLift() {
+    this.hStage = 1;
+    this.from.x = this.aim.x; // sale de la máquina en el momento del golpe
+    this.from.y = this.aim.y;
+    this.from.z = this.aim.z;
+    this.racket.z = 34 + H_LIFT + H_SMASH_Z; // contacto del smash: por encima de la cabeza, en lo alto del salto
+    // el globo cae en la T (donde va a estar el personaje al saltar)
+    this.racket.x = T_POS.x + 22;
+    this.racket.y = T_POS.y + 12;
+    this.h.stopCharge();
+    this.h.rb.setMaxCharge(false);
+    this.h.rb.setKind('lob');
+    this.h.setBall(true, false);
+    this.h.pl.setCharging(false);
+    this.h.pl.setReady(false);
+    this.phase = 'lift';
+    this.t = 0;
+    this.swung = false;
+    this.jumped = false;
+    this.broke = false;
+    this.hAir = false;
+    this.tornU = -1;
+    this.sphereA = 0;
+  }
+
+  /** Dibujo del tornado y de la esfera (cada fotograma mientras el personaje está en el aire). */
+  private drawAir(dt: number) {
+    const h = this.h;
+    const pa = h.pa;
+    const feet = project(pa.x, pa.y);
+    const lifted = project(pa.x, pa.y, pa.lift ?? 0).sy;
+    const f = h.focus();
+    if (this.tornU >= 0 && this.tornImg.ok) {
+      // (18-11-2026) la hoja del tornado: alto fijo (del suelo a por encima del personaje en lo alto del salto: lo cubre completo)
+      const top = project(pa.x, pa.y, H_LIFT + 170).sy;
+      this.tornImg.draw(this.tornU * TORNADO_ART.frames, feet.sx, feet.sy, top, f.depth + 0.6);
+      this.tornado.hide();
+    } else if (this.tornU >= 0) {
+      const top = project(pa.x, pa.y, (pa.lift ?? 0) + 170).sy;
+      this.tornado.draw(dt, this.tornU, feet.sx, feet.sy, top, feet.s * VIEW.CHAR_K, f.depth);
+    } else {
+      this.tornado.hide();
+      this.tornImg.hide();
+    }
+    const hh = f.hh ?? 60;
+    // (18-11-2026, usuario) el círculo envuelve TODO el cuerpo (con la raqueta arriba de la pose del smash): más grande y algo más arriba
+    this.sphere.draw(dt, f.x, f.y - (feet.sy - lifted) - hh * SPHERE_UP, hh * SPHERE_R, f.depth, this.sphereA, this.sphereA);
+  }
+
+  /** (18-11-2026) La esfera amarilla se desarma (estallido de luz) en donde está y deja ver al personaje. */
+  private breakSphere() {
+    const h = this.h;
+    const pa = h.pa;
+    const feet = project(pa.x, pa.y);
+    const lifted = project(pa.x, pa.y, pa.lift ?? 0).sy;
+    const f = h.focus();
+    const hh = f.hh ?? 60;
+    sphereBreakFx(h.st, f.x, f.y - (feet.sy - lifted) - hh * SPHERE_UP, hh * SPHERE_R, f.depth);
+    this.sphereA = 0;
+    h.pl.setAlpha(1);
+  }
+
+  /**
+   * (18-11-2026, usuario) El GLOBO vuela alto hacia el personaje (H_T.fly). Antes de que llegue, el personaje SALTA con el clip del smash
+   * (Character.remateJump: se agacha, despega y se queda congelado con los pies atrás) y al despegar EMPIEZA EL TORNADO que lo envuelve; arriba
+   * el tornado se desarma, sale en la esfera y espera en el aire (H_T.hover) con esa pose hasta que llega la pelota: el SMASH sale de ahí.
+   */
+  private stepLift(dt: number) {
+    this.t += dt;
+    const t = this.t;
+    const hov = this.racket;
+    const jumpAt = H_T.fly - H_T.tornado - H_T.hover;
+    this.placeBall(arcAt(this.from, hov, t / H_T.fly, H_LOB_ARC, this.pos), this.from, hov, H_T.fly);
+    if (t >= jumpAt) {
+      if (!this.jumped) {
+        this.jumped = true;
+        this.hAir = true;
+        this.h.pl.facing = 1;
+        if (!this.h.pl.remateJump()) this.h.pl.setCharging(true);
+        this.tornadoSndStart(); // empieza el tornado (el mismo del partido): se corta en el golpe final
+      }
+      const j = t - jumpAt;
+      const e = Math.min(1, j / H_T.lift);
+      this.h.pa.lift = H_LIFT * e * e * (3 - 2 * e);
+      // (18-11-2026, usuario) el TORNADO (hoja de 8 cuadros) sale al saltar: círculo en el suelo, sube cubriendo al personaje y se desarma.
+      // Desde el cuadro 5 el personaje ya es el CÍRCULO AMARILLO dentro; al terminar el tornado el círculo se desarma y se le ve H_T.hover (0,5 s)
+      // con la pose del smash antes de golpear
+      this.tornU = j < H_T.tornado ? j / H_T.tornado : -1;
+      const coverAt = H_T.tornado * (4 / TORNADO_ART.frames);
+      if (j < H_T.tornado) {
+        this.sphereA = j < coverAt ? 0 : Math.min(1, (j - coverAt) / 0.08);
+        // dentro del tornado ya no se le ve (lo tapa); desde el cuadro 5 es la esfera
+        this.h.pl.setAlpha(j >= coverAt - 0.12 ? 0 : 1);
+      } else if (!this.broke) {
+        this.broke = true;
+        this.breakSphere();
+      }
+    }
+    if (!this.swung && t >= H_T.fly - SWING_LEAD) {
+      this.swung = true;
+      this.h.pl.facing = 1;
+      this.h.pl.swing(true, true, true, false); // el SMASH desde la pose congelada del salto
+    }
+    if (t >= H_T.fly) {
+      this.placeBall(hov);
+      this.strike();
+    }
   }
 
   /** Pelota con guion: posición y su velocidad (para su dibujo). */
@@ -508,8 +820,7 @@ export class EnergyDemo {
     shockFx(h.st, m.sx, by, m.ks * 1.6);
     powerImpactFx(h.st, 'smash', m.sx, by, m.ks * 1.6, 'lightning', m.sy);
     h.flash(90, ENERGY_COL.light);
-    h.shake(6);
-    h.snd('golpe-fuerte', 0.9);
+    h.shake(6); // (18-11-2026, usuario) sin golpe-fuerte cuando la máquina devuelve la pelota
     m.ko = true;
     m.koT = 0;
     m.smokeT = 0;
@@ -542,11 +853,21 @@ export class EnergyDemo {
     h.setBall(false, false);
     h.rb.setPower(false);
     h.fire.clear();
-    // (17-11-2026) el impacto DESTRUCTIVO de la BOLA DE ENERGÍA (estrella, columna, ondas y grietas en el suelo, esquirlas, brasas, trozos)
-    this.impact.play(cx, ey, cy, s);
-    h.flash(260, 0xf0fdff);
+    if (this.hur) {
+      // (18-11-2026, usuario) el SMASH del HURACÁN: el impacto de su ULTI (oro y viento), el choque de viento en el suelo y ráfagas
+      infernoImpactFx(h.st, cx, ey, s * 1.6, 'hurricane'); // (trae hurricaneBurst: no se repite)
+      wallKnockFx(h.st, cx, cy, s * 1.4);
+      h.flash(200, 0xfff6b0);
+      this.sphere.hide();
+      this.hAir = false;
+      h.scene.tweens.add({ targets: h.pa, lift: 0, duration: 380, ease: 'Quad.easeIn' });
+    } else {
+      // (17-11-2026) el impacto DESTRUCTIVO de la BOLA DE ENERGÍA (estrella, columna, ondas y grietas en el suelo, esquirlas, brasas, trozos)
+      this.impact.play(cx, ey, cy, s);
+      h.flash(260, 0xf0fdff);
+    }
     h.shake(20);
-    h.snd('golpe-fuerte', 1);
+    if (!this.hur) h.snd('golpe-fuerte', 1); // HURACÁN: ya suena ulti-legendaria-1 en el smash
     this.scorch.setPosition(cx, cy).setVisible(true).setAlpha(0.4);
     const tw = h.scene.tweens;
     for (const m of [A, B]) {
@@ -564,7 +885,7 @@ export class EnergyDemo {
       const k0 = m.c.scaleX;
       const a0 = m.c.angle;
       const v = { u: 0 };
-      tw.add({
+      this.fxTw.push(tw.add({
         targets: v,
         u: 1,
         duration: 850,
@@ -577,7 +898,7 @@ export class EnergyDemo {
             .setAngle(a0 + dir * 400 * u)
             .setAlpha(u < 0.55 ? 1 : 1 - (u - 0.55) / 0.45);
         },
-      });
+      }));
       this.puffs(m, 4, 1);
     }
     // (17-11-2026, usuario) la onda llega hasta las máquinas de las ESQUINAS (ya noqueadas): la izquierda se aleja un poco a la izquierda
@@ -587,7 +908,26 @@ export class EnergyDemo {
       const x0 = m.c.x;
       const a0 = m.c.angle;
       const push = { u: 0 };
-      tw.add({
+      if (this.hur) {
+        // (18-11-2026, usuario) HURACÁN: las empuja MÁS y casi se voltean (se inclinan ~60° hacia fuera) pero vuelven a caer de pie,
+        // con un par de balanceos que se apagan
+        this.fxTw.push(tw.add({
+          targets: push,
+          u: 1,
+          delay: 70,
+          duration: 1100,
+          ease: 'Linear',
+          onUpdate: () => {
+            if (!m.c.scene) return;
+            const u = push.u;
+            const px = 1 - Math.pow(1 - Math.min(1, u / 0.55), 3); // deslizamiento (Cubic.easeOut en la 1.ª mitad)
+            const up = 0.3; // hasta aquí se inclina; después vuelve con balanceo amortiguado
+            const tilt = u < up ? Math.sin((u / up) * Math.PI * 0.5) * 60 : 60 * Math.exp(-(u - up) * 5) * Math.cos((u - up) * 11);
+            m.c.setX(x0 + dir * 120 * ks * px).setAngle(a0 + dir * tilt);
+          },
+        }));
+      } else
+      this.fxTw.push(tw.add({
         targets: push,
         u: 1,
         delay: 70,
@@ -598,7 +938,7 @@ export class EnergyDemo {
           const u = push.u;
           m.c.setX(x0 + dir * 55 * ks * u).setAngle(a0 + dir * 10 * Math.sin(u * Math.PI) * (1 - u * 0.5));
         },
-      });
+      }));
       this.puffs(m, 2, 1);
     }
     // el aura y la penumbra se van (powerDemo corta tras la pausa)

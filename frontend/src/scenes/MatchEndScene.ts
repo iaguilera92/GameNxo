@@ -15,6 +15,9 @@ import { WHEEL } from '../domain/wheelConfig';
 import { commit, getPlayer } from '../domain/playerStore';
 import { awardMastery } from '../domain/operations';
 import { masteryLevel, passiveOf } from '../domain/characterPassives';
+
+/** (18-11-2026, usuario) fila "+1 MAESTRÍA" en el resultado: oculta (la maestría se ve en PERSONALIZAR) */
+const SHOW_MASTERY_ROW = false as boolean;
 import { drawPassiveIcon, skinName } from '../ui/passiveInfo';
 import { myLeague, myPosition, rankedState, settleCurrentRanked } from '../logic/Ranked';
 import { matchStakes } from '../domain/rankedConfig';
@@ -260,7 +263,8 @@ export class MatchEndScene extends Phaser.Scene {
       if (mstore._mastery) this.registry.set('menu.masteryGain', mstore._mastery);
     }
     this.mastery = mstore._mastery ?? null;
-    this.mrow = this.mastery ? 44 : 0;
+    // (18-11-2026, usuario) la fila de MAESTRÍA ya no se muestra aquí (se ve en PERSONALIZAR); el punto se sigue ganando
+    this.mrow = SHOW_MASTERY_ROW && this.mastery ? 44 : 0;
 
     // oscurecido ligero (el partido sigue visible)
     const dim = this.add.rectangle(0, 0, W, H, 0x02060f, 0).setOrigin(0);
@@ -420,7 +424,7 @@ export class MatchEndScene extends Phaser.Scene {
 
     // --- duelo de apuestas: Ranked (con la apuesta real) o, en desarrollo, el partido online (de prueba)
     const duel = this.duel();
-    if (this.mastery) this.masteryRow(c, w, sepY + 16 + CARD_H + 6, this.mastery);
+    if (SHOW_MASTERY_ROW && this.mastery) this.masteryRow(c, w, sepY + 16 + CARD_H + 6, this.mastery);
     if (duel) this.rankedDuel(c, w, sepY + 16 + CARD_H + 20 + this.mrow, duel);
     if (d.ranked?.promotedTo) this.levelUp(W / 2, top - 26, 0, '¡ASCENSO DE LIGA!');
 

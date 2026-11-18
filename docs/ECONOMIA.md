@@ -109,7 +109,10 @@ Techo semanal sin pagar: ~165 (30 del diario con anuncio + 125 de Challenger Top
 | ULTI Luz (17-11-2026) | 80 | $2.490 | 1 |
 | ULTI Ultra Efecto (17-11-2026; épica, solo dinero real) | 100 | $2.790 | 1 |
 | ULTI Ráfaga (17-11-2026; épica, solo dinero real) | 100 | $2.790 | 1 |
-| ULTI Bola de Energía (17-11-2026; LEGENDARIA, la primera ULTI legendaria; solo dinero real; no se puede VER en la Tienda) | 130 | $2.990 | 1 |
+| ULTI Bola de Energía (17-11-2026; LEGENDARIA, la primera ULTI legendaria; solo dinero real) | 3500 | $59.990 | 1 |
+| ULTI HURACÁN (`inferno:hurricane`, 17-11-2026; LEGENDARIA; solo dinero real) | 3500 | $59.990 | 1 |
+| DEFENSIVO Relámpago (18-11-2026; ÉPICO, el primero; solo dinero real) | 85 | $2.490 | 1 |
+| **Todas las legendarias cuestan $59.990** (`LEGENDARY_PRICE` en `shopCatalog.ts`): Bola de Energía, HURACÁN, Estrellas, Arcoíris y Zona Sombra. | | | |
 | ESPECIAL (SMASH) Hielo | 45 | $1.390 | 1 |
 | ESPECIAL Viento | 50 | $1.490 | 1 |
 | ESPECIAL Rayo | 55 | $1.990 | 1 |

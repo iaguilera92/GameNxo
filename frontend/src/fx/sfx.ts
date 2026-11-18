@@ -10,14 +10,21 @@ import Phaser from 'phaser';
  *  dash-1 / dash-electirco-1     DEFENSIVO DASH (eléctrico si su ESPECIAL es el de rayo)
  *  dash-shadow / -jump / -destello   SOMBRA / SUPERSALTO / DESTELLO
  *  ball-recibir-ulti-ataque      el pelotazo de la ULTI de viento / tulipán le llega al personaje y la raqueta sale volando
- *  ball-ulti-pared               la bola de la ULTI choca con la pared
+ *  ball-ulti-pared               (sin uso desde 18-11-2026)
+ *  ball-impacto-pared            la bola de la ULTI o del ESPECIAL choca con la pared
  *  recoger-raqueta               recoger la raqueta del suelo
  *  equipar                       PowerDialog (Personalizar): botón EQUIPAR
  *  recolectar-monedas            fin de partida (MatchEndScene): las monedas del perdedor pasan al ganador (3 s)
  *  impacto-ulti-fuego / -rayo / -hielo   lo mismo con la ULTI de fuego / rayo / hielo (ImpactFx.powerImpactFx)
  *  ulti-fuego / -rayo / -hielo   golpe de la ULTI al lanzarla (InfernoFx.infernoSound.impact); viento y tulipán: inferno.mp3
+ *  ulti-epica-1                  lo mismo con la ULTI ULTRA EFECTO
+ *  ulti-legendaria-1             smash final de la ULTI HURACÁN
+ *  ulti-legendaria-energia       golpe final de la ULTI BOLA DE ENERGÍA
+ *  ulti-sombra-luz               golpe de la ULTI de SOMBRA y de LUZ
+ *  especial-sombra-luz           golpe del ESPECIAL de SOMBRA y de LUZ
  *  stun                          el personaje queda aturdido por el ESPECIAL o la ULTI (ImpactFx.powerImpactFx)
  *  recolectar-exp                Menú al volver de la partida (MenuScene.playXpGain): 3 oleadas de EXP a nivel y pase
+ *  power-up                      Menú: sube el NIVEL de la cuenta (card del perfil, MenuScene.animateTo) y la MAESTRÍA llega al personaje (heroLevelUp)
  * Los .m4a y el .wav se cargan igual que los mp3 (Phaser elige por la extensión).
  */
 export const SFX_FILES: Record<string, string> = {
@@ -25,6 +32,7 @@ export const SFX_FILES: Record<string, string> = {
   'ball-saque-2': 'mp3/ball-saque-2.m4a',
   'ball-recibir-ulti-ataque': 'mp3/ball-recibir-ulti-ataque.mp3',
   'ball-ulti-pared': 'mp3/ball-ulti-pared.m4a',
+  'ball-impacto-pared': 'mp3/ball-impacto-pared.m4a', // (18-11-2026) ULTI o ESPECIAL chocan con la pared (MatchScene.checkBackWall)
   electricidad: 'mp3/electricidad.wav',
   'dash-1': 'mp3/dash-1.mp3',
   'dash-electirco-1': 'mp3/dash-electirco-1.m4a',
@@ -35,6 +43,8 @@ export const SFX_FILES: Record<string, string> = {
   equipar: 'mp3/equipar.m4a',
   'recolectar-monedas': 'mp3/recolectar-monedas.m4a',
   'recolectar-exp': 'mp3/recolectar-exp.m4a',
+  'power-up': 'mp3/power-up.m4a',
+  'tornado-1': 'mp3/tornado-1.m4a',
   'impacto-ulti-fuego': 'mp3/impacto-ulti-fuego.m4a',
   'ulti-rayo': 'mp3/ulti-rayo.m4a',
   'ulti-fuego': 'mp3/ulti-fuego.m4a',
@@ -42,6 +52,11 @@ export const SFX_FILES: Record<string, string> = {
   'ulti-hielo': 'mp3/ulti-hielo.m4a',
   'impacto-ulti-hielo': 'mp3/impacto-ulti-hielo.m4a',
   'impacto-ulti-rayo': 'mp3/impacto-ulti-rayo.m4a',
+  'ulti-epica-1': 'mp3/ulti-epica-1.m4a', // (18-11-2026) golpe de la ULTI ULTRA EFECTO (InfernoFx.infernoSound.impact)
+  'especial-sombra-luz': 'mp3/especial-sombra-luz.m4a', // (18-11-2026) golpe del ESPECIAL de SOMBRA y de LUZ (MatchScene.hitFx, powerDemo)
+  'ulti-sombra-luz': 'mp3/ulti-sombra-luz.m4a', // (18-11-2026) golpe de la ULTI de SOMBRA y de LUZ (InfernoFx.infernoSound.impact)
+  'ulti-legendaria-1': 'mp3/ulti-legendaria-1.m4a',
+  'ulti-legendaria-energia': 'mp3/ulti-legendaria-energia.m4a', // (18-11-2026) golpe final de la ULTI BOLA DE ENERGÍA (antes inferno.mp3) // (18-11-2026) smash final de la ULTI HURACÁN (InfernoFx.infernoSound.impact)
 };
 
 export function queueSfx(load: Phaser.Loader.LoaderPlugin) {

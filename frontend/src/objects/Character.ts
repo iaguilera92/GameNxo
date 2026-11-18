@@ -509,6 +509,16 @@ export class Character extends Phaser.GameObjects.Container {
     return this.nxo?.remateHold() ?? false;
   }
 
+  /** (18-11-2026) Duelo en la red: congela la estirada en el cuadro del contacto (ver NxoActor.holdDiveReach). */
+  holdDiveReach(): boolean {
+    return this.nxo?.holdDiveReach() ?? false;
+  }
+
+  /** (18-11-2026) Salto del remate: clip del smash desde el inicio, congelado en la pose de pies atrás (ver NxoActor.remateJump). */
+  remateJump(): boolean {
+    return this.nxo?.remateJump() ?? false;
+  }
+
   impactStun(kind: 'smash' | 'inferno', ms: number, throwRacket = true): boolean {
     return this.nxo?.impactStun(kind, ms, throwRacket) ?? false;
   }

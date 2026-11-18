@@ -35,6 +35,7 @@ const GLOW: Record<SmashPower, [number, number]> = {
   shadow: [0x9b4dff, 0xd0a8ff],
   light: [0xffd86a, 0xffffff],
   comet: [0x2f6bff, 0xcfe2ff], // (17-11-2026) COMETA
+  dragon: [0xd6201e, 0xffd23f], // (18-11-2026) DRAGÓN
 };
 
 const R = Phaser.Math.FloatBetween;
@@ -96,13 +97,14 @@ export class SmashElementFx {
       const S = strong ? 1.25 : 1;
       this.dark.setDepth(ground.sy + 2.9);
       this.drawGroundGlow(ground.sx, ground.sy, k * S, ball.z);
-      if (this.el !== 'fire') this.drawComet(k * S);
+      if (this.el !== 'fire' && this.el !== 'dragon') this.drawComet(k * S);
       if (this.el === 'ice') this.drawIce(bx, by, k * S, dx, dy, dt);
       else if (this.el === 'wind') this.drawWind(bx, by, k * S, dx, dy, dt);
       else if (this.el === 'shadow') this.drawShadow(bx, by, k * S, dx, dy, dt);
       else if (this.el === 'light') this.drawLight(bx, by, k * S, dx, dy, dt);
       else if (this.el === 'fire') this.drawFire(bx, by, k * S, dx, dy, dt, strong);
       else if (this.el === 'comet') this.drawMeteor(bx, by, k * S, dx, dy, dt, strong);
+      else if (this.el === 'dragon') this.drawDragon(bx, by, k * S, dx, dy, dt, strong);
       else this.drawLightning(bx, by, k * S, dt);
     } else {
       this.hist.length = 0;
@@ -125,6 +127,7 @@ export class SmashElementFx {
       else if (this.el === 'fire') p.vy -= 70 * dt; // las brasas suben
       else if (this.el === 'shadow') p.vy -= 30 * dt; // el humo y las esquirlas suben un poco
       else if (this.el === 'comet') p.vy += 40 * dt; // las estrellas de la cola caen despacio
+      else if (this.el === 'dragon') p.vy -= 60 * dt; // las brasas del dragón suben
       const a = 1 - f;
       this.drawPart(p, a);
     }
@@ -550,6 +553,80 @@ export class SmashElementFx {
       const u = R(0.2, 0.9);
       const off = R(-12, 12) * k;
       this.add({ x: x + ca * 95 * k * u - sa * off, y: y + sa * 95 * k * u + ca * off, vx: ca * R(10, 40) + R(-20, 20), vy: sa * R(10, 40) + R(-10, 20), life: R(0.45, 0.8), rot: R(0, 6.28), vr: R(-6, 6), size: R(3.5, 6.5) * k, col: Phaser.Utils.Array.GetRandom([0xffffff, 0xeaf4ff, 0xcfe2ff, 0x9cc4ff]) });
+    }
+  }
+
+  // ------------------------------------------------------------------ DRAGÓN
+  /**
+   * (18-11-2026) DRAGÓN (ESPECIAL LEGENDARIO): la pelota es la CABEZA de un dragón de fuego (hocico hacia donde vuela, cuernos dorados, ojo que
+   * brilla, fauces con fuego) y detrás SERPENTEA su CUERPO (sigue las posiciones recientes de la pelota, ondulando) con escamas rojas, vientre
+   * dorado y púas en el lomo; suelta brasas. Lo oscuro en la capa normal (`dark`) y el fuego en la aditiva. Mismo Graphics (sin tweens).
+   */
+  private drawDragon(x: number, y: number, k: number, dx: number, dy: number, dt: number, strong: boolean) {
+    const g = this.g;
+    const d = this.dark;
+    const pts = this.hist;
+    const t = this.t;
+    // CUERPO: cinta que se afina hacia la cola, ondulando a los lados de la trayectoria
+    if (pts.length >= 4) {
+      const n = pts.length;
+      const body: { x: number; y: number; nx: number; ny: number; w: number }[] = [];
+      for (let i = 0; i < n; i++) {
+        const a = pts[Math.max(0, i - 1)];
+        const b = pts[Math.min(n - 1, i + 1)];
+        let nx = -(b.y - a.y);
+        let ny = b.x - a.x;
+        const l = Math.hypot(nx, ny) || 1;
+        nx /= l;
+        ny /= l;
+        const q = i / (n - 1);
+        const wave = Math.sin(q * Math.PI * 2.4 - t * 14) * 9 * k * q;
+        body.push({ x: pts[i].x + nx * wave, y: pts[i].y + ny * wave, nx, ny, w: (strong ? 12 : 10) * k * (1 - q) ** 0.8 + 1.5 * k });
+      }
+      const band = (scale: number, off = 0) => [
+        ...body.map((p) => ({ x: p.x + p.nx * (p.w * scale + off * p.w), y: p.y + p.ny * (p.w * scale + off * p.w) })),
+        ...body.map((p) => ({ x: p.x - p.nx * (p.w * scale - off * p.w), y: p.y - p.ny * (p.w * scale - off * p.w) })).reverse(),
+      ];
+      d.fillStyle(0x2a0404, 0.95).fillPoints(band(1.15), true);
+      d.fillStyle(0xb3161a, 1).fillPoints(band(1), true);
+      g.fillStyle(0xff7a1a, 0.55).fillPoints(band(0.5, -0.35), true);
+      g.fillStyle(0xffd23f, 0.6).fillPoints(band(0.2, -0.55), true);
+      // púas doradas en el lomo
+      for (let i = 2; i < n - 1; i += 2) {
+        const p = body[i];
+        const tx = body[i + 1].x - body[i - 1].x;
+        const ty = body[i + 1].y - body[i - 1].y;
+        const tl = Math.hypot(tx, ty) || 1;
+        const sp = p.w * 1.1 + 2 * k;
+        const bx = p.x + p.nx * p.w;
+        const by = p.y + p.ny * p.w;
+        d.fillStyle(0xffc42e, 1).fillTriangle(bx - (tx / tl) * sp * 0.45, by - (ty / tl) * sp * 0.45, bx + (tx / tl) * sp * 0.45, by + (ty / tl) * sp * 0.45, bx + p.nx * sp, by + p.ny * sp);
+      }
+    }
+    // CABEZA: hocico hacia donde vuela
+    const hs = (strong ? 17 : 14) * k;
+    const P = (fx: number, fy: number) => ({ x: x + dx * fx * hs - dy * fy * hs, y: y + dy * fx * hs + dx * fy * hs });
+    const jaw = 0.25 + 0.15 * Math.sin(t * 18);
+    g.fillStyle(0xff5a12, 0.3).fillCircle(x, y, hs * 1.7);
+    d.fillStyle(0xffe08a, 1).fillPoints([P(-0.3, -0.35), P(-1.2, -0.95), P(-0.55, -0.15)], true); // cuernos
+    d.fillStyle(0xffe08a, 1).fillPoints([P(-0.3, 0.35), P(-1.2, 0.95), P(-0.55, 0.15)], true);
+    d.fillStyle(0x2a0404, 1).fillPoints([P(-0.7, -0.5), P(0.4, -0.45), P(1.35, -0.12 - jaw * 0.3), P(1.0, 0), P(-0.6, 0.1)], true);
+    d.fillStyle(0xc81c1c, 1).fillPoints([P(-0.62, -0.42), P(0.38, -0.37), P(1.22, -0.12 - jaw * 0.3), P(0.9, -0.03), P(-0.52, 0.04)], true);
+    d.fillStyle(0x2a0404, 1).fillPoints([P(-0.6, 0.12), P(0.8, 0.12 + jaw * 0.5), P(1.15, 0.25 + jaw * 0.7), P(0.3, 0.45), P(-0.65, 0.42)], true);
+    d.fillStyle(0xa81616, 1).fillPoints([P(-0.52, 0.18), P(0.76, 0.16 + jaw * 0.5), P(1.05, 0.26 + jaw * 0.65), P(0.28, 0.38), P(-0.56, 0.36)], true);
+    const eye = P(-0.05, -0.22);
+    g.fillStyle(0xffd23f, 0.6).fillCircle(eye.x, eye.y, hs * 0.22);
+    g.fillStyle(0xffffff, 1).fillCircle(eye.x, eye.y, hs * 0.1);
+    // fuego en las fauces (la pelota brilla dentro)
+    const m = P(1.05, 0.08 + jaw * 0.3);
+    g.fillStyle(0xff7a1a, 0.7).fillCircle(m.x, m.y, hs * 0.38);
+    g.fillStyle(0xfff1b8, 0.95).fillCircle(m.x, m.y, hs * 0.18);
+    // brasas que se desprenden
+    this.emit -= dt;
+    while (this.emit <= 0) {
+      this.emit += strong ? 0.025 : 0.04;
+      const b = pts.length ? pts[Math.floor(R(0, Math.min(pts.length, 10)))] : { x, y };
+      this.add({ x: b.x + R(-8, 8) * k, y: b.y + R(-8, 8) * k, vx: R(-25, 25), vy: -R(20, 60), life: R(0.4, 0.75), rot: 0, vr: 0, size: R(2.5, 5) * k, col: Phaser.Utils.Array.GetRandom([0xfff1a0, 0xffd23f, 0xff7a1a, 0xd6201e]) });
     }
   }
 

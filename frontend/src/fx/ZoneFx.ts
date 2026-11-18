@@ -24,9 +24,11 @@ const TRAIL_STEP = 4.5;
  *   mai back:  bajo la visera (y≈68 de 225), pies 221, escala 150/190      → 121
  * Si se cambia una hoja de idle, volver a medir aquí.
  */
+// (18-11-2026) DE FRENTE remedido en el idle HD (nxo-front-v2 / mai-front-v2, alto de pie 150, sin escala): nxo ojos en y≈54, pies 186 → 132;
+// mai ojos en y≈43, pies 153 → 110 (con 96 el rayo le salía de la boca)
 export const ZONE_EYES: Record<string, { front: { up: number; dx: number }; back: { up: number; dx: number } }> = {
-  nxo: { front: { up: 138, dx: 9 }, back: { up: 117, dx: 10 } },
-  mai: { front: { up: 96, dx: 9 }, back: { up: 121, dx: 10 } },
+  nxo: { front: { up: 132, dx: 9 }, back: { up: 117, dx: 10 } },
+  mai: { front: { up: 110, dx: 7 }, back: { up: 121, dx: 10 } },
 };
 /** ojos del personaje `skin` en la vista `view` (los desconocidos, como NXO) */
 export function zoneEyes(skin: string | undefined, view: 'front' | 'back') {

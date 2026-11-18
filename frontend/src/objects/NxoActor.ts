@@ -36,6 +36,8 @@ const EXTRA = nxoExtra as { cell: { w: number; h: number }; origin: { x: number;
 type ExtraCfg = Omit<typeof EXTRA, 'animations'> & { animations: Partial<Record<ExtraAnim, AnimInfo>> };
 const extrasOf = (p: { extra: ExtraCfg }) => Object.entries(p.extra.animations) as [ExtraAnim, AnimInfo][];
 const extraKey = (a: ExtraAnim, pk = 'nxo') => `${pk}-x-${a}`;
+/** (18-11-2026) cuadro de la ESTIRADA en que la raqueta llega a la pelota (en el aire, con la estela): 4.º de 8 */
+const DIVE_REACH = 3;
 
 /** Raqueta suelta (sale volando al recibir el INFERNO): imagen generada por cÃ³digo. */
 export const LOOSE_RACKET = 'nxo-loose-racket';
@@ -113,10 +115,13 @@ type AnimInfo = { file: string; frames: number; fps: number; loop: boolean; impa
  * ancho de una estirada. Aquí se guarda el ancla de cada textura cargada con celda propia.
  */
 const ORIGIN_OF = new Map<string, { x: number; y: number }>();
+/** (18-11-2026) retoque de tamaño por animación (`scale` en su entrada del JSON): p. ej. el aturdido se dibujó más chico que el reposo */
+const SCALE_OF = new Map<string, number>();
 /** carga una tira con su celda (la propia de la animación o la del grupo) y recuerda su ancla propia */
 function loadStrip(load: Phaser.Loader.LoaderPlugin, key: string, url: string, info: AnimInfo, group: { cell: { w: number; h: number } }) {
   const c = info.cell ?? group.cell;
   if (info.origin) ORIGIN_OF.set(key, info.origin);
+  if (info.scale && info.scale !== 1) SCALE_OF.set(key, info.scale);
   load.spritesheet(key, url, { frameWidth: c.w, frameHeight: c.h });
 }
 const A = (id: SpriteCharId) => CFGS[id].animations as Record<NxoAnim, AnimInfo>;
@@ -588,7 +593,7 @@ export class NxoActor {
     const o = ORIGIN_OF.get(key) ?? g.origin; // celda propia de la animación (si la trae)
     this.sprite.setOrigin(o.x, o.y);
     // retoque por animaciÃ³n (p. ej. smash potenciado dibujado mÃ¡s chico: `scale` en su JSON)
-    const k = key === this.sk('smash-power') ? (this.P.special.animations['smash-power'].scale ?? 1) : 1;
+    const k = key === this.sk('smash-power') ? (this.P.special.animations['smash-power'].scale ?? 1) : (SCALE_OF.get(key) ?? 1);
     this.sprite.setScale((CHAR_UNITS_H / g.standHeight) * k);
   }
   /** reproduce un clip ajustando el ancla (las hojas tienen celdas distintas) */
@@ -857,6 +862,33 @@ export class NxoActor {
     return true;
   }
 
+  /**
+   * (18-11-2026, usuario) SALTO del remate: el clip del smash (smash-power) desde su PRIMER frame (se agacha y salta) y se CONGELA al llegar al
+   * frame de arranque del golpe (pies atrás, raqueta arriba), el mismo de remateHold; swing(…, special) sigue desde ahí. false = sin hoja.
+   */
+  remateJump(): boolean {
+    if (this.state === 'victory') return false;
+    const useSpecial = !!this.pk && this.specialOk();
+    if (!useSpecial && !this.v2) return false;
+    this.stopShake();
+    this.stopLean();
+    this.sprite.setFlipX(false);
+    this.state = 'remate';
+    this.sprite.anims.timeScale = 1;
+    const key = useSpecial ? this.sk('smash-power') : this.clip('smash').key;
+    const hold = useSpecial ? this.P.special.start : this.geo.smashStart;
+    this.playClip(key, 0);
+    const onUpdate = (a: Phaser.Animations.Animation, f: Phaser.Animations.AnimationFrame) => {
+      if (this.state !== 'remate' || a.key !== key) return void this.sprite.off(Phaser.Animations.Events.ANIMATION_UPDATE, onUpdate);
+      if (Number(f.textureFrame) >= hold) {
+        this.sprite.anims.pause();
+        this.sprite.off(Phaser.Animations.Events.ANIMATION_UPDATE, onUpdate);
+      }
+    };
+    this.sprite.on(Phaser.Animations.Events.ANIMATION_UPDATE, onUpdate);
+    return true;
+  }
+
   /** Diagnóstico (log de partidas en red): estado, clip y frame actuales del sprite. (Claude, 12-11-2026) */
   debugInfo(): { state: string; anim: string; frame: number; paused: boolean } {
     const a = this.sprite.anims;
@@ -985,6 +1017,19 @@ export class NxoActor {
   // ------------------------------------------------------------ hojas nuevas: estiradas, aturdido, emotes
   /** Estirada hacia `side` (1 derecha, -1 izquierda) y recuperaciÃ³n. false = sin hoja (el llamador inclina el cuerpo). */
   /** `hold` (17-11-2026, BOLA DE ENERGÍA): se queda TENDIDO en el último frame de la estirada (con la raqueta), sin levantarse. */
+  /**
+   * (18-11-2026, usuario) DUELO EN LA RED: si está en una ESTIRADA, la deja CONGELADA en el cuadro del contacto (en el aire, con la raqueta
+   * estirada hacia la pelota: DIVE_REACH) en vez del de tirado en el suelo. true = se congeló así; false = no estaba estirándose.
+   */
+  holdDiveReach(): boolean {
+    if (this.state !== 'dive' || this.recovering) return false;
+    const key = this.xk(this.diveSide > 0 ? 'dive-right' : 'dive-left');
+    if (!this.scene.anims.exists(key)) return false;
+    this.playClip(key, DIVE_REACH);
+    this.sprite.anims.pause();
+    return true;
+  }
+
   lunge(side: number, hold = false): boolean {
     if (!this.v2 || this.state === 'victory') return false;
     this.stopShake();
@@ -1075,11 +1120,20 @@ export class NxoActor {
 
   /** ReacciÃ³n al acabar un punto (ganado / perdido). Se corta sola al empezar el siguiente. */
   pointEnd(won: boolean) {
-    if (!this.v2 || this.state === 'victory' || this.state === 'stun') return;
+    if (!this.v2 || this.state === 'victory') return;
+    // (18-11-2026, usuario: "tras el smash el rival no hizo el punto perdido") ATURDIDO por el golpe: la reacción queda pendiente y sale al
+    // terminar el aturdimiento (endBusy); antes se perdía
+    if (this.state === 'stun') {
+      this.pendingPoint = won;
+      return;
+    }
     // sin raqueta (ULTI recibida, aún en el suelo): sus reacciones llevan raqueta; se queda en el reposo sin raqueta
     if (this.noRacketClips) return;
     this.emote(won ? 'point-won' : 'point-lost');
   }
+
+  /** (18-11-2026) reacción al punto que llegó mientras estaba aturdido (null = ninguna) */
+  private pendingPoint: boolean | null = null;
 
   /** Texturas + último frame de las poses de victoria / derrota (para dibujarlas fuera del partido). */
   endPoses(): { victory: { key: string; frame: number }; defeat: { key: string; frame: number } } | null {
@@ -1171,6 +1225,13 @@ export class NxoActor {
     if (this.state !== s) return;
     this.state = 'idle';
     this.dropLooseRacket();
+    // (18-11-2026) el punto terminó mientras estaba aturdido: ahora su reacción (ganado / perdido)
+    const pending = s === 'stun' ? this.pendingPoint : null;
+    this.pendingPoint = null;
+    if (pending !== null && !this.noRacketClips) {
+      this.emote(pending ? 'point-won' : 'point-lost');
+      if ((this.state as State) === 'emote') return;
+    }
     this.refresh();
     if (this.state === 'idle') this.enter('idle');
   }
@@ -1206,6 +1267,13 @@ export class NxoActor {
     this.sprite.setFlipX(false);
     this.state = 'victory';
     this.sprite.anims.timeScale = 1;
+    // (18-11-2026, usuario) VICTORIA DE VERDAD (se tira al suelo, "¡VAMOS!"): clip `victory-big` (hoja extras-4, tools/build-hd.mjs) si el
+    // personaje ya lo tiene; queda en su último frame. Sin él, la celebración de siempre
+    const big = `${this.P.key}-x-victory-big`;
+    if (this.scene.anims.exists(big)) {
+      this.playClip(big);
+      return;
+    }
     const key = this.k('victory');
     this.playClip(key);
     // NXO de espaldas: la celebración se CONGELA en el frame de la mano arriba (VICTORY_HOLD) y ahí se queda mientras el
@@ -1224,6 +1292,7 @@ export class NxoActor {
   }
   /** Vuelve a la pose neutra (nuevo punto: el jugador se recoloca). */
   resetPose() {
+    this.pendingPoint = null; // (18-11-2026) nuevo punto: la reacción pendiente ya no vale
     if (this.launchRestore) {
       const r = this.launchRestore;
       this.launchRestore = null;

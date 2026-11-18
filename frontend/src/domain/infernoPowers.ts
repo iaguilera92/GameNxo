@@ -6,7 +6,7 @@
  * - Sin elegir, cada personaje usa el suyo: Mai = hielo; el resto = fuego.
  * - Solo cambia cómo se ve la bola y sus efectos (fx/InfernoFx.ts, fx/ImpactFx.ts); el golpe es el mismo.
  */
-export type InfernoPower = 'fire' | 'ice' | 'wind' | 'lightning' | 'tulip' | 'shadow' | 'light' | 'ultra' | 'barrage' | 'energy'; // shadow = SOMBRA, light = LUZ, ultra = ULTRA EFECTO, barrage = RÁFAGA, energy = BOLA DE ENERGÍA (17-11-2026)
+export type InfernoPower = 'fire' | 'ice' | 'wind' | 'lightning' | 'tulip' | 'shadow' | 'light' | 'ultra' | 'barrage' | 'energy' | 'hurricane'; // shadow = SOMBRA, light = LUZ, ultra = ULTRA EFECTO, barrage = RÁFAGA, energy = BOLA DE ENERGÍA (17-11-2026)
 
 export interface InfernoPowerDef {
   id: InfernoPower;
@@ -43,6 +43,10 @@ export const INFERNO_POWERS: InfernoPowerDef[] = [
   // automático a larga distancia con 3 estiradas del rival y la bola gigante final. El golpe (aturdido + raqueta fuera) es el
   // mismo de toda ULTI. `legendary` = usa esa cinemática.
   { id: 'energy', name: 'ENERGÍA', ball: 'BOLA DE ENERGÍA', desc: 'Legendaria: un peloteo imparable y una bola de energía gigante.', color: 0x5fe8ff, css: '#c8f8ff', legendary: true },
+  // (17-11-2026) HURACÁN: segunda ULTI LEGENDARIA (decisión del usuario). Sin hoja de sprites (fx/hurricaneFx.ts). Cinemática: golpe de viento
+  // que manda al rival contra el fondo, globito, tornado que sube al que la lanza, esfera amarilla y SMASH final (logic/EnergyRally.ts
+  // planHurricane). Mismos tiempos que la BOLA DE ENERGÍA y el mismo golpe de toda ULTI.
+  { id: 'hurricane', name: 'HURACÁN', ball: 'HURACÁN', desc: 'Legendaria: un golpe de viento que estrella al rival y un smash desde un tornado.', color: 0xffd23f, css: '#fff1a0', legendary: true },
 ];
 
 const IDS = new Set<string>(INFERNO_POWERS.map((p) => p.id));
@@ -71,7 +75,7 @@ export function infernoPowerDef(id: InfernoPower): InfernoPowerDef {
   return INFERNO_POWERS.find((p) => p.id === id) ?? INFERNO_POWERS[0];
 }
 
-/** (17-11-2026) ¿Es una ULTI LEGENDARIA (con la cinemática extra)? Hoy solo BOLA DE ENERGÍA. */
+/** (17-11-2026) ¿Es una ULTI LEGENDARIA (con la cinemática extra)? BOLA DE ENERGÍA y HURACÁN. */
 export function isLegendaryInferno(id: InfernoPower): boolean {
   return !!INFERNO_POWERS.find((p) => p.id === id)?.legendary;
 }

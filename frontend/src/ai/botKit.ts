@@ -41,7 +41,7 @@ export function botKitFor(skin: string | undefined): BotKit {
  * DEFENSIVO: los 6 (DASH y DESTELLO propios del bot; SOMBRA, SUPERSALTO, VOLTERETA y PATINAJE con MatchScene.botFly).
  */
 const BOT_DEFENSIVES: DefensivePower[] = ['dash', 'blink', 'shadow', 'jump', 'flip', 'skate'];
-const SMASHES: SmashPower[] = ['fire', 'ice', 'wind', 'lightning', 'shadow', 'light', 'comet']; // comet (épica) queda fuera por `allowed`
+const SMASHES: SmashPower[] = ['fire', 'ice', 'wind', 'lightning', 'shadow', 'light', 'comet', 'dragon']; // comet (épica) y dragon (legendaria) quedan fuera por `allowed`
 const INFERNOS: InfernoPower[] = ['fire', 'ice', 'wind', 'lightning', 'tulip', 'shadow', 'light', 'ultra', 'barrage']; // shadow = ULTI de SOMBRA, light = ULTI de LUZ, ultra = ULTRA EFECTO, barrage = RÁFAGA (17-11-2026)
 const CHARGES: ChargeFxId[] = ['classic', 'fire', 'energy', 'tulip'];
 const COLORS: CharColorId[] = ['azul', 'verde', 'morado', 'dorado', 'sombra'];

@@ -50,6 +50,8 @@ export interface CineProfile {
   rayStyle?: 'beam' | 'ice';
   /** color del destello en la raqueta al golpear (por defecto, blanco cálido) */
   flashTint?: number;
+  /** (18-11-2026) ESPECIAL LEGENDARIO DRAGÓN: un dragón gigante de fuego se alza detrás del que golpea y ruge (drawDragon) */
+  dragon?: boolean;
 }
 
 export const SMASH_CINE: CineProfile & { enabled: boolean } = {
@@ -146,6 +148,10 @@ export class SmashCinematic {
   private releaseTimer = 0;
   private endTimer = 0;
   private lastFocus?: CineFocus;
+  /** (18-11-2026) DRAGÓN: cuerpo (normal) y fuego / ojos (aditivo), creados la primera vez que hacen falta; rugido (sacudida) una vez */
+  private dragonBody?: Phaser.GameObjects.Graphics;
+  private dragonFire?: Phaser.GameObjects.Graphics;
+  private roared = false;
   /** duración real medida hasta el golpe (pruebas) */
   lastMs = 0;
   /** perfil de la última cinemática (pruebas) */
@@ -198,6 +204,7 @@ export class SmashCinematic {
     this.hitPending = true;
     this.parts = [];
     this.lastE = 0;
+    this.roared = false;
     // congelar: tweens, temporizadores de la escena y animaciones de los personajes
     this.scene.tweens.pauseAll();
     this.pausedTime = !this.scene.time.paused;
@@ -290,8 +297,137 @@ export class SmashCinematic {
     this.auraImgs.forEach((o) => o.setVisible(false));
     this.racketGlow.setVisible(false);
     this.flashImg.setVisible(false);
+    this.dragonBody?.clear().setVisible(false);
+    this.dragonFire?.clear().setVisible(false);
     this.parts = [];
     this.opts = undefined;
+  }
+
+  /**
+   * (18-11-2026) ESPECIAL LEGENDARIO DRAGÓN: un DRAGÓN de fuego gigante sale del suelo detrás del que golpea serpenteando hacia arriba, abre las
+   * fauces con fuego dentro y RUGE (sacudida) en la máxima energía; al golpear se desvanece en la cola de la cinemática. Dos Graphics
+   * redibujados cada fotograma (sin objetos nuevos). `f` = el que golpea (coordenadas de mundo).
+   */
+  private drawDragon(e: number, f: CineFocus) {
+    const P = this.P;
+    this.dragonBody ??= this.scene.add.graphics();
+    this.dragonFire ??= this.scene.add.graphics().setBlendMode(Phaser.BlendModes.ADD);
+    const body = this.dragonBody.clear().setVisible(true).setDepth(f.depth - 0.6);
+    const fire = this.dragonFire.clear().setVisible(true).setDepth(f.depth - 0.55);
+    const clamp01 = (x: number) => Math.max(0, Math.min(1, x));
+    const smooth = (x: number) => x * x * (3 - 2 * x);
+    const k = f.s;
+    const hh = f.hh ?? 60 * k;
+    const feetY = f.y + hh;
+    // sube del suelo (0,1 → 0,75 de la carga), abre la boca en la concentración, ruge en la máxima energía; se apaga tras el golpe
+    const rise = smooth(clamp01((e - 80) / (P.focusMs - 80)));
+    const open = smooth(clamp01((e - P.focusMs) / (P.peakMs - P.focusMs)));
+    const fade = e < P.hitAtMs ? 1 : 1 - clamp01((e - P.hitAtMs) / Math.max(1, P.durationMs - P.hitAtMs));
+    body.setAlpha(fade);
+    fire.setAlpha(fade);
+    if (rise <= 0.01) return;
+    if (!this.roared && e >= P.peakMs) {
+      this.roared = true;
+      this.scene.cameras.main.shake(320, 0.012); // RUGIDO
+    }
+    const t = e / 1000;
+    const H = hh * 5.2 * rise; // alto del cuerpo
+    const N = 20;
+    const spine: { x: number; y: number }[] = [];
+    for (let i = 0; i < N; i++) {
+      const q = i / (N - 1);
+      const sway = Math.sin(q * Math.PI * 2.1 + t * 4.2) * hh * 0.85 * (1 - q * 0.35);
+      spine.push({ x: f.x + sway, y: feetY - q * H });
+    }
+    const width = (q: number) => hh * (0.62 - 0.36 * q) * (0.6 + 0.4 * rise);
+    const side = (sgn: number, scale = 1, off = 0) =>
+      spine.map((p, i) => {
+        const a = spine[Math.max(0, i - 1)];
+        const b = spine[Math.min(N - 1, i + 1)];
+        let nx = -(b.y - a.y);
+        let ny = b.x - a.x;
+        const l = Math.hypot(nx, ny) || 1;
+        nx /= l;
+        ny /= l;
+        const w = width(i / (N - 1)) * scale;
+        return { x: p.x + nx * (w * sgn + off), y: p.y + ny * (w * sgn + off) };
+      });
+    const poly = (scale: number, off = 0) => [...side(1, scale, off), ...side(-1, scale, off).reverse()];
+    // cuerpo: contorno oscuro, escamas rojas, vientre dorado
+    body.fillStyle(0x2a0404, 1).fillPoints(poly(1.12), true);
+    body.fillStyle(0xb3161a, 1).fillPoints(poly(1), true);
+    body.fillStyle(0xe0401e, 1).fillPoints(poly(0.55, -width(0.5) * 0.2), true);
+    body.fillStyle(0xffb020, 0.95).fillPoints(poly(0.22, -width(0.5) * 0.45), true);
+    // aletas dorsales (púas doradas) por el lomo
+    const back = side(1, 1.05);
+    for (let i = 2; i < N - 2; i += 2) {
+      const p = back[i];
+      const a = spine[i - 1];
+      const b = spine[i + 1];
+      const tx = b.x - a.x;
+      const ty = b.y - a.y;
+      const tl = Math.hypot(tx, ty) || 1;
+      const nx = p.x - spine[i].x;
+      const ny = p.y - spine[i].y;
+      const nl = Math.hypot(nx, ny) || 1;
+      const sp = hh * 0.34 * (1 - (i / N) * 0.5);
+      body.fillStyle(0xffc42e, 1).fillTriangle(p.x - (tx / tl) * sp * 0.4, p.y - (ty / tl) * sp * 0.4, p.x + (tx / tl) * sp * 0.4, p.y + (ty / tl) * sp * 0.4, p.x + (nx / nl) * sp, p.y + (ny / nl) * sp);
+    }
+    // CABEZA en la punta, mirando hacia arriba y un poco hacia delante
+    const top = spine[N - 1];
+    const hs = hh * 0.95;
+    const ang = -Math.PI / 2 + 0.55 + Math.sin(t * 3) * 0.08;
+    const ca = Math.cos(ang);
+    const sa = Math.sin(ang);
+    const P2 = (fx: number, fy: number) => ({ x: top.x + ca * fx * hs - sa * fy * hs, y: top.y + sa * fx * hs + ca * fy * hs });
+    const jaw = 0.12 + 0.5 * open; // apertura de la boca
+    // cuernos hacia atrás
+    body.fillStyle(0xffe08a, 1).fillPoints([P2(-0.2, -0.32), P2(-0.95, -0.85), P2(-0.45, -0.18)], true);
+    body.fillStyle(0xffe08a, 1).fillPoints([P2(-0.25, 0.3), P2(-1.0, 0.7), P2(-0.5, 0.16)], true);
+    // mandíbula de arriba y de abajo (se abren)
+    body.fillStyle(0x2a0404, 1).fillPoints([P2(-0.55, -0.42), P2(0.35, -0.38), P2(1.25, -0.12 - jaw * 0.2), P2(0.9, 0.02), P2(-0.4, 0.12)], true);
+    body.fillStyle(0xc81c1c, 1).fillPoints([P2(-0.48, -0.34), P2(0.32, -0.3), P2(1.12, -0.12 - jaw * 0.2), P2(0.82, -0.02), P2(-0.35, 0.06)], true);
+    body.fillStyle(0x2a0404, 1).fillPoints([P2(-0.4, 0.14), P2(0.75, 0.1 + jaw), P2(1.05, 0.2 + jaw * 1.1), P2(0.3, 0.38 + jaw * 0.6), P2(-0.45, 0.36)], true);
+    body.fillStyle(0xa81616, 1).fillPoints([P2(-0.32, 0.18), P2(0.7, 0.14 + jaw), P2(0.95, 0.22 + jaw * 1.05), P2(0.28, 0.32 + jaw * 0.6), P2(-0.38, 0.3)], true);
+    // dientes
+    for (let i = 0; i < 4; i++) {
+      const u = 0.15 + i * 0.22;
+      const a0 = P2(u, -0.08 - jaw * 0.12 * u);
+      body.fillStyle(0xfff6e0, 1).fillTriangle(a0.x, a0.y, P2(u + 0.1, -0.08 - jaw * 0.12 * u).x, P2(u + 0.1, -0.08 - jaw * 0.12 * u).y, P2(u + 0.05, 0.04 + jaw * 0.3).x, P2(u + 0.05, 0.04 + jaw * 0.3).y);
+    }
+    // ojo que brilla
+    const eye = P2(-0.05, -0.2);
+    fire.fillStyle(0xffd23f, 0.45).fillCircle(eye.x, eye.y, hs * 0.2);
+    fire.fillStyle(0xfff6c8, 1).fillCircle(eye.x, eye.y, hs * 0.09);
+    // fuego en las fauces (crece al abrirse) y LLAMARADA al rugir
+    const mouth = P2(1.0, 0.05 + jaw * 0.5);
+    if (open > 0) {
+      fire.fillStyle(0xff7a1a, 0.5 * open).fillCircle(mouth.x, mouth.y, hs * (0.25 + 0.3 * open));
+      fire.fillStyle(0xfff1b8, 0.8 * open).fillCircle(mouth.x, mouth.y, hs * (0.1 + 0.14 * open));
+    }
+    if (e >= P.peakMs && e < P.hitAtMs + 120) {
+      const u = clamp01((e - P.peakMs) / 220);
+      for (const [L, w, col, a] of [
+        [3.2, 0.7, 0xd6201e, 0.45],
+        [2.6, 0.5, 0xff7a1a, 0.6],
+        [1.9, 0.3, 0xfff1b8, 0.85],
+      ] as const) {
+        const len = hs * L * u * (0.9 + 0.1 * Math.sin(t * 40));
+        const ex = mouth.x + ca * len;
+        const ey = mouth.y + sa * len;
+        fire.fillStyle(col, a).fillTriangle(mouth.x - sa * hs * w * 0.3, mouth.y + ca * hs * w * 0.3, mouth.x + sa * hs * w * 0.3, mouth.y - ca * hs * w * 0.3, ex - sa * hs * w, ey + ca * hs * w);
+        fire.fillStyle(col, a).fillTriangle(mouth.x - sa * hs * w * 0.3, mouth.y + ca * hs * w * 0.3, ex - sa * hs * w, ey + ca * hs * w, ex + sa * hs * w, ey - ca * hs * w);
+      }
+    }
+    // brasas que suben alrededor del cuerpo
+    for (let i = 0; i < 10; i++) {
+      const q = ((t * 0.6 + i * 0.137) % 1);
+      const p = spine[Math.floor(q * (N - 1))];
+      const ox = Math.sin(i * 2.3 + t * 5) * hh * 0.9;
+      fire.fillStyle(i % 2 ? 0xffd23f : 0xff7a1a, 0.8 * (1 - q)).fillCircle(p.x + ox, p.y - q * hh * 0.6, (2 + (i % 3)) * k);
+    }
+    // resplandor de fuego en el suelo donde sale
+    fire.fillStyle(0xff5a12, 0.35 * rise).fillEllipse(f.x, feetY, hh * 3.4, hh * 0.7);
   }
 
   // ---------------------------------------------------------------- dibujo
@@ -312,6 +448,7 @@ export class SmashCinematic {
     const darkK = e < P.activateMs ? smooth(e / P.activateMs) : e < P.releaseFromMs ? 1 : 1 - smooth(clamp01((e - P.releaseFromMs) / (D - P.releaseFromMs)));
     const v = this.scene.cameras.main.worldView;
     this.dark.setPosition(v.centerX, v.centerY).setSize(v.width * 2 + 400, v.height * 2 + 400).setAlpha(P.darken * darkK);
+    if (P.dragon) this.drawDragon(e, f); // (18-11-2026) ESPECIAL LEGENDARIO DRAGÓN
 
     // --- energía: crece hasta el pico, se mantiene y cae en la liberación
     const energy =

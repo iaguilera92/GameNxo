@@ -6,7 +6,7 @@
  * - Cambia lo que se ve: la pelota, su estela, el aura al armarlo, la cinemática del golpe y el impacto. El golpe es el mismo
  *   (misma potencia, mismo aturdido). Lo ve también el rival en el 1v1 (acciones `smash-armed` / `smash-cine`, `data.element`).
  */
-export type SmashPower = 'fire' | 'ice' | 'wind' | 'lightning' | 'shadow' | 'light' | 'comet'; // comet = COMETA (17-11-2026, primer ESPECIAL épico)
+export type SmashPower = 'fire' | 'ice' | 'wind' | 'lightning' | 'shadow' | 'light' | 'comet' | 'dragon'; // comet = COMETA (17-11-2026, primer ESPECIAL épico); dragon = DRAGÓN (18-11-2026, primer ESPECIAL LEGENDARIO)
 
 export interface SmashPowerDef {
   id: SmashPower;
@@ -31,6 +31,9 @@ export const SMASH_POWERS: SmashPowerDef[] = [
   // (17-11-2026) COMETA (ÉPICA, decisión del usuario): la pelota cae envuelta en un meteorito con cola de fuego azul y estrellas; al impactar deja un
   // cráter con estrellas y un destello. Solo visual: el golpe es el mismo.
   { id: 'comet', name: 'COMETA', ball: 'SMASH COMETA', desc: 'Un meteorito con cola de fuego azul y estrellas. Al impactar deja un cráter. Si el rival lo toca, sale despedido.', color: 0x4f8dff, css: '#9cc4ff' },
+  // (18-11-2026) DRAGÓN (LEGENDARIA, decisión del usuario): al cargarlo un DRAGÓN gigante de fuego se alza detrás del jugador y ruge (cinemática
+  // propia); la pelota vuela como la cabeza de un dragón con su cuerpo serpenteando detrás y al impactar ruge una llamarada. Solo visual.
+  { id: 'dragon', name: 'DRAGÓN', ball: 'SMASH DRAGÓN', desc: 'Un dragón de fuego se alza detrás de ti y la pelota vuela como su cabeza. Al impactar, ruge una llamarada y quema la cancha. Si el rival lo toca, sale despedido.', color: 0xff3b1e, css: '#ff9a6a' },
 ];
 
 const IDS = new Set<string>(SMASH_POWERS.map((p) => p.id));

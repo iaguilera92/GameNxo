@@ -27,6 +27,8 @@ export interface Ambiente {
   /** borde superior del muro sólido y de la valla de malla que hay encima (px de imagen; medidos a ojo) */
   wallTopY: number;
   fenceTopY: number;
+  /** (21-11-2026) y de la imagen donde se POSA la paloma (borde de arriba del muro); sin él, `wallTopY`. En el ambiente 3 el borde del muro está más arriba que su `wallTopY` y la paloma quedaba a media pared */
+  perchTopY?: number;
   surface: Surface;
   /** color medio de la fila de arriba de la imagen (cielo que la continúa al alejar la cámara) */
   sky?: number;
@@ -36,7 +38,7 @@ export interface Ambiente {
 export const AMBIENTES: Ambiente[] = [
   { key: 'ambiente-1', file: 'ambiente-1.webp', w: 1536, h: 1024, wallBottomY: 318, wallTopY: 265, fenceTopY: 205, surface: 'hard', sky: 0x031d6b },
   { key: 'ambiente-2', file: 'ambiente-2.webp', w: 1536, h: 1024, wallBottomY: 345, wallTopY: 268, fenceTopY: 196, surface: 'clay', sky: 0x0c2e35 },
-  { key: 'ambiente-3', file: 'ambiente-3.webp', w: 1536, h: 1024, wallBottomY: 418, wallTopY: 359, fenceTopY: 222, surface: 'hard', sky: 0x143d7e },
+  { key: 'ambiente-3', file: 'ambiente-3.webp', w: 1536, h: 1024, wallBottomY: 418, wallTopY: 359, fenceTopY: 222, perchTopY: 325, surface: 'hard', sky: 0x143d7e },
 ];
 
 /** y en pantalla donde debe quedar el muro del fondo (un poco por detrás de la cancha) */
@@ -57,6 +59,8 @@ export interface DrawnWall {
   wallAtY: number;
   padPx: number;
   fencePx: number;
+  /** alto (px de pantalla, desde la base del muro) del borde de arriba donde se posa la paloma */
+  perchPx: number;
   /** ambiente elegido (para elegir la música del partido) */
   key: string;
 }
@@ -116,7 +120,7 @@ export function drawCourtView(scene: Phaser.Scene, preferred?: string | null): D
   const rt = scene.add.renderTexture(BX, BY, VIEW.W + 2000, Math.ceil(H) + 40).setOrigin(0).setDepth(-10);
   rt.draw(g, -BX, -BY);
   g.destroy();
-  return { wallAtY: WALL_AT_Y, padPx: (amb.wallBottomY - amb.wallTopY) * s, fencePx: (amb.wallBottomY - amb.fenceTopY) * s, key: amb.key };
+  return { wallAtY: WALL_AT_Y, padPx: (amb.wallBottomY - amb.wallTopY) * s, fencePx: (amb.wallBottomY - amb.fenceTopY) * s, perchPx: (amb.wallBottomY - (amb.perchTopY ?? amb.wallTopY)) * s, key: amb.key };
 }
 
 /**

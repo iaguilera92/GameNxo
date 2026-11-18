@@ -10,8 +10,8 @@ import { FRAME_IDS } from '../domain/profileFrames';
 import { LEAGUE_STYLE } from './leagueStyle';
 
 /**
- * Pantalla VS (vertical, estilo juego de pelea): pantalla partida en diagonal, TÚ arriba en azul
- * y RIVAL abajo en rojo, personajes grandes, placas de nombre/nivel y un VS dorado con impacto.
+ * Pantalla VS (vertical, estilo juego de pelea): pantalla partida en diagonal, RIVAL arriba en rojo
+ * y TÚ abajo en azul (18-11-2026, como empieza el partido), personajes grandes, placas de nombre/nivel y un VS dorado con impacto.
  * Solo presentación: la escena que la llama decide cuándo pasar al partido.
  */
 export interface VersusSide {
@@ -70,7 +70,8 @@ export function showVersus(scene: Phaser.Scene, player: VersusSide, rival: Versu
 
   // ---------------------------------------------------------------- mitades de color
   const half = (top: boolean) => {
-    const pal = top ? BLUE : RED;
+    // (18-11-2026, usuario) RIVAL arriba (rojo) y TÚ abajo (azul), como empieza el partido
+    const pal = top ? RED : BLUE;
     const c = scene.add.container(top ? -W : W, 0).setDepth(2);
     const g = scene.add.graphics();
     const poly = top
@@ -137,12 +138,13 @@ export function showVersus(scene: Phaser.Scene, player: VersusSide, rival: Versu
     scene.tweens.add({ targets: obj, y: obj.y - 6, delay: 700, duration: 900, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
     if (obj instanceof Character) scene.time.delayedCall(800, () => obj.swing());
   };
-  fighter(player, true);
-  fighter(rival, false);
+  fighter(rival, true);
+  fighter(player, false);
 
   // ---------------------------------------------------------------- placas de nombre
   const plate = (side: VersusSide, top: boolean) => {
-    const pal = top ? BLUE : RED;
+    const me = !top; // tú abajo
+    const pal = me ? BLUE : RED;
     const pw = Math.min(330, W * 0.46);
     const ph = 132;
     const x = top ? W - pw / 2 - 20 : pw / 2 + 20;
@@ -171,7 +173,7 @@ export function showVersus(scene: Phaser.Scene, player: VersusSide, rival: Versu
     c.add(tag);
     c.add(
       scene.add
-        .text(-pw / 2 + tw / 2 + 18, -ph / 2, top ? 'TÚ' : 'RIVAL', { fontFamily: FONT, fontSize: '22px', color: '#ffffff' })
+        .text(-pw / 2 + tw / 2 + 18, -ph / 2, me ? 'TÚ' : 'RIVAL', { fontFamily: FONT, fontSize: '22px', color: '#ffffff' })
         .setOrigin(0.5)
         .setLetterSpacing(2),
     );
@@ -190,8 +192,8 @@ export function showVersus(scene: Phaser.Scene, player: VersusSide, rival: Versu
     scene.tweens.add({ targets: c, x, delay: 260, duration: 460, ease: 'Back.easeOut' });
     if (side.wins && side.wins > 0) winsBadge(scene, c, ph, side.wins);
   };
-  plate(player, true);
-  plate(rival, false);
+  plate(rival, true);
+  plate(player, false);
 
   // ---------------------------------------------------------------- corte diagonal + VS
   const slash = scene.add.graphics().setDepth(10).setBlendMode(Phaser.BlendModes.ADD).setAlpha(0);

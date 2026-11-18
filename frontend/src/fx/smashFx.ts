@@ -22,8 +22,11 @@ export interface SmashLook {
   blast: { flash: number; core: number; ring: number; lines: [number, number]; sparks: number[]; shards?: number[] };
   ring: number;
   /** aspecto de la cinemática (los poderes que no existen en la ULTI; si no, se usa INFERNO_LOOK[el].cine) */
-  cine?: Pick<CineProfile, 'colors' | 'aura' | 'rayStyle' | 'flashTint'>;
+  cine?: Pick<CineProfile, 'colors' | 'aura' | 'rayStyle' | 'flashTint' | 'dragon'>;
 }
+
+/** (18-11-2026) cinemática con el DRAGÓN gigante (SmashCinematic.drawDragon, por código): apagada hasta reemplazarla por imágenes */
+const DRAGON_CINE_ON = false;
 
 export const SMASH_LOOK: Record<SmashPower, SmashLook> = {
   fire: {
@@ -161,6 +164,49 @@ export const SMASH_LOOK: Record<SmashPower, SmashLook> = {
       flashTint: 0xcfe2ff,
     },
   },
+  // (18-11-2026) DRAGÓN (LEGENDARIA): fuego rojo y dorado; la pelota es la cabeza de un dragón (fx/smashElementFx.ts drawDragon) y en la
+  // cinemática un dragón gigante se alza detrás del que golpea (SmashCinematic, `dragon`)
+  dragon: {
+    ball: { core: 0xffe08a, trail: 0xff3b1e, flames: [0xfff36b, 0xffb020, 0xff3b1e, 0xa80e12], rise: 0.6, shards: false },
+    smoke: {
+      normal: { colors: [0x2a0a08, 0x4a140e, 0x6a2216], alpha: 0.55 },
+      strong: { colors: [0x1a0604, 0x380e0a, 0x5a1a12, 0x8a2a14], alpha: 0.65 },
+      sparks: [0xffd23f, 0xff7a1a, 0xfff1b8],
+      additive: false,
+    },
+    aura: { col: 0xa80e12, hot: 0xff5a1e, core: 0xffe08a },
+    blast: { flash: 0xfff1c8, core: 0xffb020, ring: 0xff3b1e, lines: [0xffd23f, 0xff3b1e], sparks: [0xfff1b8, 0xffb020, 0xff3b1e] },
+    ring: 0xff3b1e,
+    cine: {
+      colors: { core: 0xfff1c8, gold: 0xffb020, hot: 0xd6201e, cyan: 0xff7a1a },
+      aura: [
+        [1.35, 0x5a0606, 0.32],
+        [1.1, 0xd6201e, 0.3],
+        [0.88, 0xffb020, 0.26],
+      ],
+      flashTint: 0xffd8a0,
+      // (18-11-2026, usuario: "el dragón no me gustó") el dragón dibujado con código queda APAGADO hasta tener su animación en imágenes
+      dragon: DRAGON_CINE_ON,
+    },
+  },
+};
+
+/**
+ * (18-11-2026) Tiempos de la cinemática del ESPECIAL LEGENDARIO DRAGÓN: más larga (1,6 s) y más oscura que la de siempre (1 s), para que se vea
+ * al dragón alzarse y rugir. Mismo motor (SmashCinematic); los dos teléfonos usan este mismo perfil.
+ */
+const DRAGON_TIMES: Partial<CineProfile> = {
+  durationMs: 1900,
+  hitAtMs: 1600,
+  activateMs: 260,
+  focusMs: 800,
+  peakMs: 1300,
+  raysUntilMs: 1400,
+  releaseFromMs: 1450,
+  flashAtMs: 1450,
+  flashMs: 220,
+  darken: 0.62,
+  glow: 1.3,
 };
 
 const CINES: Partial<Record<SmashPower, CineProfile>> = {};
@@ -169,12 +215,12 @@ export function smashCine(el: SmashPower): CineProfile {
   let p = CINES[el];
   if (!p) {
     // los poderes que no existen en la ULTI (sombra, luz, cometa) traen su propio cine en SMASH_LOOK
-    const own = el === 'fire' ? undefined : (SMASH_LOOK[el].cine ?? INFERNO_LOOK[el as Exclude<SmashPower, 'shadow' | 'light' | 'comet'>].cine);
+    const own = el === 'fire' ? undefined : (SMASH_LOOK[el].cine ?? INFERNO_LOOK[el as Exclude<SmashPower, 'shadow' | 'light' | 'comet' | 'dragon'>].cine);
     // (17-11-2026, usuario) las PARTÍCULAS que caen hacia el punto de concentración solo en lo ÉPICO y LEGENDARIO; el resto (fuego gratis y los de
     // rareza especial) conserva solo las tiras de energía (rayos)
     const r = itemRarity(`smash:${el}`);
     const particles = r === 'epica' || r === 'legendaria' ? SMASH_CINE.particles : 0;
-    p = { ...SMASH_CINE, ...own, particles };
+    p = { ...SMASH_CINE, ...own, particles, ...(el === 'dragon' && DRAGON_CINE_ON ? DRAGON_TIMES : {}) };
     CINES[el] = p;
   }
   return p;

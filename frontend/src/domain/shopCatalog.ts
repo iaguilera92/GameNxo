@@ -70,6 +70,8 @@ const BASE_ITEMS: ShopItem[] = [
   // Por encima de las épicas ($2.790): 130 de dinero = 1 Fajo ($2.990), justo en la regla de precios. Solo dinero real y, como toda
   // legendaria no se veía en la Tienda; ESTA sí se VE (ShopScene LEGEND_VIEWABLE, 17-11-2026: demo con 4 máquinas)
   { id: 'inferno:energy', kind: 'inferno', name: 'Bola de Energía', price: 130, clp: 2990, minLevel: 1, available: true },
+  // (17-11-2026) ULTI HURACÁN: segunda LEGENDARIA (precio de toda legendaria: LEGENDARY_PRICE, más abajo)
+  { id: 'inferno:hurricane', kind: 'inferno', name: 'Huracán', price: 130, clp: 2990, minLevel: 1, available: true },
   // poderes del ESPECIAL (SMASH). El fuego es de todos
   { id: 'smash:ice', kind: 'smash', name: 'Hielo', price: 45, clp: 1390, minLevel: 1, available: true },
   { id: 'smash:wind', kind: 'smash', name: 'Viento', price: 50, clp: 1490, minLevel: 1, available: true },
@@ -78,6 +80,8 @@ const BASE_ITEMS: ShopItem[] = [
   { id: 'smash:light', kind: 'smash', name: 'Luz', price: 60, clp: 1990, minLevel: 1, available: true },
   // (17-11-2026) COMETA: primer ESPECIAL ÉPICO (más rareza, más precio): solo dinero real; su price en dinero queda de referencia
   { id: 'smash:comet', kind: 'smash', name: 'Cometa', price: 85, clp: 2490, minLevel: 1, available: true },
+  // (18-11-2026) DRAGÓN: primer ESPECIAL LEGENDARIO (precio de toda legendaria: LEGENDARY_PRICE)
+  { id: 'smash:dragon', kind: 'smash', name: 'Dragón', price: 130, clp: 2990, minLevel: 1, available: true },
   // efectos de CARGA (el aro bajo el jugador al cargar un golpe). Nxo trae el de fuego y Mai el de tulipán; el clásico es de todos
   { id: 'charge:fire', kind: 'charge', name: 'Fuego', price: 35, clp: 1290, minLevel: 1, available: true },
   { id: 'charge:energy', kind: 'charge', name: 'Energía', price: 35, clp: 1290, minLevel: 1, available: true },
@@ -88,6 +92,10 @@ const BASE_ITEMS: ShopItem[] = [
   { id: 'defensive:jump', kind: 'defensive', name: 'Supersalto', price: 50, clp: 1490, minLevel: 1, available: true },
   { id: 'defensive:flip', kind: 'defensive', name: 'Voltereta', price: 50, clp: 1490, minLevel: 1, available: true },
   { id: 'defensive:skate', kind: 'defensive', name: 'Patinaje', price: 50, clp: 1490, minLevel: 1, available: true },
+  // (18-11-2026) RELÁMPAGO: primer DEFENSIVO ÉPICO (solo dinero real; el price en dinero queda de referencia)
+  { id: 'defensive:lightning', kind: 'defensive', name: 'Relámpago', price: 85, clp: 2490, minLevel: 1, available: true },
+  // (18-11-2026) TIEMPO LENTO: primer DEFENSIVO LEGENDARIO (precio de toda legendaria: LEGENDARY_PRICE)
+  { id: 'defensive:slowmo', kind: 'defensive', name: 'Tiempo Lento', price: 130, clp: 2990, minLevel: 1, available: true },
   // ESTILOS DE ZONA (16-11-2026, domain/zoneSkins.ts; la ELÉCTRICA es de todos): FUEGO épica y SOMBRA legendaria = solo dinero real
   { id: 'zone:fire', kind: 'zone', name: 'Fuego', price: 80, clp: 1990, minLevel: 1, available: true },
   { id: 'zone:shadow', kind: 'zone', name: 'Sombra', price: 100, clp: 2490, minLevel: 1, available: true },
@@ -103,7 +111,13 @@ export function itemRarity(id: string): ItemRarity | undefined {
  * entre el suyo y el de su habilidad; el nivel de desbloqueo se cambia solo en unlocks.ts.
  */
 const KIND_UNLOCK: Partial<Record<ItemKind, UnlockKey>> = { defensive: 'defensive', smash: 'special', inferno: 'ulti', charge: 'charge', style: 'trail', zone: 'zone' };
-export const SHOP_ITEMS: ShopItem[] = BASE_ITEMS.map((it) => {
+/**
+ * (17-11-2026, usuario) PRECIO DE TODA LEGENDARIA: $59.990 CLP (solo dinero real). Su `price` en dinero queda de referencia y alto (3.500):
+ * así la regla de precios en CLP se cumple (juntar 3.500 de dinero con paquetes cuesta más que $59.990).
+ */
+export const LEGENDARY_PRICE = { clp: 59990, price: 3500 } as const;
+export const SHOP_ITEMS: ShopItem[] = BASE_ITEMS.map(withRarity).map((it) => (it.rarity === 'legendaria' ? { ...it, ...LEGENDARY_PRICE, realMoneyOnly: true } : it));
+function withRarity(it: (typeof BASE_ITEMS)[number]): ShopItem {
   const key = KIND_UNLOCK[it.kind];
   const base = key ? { ...it, minLevel: Math.max(it.minLevel, UNLOCK_LEVEL[key]) } : it;
   // (14-11-2026) REGLA DEL DINERO VIRTUAL: la rareza normal y la especial se compran con dinero virtual; la ÉPICA y la LEGENDARIA solo con dinero real
@@ -112,29 +126,30 @@ export const SHOP_ITEMS: ShopItem[] = BASE_ITEMS.map((it) => {
   // queda solo como referencia (regla de precios en CLP y total de la tienda); no se puede pagar con él.
   // (17-11-2026) ULTRA EFECTO es la primera ULTI ÉPICA (decisión del usuario); RÁFAGA (17-11-2026) también
   // (17-11-2026) BOLA DE ENERGÍA: primera ULTI LEGENDARIA
-  if (it.kind === 'inferno') return { ...base, rarity: it.id === 'inferno:energy' ? ('legendaria' as const) : it.id === 'inferno:ultra' || it.id === 'inferno:barrage' ? ('epica' as const) : ('especial' as const), realMoneyOnly: true };
+  if (it.kind === 'inferno') return { ...base, rarity: it.id === 'inferno:energy' || it.id === 'inferno:hurricane' ? ('legendaria' as const) : it.id === 'inferno:ultra' || it.id === 'inferno:barrage' ? ('epica' as const) : ('especial' as const), realMoneyOnly: true };
   // (16-11-2026) ESTILOS DE ZONA (decisión del usuario): FUEGO épica, SOMBRA legendaria; las dos, solo dinero real
   if (it.kind === 'zone') return { ...base, rarity: it.id === 'zone:shadow' ? ('legendaria' as const) : ('epica' as const), realMoneyOnly: true };
   // (14-11-2026) ESPECIAL y DEFENSIVO: todos especiales, menos el DESTELLO (normal)
   // (17-11-2026) COMETA: ÉPICA (solo dinero real)
+  if (it.id === 'defensive:slowmo') return { ...base, rarity: 'legendaria' as const, realMoneyOnly: true }; // (18-11-2026) TIEMPO LENTO
+  if (it.id === 'defensive:lightning') return { ...base, rarity: 'epica' as const, realMoneyOnly: true }; // (18-11-2026) RELÁMPAGO
   if (it.id === 'smash:comet') return { ...base, rarity: 'epica' as const, realMoneyOnly: true };
+  if (it.id === 'smash:dragon') return { ...base, rarity: 'legendaria' as const, realMoneyOnly: true }; // (18-11-2026) DRAGÓN
   if (it.kind === 'smash' || it.kind === 'defensive') return { ...base, rarity: it.id === 'defensive:blink' ? ('normal' as const) : ('especial' as const) };
   // (14-11-2026) CARGANDO GOLPE: Fuego normal, Energía especial, Tulipán épica (propuesta aceptada por omisión; la legendaria queda reservada). Los ESTILOS siguen sin rareza (decisión del usuario).
   if (it.kind === 'charge') {
     const rarity = it.id === 'charge:fire' ? ('normal' as const) : it.id === 'charge:energy' ? ('especial' as const) : ('epica' as const);
     return { ...base, rarity, ...(rarity === 'epica' ? { realMoneyOnly: true } : {}) };
   }
-  // (15-11-2026) EFECTOS DE PELOTA nuevos (decididos con el usuario): Brasas, Hielo, Neón y Humo = especial; Tulipanes y Corazones = épica
-  // (solo dinero real); Estrellas = legendaria (solo dinero real). Los estilos de color de siempre (rojo, verde, oro, rosado) siguen sin rareza.
-  // Arcoíris = legendaria (solo dinero real). Rojo, Verde, Oro y Rosado = normales (se compran con dinero virtual y salen en el Pase de Batalla).
+  // (15-11-2026) EFECTOS DE PELOTA (decididos con el usuario): Brasas, Hielo, Neón y Humo = especial; Tulipanes y Corazones = épica;
+  // Estrellas y Arcoíris = legendarias (épica y legendaria, solo dinero real). Rojo, Verde, Oro y Rosado = normales (dinero virtual y Pase).
   if (it.kind === 'style') {
     const STYLE_RARITY: Partial<Record<string, ItemRarity>> = { 'style:ember': 'especial', 'style:frost': 'especial', 'style:neon': 'especial', 'style:smoke': 'especial', 'style:tulip': 'epica', 'style:hearts': 'epica', 'style:stars': 'legendaria', 'style:rainbow': 'legendaria', 'style:red': 'normal', 'style:green': 'normal', 'style:gold': 'normal', 'style:pink': 'normal' };
     const rarity = STYLE_RARITY[it.id];
     if (rarity) return { ...base, rarity, ...(rarity === 'epica' || rarity === 'legendaria' ? { realMoneyOnly: true } : {}) };
-
   }
   return base;
-});
+}
 /*
  * REGLA DE PRECIOS EN CLP (docs/ECONOMIA.md): el precio directo de un ítem nunca es más caro que juntar su dinero con los
  * paquetes de abajo (ej. un ítem de 50 de dinero cuesta como mucho $1.490 = "Puñado"). tools/sim-economy.mjs lo revisa.

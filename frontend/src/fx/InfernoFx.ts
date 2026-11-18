@@ -7,6 +7,7 @@ import type { CineProfile } from './SmashCinematic';
 import { DropZeroFx } from './smashElementFx';
 import { BarrageTrail, addBarragePreview, barrageFan, isShown } from './barrageFx';
 import { EnergyBallFx, addEnergyPreview, energyBurst } from './energyBallFx';
+import { HurricaneBallFx, addHurricanePreview, hurricaneBurst } from './hurricaneFx';
 
 /**
  * Efectos de INFERNO DRIVE (procedurales, sin hojas de sprites nuevas):
@@ -133,24 +134,25 @@ const TULIPBALL_ART: BallArt = {
 /** Elemento de la bola del INFERNO = el poder que eligió el jugador (domain/infernoPowers.ts). */
 export type InfernoElement = InfernoPower;
 /** Elemento de CUALQUIER bola de poder: los de la ULTI más los que solo existen en el ESPECIAL (sombra, estrella). */
-export type FxElement = InfernoElement | 'shadow' | 'light' | 'comet'; // comet = COMETA (solo ESPECIAL, 17-11-2026)
+export type FxElement = InfernoElement | 'shadow' | 'light' | 'comet' | 'dragon'; // comet = COMETA (solo ESPECIAL, 17-11-2026); dragon = DRAGÓN (solo ESPECIAL, 18-11-2026)
 /** Colores del destello de golpe de SOMBRA y LUZ (ESPECIAL y ULTI; los demás, INFERNO_LOOK[el].hit). OJO: INFERNO_LOOK.shadow.hit y .light.hit no se usan: el destello se cambia aquí. */
-const EXTRA_HIT: Record<'shadow' | 'light' | 'comet', { ring: number; star: number; flash: [number, number, number] }> = {
+const EXTRA_HIT: Record<'shadow' | 'light' | 'comet' | 'dragon', { ring: number; star: number; flash: [number, number, number] }> = {
   shadow: { ring: 0x9b4dff, star: 0xd0a8ff, flash: [170, 110, 255] },
   light: { ring: 0xfff0b0, star: 0xffffff, flash: [255, 250, 220] },
   comet: { ring: 0x4f8dff, star: 0xeaf4ff, flash: [150, 190, 255] }, // (17-11-2026) COMETA: aro azul y estrellas blancas
+  dragon: { ring: 0xff3b1e, star: 0xffd23f, flash: [255, 120, 50] }, // (18-11-2026) DRAGÓN: aro rojo y chispas doradas
 };
 /** Destello de golpe de un poder (ULTI o ESPECIAL). */
 export function hitLookOf(el: FxElement = 'fire') {
-  return el === 'shadow' || el === 'light' || el === 'comet' ? EXTRA_HIT[el] : INFERNO_LOOK[el].hit;
+  return el === 'shadow' || el === 'light' || el === 'comet' || el === 'dragon' ? EXTRA_HIT[el] : INFERNO_LOOK[el].hit;
 }
 /**
  * (17-11-2026) Bolas SIN hoja de sprites (se dibujan por código): ULTRA EFECTO = pelota normal + aire de ventilador gigante;
  * RÁFAGA = pelota normal + ráfaga de pelotas fantasma (fx/barrageFx.ts).
  */
-export type ProceduralBall = 'ultra' | 'barrage' | 'energy'; // (17-11-2026) energy = BOLA DE ENERGÍA (LEGENDARIA, fx/energyBallFx.ts)
+export type ProceduralBall = 'ultra' | 'barrage' | 'energy' | 'hurricane'; // hurricane = HURACÁN (LEGENDARIA, fx/hurricaneFx.ts) // (17-11-2026) energy = BOLA DE ENERGÍA (LEGENDARIA, fx/energyBallFx.ts)
 export function isProceduralBall(el: InfernoElement): el is ProceduralBall {
-  return el === 'ultra' || el === 'barrage' || el === 'energy';
+  return el === 'ultra' || el === 'barrage' || el === 'energy' || el === 'hurricane';
 }
 export const BALL_ART: Record<Exclude<InfernoElement, ProceduralBall>, BallArt> = { fire: FIREBALL_ART, ice: ICEBALL_ART, wind: WINDBALL_ART, lightning: LIGHTNINGBALL_ART, tulip: TULIPBALL_ART, shadow: SHADOWBALL_ART, light: LIGHTBALL_ART };
 /** Hoja de la bola de un poder; undefined en las procedurales (ULTRA EFECTO, RÁFAGA). */
@@ -220,6 +222,7 @@ export function addBallPreview(scene: Phaser.Scene, x: number, y: number, el: In
     // (17-11-2026) ULTRA EFECTO y RÁFAGA: sin hoja, por código
     if (el === 'barrage') addBarragePreview(scene, c, maxW, maxH, animate);
     else if (el === 'energy') addEnergyPreview(scene, c, maxW, maxH, animate); // (17-11-2026) BOLA DE ENERGÍA
+    else if (el === 'hurricane') addHurricanePreview(scene, c, maxW, maxH, animate); // (17-11-2026) HURACÁN
     else addUltraPreview(scene, c, maxW, maxH, animate);
     return c;
   }
@@ -400,6 +403,21 @@ export const INFERNO_LOOK: Record<InfernoElement, InfernoLook> = {
       flashTint: 0xf0fdff,
     },
     hit: { ring: 0x5fe8ff, star: 0xffffff, flash: [200, 245, 255] },
+  },
+  // (17-11-2026) HURACÁN (LEGENDARIA): viento blanco y menta con la esfera amarilla
+  hurricane: {
+    ghostTint: 0xfff1a0,
+    ghostRamp: [0x6a4a00, 0xfff6c8],
+    cine: {
+      colors: { core: 0xffffff, gold: 0xffd23f, hot: 0xe0a400, cyan: 0x9cf5c8 },
+      aura: [
+        [1.45, 0xe0a400, 0.24],
+        [1.18, 0xffd23f, 0.28],
+        [0.92, 0xe8fff0, 0.3],
+      ],
+      flashTint: 0xfff6c8,
+    },
+    hit: { ring: 0xffd23f, star: 0xffffff, flash: [255, 240, 170] },
   },
 };
 
@@ -635,6 +653,7 @@ const BALL_FX: Record<InfernoElement, { halo: number; core: number; trail: [numb
   barrage: { halo: 0xd8ff3a, core: 0xffffff, trail: [0xf4ffc0, 0xd8ff3a], bits: [0xffffff, 0xeaff8a], rise: 0, glow: [0xfbffe0, 0xd8ff3a], sparks: [0xffffff, 0xeaff8a, 0xd8ff3a] },
   // (17-11-2026) BOLA DE ENERGÍA: blanco y celeste
   energy: { halo: 0x5fe8ff, core: 0xffffff, trail: [0xc8f8ff, 0x5fe8ff], bits: [0xffffff, 0xc8f8ff], rise: 0, glow: [0xf0fdff, 0x5fe8ff], sparks: [0xffffff, 0xc8f8ff, 0x5fe8ff] },
+  hurricane: { halo: 0xffd23f, core: 0xffffff, trail: [0xfff6b0, 0xffd23f], bits: [0xffffff, 0xe8fff0], rise: 0, glow: [0xfff6c8, 0xffd23f], sparks: [0xffffff, 0xfff1a0, 0x9cf5c8] },
 };
 
 /**
@@ -671,6 +690,8 @@ export class InfernoFire {
   private barrage?: BarrageTrail;
   /** (17-11-2026) BOLA DE ENERGÍA (sin hoja): esfera blanca y celeste más grande (se crea al usarse) */
   private energy?: EnergyBallFx;
+  /** (17-11-2026) bola del HURACÁN (se crea al usarse) */
+  private hurricane?: HurricaneBallFx;
   /**
    * (17-11-2026, usuario) la BOLA DE ENERGÍA sale CHICA y crece en vuelo hasta su tamaño máximo (ENERGY_BALL_SCALE) al llegar al rival:
    * `energyGrowSec` = segundos de vuelo en los que crece (el que la lanza pone su tiempo de vuelo); `energyT` = tiempo volando
@@ -743,6 +764,11 @@ export class InfernoFire {
     const d = ground.sy + 2.5; // por encima de la pelota real
     if (this.el === 'barrage') {
       this.updateBarrage(ball, air, k, d, dt);
+      return;
+    }
+    if (this.el === 'hurricane') {
+      this.hurricane ??= new HurricaneBallFx(this.scene);
+      this.hurricane.draw(dt, air.sx, air.sy, R * 1.25, d);
       return;
     }
     if (this.el === 'energy') {
@@ -937,6 +963,7 @@ export class InfernoFire {
   private hide() {
     this.barrage?.hide();
     this.energy?.hide();
+    this.hurricane?.hide();
     this.energyT = 0;
     this.ultraAir?.hide();
     this.ultraGlow?.setVisible(false);
@@ -1012,6 +1039,10 @@ export function infernoImpactFx(scene: Phaser.Scene, x: number, y: number, k: nu
   }
   if (el === 'energy') {
     energyBurst(scene, x, y, k); // (17-11-2026) BOLA DE ENERGÍA: aros y rayos blancos y celestes
+    return;
+  }
+  if (el === 'hurricane') {
+    hurricaneBurst(scene, x, y, k); // (17-11-2026) HURACÁN: aros amarillos y ráfagas de viento
     return;
   }
   for (let i = 0; i < 18; i++) {
@@ -1214,7 +1245,8 @@ export const infernoSound = {
     chargeSnd = null;
     // golpe de la ULTI: el suyo si el poder lo tiene (fuego, rayo); si no, el inferno.mp3 genérico (cargado en MatchScene.preload).
     // Si falta el archivo, el golpe sintetizado de siempre
-    const own = el === 'fire' ? 'ulti-fuego' : el === 'lightning' ? 'ulti-rayo' : el === 'ice' ? 'ulti-hielo' : '';
+    // (18-11-2026) ULTRA EFECTO: ulti-epica-1; HURACÁN (smash final): ulti-legendaria-1; SOMBRA y LUZ: ulti-sombra-luz
+    const own = el === 'fire' ? 'ulti-fuego' : el === 'lightning' ? 'ulti-rayo' : el === 'ice' ? 'ulti-hielo' : el === 'ultra' ? 'ulti-epica-1' : el === 'hurricane' ? 'ulti-legendaria-1' : el === 'energy' ? 'ulti-legendaria-energia' : el === 'shadow' || el === 'light' ? 'ulti-sombra-luz' : '';
     const key = own && scene.cache.audio.exists(own) ? own : 'inferno-hit';
     if (scene.cache.audio.exists(key)) {
       // (13-11-2026) ulti-fuego.m4a dura 9,6 s (las otras ~2-3 s): seguía sonando mucho después del golpe. Se corta a

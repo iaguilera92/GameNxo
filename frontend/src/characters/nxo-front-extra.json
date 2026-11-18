@@ -136,7 +136,8 @@
       "origin": {
         "x": 0.5,
         "y": 0.97647
-      }
+      },
+      "scale": 1.07
     },
     "point-won": {
       "file": "point-won.webp",

@@ -61,6 +61,7 @@ const GAZE_FX: Record<InfernoPower, { edge: number; edgeIn: number; glowIn: numb
   ultra: { edge: 0x5fe0b8, edgeIn: 0xe0fff0, glowIn: 0xffffff, glow: 0x9cf5d8, spark: 0xffffff, line: 0xc8ffd8 }, // (17-11-2026) ULTRA EFECTO
   barrage: { edge: 0xb8e020, edgeIn: 0xf4ffc0, glowIn: 0xffffff, glow: 0xd8ff3a, spark: 0xffffff, line: 0xeaff8a }, // (17-11-2026) RÁFAGA
   energy: { edge: 0x1f8cff, edgeIn: 0xc8f8ff, glowIn: 0xffffff, glow: 0x5fe8ff, spark: 0xffffff, line: 0x9fefff }, // (17-11-2026) BOLA DE ENERGÍA
+  hurricane: { edge: 0xe0a400, edgeIn: 0xfff6b0, glowIn: 0xffffff, glow: 0xffd23f, spark: 0xffffff, line: 0xe8fff0 }, // (17-11-2026) HURACÁN
 };
 
 /**

@@ -108,6 +108,40 @@ test('semilla dentro del límite del servidor (±1e5) y PRNG en [0, 1)', () => {
     assert.ok(x >= 0 && x < 1);
   }
 });
+test('HURACÁN: mismos tiempos que la BOLA DE ENERGÍA y el guion de siempre de ida y vuelta', () => {
+  for (const seed of [1, 77, 4242]) {
+    const e = E.planEnergyRally(a, v, seed);
+    const h = E.planHurricane(a, v, seed);
+    assert.equal(h.endMs, e.endMs, 'termina a la vez');
+    assert.deepEqual(E.planHurricane(a, v, seed), h, 'determinista');
+    assert.equal(h.shots.at(-1).final, true);
+    assert.equal(h.shots.filter((s) => s.final).length, 1);
+    // el rival sale despedido hacia el fondo y queda tendido donde le pega el smash
+    const o = { x: 0, y: 0 };
+    E.victimAt(h, 0, o);
+    assert.deepEqual(o, h.vic);
+    E.victimAt(h, h.endMs, o);
+    assert.ok(o.x >= h.vic.x && Math.abs(o.x - h.lie.x) < 1e-6 && Math.abs(o.y - h.lie.y) < 1e-6);
+    // el tornado lo sube hasta la pelota y vuelve al suelo al final
+    assert.equal(E.attackerLiftAt(h, 0), 0);
+    assert.equal(E.attackerLiftAt(h, h.lift.t1), h.lift.z);
+    assert.ok(E.attackerLiftAt(h, h.endMs) < 1e-6);
+    // la pelota del globito queda alta (smash a buena altura)
+    const p = { x: 0, y: 0, z: 0 };
+    E.shotBallAt(h.shots[1], h.shots[1].t1, p);
+    assert.ok(p.z >= 200, `alto: ${p.z}`);
+  }
+});
+test('HURACÁN: ULTI legendaria, solo dinero real, $59.990', () => {
+  const it = SHOP_ITEMS.find((i) => i.id === 'inferno:hurricane');
+  assert.ok(it);
+  assert.equal(it.rarity, 'legendaria');
+  assert.equal(it.realMoneyOnly, true);
+  assert.equal(it.clp, 59990);
+  assert.equal(P.isLegendaryInferno('hurricane'), true);
+  // toda legendaria cuesta lo mismo
+  for (const x of SHOP_ITEMS.filter((i) => i.rarity === 'legendaria')) assert.equal(x.clp, 59990, x.id);
+});
 test('BOLA DE ENERGÍA: ULTI legendaria, solo dinero real', () => {
   const it = SHOP_ITEMS.find((i) => i.id === 'inferno:energy');
   assert.ok(it);

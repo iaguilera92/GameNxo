@@ -464,6 +464,7 @@ const ELEMENT_FILTER: Record<Exclude<SmashPower, 'fire'>, string> = {
   shadow: 'hue-rotate(255deg) saturate(1.3) brightness(0.8)', // morado oscuro
   light: 'grayscale(1) sepia(1) saturate(1.6) hue-rotate(-8deg) brightness(2.1)', // blanco dorado luminoso
   comet: 'hue-rotate(195deg) saturate(1.5) brightness(1.2)', // (17-11-2026) COMETA: azul intenso
+  dragon: 'hue-rotate(-12deg) saturate(1.8) brightness(1.05) contrast(1.15)', // (18-11-2026) DRAGÓN: rojo fuego intenso
 };
 
 /**

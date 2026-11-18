@@ -52,7 +52,7 @@ const HEADER_H = 112;
 /** prefijo de las texturas de fondos pintados una vez (tarjetas, botones): se quitan al salir de la Tienda */
 const SHOP_BAKE = 'shop-bake-';
 /** (17-11-2026) artículos LEGENDARIOS que SÍ tienen botón VER en la Tienda (los demás legendarios, no) */
-const LEGEND_VIEWABLE: ReadonlySet<string> = new Set(['inferno:energy']);
+const LEGEND_VIEWABLE: ReadonlySet<string> = new Set(['inferno:energy', 'inferno:hurricane', 'smash:dragon']); // (18-11-2026) DRAGÓN también se ve
 /** Fondo de las tarjetas de PODERES ULTI: morado degradado con brillo, sin borde. */
 const ULTI_TOP = '#8a4cf0';
 const ULTI_MID = '#5a22b8';
@@ -78,7 +78,7 @@ const INFO = {
   },
   defensive: {
     title: 'PODERES DEFENSIVOS',
-    text: `El DEFENSIVO te ayuda a llegar a pelotas lejanas y se recarga cada ${DASH_COOLDOWN} segundos.\n\nCada poder cambia lo que hace: el DASH (gratis) es un sprint hasta la pelota, el DESTELLO te teletransporta, la SOMBRA cambia tu lugar con un clon, el SUPERSALTO salta hasta ella, la VOLTERETA llega con dos volteretas y el PATINAJE patina dejando un camino de hielo. Todos devuelven asegurado y se recargan igual.\n\nLa Tienda muestra 3 a la vez y cambia la selección cada 12 horas.`,
+    text: `El DEFENSIVO te ayuda a llegar a pelotas lejanas y se recarga cada ${DASH_COOLDOWN} segundos.\n\nCada poder cambia lo que hace: el DASH (gratis) es un sprint hasta la pelota, el DESTELLO te teletransporta, la SOMBRA cambia tu lugar con un clon, el SUPERSALTO salta hasta ella, la VOLTERETA llega con dos volteretas el PATINAJE patina dejando un camino de hielo y el RELÁMPAGO (épico) te vuelve un rayo azul neón que deja rayos en el suelo. Todos devuelven asegurado y se recargan igual.\n\nLa Tienda muestra 3 a la vez y cambia la selección cada 12 horas.`,
   },
   zone: {
     title: 'ZONA',

@@ -9,7 +9,7 @@ import { roundedPoly } from '../ui/shapes';
 import { RankBadge, preloadRankBadges } from '../ui/RankBadge';
 import { rankDef } from '../domain/ranks';
 import { showRankList } from '../ui/RankListDialog';
-import { arcadeButton, lockedModeButton } from '../ui/modeButtons';
+import { arcadeButton } from '../ui/modeButtons';
 import { isDevMode } from '../domain/devMode';
 import { maybeShowTutorial } from '../ui/TutorialDialog';
 import { fitText } from '../ui/fitText';
@@ -24,6 +24,7 @@ import { equippedFrame } from '../domain/profileFrames';
 import { chestButton } from '../ui/ChestButton';
 import { rankedPlayButton } from '../ui/PlayEntry';
 import { serverUrl } from '../net/config';
+import { MAX_LEVEL } from '../config';
 import { getPlayer, onPlayerChange } from '../domain/playerStore';
 import { DailyWheels } from '../ui/DailyWheels';
 import { showSettings } from '../ui/SettingsDialog';
@@ -114,7 +115,23 @@ export class MenuScene extends Phaser.Scene {
   /** animaciones de las barras (nivel y pase) que esperan a la ruleta / al "+N EXP" */
   private xpAnims: (() => void)[] = [];
   /** posición de las cards (para el texto "+N EXP") */
-  private xpAt: { x: number; y: number; rect: { x: number; y: number; w: number; h: number }; obj?: Phaser.GameObjects.Container }[] = [];
+  private xpAt: { x: number; y: number; rect: { x: number; y: number; w: number; h: number }; obj?: Phaser.GameObjects.Container; kind: 'level' | 'pass' }[] = [];
+  /**
+   * (21-11-2026) PREMIO DE LA RULETA (registry menu.wheelGain, lo apunta WheelScene al cobrar): monedas y EXP que se ven llegar a las cards al volver al
+   * menú. Mientras la ruleta está abierta (registry wheel.open) los contadores NO se actualizan solos: coinRefresh, profileRefresh y passRefresh los
+   * ponen al día cuando el premio llega.
+   */
+  private wheelGain: { coins: number; xp: number } | null = null;
+  private coinRect: { x: number; y: number; w: number; h: number } | null = null;
+  private coinRefresh: (() => void) | null = null;
+  private coinObj: Phaser.GameObjects.Container | null = null;
+  /** monedas de una ruleta ya cobrada que esperan a verse llegar a su card */
+  private pendingCoins = 0;
+  private profileRefresh: (() => void) | null = null;
+  private passRefresh: (() => void) | null = null;
+  private wheelOpenNow() {
+    return !!this.registry.get('wheel.open');
+  }
 
   create() {
     const W = this.scale.width;
@@ -125,8 +142,19 @@ export class MenuScene extends Phaser.Scene {
     this.registry.remove('menu.xpGain');
     this.masteryGain = (this.registry.get('menu.masteryGain') as MenuScene['masteryGain'] | undefined) ?? null;
     this.registry.remove('menu.masteryGain');
+    // premio de una ruleta cobrada ANTES de abrir este menú (viene del final de la partida): la EXP se suma a la presentación de la EXP y las monedas llegan a su card
+    const wg = this.registry.get('menu.wheelGain') as { coins: number; xp: number } | undefined;
+    this.registry.remove('menu.wheelGain');
+    this.wheelGain = wg && (wg.coins > 0 || wg.xp > 0) && !this.wheelOpenNow() ? wg : null;
+    this.xpGain += this.wheelGain?.xp ?? 0;
     this.xpAnims = [];
     this.xpAt = [];
+    this.pendingCoins = this.wheelGain?.coins ?? 0;
+    this.coinRect = this.coinRefresh = this.profileRefresh = this.passRefresh = null;
+    // la ruleta se cierra con el menú ya abierto: el premio (monedas, EXP) se ve pasar a las cards
+    const onWheelClosed = () => this.time.delayedCall(120, () => this.wheelClosed());
+    this.game.events.on('wheel-closed', onWheelClosed);
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.game.events.off('wheel-closed', onWheelClosed));
     // SONIDO: clic en cualquier botón del menú (JUGAR suma además su sonido propio al soltar)
     const onTapSfx = () => uiSound(this, 'tap');
     this.input.on(Phaser.Input.Events.GAMEOBJECT_DOWN, onTapSfx);
@@ -204,6 +232,10 @@ export class MenuScene extends Phaser.Scene {
       const lan = serverUrl() !== null;
       this.cameras.main.fadeOut(200, 0, 0, 0);
       this.cameras.main.once('camerafadeoutcomplete', () => (lan ? this.scene.start('LanSearch', { fallback: botFlow }) : this.scene.start('Matchmaking', botFlow)));
+    }, () => {
+      uiSound(this, 'play');
+      this.cameras.main.fadeOut(200, 0, 0, 0);
+      this.cameras.main.once('camerafadeoutcomplete', () => this.scene.start('Matchmaking', { unranked: false, from: 'Menu', mode: '2v2' }));
     });
 
     // --- ruletas diarias (encima de JUGAR). Una ruleta recién ganada se abre sola UNA vez.
@@ -221,6 +253,13 @@ export class MenuScene extends Phaser.Scene {
       else this.time.delayedCall(550, play);
     } else if (wheelOpened) this.time.delayedCall(700, () => whenWheelReady(this, (w) => w.events.once(Phaser.Scenes.Events.SHUTDOWN, () => tutorial(500))));
     else tutorial(1600); // tras el fundido y la cascada de ruletas
+
+    // monedas de una ruleta cobrada al final de la partida: llegan a su card tras la presentación de la EXP (o enseguida si no hay)
+    if (this.pendingCoins > 0 && !wheelOpened) this.time.delayedCall(this.xpGain > 0 ? 550 + 6200 : 900, () => {
+      const c = this.pendingCoins;
+      this.pendingCoins = 0;
+      if (c > 0) this.playCoinGain(c);
+    });
 
     if (this.textures.exists(NAV.key)) this.navImage(W, H);
     else this.bottomBar(W, navTop, navH);
@@ -281,16 +320,20 @@ export class MenuScene extends Phaser.Scene {
     // "+n" y la barra sube. Ajustar WAVE_MS si los pings del audio no caen justo en cada llegada.
     const W = this.scale.width;
     const H = this.scale.height;
-    const WAVES = 3;
     // (21-11-2026) con MAESTRÍA ganada: 2 oleadas de EXP (barras de nivel y pase) y la 3.ª es la maestría, que vuela al personaje y lo
     // ilumina como una subida de nivel. Los 3 sonidos siguen igual (uno por oleada)
     const mastery = this.masteryGain && this.hero && passiveOf(this.masteryGain.skin) ? this.masteryGain : null;
-    const XP_WAVES = mastery ? 2 : WAVES;
+    // (18-11-2026, usuario) la EXP sale en 2 oleadas (200 → queda 100 → sale el resto, sin mostrar "+0") y, si la hay, la maestría.
+    // 3 sonidos en total: al aparecer el total, en la 1.ª oleada y en la maestría (sin maestría: en la 2.ª oleada)
+    const XP_WAVES = 2;
+    const WAVES_ALL = mastery ? 3 : 2;
     const WAVE_MS = 650; // entre oleadas
+    const MASTERY_AFTER_MS = 300; // la maestría, tras la última oleada de EXP
     const FLY_MS = 520; // vuelo de cada EXP
     const PER_WAVE = 5; // orbes por tarjeta y oleada
     const src = { x: W / 2, y: H * 0.46 };
-    const cards = this.xpAt;
+    // (21-11-2026) en NIVEL MÁXIMO la cuenta ya no gana EXP: solo la recibe el pase
+    const cards = this.xpAt.filter((c) => c.kind === 'pass' || getPlayer().level < MAX_LEVEL);
     const gain = this.xpGain;
     const share = (w: number) => (w < XP_WAVES - 1 ? Math.floor(gain / XP_WAVES) : gain - Math.floor(gain / XP_WAVES) * (XP_WAVES - 1));
     // (14-11-2026) el sonido suena UNA VEZ POR OLEADA (3 veces), cuando cada oleada sale hacia las cards (ver el bucle)
@@ -318,6 +361,7 @@ export class MenuScene extends Phaser.Scene {
     const total = this.add.text(src.x, src.y, `+${gain}`, { fontFamily: FONT, fontSize: '96px', color: '#7ff0ff', stroke: '#0a1638', strokeThickness: 12 }).setOrigin(0.5).setDepth(201).setScale(0.3);
     this.tweens.add({ targets: label, alpha: 1, duration: 250 });
     this.tweens.add({ targets: total, scale: 1, duration: 420, ease: 'Back.easeOut' });
+    sfx(this, 'recolectar-exp'); // 1.er sonido: aparece el total
     // anillos que salen del total al aparecer
     for (let k = 0; k < 2; k++) {
       const ring = this.add.circle(src.x, src.y, 60, 0x7ff0ff, 0).setStrokeStyle(6, 0x7ff0ff, 0.9).setDepth(200).setBlendMode(Phaser.BlendModes.ADD);
@@ -327,8 +371,10 @@ export class MenuScene extends Phaser.Scene {
     let remaining = gain;
     const arrivalsTotal = XP_WAVES * cards.length + (mastery ? 1 : 0);
     let arrivals = 0;
-    for (let w = 0; w < WAVES; w++) {
-      const t0 = 650 + w * WAVE_MS; // las oleadas empiezan cuando el total ya se leyó
+    for (let w = 0; w < WAVES_ALL; w++) {
+      // las oleadas empiezan cuando el total ya se leyó. (18-11-2026, usuario: "la maestría tarda en salir") la MAESTRÍA sale justo cuando se va
+      // lo último de la EXP (300 ms después de esa oleada), no una oleada entera más tarde: los 3 tiempos quedan seguidos y parejos
+      const t0 = mastery && w >= XP_WAVES ? 650 + (XP_WAVES - 1) * WAVE_MS + MASTERY_AFTER_MS : 650 + w * WAVE_MS;
       if (mastery && w >= XP_WAVES) {
         // 3.ª oleada: la MAESTRÍA va al personaje
         this.time.delayedCall(t0, () => {
@@ -345,10 +391,16 @@ export class MenuScene extends Phaser.Scene {
       // sale la parte de esta oleada: el total baja
       this.time.delayedCall(t0, () => {
         if (!this.sys.isActive()) return;
-        sfx(this, 'recolectar-exp'); // un sonido por oleada
+        // sonido: 1.ª oleada siempre; la 2.ª solo sin maestría (con maestría, el 3.º sonido es el de la maestría)
+        if (w === 0 || !mastery) sfx(this, 'recolectar-exp');
         remaining = Math.max(0, remaining - part);
-        total.setText(`+${remaining}`);
-        this.tweens.add({ targets: total, scale: { from: 1.18, to: 1 }, duration: 260, ease: 'Back.easeOut' });
+        if (remaining > 0) {
+          total.setText(`+${remaining}`);
+          this.tweens.add({ targets: total, scale: { from: 1.18, to: 1 }, duration: 260, ease: 'Back.easeOut' });
+        } else {
+          // sale lo último: el total se va (sin "+0"); la maestría lo vuelve a encender con su "+1"
+          this.tweens.add({ targets: total, scale: 0.3, alpha: 0, duration: 220, ease: 'Quad.easeIn' });
+        }
       });
       cards.forEach((p) => {
         const r = p.rect;
@@ -432,6 +484,114 @@ export class MenuScene extends Phaser.Scene {
 
 
   /**
+   * (21-11-2026) La RULETA se cerró con el menú ya abierto: lo que ganó se ve pasar a sus cards. EXP → barras del pase y de la cuenta (no la de
+   * la cuenta si está en nivel máximo, mismo recorrido que la EXP de una partida: playXpGain); monedas → card de monedas (playCoinGain).
+   * Cualquier otro premio (dinero, cosmético, cofre) no cambia nada aquí.
+   */
+  private wheelClosed() {
+    if (!this.sys.isActive() || this.wheelOpenNow()) return;
+    const g = this.registry.get('menu.wheelGain') as { coins: number; xp: number } | undefined;
+    this.registry.remove('menu.wheelGain');
+    const coins = (g?.coins ?? 0) + this.pendingCoins;
+    this.pendingCoins = 0;
+    const xp = g?.xp ?? 0;
+    // nada que mostrar con orbes: los contadores se ponen al día sin más (por si el premio fue otro)
+    if (xp <= 0) {
+      this.profileRefresh?.();
+      this.passRefresh?.();
+    }
+    let wait = 250;
+    if (xp > 0) {
+      this.xpGain = xp;
+      this.xpAnims = [];
+      if (getPlayer().level < MAX_LEVEL && this.profileRefresh) this.xpAnims.push(this.profileRefresh);
+      if (this.passRefresh) this.xpAnims.push(this.passRefresh);
+      this.time.delayedCall(wait, () => this.playXpGain());
+      wait += 6200; // lo que dura la presentación de la EXP
+    }
+    if (coins > 0) this.time.delayedCall(wait, () => this.playCoinGain(coins));
+    else this.coinRefresh?.();
+  }
+
+  /** (21-11-2026) Las MONEDAS que dio la ruleta salen del centro y llegan a la card de monedas, que sube su saldo con un destello. */
+  private playCoinGain(amount: number) {
+    const card = this.coinObj;
+    const rect = this.coinRect;
+    if (!this.sys.isActive() || !card || !rect || this.wheelOpenNow()) {
+      this.coinRefresh?.();
+      return;
+    }
+    const W = this.scale.width;
+    const H = this.scale.height;
+    const src = { x: W / 2, y: H * 0.46 };
+    const dim = this.add.rectangle(0, 0, W, H, 0x02060f, 0).setOrigin(0).setDepth(190);
+    this.tweens.add({ targets: dim, fillAlpha: 0.6, duration: 280 });
+    const prevDepth = card.depth;
+    card.setDepth(195);
+    const glow = this.add.circle(src.x, src.y, 150, 0xffd23f, 0.22).setBlendMode(Phaser.BlendModes.ADD).setDepth(200).setScale(0.2);
+    this.tweens.add({ targets: glow, scale: 1, duration: 420, ease: 'Cubic.easeOut' });
+    const label = this.add.text(src.x, src.y - 62, 'MONEDAS GANADAS', { fontFamily: FONT, fontSize: '26px', color: '#ffffff', stroke: '#0a1638', strokeThickness: 6 }).setOrigin(0.5).setDepth(201).setLetterSpacing(3).setAlpha(0);
+    const total = this.add.text(src.x, src.y, `+${amount.toLocaleString('es-CL')}`, { fontFamily: FONT, fontSize: '96px', color: '#ffd23f', stroke: '#0a1638', strokeThickness: 12 }).setOrigin(0.5).setDepth(201).setScale(0.3);
+    fitText(total, W - 60);
+    this.tweens.add({ targets: label, alpha: 1, duration: 250 });
+    this.tweens.add({ targets: total, scale: total.scale > 0 ? 1 : 1, duration: 420, ease: 'Back.easeOut' });
+    sfx(this, 'recolectar-monedas');
+    const dx = rect.x + rect.w * 0.3;
+    const dy = rect.y + rect.h / 2;
+    const N = 10;
+    let arrived = 0;
+    for (let o = 0; o < N; o++) {
+      this.time.delayedCall(700 + o * 70, () => {
+        if (!this.sys.isActive()) return;
+        const coin = this.textures.exists('coin-1') ? this.add.image(0, 0, 'coin-1').setDisplaySize(38, 38) : this.add.circle(0, 0, 17, 0xffd23f).setStrokeStyle(3, 0x7a4a00);
+        const orb = this.add.container(src.x + Phaser.Math.Between(-60, 60), src.y + Phaser.Math.Between(-20, 20), [coin]).setDepth(202).setScale(0.4);
+        const sx = orb.x;
+        const sy = orb.y;
+        const arc = Phaser.Math.Between(60, 140);
+        const side = (dx < src.x ? -1 : 1) * Phaser.Math.Between(20, 60);
+        const k = { v: 0 };
+        this.tweens.add({ targets: orb, scale: 1.1, duration: 150 });
+        this.tweens.add({
+          targets: k,
+          v: 1,
+          duration: 560,
+          ease: 'Sine.easeIn',
+          onUpdate: () => orb.setPosition(sx + (dx - sx) * k.v + Math.sin(k.v * Math.PI) * side, sy + (dy - sy) * k.v - Math.sin(k.v * Math.PI) * arc),
+          onComplete: () => {
+            orb.destroy();
+            const spark = this.add.circle(dx, dy, 8, 0xffffff, 0.9).setDepth(203).setBlendMode(Phaser.BlendModes.ADD);
+            this.tweens.add({ targets: spark, scale: 3.2, alpha: 0, duration: 300, onComplete: () => spark.destroy() });
+            this.tweens.add({ targets: card, scale: { from: 1.08, to: 1 }, duration: 160 });
+            if (++arrived === N) {
+              // llegó la última: el saldo sube con la card encendida y se apaga todo
+              this.coinRefresh?.();
+              const flash = this.add.graphics().setDepth(196).setBlendMode(Phaser.BlendModes.ADD);
+              flash.fillStyle(0xffd23f, 0.45).fillRoundedRect(rect.x, rect.y, rect.w, rect.h, rect.h / 2);
+              this.tweens.add({ targets: flash, alpha: 0, duration: 520, onComplete: () => flash.destroy() });
+              const add = this.add.text(dx + 30, rect.y - 6, `+${amount.toLocaleString('es-CL')}`, { fontFamily: FONT, fontSize: '34px', color: '#ffd23f', stroke: '#0a1638', strokeThickness: 7 }).setOrigin(0.5).setDepth(204).setScale(0.4);
+              this.tweens.add({ targets: add, scale: 1, duration: 220, ease: 'Back.easeOut' });
+              this.tweens.add({ targets: add, y: rect.y - 44, alpha: 0, delay: 600, duration: 520, onComplete: () => add.destroy() });
+              this.tweens.add({ targets: [total, label, glow], alpha: 0, duration: 350, onComplete: () => [total, label, glow].forEach((x) => x.destroy()) });
+              this.tweens.add({
+                targets: dim,
+                fillAlpha: 0,
+                delay: 700,
+                duration: 450,
+                onComplete: () => {
+                  dim.destroy();
+                  card.setDepth(prevDepth);
+                },
+              });
+            }
+          },
+        });
+      });
+    }
+    // los orbes arrancan cuando el total ya se leyó: se va bajando el número a medida que salen
+    this.time.delayedCall(700, () => this.tweens.add({ targets: total, scale: { from: 1.15, to: 1 }, duration: 300, ease: 'Back.easeOut' }));
+  }
+
+  /**
    * 3.ª oleada de la presentación con MAESTRÍA ganada: el total del centro pasa a "+1 MAESTRÍA" (color de la pasiva del personaje), salen
    * orbes con el icono de la pasiva hacia el personaje y, al llegar, el personaje se ilumina como una subida de nivel. `done` al terminar.
    */
@@ -452,6 +612,8 @@ export class MenuScene extends Phaser.Scene {
     // (16-11-2026, usuario) el texto de la maestría en BLANCO brillante (resplandor del color de la pasiva)
     total.setText('+1').setColor('#ffffff').setShadow(0, 0, css, 14, true, true);
     glow.setFillStyle(def.color, 0.22);
+    this.tweens.killTweensOf(total);
+    total.setAlpha(1);
     this.tweens.add({ targets: total, scale: { from: 1.3, to: 1 }, duration: 300, ease: 'Back.easeOut' });
     const r = hero.rect;
     const dst = { x: r.x + r.w / 2, y: r.y + r.h * 0.42 };
@@ -511,6 +673,7 @@ export class MenuScene extends Phaser.Scene {
     const cx = r.x + r.w / 2;
     const cy = r.y + r.h * 0.5;
     const D = 205;
+    sfx(this, 'power-up'); // MAESTRÍA ganada (también si sube su nivel)
     const up = masteryLevel(m.after) > masteryLevel(m.before);
     const Y = up ? 0xffe14d : color;
     // silueta encendida: copia del retrato pintada de blanco (tinte, sin preFX) que destella y se apaga
@@ -589,7 +752,7 @@ export class MenuScene extends Phaser.Scene {
    * Fila de modos: JUGAR (≈70 %, amarillo, principal) y 2v2 (≈30 %, gris, bloqueado).
    * Ambos comparten la misma forma inclinada del botón JUGAR original, dibujada por código.
    */
-  private playRow(W: number, y: number, onPlay: (bet: number | null) => void) {
+  private playRow(W: number, y: number, onPlay: (bet: number | null) => void, onDoubles: () => void) {
     const margin = 26;
     const gap = 14;
     const h = 108;
@@ -599,7 +762,8 @@ export class MenuScene extends Phaser.Scene {
     // MODO DESARROLLO apagado: solo JUGAR, sin entrada (partida amistosa, no cuesta monedas)
     if (isDevMode()) rankedPlayButton(this, margin + jw / 2, y, jw, h, onPlay);
     else arcadeButton(this, margin + jw / 2, y, jw, h, 'JUGAR', () => onPlay(null), { palette: 'yellow' });
-    lockedModeButton(this, margin + jw + gap + vw / 2, y, vw, h, '2v2');
+    // (21-11-2026) 2v2: tú + un aliado BOT contra dos rivales BOT (primera versión, sin Ranked ni red)
+    arcadeButton(this, margin + jw + gap + vw / 2, y, vw, h, '2v2', () => onDoubles(), { palette: 'green' });
   }
 
   // ---------------------------------------------------------------- fondo
@@ -755,7 +919,17 @@ export class MenuScene extends Phaser.Scene {
       if (this.xpGain > 0) this.xpAnims.push(run);
       else this.time.delayedCall(400, run);
     } else drawBp(bpNow);
-    if (this.xpGain > 0) this.xpAt.push({ x: x + tx + tw * 0.62, y: y + 30, rect: { x, y, w, h }, obj: c }); // "+N EXP" sobre la barra del pase
+    // (21-11-2026) la EXP de una ruleta llega a la barra del pase (la llama wheelClosed al llegar los orbes)
+    let bpShown = bpNow;
+    this.passRefresh = () => {
+      const to = syncSeason(getPlayer() as PlayerState).bp.xp;
+      if (to <= bpShown) return;
+      const o = { v: bpShown };
+      bpShown = to;
+      this.registry.set(BP_KEY, to);
+      this.tweens.add({ targets: o, v: to, duration: 900, ease: 'Cubic.easeOut', onUpdate: () => drawBp(o.v), onComplete: () => drawBp(to) });
+    };
+    this.xpAt.push({ x: x + tx + tw * 0.62, y: y + 30, rect: { x, y, w, h }, obj: c, kind: 'pass' }); // "+N EXP" sobre la barra del pase
     // brillo que cruza el cuadro (recortado a su forma)
     const shine = this.add.graphics();
     shine.fillStyle(0xffffff, 0.5).fillPoints([{ x: 0, y: 0 }, { x: 34, y: 0 }, { x: 10, y: h }, { x: -24, y: h }], true);
@@ -856,7 +1030,7 @@ export class MenuScene extends Phaser.Scene {
     card.add(name);
     const lvl = this.add.text(tx, 45 + dy, `Nivel ${p.level}`, textStyle(17, '#9fc0ff')).setOrigin(0, 0);
     card.add(lvl);
-    this.xpAt.push({ x: x + tx + tw * 0.62, y: y + 52 + dy, rect: { x, y, w: cw, h: ch }, obj: card }); // "+N EXP" sobre la barra de nivel
+    this.xpAt.push({ x: x + tx + tw * 0.62, y: y + 52 + dy, rect: { x, y, w: cw, h: ch }, obj: card, kind: 'level' }); // "+N EXP" sobre la barra de nivel
 
     const by = 72 + dy;
     const bh = 12;
@@ -891,6 +1065,7 @@ export class MenuScene extends Phaser.Scene {
           // la barra se llenó: SUBIDA DE NIVEL (el número cambia ahora, con el efecto amarillo)
           shown.v = 0;
           lvl.setText(`Nivel ${to.level}`);
+          sfx(this, 'power-up'); // sube el nivel de la cuenta
           this.levelUpFx({ x, y, w: cw, h: ch }, 20, `NIVEL ${to.level}`);
           this.tweens.add({ targets: lvl, scale: { from: 1.6, to: 1 }, duration: 480, ease: 'Back.easeOut' });
         }
@@ -921,13 +1096,19 @@ export class MenuScene extends Phaser.Scene {
     }
 
     // actualización en vivo si el perfil cambia mientras el menú está abierto
-    const off = onPlayerChange((s) => {
+    const apply = (s: PlayerState) => {
       const next = { level: s.level, prog: levelProgress(s) };
       if (next.level <= current.level) lvl.setText(`Nivel ${s.level}`); // si sube, lo cambia animateTo al llenarse la barra
       name.setText(s.name);
       fitText(name, tw);
       animateTo(current, next);
       current = next;
+    };
+    this.profileRefresh = () => apply(getPlayer() as PlayerState);
+    // con la ruleta abierta la barra espera: se llena cuando la EXP llega a la card (profileRefresh)
+    const off = onPlayerChange((s) => {
+      if (this.wheelOpenNow()) return;
+      apply(s as PlayerState);
     });
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => off());
   }
@@ -1008,8 +1189,11 @@ export class MenuScene extends Phaser.Scene {
     const KEY = 'profile.coinsShown';
     const fmt = (n: number) => Math.round(n).toLocaleString('es-CL');
     const now = getPlayer().coins;
-    const prev = this.registry.get(KEY) as number | undefined;
+    // (21-11-2026) premio de la ruleta cobrado antes de abrir el menú: el contador espera a que lleguen las monedas (playCoinGain)
+    const holdC = this.wheelGain?.coins ?? 0;
+    const prev = (this.registry.get(KEY) as number | undefined) ?? (holdC > 0 ? now - holdC : undefined);
     const c = this.counter(right, y, 'coin', fmt(prev ?? now));
+    this.coinObj = c;
     const txt = c.getData('text') as Phaser.GameObjects.Text;
     const shown = { v: prev ?? now };
     const animateTo = (to: number) => {
@@ -1034,8 +1218,14 @@ export class MenuScene extends Phaser.Scene {
       if (up) txt.setColor('#ffe27a');
       this.time.delayedCall(1500, () => txt.setColor('#ffffff'));
     };
-    animateTo(now);
-    const off = onPlayerChange((s) => animateTo(s.coins));
+    if (holdC <= 0) animateTo(now);
+    this.coinRect = { x: right - COUNTER_W, y, w: COUNTER_W, h: COUNTER_H };
+    this.coinRefresh = () => animateTo(getPlayer().coins);
+    // con la ruleta abierta no se actualiza solo: lo hace coinRefresh cuando las monedas llegan a la card
+    const off = onPlayerChange((s) => {
+      if (this.wheelOpenNow()) return;
+      animateTo(s.coins);
+    });
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => off());
   }
 

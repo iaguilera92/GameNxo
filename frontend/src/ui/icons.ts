@@ -1,4 +1,4 @@
-﻿import Phaser from 'phaser';
+import Phaser from 'phaser';
 import { C } from './theme';
 import type { AbilityIcon } from '../logic/Abilities';
 
@@ -105,12 +105,28 @@ export function drawSkateIcon(g: Phaser.GameObjects.Graphics, R: number) {
   g.lineStyle(R * 0.06, C.outline).lineBetween(0, R * 0.34, 0, R * 0.46).lineBetween(R * 0.5, R * 0.34, R * 0.5, R * 0.46);
 }
 
-/** Icono de un poder del DEFENSIVO que no es el DASH (DESTELLO, SOMBRA, SUPERSALTO, VOLTERETA, PATINAJE). */
+/** Icono del poder RELÁMPAGO: un rayo azul neón en zigzag con líneas de velocidad y marcas en el suelo. */
+export function drawLightningIcon(g: Phaser.GameObjects.Graphics, R: number) {
+  for (const [y, w] of [[-0.3, 0.1], [0.05, 0.14], [0.4, 0.1]] as const) {
+    g.lineStyle(R * w + 6, C.outline).lineBetween(-R * 0.95, R * y, -R * 0.45, R * y);
+    g.lineStyle(R * w, 0x9fe6ff).lineBetween(-R * 0.95, R * y, -R * 0.45, R * y);
+  }
+  const bolt = [0.28, -0.95, -0.38, 0.08, -0.02, 0.08, -0.3, 0.95, 0.5, -0.2, 0.1, -0.2, 0.28, -0.95].map((v, i) => (i % 2 ? v * R * 0.92 : v * R * 0.92 + R * 0.12));
+  g.fillStyle(C.outline).fillPoints(pts(bolt.map((v, i) => (i % 2 ? v : v + 0))), true);
+  g.lineStyle(R * 0.14 + 6, C.outline).strokePoints(pts(bolt), true);
+  g.fillStyle(0x2f9bff).fillPoints(pts(bolt), true);
+  g.lineStyle(R * 0.07, 0xdff6ff).strokePoints(pts(bolt), true);
+  g.fillStyle(0xffffff).fillCircle(R * 0.32, -R * 0.55, R * 0.07);
+}
+
+/** Icono de un poder del DEFENSIVO que no es el DASH (DESTELLO, SOMBRA, SUPERSALTO, VOLTERETA, PATINAJE, RELÁMPAGO). */
+
 export function drawDefensiveIcon(g: Phaser.GameObjects.Graphics, id: string, R: number) {
   if (id === 'shadow') drawShadowIcon(g, R);
   else if (id === 'jump') drawJumpIcon(g, R);
   else if (id === 'flip') drawFlipIcon(g, R);
   else if (id === 'skate') drawSkateIcon(g, R);
+  else if (id === 'lightning') drawLightningIcon(g, R);
   else drawBlinkIcon(g, R);
 }
 

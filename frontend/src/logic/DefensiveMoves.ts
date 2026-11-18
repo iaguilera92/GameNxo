@@ -91,3 +91,17 @@ export const DASH_WARP = { out: 0.11, delay: 0.04, in: 0.18, fastOut: 0.05, fast
  * del contacto arranca el revés para que la raqueta llegue a la pelota justo cuando entra.
  */
 export const BLINK = { out: 0.05, in: 0.1, fastOut: 0.03, fastIn: 0.05, side: 36, swingLead: 0.15 };
+
+/**
+ * RELÁMPAGO (DEFENSIVO ÉPICO, 18-11-2026): como el DESTELLO pero con un instante de carga: el personaje se vuelve azul neón (`chg`), se
+ * convierte en un rayo que cruza la cancha dejando rayos en el suelo (`out`, casi un teletransporte) y aparece junto a la pelota (`in`) para
+ * devolver de revés. Los "fast" son para cuando la pelota va justa. `side` y `swingLead`: como el DESTELLO.
+ */
+export const LIGHTNING = { chg: 0.16, out: 0.04, in: 0.1, fastChg: 0.04, fastOut: 0.03, fastIn: 0.05, side: 36, swingLead: 0.15 };
+
+/**
+ * TIEMPO LENTO (DEFENSIVO LEGENDARIO, 18-11-2026): el mundo va a `k` de velocidad mientras corres a la pelota (llegas `lead` s de juego antes
+ * del contacto, con un mínimo de `minT` s para poder verlo) y entonces empieza una cinemática de `hitMs` ms con el partido congelado:
+ * la cámara se acerca (`zoom`, en `zoomInMs`) y te estiras a por la pelota en cámara lenta (`leadMs` ms de estirada, a `spriteK`).
+ */
+export const SLOWMO = { k: 0.4, minT: 0.6, lead: 0.1, hitMs: 2000, leadMs: 1000, zoomInMs: 700, zoom: 1.55, zoomEnd: 1.95, demoZoom: 1.7, dark: 0.62, ax: 40, ay: 80, focusLift: 120, spriteK: 0.44, side: 40 };

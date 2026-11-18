@@ -14,7 +14,9 @@ const POWER_WALL: Record<FxElement, { hot: number; ring: number }> = {
   ultra: { hot: 0xffffff, ring: 0x9cf5d8 }, // (17-11-2026) ULTRA EFECTO: aire blanco y menta
   barrage: { hot: 0xfbffe0, ring: 0xd8ff3a }, // (17-11-2026) RÁFAGA: amarillo lima
   energy: { hot: 0xffffff, ring: 0x5fe8ff }, // (17-11-2026) BOLA DE ENERGÍA: blanco y celeste
+  hurricane: { hot: 0xfff6b0, ring: 0xffd23f }, // (17-11-2026) HURACÁN: amarillo y viento
   comet: { hot: 0xeaf4ff, ring: 0x2f6bff }, // (17-11-2026) COMETA: azul y blanco
+  dragon: { hot: 0xffd23f, ring: 0xd6201e }, // (18-11-2026) DRAGÓN: rojo y dorado (con las brasas del fuego)
 };
 
 /**

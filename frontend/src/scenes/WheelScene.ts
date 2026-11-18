@@ -1,9 +1,9 @@
 import Phaser from 'phaser';
 import { FONT, restartOnResize } from '../ui/theme';
-import { GOLD, NAVY, SECTOR, TIER_LOOK, CHEST_TEX, addSectorContent, chestImage, coinIcon, drawSlotIcon, drawWheelFace, ensureTierTexture, isSpecial, sectorCenter } from '../ui/wheelArt';
+import { GOLD, NAVY, SECTOR, TIER_LOOK, CHEST_TEX, type SectorAmountLabel, addSectorContent, chestImage, coinIcon, drawSlotIcon, drawWheelFace, ensureTierTexture, isSpecial, sectorCenter } from '../ui/wheelArt';
 import { WHEEL, type WheelSlot } from '../domain/wheelConfig';
 import type { WheelReward, WheelTier } from '../domain/wheelState';
-import { slotById } from '../domain/dailyWheel';
+import { scaleReward, slotById } from '../domain/dailyWheel';
 import { CHEST, formatChestTime } from '../domain/chest';
 import { getPlayer } from '../domain/playerStore';
 import { boostWheel, claimWheel, claimWheelAdBonus, spinWheel, wheelSpin } from '../logic/Wheels';
@@ -90,6 +90,13 @@ export class WheelScene extends Phaser.Scene {
   private face?: Phaser.GameObjects.Graphics;
   /** nivel actual de la ruleta (normal / dorada / épica): lo decide domain/dailyWheel, aquí solo se muestra */
   private tier: WheelTier = 'normal';
+  /** (18-11-2026) textos de las cantidades de los sectores: suben al evolucionar la ruleta (showTierAmounts) */
+  private amounts: SectorAmountLabel[] = [];
+  /** (18-11-2026) título y subtítulo: cambian con el nivel de la ruleta (showTierTitle) */
+  private titleText?: Phaser.GameObjects.Text;
+  /** (18-11-2026) ya se pidió cerrar (espera a que se levante el dedo) */
+  private closing = false;
+  private subText?: Phaser.GameObjects.Text;
 
   constructor() {
     super(WheelScene.KEY);
@@ -102,6 +109,7 @@ export class WheelScene extends Phaser.Scene {
   init(data: WheelSceneData) {
     this.index = data?.index ?? 0;
     this.bonus = data?.bonus === true;
+    this.closing = false; // (la escena se reutiliza entre aperturas)
     this.test = data?.test === true;
     this.force = undefined;
     this.picker = undefined;
@@ -126,6 +134,8 @@ export class WheelScene extends Phaser.Scene {
     const W = this.scale.width;
     const H = this.scale.height;
     restartOnResize(this);
+    // (21-11-2026) el MENÚ espera: mientras la ruleta está abierta no actualiza sus contadores y, al cerrarse, muestra cómo el premio (EXP, monedas) pasa a sus cards
+    this.registry.set('wheel.open', true);
     this.cx = W / 2;
     this.cy = H * 0.43;
     this.framed = this.textures.exists(FRAME.key);
@@ -144,6 +154,8 @@ export class WheelScene extends Phaser.Scene {
     this.closeBtn = this.closeButton(W);
     // las texturas teñidas del marco pesan (tamaño² × 4 bytes): se quitan al cerrar la ruleta
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      this.registry.set('wheel.open', false);
+      this.game.events.emit('wheel-closed');
       for (const k of [`${FRAME.key}-gold`, `${FRAME.key}-epic`]) if (this.textures.exists(k)) this.textures.remove(k);
     });
 
@@ -153,6 +165,8 @@ export class WheelScene extends Phaser.Scene {
       // ya girada (cerrada antes de cobrar / app cerrada a mitad): se muestra el premio directamente
       this.phase = 'result';
       this.tier = sp.tier ?? 'normal';
+      this.showTierAmounts(this.tier, false); // (18-11-2026) las cantidades con el bonus del nivel que quedó
+      this.showTierTitle(this.tier, false);
       this.wheel.setRotation(this.restAngle(WHEEL.slots.indexOf(slot)));
       this.time.delayedCall(60, () => this.reveal(slot, sp.reward!, sp.claimed, !sp.claimed));
     } else {
@@ -284,13 +298,16 @@ export class WheelScene extends Phaser.Scene {
       .text(W / 2, y, this.test ? 'RULETA TEST' : 'RULETA DIARIA', { fontFamily: FONT, fontSize: '52px', color: '#ffd23f', stroke: '#0a1638', strokeThickness: 10 })
       .setOrigin(0.5)
       .setShadow(0, 6, '#0a1638', 0, true, true);
+    // (18-11-2026, usuario) el "1 / 4 · ¡GANASTE UN GIRO!" un poco más abajo (antes y + 46)
     const sub = this.add
-      .text(W / 2, y + 46, this.test ? 'PRUEBA · LOS PREMIOS SÍ SE ENTREGAN' : `${this.index + 1} / ${WHEEL.perDay}  ·  ¡GANASTE UN GIRO!`, { fontFamily: FONT, fontSize: '22px', color: '#cfe0ff', stroke: '#0a1638', strokeThickness: 5 })
+      .text(W / 2, y + 60, this.test ? 'PRUEBA · LOS PREMIOS SÍ SE ENTREGAN' : `${this.index + 1} / ${WHEEL.perDay}  ·  ¡GANASTE UN GIRO!`, { fontFamily: FONT, fontSize: '22px', color: '#cfe0ff', stroke: '#0a1638', strokeThickness: 5 })
       .setOrigin(0.5)
       .setLetterSpacing(1);
     t.setScale(0.4).setAlpha(0);
     sub.setAlpha(0);
     this.data.set('sub', sub);
+    this.titleText = t;
+    this.subText = sub;
     this.tweens.add({ targets: t, scale: 1, alpha: 1, duration: 420, ease: 'Back.easeOut' });
     this.tweens.add({ targets: sub, alpha: 1, delay: 200, duration: 300 });
   }
@@ -329,7 +346,7 @@ export class WheelScene extends Phaser.Scene {
       this.tweens.add({ targets: glow, alpha: 0.9, duration: s.rarity === 'special' ? 520 : 760, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
       this.wheel.add(glow);
     });
-    addSectorContent(this, this.wheel, R);
+    this.amounts = addSectorContent(this, this.wheel, R);
     // tachuelas en los bordes de sector
     const pegs = this.add.graphics();
     WHEEL.slots.forEach((_, i) => {
@@ -385,7 +402,7 @@ export class WheelScene extends Phaser.Scene {
       this.tweens.add({ targets: glow, alpha: 0.9, duration: s.rarity === 'special' ? 520 : 760, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
       this.wheel.add(glow);
     });
-    addSectorContent(this, this.wheel, R * 0.97);
+    this.amounts = addSectorContent(this, this.wheel, R * 0.97);
     // marco fijo (indicador y centro incluidos) + copia aditiva para el parpadeo de las luces
     const d = FRAME.size * scale;
     this.frameImg = this.add.image(cx, cy, FRAME.key).setDisplaySize(d, d);
@@ -435,7 +452,12 @@ export class WheelScene extends Phaser.Scene {
   private onTap(p: Phaser.Input.Pointer) {
     if (this.phase === 'result') {
       if (p.y > this.scale.height * 0.74 && p.y < this.scale.height * 0.86) return; // reserva táctil del botón bonus
-      if (this.canContinue) this.close();
+      // (18-11-2026, usuario: "al continuar vuelve a salir la ruleta") se cierra al LEVANTAR el dedo: si se cerraba al apoyarlo, el
+      // "soltar" caía en el menú de abajo (el botón de la ruleta) y la volvía a abrir
+      if (this.canContinue && !this.closing) {
+        this.closing = true;
+        this.input.once('pointerup', () => this.close());
+      }
       return;
     }
     if (this.taps >= MAX_TAPS) return;
@@ -500,8 +522,9 @@ export class WheelScene extends Phaser.Scene {
       if (tint) this.tierTint.setFillStyle(tint.color, 1);
       this.tweens.add({ targets: this.tierTint, alpha: tint ? tint.alpha : 0, duration: animate ? 450 : 0, ease: 'Sine.easeOut' });
     }
+    this.showTierAmounts(tier, animate);
+    this.showTierTitle(tier, animate);
     if (!animate || tier === 'normal') return;
-    const W = this.scale.width;
     wheelWin(this, tier === 'epic');
     this.cameras.main.flash(tier === 'epic' ? 320 : 220, tier === 'epic' ? 190 : 255, tier === 'epic' ? 140 : 215, tier === 'epic' ? 255 : 110);
     const ring = this.add.circle(this.cx, this.cy, this.R * 0.4, 0xffffff, 0).setStrokeStyle(10, look.glow, 1).setBlendMode(Phaser.BlendModes.ADD).setDepth(40);
@@ -512,15 +535,66 @@ export class WheelScene extends Phaser.Scene {
       const st = this.add.star(this.cx, this.cy, 5, 4, 11, Phaser.Utils.Array.GetRandom([look.glow, 0xffffff, look.line[1]]), 1).setBlendMode(Phaser.BlendModes.ADD).setDepth(40);
       this.tweens.add({ targets: st, x: this.cx + Math.cos(a) * dist, y: this.cy + Math.sin(a) * dist, angle: 300, alpha: 0, scale: 0.3, duration: Phaser.Math.Between(500, 850), ease: 'Cubic.easeOut', onComplete: () => st.destroy() });
     }
-    const banner = this.add
-      .text(W / 2, this.cy - this.outerR - 40, `${look.title}\n+${WHEEL.tiers.bonusPct[tier]}% EN LOS PREMIOS`, { fontFamily: FONT, fontSize: '40px', color: '#ffffff', stroke: tier === 'epic' ? '#5a1fc0' : '#8a4b00', strokeThickness: 10, align: 'center' })
-      .setOrigin(0.5)
-      .setLineSpacing(2)
-      .setDepth(41)
-      .setScale(0);
-    if (banner.width > W - 40) banner.setFontSize(Math.floor((40 * (W - 40)) / banner.width));
-    this.tweens.add({ targets: banner, scale: 1, duration: 380, ease: 'Back.easeOut' });
-    this.tweens.add({ targets: banner, alpha: 0, delay: 1500, duration: 400, onComplete: () => banner.destroy() });
+    // (18-11-2026, usuario) sin el aviso flotante encima de los títulos: lo dicen el título y el subtítulo (showTierTitle)
+  }
+
+  /**
+   * (18-11-2026, usuario) El NIVEL de la ruleta se ve en los títulos: "RULETA DIARIA" pasa a "RULETA DORADA" / "RULETA ÉPICA" (con su color y un
+   * salto) y el subtítulo "1 / 4 · ¡GANASTE UN GIRO!" pasa a "1 / 4 · +15 % EN LOS PREMIOS". Así la ruleta queda más limpia.
+   */
+  private showTierTitle(tier: WheelTier, animate: boolean) {
+    if (this.test) return;
+    const t = this.titleText;
+    const sub = this.subText;
+    const W = this.scale.width;
+    if (t?.active) {
+      const look = TIER_LOOK[tier];
+      t.setText(tier === 'normal' ? 'RULETA DIARIA' : look.title.replace(/[¡!]/g, '')).setColor(tier === 'normal' ? '#ffd23f' : look.text).setFontSize(52);
+      if (t.width > W - 30) t.setFontSize(Math.floor((52 * (W - 30)) / t.width));
+      if (animate) {
+        this.tweens.killTweensOf(t);
+        t.setAlpha(1);
+        this.tweens.add({ targets: t, scale: { from: 1.35, to: 1 }, duration: 380, ease: 'Back.easeOut' });
+      }
+    }
+    if (sub?.active) {
+      sub.setText(tier === 'normal' ? `${this.index + 1} / ${WHEEL.perDay}  ·  ¡GANASTE UN GIRO!` : `${this.index + 1} / ${WHEEL.perDay}  ·  +${WHEEL.tiers.bonusPct[tier]}% EN LOS PREMIOS`);
+      if (tier !== 'normal') sub.setColor(TIER_LOOK[tier].text);
+      if (animate) {
+        this.tweens.killTweensOf(sub);
+        sub.setAlpha(1);
+        this.tweens.add({ targets: sub, scale: { from: 1.25, to: 1 }, duration: 320, ease: 'Back.easeOut' });
+      }
+    }
+  }
+
+  /**
+   * (18-11-2026, usuario) La ruleta evolucionó: las cantidades de los sectores (monedas, EXP, dinero) pasan al valor CON el bonus
+   * (el mismo cálculo que el cobro, dailyWheel.scaleReward), en el color del nivel, con un salto y un "+N" que sube.
+   */
+  private showTierAmounts(tier: WheelTier, animate: boolean) {
+    const col = tier === 'epic' ? '#e4c8ff' : tier === 'gold' ? '#ffe36b' : '#ffffff';
+    for (const a of this.amounts) {
+      const p = a.slot.prize;
+      if (p.kind !== 'coins' && p.kind !== 'xp' && p.kind !== 'cash') continue;
+      const base = p.amount;
+      const sr = scaleReward({ kind: p.kind, amount: base }, tier);
+      const now = 'amount' in sr ? sr.amount : base;
+      const t = a.label;
+      if (!t.active) continue;
+      t.setText(String(now)).setColor(tier === 'normal' ? '#ffffff' : col).setScale(1);
+      const k = t.width > a.maxW ? a.maxW / t.width : 1;
+      t.setScale(k);
+      if (!animate || now === base) continue;
+      this.tweens.killTweensOf(t);
+      this.tweens.add({ targets: t, scale: { from: k * 1.7, to: k }, duration: 420, ease: 'Back.easeOut' });
+      // "+N" que sube desde el número (dentro del sector, gira con la ruleta)
+      const parent = t.parentContainer;
+      if (!parent) continue;
+      const plus = this.add.text(t.x, t.y - t.height * k * 0.7, `+${now - base}`, { fontFamily: FONT, fontSize: `${Math.round(t.height * k * 0.6)}px`, color: col, stroke: '#0a1638', strokeThickness: 4 }).setOrigin(0.5);
+      parent.add(plus);
+      this.tweens.add({ targets: plus, y: plus.y - 26, alpha: { from: 1, to: 0 }, delay: 250, duration: 700, ease: 'Sine.easeOut', onComplete: () => plus.destroy() });
+    }
   }
 
   private tapFx(p: Phaser.Input.Pointer) {
@@ -649,7 +723,7 @@ export class WheelScene extends Phaser.Scene {
     this.closeBtn.setVisible(false);
     // 2) cobro automático
     if (!claimed) {
-      claimWheel(this.index, this.bonus);
+      this.noteGain(claimWheel(this.index, this.bonus)?.given);
       wheelClaim(this);
     }
     const cx = W / 2;
@@ -688,16 +762,7 @@ export class WheelScene extends Phaser.Scene {
     this.tweens.add({ targets: icon, y: cy - 10, delay: t0 + 600, duration: 1100, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
     if (celebrate) this.time.delayedCall(t0 + 120, () => this.burst(cx, cy, special));
     if (special) this.specialCelebration();
-    if (this.tier !== 'normal') {
-      const look = TIER_LOOK[this.tier];
-      const tag = this.add
-        .text(cx, H * 0.075, `${look.title}  +${WHEEL.tiers.bonusPct[this.tier]}%`, { fontFamily: FONT, fontSize: '34px', color: look.text, stroke: '#0a1638', strokeThickness: 9 })
-        .setOrigin(0.5)
-        .setAlpha(0)
-        .setLetterSpacing(2);
-      if (tag.width > W - 30) tag.setFontSize(Math.floor((34 * (W - 30)) / tag.width));
-      this.tweens.add({ targets: tag, alpha: 1, delay: t0 + 200, duration: 350 });
-    }
+    // (18-11-2026, usuario) al cobrar ya no sale "RULETA DORADA +15 %" (lo decían los títulos)
 
     // 4) cantidad debajo (cuenta hacia arriba) y etiqueta
     const n = (v: number) => v.toLocaleString('es-CL');
@@ -757,6 +822,7 @@ export class WheelScene extends Phaser.Scene {
           if (!this.scene.isActive()) return;
           this.canContinue = couldContinue || this.canContinue;
           const extra = earned ? claimWheelAdBonus(this.index, this.bonus) : null;
+          this.noteGain(extra);
           if (!extra || extra.kind === 'item' || extra.kind === 'chest') {
             busy = false;
             x2.setInteractive({ useHandCursor: true });
@@ -801,6 +867,13 @@ export class WheelScene extends Phaser.Scene {
       this.canContinue = true;
       this.tweens.add({ targets: cont, alpha: 1, duration: 300, onComplete: () => this.tweens.add({ targets: cont, alpha: 0.4, duration: 650, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' }) });
     });
+  }
+
+  /** (21-11-2026) Apunta lo entregado (monedas / EXP) para que el MENÚ lo muestre llegando a sus cards (registry menu.wheelGain). */
+  private noteGain(g: WheelReward | null | undefined) {
+    if (!g || (g.kind !== 'coins' && g.kind !== 'xp')) return;
+    const cur = (this.registry.get('menu.wheelGain') as { coins: number; xp: number } | undefined) ?? { coins: 0, xp: 0 };
+    this.registry.set('menu.wheelGain', { coins: cur.coins + (g.kind === 'coins' ? g.amount : 0), xp: cur.xp + (g.kind === 'xp' ? g.amount : 0) });
   }
 
   private burst(x: number, y: number, special: boolean) {

@@ -132,14 +132,18 @@ export class HyperAura {
    * 1 = la de siempre. Lo deshace start si cambia de poder (rehace los emisores).
    */
   setBoost(k: number) {
-    const b = Math.max(1, k);
-    this.flames.setFrequency(28 / b, b > 1.2 ? 3 : 2);
+    // (18-11-2026, rendimiento) el refuerzo se topa en ×1,5 y 2 llamas por tanda (antes ×1,9 y 3: ~200 brillos ADD por segundo)
+    // (18-11-2026) al cerrar la demo los emisores pueden estar ya destruidos (con el diálogo): setFrequency lanzaba TypeError
+    if (!this.flames.scene || !this.sparks.scene) return;
+    const b = Math.min(1.5, Math.max(1, k));
+    this.flames.setFrequency(28 / b, 2);
     this.sparks.setFrequency(90 / b);
   }
 
   stop() {
     if (!this.active) return;
     this.active = false;
+    if (!this.flames.scene || !this.sparks.scene) return; // (18-11-2026) ya destruidos (cierre de la demo)
     this.flames.stop();
     this.sparks.stop();
   }

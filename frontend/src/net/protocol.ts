@@ -190,7 +190,7 @@ export interface HitMsg {
  *  smash-armed / smash-disarmed el emisor arma / consume su SMASH (aura en el rival; data de smash-armed: element = su poder)
  *  smash-cine                   empieza la cinemática del SMASH del emisor (data: x, y, overhead, ms, element = su poder)
  *  inferno-cine                 empieza la cinemática del INFERNO del emisor (data: x, y, tx, ty, ms, power; con la ULTI LEGENDARIA power = energy además bx, by = el rival visto por el emisor y seed = semilla del peloteo automático, 17-11-2026)
- *  defensive                    SOMBRA / SUPERSALTO / VOLTERETA / PATINAJE / DESTELLO / teletransporte del emisor (data: kind = shadow | jump | flip | skate | blink | warp, x, y, tx, ty, ms | out, in, delay)
+ *  defensive                    SOMBRA / SUPERSALTO / VOLTERETA / PATINAJE / DESTELLO / teletransporte del emisor (data: kind = shadow | jump | flip | skate | blink | warp | lightning, x, y, tx, ty, ms | out, in, delay | chg para lightning)
  *  racket                       raqueta del emisor tras recibir la ULTI (data: lost = true + x, y donde cae · lost = false: la recogió)
  *  timing                       nota del golpe del emisor (data: grade = perfect | good | early | late, streak, ms)
  *  lunge                        el emisor empieza su ESTIRADA (data: side, x, y, tx, ty, ms)

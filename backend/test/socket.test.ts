@@ -170,3 +170,36 @@ test('marco del perfil y estilo de zona: llegan al rival si son conocidos; si no
   a.close();
   b.close();
 });
+
+test('2v2: dos humanos en la misma sala, sin espejo de modo; si el compañero se corta, el host sigue y recibe MATE_AWAY', async () => {
+  const a = await client();
+  const b = await client();
+  a.emit(EV.FIND, { ...profile('Ana'), mode: '2v2' });
+  await once(a, EV.SEARCHING);
+  const ma = once<{ role: string; mode?: string; opponent: { name: string } }>(a, EV.MATCHED);
+  const mb = once<{ role: string; mode?: string; token?: string }>(b, EV.MATCHED);
+  b.emit(EV.FIND, { ...profile('Beto'), mode: '2v2' });
+  const [ra, rb] = await Promise.all([ma, mb]);
+  assert.equal(ra.mode, '2v2');
+  assert.equal(rb.mode, '2v2');
+  assert.equal(ra.opponent.name, 'Beto'); // en 2v2 "opponent" es el compañero
+  const sa = once(a, EV.START);
+  const sb = once(b, EV.START);
+  a.emit(EV.READY);
+  b.emit(EV.READY);
+  await Promise.all([sa, sb]);
+  // un estado de un bot (a = 1) del host llega al compañero con su id de actor
+  const st = once<{ a?: number }>(b, EV.STATE);
+  a.emit(EV.STATE, { t: 1, x: 5, y: 6, moving: false, dirX: 0, facing: 1, charging: false, stunned: false, a: 2 });
+  assert.equal((await st).a, 2);
+  // el punto del compañero (no host) se ignora
+  b.emit(EV.POINT, { seq: 0, kind: 'point', to: 'me', reason: '', color: '' });
+  // el compañero se rinde: el host recibe MATE_AWAY (gone) y la sala sigue
+  const away = once<{ gone?: boolean }>(a, EV.MATE_AWAY);
+  b.emit(EV.LEAVE);
+  assert.equal((await away).gone, true);
+  const sc = once<{ points: { host: number } }>(a, EV.SCORE);
+  a.emit(EV.POINT, { seq: 0, kind: 'point', to: 'me', reason: '', color: '' });
+  assert.equal((await sc).points.host, 1); // el host sigue juzgando y el marcador va
+  a.emit(EV.LEAVE);
+});

@@ -20,6 +20,7 @@ import { isSmashPower, smashOwned } from './smashPowers';
 import { defensiveOwned, isDefensivePower } from './defensivePowers';
 import { isTutorialId } from './tutorial';
 import { sanitizeChest } from './chest';
+import { sanitizeRisk } from './riskMode';
 import { isFrameId } from './profileFrames';
 
 /** Todos los ítems que existen (los demás ids guardados se descartan). */
@@ -61,6 +62,8 @@ export function migratePlayer(raw: unknown, starter: StarterSkin = 'nxo'): Playe
   if (mastery) s.mastery = mastery;
   // tutorial por nivel: solo ids de avisos que existen
   if (Array.isArray(r.tutorial)) s.tutorial = [...new Set(r.tutorial.filter(isTutorialId))];
+  const risk = sanitizeRisk(r.riskMode); // MODO RIESGO x2 (domain/riskMode.ts)
+  if (risk) s.riskMode = risk;
   const chest = sanitizeChest(r.chest); // cofre evolutivo de la ruleta (domain/chest.ts)
   if (chest) s.chest = chest;
   if (typeof r.giftDay === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(r.giftDay)) s.giftDay = r.giftDay; // regalo gratis de la Tienda

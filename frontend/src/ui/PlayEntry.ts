@@ -12,7 +12,7 @@ const RED = 0xff4f5e;
 const BET_KEY = 'gamenxo.menu.bet';
 
 /** Apuesta elegida en el menú (solo comodidad de este dispositivo; si falla el almacenamiento, x1). */
-function loadBet(): number {
+export function loadBet(): number {
   try {
     return localStorage.getItem(BET_KEY) === '2' ? 2 : 1;
   } catch {

@@ -548,8 +548,8 @@ export class Character extends Phaser.GameObjects.Container {
   }
 
   /** Reacción al acabar un punto. */
-  pointEnd(won: boolean) {
-    this.nxo?.pointEnd(won);
+  pointEnd(won: boolean, epic = false) {
+    this.nxo?.pointEnd(won, epic);
   }
 
   /** Tiene hoja de sprites (poses de final propias). */
@@ -606,8 +606,8 @@ export class Character extends Phaser.GameObjects.Container {
   }
 
   /** Celebración de partido ganado. */
-  victory() {
-    this.nxo?.victory();
+  victory(close = false) {
+    this.nxo?.victory(close);
   }
 
   /** Vuelve a la pose neutra (el jugador se recoloca para un nuevo punto). */

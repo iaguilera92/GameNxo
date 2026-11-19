@@ -56,7 +56,8 @@ export const BP_SEASON = {
   /** si un premio de cosmético ya se tiene: compensación en dinero (baja: no debe inflar el dinero del pase) */
   duplicateCash: 3,
   /** regalo de bienvenida (no cuenta como nivel del pase): el primer emote, para tener uno desde la primera partida */
-  welcome: { free: it('emote:happy', 'Risa'), prem: $(5) } as { free: BpReward; prem: BpReward },
+  // (18-11-2026, usuario) al empezar NO se tiene ningún emote: la bienvenida ya no regala RISA (pasa al nivel 2; aquí queda su dinero)
+  welcome: { free: $(1), prem: $(5) } as { free: BpReward; prem: BpReward },
   /**
    * DINERO DEL PASE (11-11-2026, con el usuario): un pase COMPLETO (gratis + premium) da como mucho para 2 objetos de la
    * Tienda de 50: GRATIS 40 y PREMIUM 60 (con la bienvenida) = 100. El resto del dinero sale de la ruleta, el premio
@@ -68,7 +69,7 @@ export const BP_SEASON = {
    */
   tiers: [
     { free: $(1), prem: $(2) },
-    { free: $(1), prem: $(2) },
+    { free: it('emote:happy', 'Risa'), prem: $(2) }, // (18-11-2026) RISA: primer emote, nivel 2 (antes en la bienvenida)
     { free: it('emote:cool', 'Pensando'), prem: $(2) },
     { free: $(1), prem: $(2) },
     { free: it('style:pink', 'Rosado'), prem: $(2) },
@@ -83,7 +84,7 @@ export const BP_SEASON = {
     { free: $(2), prem: $(2) },
     { free: it('style:green', 'Verde'), prem: $(2) },
     { free: $(2), prem: $(3) },
-    { free: $(1), prem: $(2) },
+    { free: it('emote:cry', 'Llorando'), prem: $(2) }, // (18-11-2026) emote LLORANDO (nivel 17)
     { free: it('color:verde', 'Color Verde'), prem: $(3) },
     { free: $(2), prem: $(3) },
     { free: it('style:red', 'Rojo'), prem: $(3) },
@@ -91,8 +92,8 @@ export const BP_SEASON = {
     { free: $(2), prem: $(2) },
     { free: $(2), prem: $(3) },
     { free: $(3), prem: $(2) },
-    { free: rays(1), prem: rays(2) },
-    { free: $(2), prem: $(3) },
+    { free: rays(1), prem: $(3) }, // (18-11-2026, usuario) sin los 2 Rayos de la ZONA en el premium
+    { free: $(2), prem: it('emote:treasure', 'Tesoro') }, // (18-11-2026) EMOTE LEGENDARIO animado TESORO (premium)
     { free: $(3), prem: it('color:sombra', 'Color Sombra') },
     { free: $(3), prem: $(3) },
     { free: $(3), prem: $(4) },

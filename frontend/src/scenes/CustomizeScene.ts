@@ -179,6 +179,7 @@ export class CustomizeScene extends Phaser.Scene {
   preload() {
     if (!this.textures.exists('menu-bg')) this.load.image('menu-bg', 'assets/menu-bg.webp');
     if (!this.textures.exists('icon-zona')) this.load.image('icon-zona', 'assets/icon-zona.webp');
+    if (!this.textures.exists('personalizar-title')) this.load.image('personalizar-title', 'assets/personalizar-titulo.webp'); // (18-11-2026) título en imagen
     for (const k of ['estilos', 'efecto', 'cargando', 'mascotas']) if (!this.textures.exists(`personalizar-${k}`)) this.load.image(`personalizar-${k}`, `assets/personalizar-${k}.webp`);
     for (const art of Object.values(ABILITY_ART)) if (art && !this.textures.exists(art.key)) this.load.image(art.key, art.file);
     queueInfernoArt(this.load); // bolas de los poderes del INFERNO (vista previa del selector)
@@ -207,12 +208,18 @@ export class CustomizeScene extends Phaser.Scene {
     // ---------------------------------------------------------------- cabecera
     const headY = 64;
     this.backButton(54, headY, back);
-    const title = this.add.text(W / 2, headY, 'PERSONALIZAR', { fontFamily: FONT, fontSize: '42px', color: '#ffffff' }).setOrigin(0.5).setLetterSpacing(2);
     // RAYOS acumulados (se gastan en los atributos de la ZONA), arriba a la derecha como los contadores del menú
     const raysW = this.raysPill(W - 22, headY);
     // que no choque con el botón volver (borde derecho ≈ 86 px) ni con el contador de rayos
     const maxTitleW = W - 2 * Math.max(100, raysW + 34);
-    if (title.width > maxTitleW) title.setScale(maxTitleW / title.width);
+    // (18-11-2026) título en imagen (mismo estilo que TIENDA y LIGA: personalizar-titulo.webp, 3:1); sin ella, el texto de antes
+    if (this.textures.exists('personalizar-title')) {
+      const titleW = Math.min(300, maxTitleW);
+      this.add.image(W / 2, headY - 3, 'personalizar-title').setDisplaySize(titleW, titleW / 3);
+    } else {
+      const title = this.add.text(W / 2, headY, 'PERSONALIZAR', { fontFamily: FONT, fontSize: '42px', color: '#ffffff' }).setOrigin(0.5).setLetterSpacing(2);
+      if (title.width > maxTitleW) title.setScale(maxTitleW / title.width);
+    }
 
     // reparto vertical (de arriba abajo, medidas fijas); la vitrina usa lo que sobra
     // la vitrina arranca pegada al título (el retrato empieza ~30 px más abajo por su margen); el alto que gana el

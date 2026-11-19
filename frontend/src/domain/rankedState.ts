@@ -15,6 +15,8 @@ export interface RankedPending {
   entry: number;
   prize: number;
   startedAt: number;
+  /** MODO RIESGO x2: multiplicador ya aplicado a `entry` y `prize` al entrar (1 o 2; guardados viejos: 1) */
+  risk?: number;
 }
 
 /** Recompensa semanal calculada al cerrar la semana (se muestra y se cobra con un botón). */

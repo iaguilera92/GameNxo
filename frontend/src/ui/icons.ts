@@ -119,7 +119,35 @@ export function drawLightningIcon(g: Phaser.GameObjects.Graphics, R: number) {
   g.fillStyle(0xffffff).fillCircle(R * 0.32, -R * 0.55, R * 0.07);
 }
 
-/** Icono de un poder del DEFENSIVO que no es el DASH (DESTELLO, SOMBRA, SUPERSALTO, VOLTERETA, PATINAJE, RELÁMPAGO). */
+/** Icono del poder TIEMPO LENTO: un reloj violeta con la aguja larga arrastrando una estela que se estira (el tiempo se frena). */
+export function drawSlowmoIcon(g: Phaser.GameObjects.Graphics, R: number) {
+  const r = R * 0.74;
+  // cuerpo del reloj: contorno, fondo y aro claro
+  g.fillStyle(C.outline).fillCircle(0, 0, r + R * 0.12);
+  g.fillStyle(0x2c2a78).fillCircle(0, 0, r);
+  g.lineStyle(R * 0.1, 0xc9a4ff).strokeCircle(0, 0, r);
+  // marcas de las horas
+  for (let i = 0; i < 12; i++) {
+    const a = (i / 12) * Math.PI * 2;
+    const len = i % 3 === 0 ? 0.14 : 0.08;
+    g.lineStyle(R * (i % 3 === 0 ? 0.07 : 0.04), 0xe9dcff).lineBetween(Math.cos(a) * r * (0.9 - len), Math.sin(a) * r * (0.9 - len), Math.cos(a) * r * 0.9, Math.sin(a) * r * 0.9);
+  }
+  // estela de la aguja larga: tres arcos que se apagan hacia atrás (la aguja va hacia las 12 → -90°)
+  for (let i = 0; i < 3; i++) {
+    g.lineStyle(R * 0.08, 0x9be7ff, 0.75 - i * 0.22);
+    g.beginPath();
+    g.arc(0, 0, r * (0.72 - i * 0.1), -Math.PI / 2 - 0.15 - i * 0.12, -Math.PI / 2 - 1.05 - i * 0.2, true);
+    g.strokePath();
+  }
+  // agujas: la larga hacia las 12 y la corta hacia las 4
+  g.lineStyle(R * 0.14 + 4, C.outline).lineBetween(0, 0, R * 0.26, R * 0.16).lineBetween(0, 0, 0, -r * 0.78);
+  g.lineStyle(R * 0.1, 0xffffff).lineBetween(0, 0, 0, -r * 0.78);
+  g.lineStyle(R * 0.1, 0xffd23f).lineBetween(0, 0, R * 0.26, R * 0.16);
+  g.fillStyle(C.outline).fillCircle(0, 0, R * 0.13);
+  g.fillStyle(0xffd23f).fillCircle(0, 0, R * 0.08);
+}
+
+/** Icono de un poder del DEFENSIVO que no es el DASH (DESTELLO, SOMBRA, SUPERSALTO, VOLTERETA, PATINAJE, RELÁMPAGO, TIEMPO LENTO). */
 
 export function drawDefensiveIcon(g: Phaser.GameObjects.Graphics, id: string, R: number) {
   if (id === 'shadow') drawShadowIcon(g, R);
@@ -127,6 +155,7 @@ export function drawDefensiveIcon(g: Phaser.GameObjects.Graphics, id: string, R:
   else if (id === 'flip') drawFlipIcon(g, R);
   else if (id === 'skate') drawSkateIcon(g, R);
   else if (id === 'lightning') drawLightningIcon(g, R);
+  else if (id === 'slowmo') drawSlowmoIcon(g, R);
   else drawBlinkIcon(g, R);
 }
 

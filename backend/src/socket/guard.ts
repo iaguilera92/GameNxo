@@ -23,6 +23,7 @@ export function sanitizeState(d: unknown): StateMsg | null {
   const y = num(d.y);
   if (x === null || y === null) return null;
   const pt = num(d.pt);
+  const a = num(d.a);
   return {
     t: time(d.t) ?? 0,
     x,
@@ -34,6 +35,8 @@ export function sanitizeState(d: unknown): StateMsg | null {
     stunned: d.stunned === true,
     // número de punto (entero ≥ 0); los clientes antiguos no lo mandan
     ...(pt !== null && pt >= 0 ? { pt: Math.floor(pt) } : {}),
+    // 2v2: de quién es el estado (0..3)
+    ...(a !== null && a >= 1 && a <= 3 ? { a: Math.floor(a) } : {}),
   };
 }
 
@@ -81,6 +84,10 @@ export function sanitizeHit(d: unknown): HitMsg | null {
   if (d.impact === true) out.impact = true;
   const lunge = num(d.lunge);
   if (lunge !== null && lunge !== 0) out.lunge = Math.sign(lunge);
+  const a = num(d.a);
+  if (a !== null && a >= 1 && a <= 3) out.a = Math.floor(a);
+  const el = str(d.el, 16);
+  if (el && /^[a-z]+$/.test(el)) out.el = el;
   return out;
 }
 

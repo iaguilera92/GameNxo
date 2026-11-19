@@ -14,6 +14,7 @@ import { coinIcon, drawWheelFace, drawXpIcon } from '../ui/wheelArt';
 import { WHEEL } from '../domain/wheelConfig';
 import { commit, getPlayer } from '../domain/playerStore';
 import { awardMastery } from '../domain/operations';
+import { MISSIONS, missionCoins, type MissionId } from '../domain/matchMissions';
 import { masteryLevel, passiveOf } from '../domain/characterPassives';
 
 /** (18-11-2026, usuario) fila "+1 MAESTRÍA" en el resultado: oculta (la maestría se ve en PERSONALIZAR) */
@@ -62,6 +63,8 @@ export interface MatchEndData {
   botName: string;
   /** nivel del rival: la revancha es contra el mismo rival (misma dificultad) */
   rivalLevel?: number;
+  /** (21-11-2026) 2v2 contra bots: la REVANCHA vuelve a ser 2v2 con los mismos nombres */
+  doubles?: { allyName: string; rival2Name: string };
   /** partido en red (multijugador 1v1): REVANCHA vuelve a buscar rival */
   lan?: boolean;
     /** clave de la escena del partido (la rellena playMatchEnd) */
@@ -71,6 +74,8 @@ export interface MatchEndData {
    * el partido (MatchScene) no necesita saber nada de Ranked. `delta` = monedas netas (premio − entrada).
    */
   ranked?: { delta: number; rank: RankId; level: number; position?: number; promotedTo?: RankId; bet?: number; entry?: number; pot?: number };
+  /** MISIONES POR PARTIDA cumplidas (solo 1v1; docs/MISIONES.md). Sin el campo (2v2) no hay sección ADICIONALES */
+  missions?: MissionId[];
 }
 
 const NAVY = 0x0b1733;
@@ -80,6 +85,9 @@ const GOLD = 0xffc42e;
 const CARD_H = 196;
 /** alto extra del panel con el duelo de apuestas Ranked */
 const RANKED_H = 286;
+/** alto de la sección ADICIONALES (misiones por partida): cabecera + 4 cards */
+const ADD_H = 176;
+const ADD_CARD_H = 126;
 /** alto de los cuadros de los personajes del duelo */
 const DUEL_BOX_H = 214;
 /** zoom al que llega el mapa de atrás cuando terminan de pasar las monedas (parte de 0,9, el de matchEnd.ts) */
@@ -232,6 +240,12 @@ export class MatchEndScene extends Phaser.Scene {
     const d = this.d;
     const win = d.win;
 
+    // (18-11-2026, usuario) saldo ANTES de los premios de esta pantalla (apuesta Ranked, partida, misiones): lo que entre se ve
+    // volar al monedero del MENÚ antes de la EXP (registry 'menu.coinGain', MenuScene.playMatchCoins)
+    const cstore = d as MatchEndData & { _coinsAtStart?: number; _leagueAtStart?: number };
+    if (cstore._coinsAtStart === undefined) cstore._coinsAtStart = getPlayer().coins;
+    // neto semanal de la LIGA antes de liquidar: lo que suba (apuesta Ranked ganada) vuela también a la card de la liga del MENÚ
+    if (cstore._leagueAtStart === undefined) cstore._leagueAtStart = getPlayer().ranked.weekNet;
     // Ranked: liquida UNA vez la partida con entrada pagada (victoria / derrota / rendición)
     const rstore = d as MatchEndData & { _rankedDone?: boolean };
     if (!rstore._rankedDone) {
@@ -280,7 +294,7 @@ export class MatchEndScene extends Phaser.Scene {
     this.banner(W, win);
     const btnH = 84;
     const btnY = H - 26 - btnH / 2;
-    const panelH = 108 + 16 + CARD_H + 22 + this.mrow + (this.duel() ? RANKED_H : 0);
+    const panelH = 108 + 16 + CARD_H + 22 + this.mrow + (this.duel() ? RANKED_H : 0) + (d.missions ? ADD_H : 0);
     const panelTop = btnY - btnH / 2 - 14 - panelH;
     this.resultPanel(W, panelTop, panelH);
     this.buttons(W, btnY, btnH);
@@ -420,6 +434,23 @@ export class MatchEndScene extends Phaser.Scene {
       this.registry.set('menu.xpGain', gained);
     }
     if (!store._coins) store._coins = addCoins(d.surrendered ? COINS_SURRENDER : d.win ? COINS_WIN : COINS_LOSS);
+    // MISIONES POR PARTIDA: sus monedas se suman UNA vez, aparte de la partida y de la apuesta Ranked (también si pierdes)
+    const mst = d as MatchEndData & { _missionCoins?: number };
+    if (d.missions && mst._missionCoins === undefined) {
+      const amount = missionCoins(d.missions);
+      mst._missionCoins = amount > 0 ? addCoins(amount).gained : 0;
+    }
+    // monedas que entraron con esta partida (apuesta ganada + partida + misiones): el MENÚ las hace volar al monedero
+    const cst = d as MatchEndData & { _coinsAtStart?: number; _leagueAtStart?: number; _coinGainSet?: boolean };
+    if (!cst._coinGainSet) {
+      cst._coinGainSet = true;
+      // solo la apuesta Ranked suma a la liga (misiones y premio de partida no): se acumula como menu.coinGain
+      const lg = getPlayer().ranked.weekNet - (cst._leagueAtStart ?? getPlayer().ranked.weekNet);
+      if (lg > 0) this.registry.set('menu.leagueGain', ((this.registry.get('menu.leagueGain') as number | undefined) ?? 0) + lg);
+      const got = getPlayer().coins - (cst._coinsAtStart ?? getPlayer().coins);
+      // se acumula (REVANCHA no pasa por el menú: se ven todas juntas al volver)
+      if (got > 0) this.registry.set('menu.coinGain', ((this.registry.get('menu.coinGain') as number | undefined) ?? 0) + got);
+    }
     this.rewardCards(c, W, top, w, sepY + 16);
 
     // --- duelo de apuestas: Ranked (con la apuesta real) o, en desarrollo, el partido online (de prueba)
@@ -427,6 +458,8 @@ export class MatchEndScene extends Phaser.Scene {
     if (SHOW_MASTERY_ROW && this.mastery) this.masteryRow(c, w, sepY + 16 + CARD_H + 6, this.mastery);
     if (duel) this.rankedDuel(c, w, sepY + 16 + CARD_H + 20 + this.mrow, duel);
     if (d.ranked?.promotedTo) this.levelUp(W / 2, top - 26, 0, '¡ASCENSO DE LIGA!');
+    // --- ADICIONALES: misiones por partida, después de que pasan las monedas apostadas (si hubo duelo)
+    if (d.missions) this.missionCards(c, w, h - ADD_H - 8, d.missions, duel ? 750 + 380 * 3 + 3000 + 350 : 750 + 380 * 3 + 250);
 
     // entrada: sube desde abajo junto con los botones
     c.setAlpha(0).setY(top + 60);
@@ -611,24 +644,37 @@ export class MatchEndScene extends Phaser.Scene {
   }
 
   /** Monedas que saltan del contador ganado al total (dentro del panel). */
-  private coinShower(c: Phaser.GameObjects.Container, x0: number, y0: number, x1: number, y1: number, n: number) {
+  private coinShower(c: Phaser.GameObjects.Container, x0: number, y0: number, x1: number, y1: number, n: number, size = 9, onArrive?: () => void) {
     for (let i = 0; i < n; i++) {
-      const g = this.add.container(x0, y0, [coinIcon(this, 0, 0, 9)]); // (17-11-2026) moneda: imagen moneda-1.webp
+      const g = this.add.container(x0, y0, [coinIcon(this, 0, 0, size)]); // (17-11-2026) moneda: imagen moneda-1.webp
       g.setScale(0.6).setAlpha(0);
       c.add(g);
-      const peak = Math.min(y0, y1) - Phaser.Math.Between(40, 80);
-      const dur = 520;
+      // (18-11-2026) arco de VERDAD hasta (x1, y1): antes la subida y la bajada eran un yoyó y la moneda volvía a su altura de salida
+      // (en ADICIONALES no llegaba al total de la cabecera)
+      const sx = x0 + Phaser.Math.Between(-14, 14);
+      const peakY = Math.min(y0, y1) - Phaser.Math.Between(40, 80);
+      const px = (sx + x1) / 2 + Phaser.Math.Between(-30, 30);
+      const dur = 560;
       const delay = i * 70;
+      const k = { v: 0 };
       this.tweens.add({ targets: g, alpha: 1, scale: 1, duration: 120, delay });
-      this.tweens.add({ targets: g, x: x1, duration: dur, delay, ease: 'Sine.easeInOut' });
       this.tweens.add({
-        targets: g,
-        y: peak,
-        duration: dur / 2,
+        targets: k,
+        v: 1,
+        duration: dur,
         delay,
-        ease: 'Quad.easeOut',
-        yoyo: true,
-        onComplete: () => g.destroy(),
+        ease: 'Sine.easeIn',
+        onUpdate: () => {
+          const u = k.v;
+          const a = (1 - u) * (1 - u);
+          const b = 2 * (1 - u) * u;
+          const d = u * u;
+          g.setPosition(a * sx + b * px + d * x1, a * y0 + b * peakY + d * y1);
+        },
+        onComplete: () => {
+          g.destroy();
+          onArrive?.();
+        },
       });
     }
   }
@@ -886,6 +932,108 @@ export class MatchEndScene extends Phaser.Scene {
     });
   }
 
+  /**
+   * ADICIONALES (misiones por partida, docs/MISIONES.md): cabecera con el total y 4 cards, una por misión. Las cumplidas
+   * entran doradas con ✓ y su premio; las otras, apagadas. Las monedas ya se sumaron (resultPanel); aquí solo se muestran.
+   */
+  private missionCards(c: Phaser.GameObjects.Container, w: number, y0: number, done: readonly MissionId[], startMs: number) {
+    const gained = (this.d as MatchEndData & { _missionCoins?: number })._missionCoins ?? missionCoins(done);
+    const sec = this.add.container(0, 0).setAlpha(0);
+    c.add(sec);
+    // separador + cabecera: ADICIONALES · +N (moneda)
+    const sep = this.add.graphics();
+    sep.lineStyle(2, 0x2c4a8a, 0.9).lineBetween(-w / 2 + 24, y0, w / 2 - 24, y0);
+    sec.add(sep);
+    const hy = y0 + 22;
+    const head = this.add.text(-w / 2 + 26, hy, 'ADICIONALES', { fontFamily: FONT, fontSize: '22px', color: '#ffd23f', stroke: '#0a1638', strokeThickness: 5 }).setOrigin(0, 0.5).setLetterSpacing(2);
+    const sub = this.add.text(head.x + head.width + 12, hy + 1, `${done.length}/${MISSIONS.length} MISIONES`, { fontFamily: FONT, fontSize: '14px', color: '#9fb3d9' }).setOrigin(0, 0.5).setLetterSpacing(1);
+    const total = this.add.text(w / 2 - 26, hy, '+0', { fontFamily: FONT, fontSize: '30px', color: gained > 0 ? '#ffd23f' : '#7f93bf', stroke: '#0a1638', strokeThickness: 6 }).setOrigin(1, 0.5);
+    const tCoin = this.add.container(total.x - total.width - 24, hy, [coinIcon(this, 0, 0, 16)]);
+    sec.add([head, sub, total, tCoin]);
+
+    // 4 cards
+    const gap = 10;
+    const cw = (w - 40 - gap * 3) / 4;
+    const ch = ADD_CARD_H;
+    const cy = y0 + 44;
+    const cards = MISSIONS.map((m, i) => {
+      const ok = done.includes(m.id);
+      const x = -w / 2 + 20 + cw / 2 + i * (cw + gap);
+      const cont = this.add.container(x, cy + ch / 2).setScale(0).setAlpha(0);
+      const accent = ok ? GOLD : 0x3a4a6e;
+      const g = this.add.graphics();
+      g.fillStyle(0x000000, 0.35).fillRoundedRect(-cw / 2 + 3, -ch / 2 + 4, cw, ch, 14);
+      g.fillStyle(0x0a1638, 1).fillRoundedRect(-cw / 2 - 3, -ch / 2 - 3, cw + 6, ch + 6, 16);
+      g.fillStyle(ok ? 0x3a2a08 : 0x141c33, 1).fillRoundedRect(-cw / 2, -ch / 2, cw, ch, 14);
+      g.fillStyle(0xffffff, ok ? 0.1 : 0.04).fillRoundedRect(-cw / 2 + 4, -ch / 2 + 4, cw - 8, ch * 0.4, { tl: 11, tr: 11, bl: 5, br: 5 });
+      g.lineStyle(3, accent, 1).strokeRoundedRect(-cw / 2, -ch / 2, cw, ch, 14);
+      cont.add(g);
+      // insignia: ✓ (cumplida) o candado apagado
+      const by = -ch / 2 + 26;
+      const badge = this.add.graphics({ x: 0, y: by });
+      if (ok) {
+        badge.fillStyle(0x0a1638, 1).fillCircle(0, 0, 17);
+        badge.fillStyle(0x3fd46a, 1).fillCircle(0, 0, 14);
+        badge.lineStyle(4, 0xffffff, 1).beginPath().moveTo(-6, 0).lineTo(-1.5, 5).lineTo(7, -5).strokePath();
+      } else {
+        badge.fillStyle(0x0a1638, 1).fillCircle(0, 0, 17);
+        badge.fillStyle(0x2a3654, 1).fillCircle(0, 0, 14);
+        badge.lineStyle(3, 0x7f93bf, 1).strokeCircle(0, -3, 4.5);
+        badge.fillStyle(0x7f93bf, 1).fillRoundedRect(-6.5, -1, 13, 9, 2);
+      }
+      cont.add(badge);
+      // nombre de la misión (una fila) y premio
+      const title = this.add
+        .text(0, 5, m.title.toUpperCase(), { fontFamily: FONT, fontSize: '14px', color: ok ? '#ffffff' : '#8a98b8' })
+        .setOrigin(0.5);
+      if (title.width > cw - 10) title.setScale((cw - 10) / title.width); // una sola fila
+      // (18-11-2026, usuario) premio más grande y CENTRADO en la card (moneda + cifra como un solo bloque)
+      const py = ch / 2 - 22;
+      const cr = 12; // radio de la moneda
+      const val = this.add.text(0, py, `+${m.coins}`, { fontFamily: FONT, fontSize: '26px', color: ok ? '#ffd23f' : '#5d6f96', stroke: '#0a1638', strokeThickness: 5 }).setOrigin(0, 0.5);
+      const left = -(cr * 2 + 6 + val.width) / 2;
+      val.setX(left + cr * 2 + 6);
+      const coin = this.add.container(left + cr, py, [coinIcon(this, 0, 0, cr)]).setAlpha(ok ? 1 : 0.35);
+      cont.add([title, coin, val]);
+      if (!ok) title.setAlpha(0.8);
+      // destello al entrar (como las cards de arriba)
+      const flash = this.add.graphics().setBlendMode(Phaser.BlendModes.ADD).setAlpha(0);
+      flash.lineStyle(4, 0xffffff, 1).strokeRoundedRect(-cw / 2, -ch / 2, cw, ch, 14);
+      cont.add(flash);
+      cont.setData('flash', flash);
+      sec.add(cont);
+      return { cont, ok, badge };
+    });
+
+    // animación: la sección aparece y las cards entran una a una; las cumplidas laten y suman al total
+    this.time.delayedCall(startMs, () => {
+      if (!sec.scene) return;
+      this.tweens.add({ targets: sec, alpha: 1, duration: 260 });
+      let acc = 0;
+      cards.forEach((cd, i) => {
+        this.pop(cd.cont, 200 + i * 220, () => {
+          if (!cd.ok) return;
+          sfx(this, 'recolectar-exp', 0.7);
+          this.tweens.add({ targets: cd.badge, scale: { from: 1.6, to: 1 }, duration: 320, ease: 'Back.easeOut' });
+          // (18-11-2026, usuario) las monedas de la card VUELAN al total de la cabecera (más monedas y más grandes) y el total sube al llegar cada una
+          const from = acc;
+          acc += MISSIONS[i].coins;
+          const N = 8;
+          let got = 0;
+          this.coinShower(sec, cd.cont.x, cd.cont.y + ADD_CARD_H / 2 - 22, tCoin.x, hy, N, 12, () => {
+            got++;
+            total.setText(`+${Math.round(from + (MISSIONS[i].coins * got) / N)}`);
+            tCoin.setX(total.x - total.width - 24);
+            this.tweens.killTweensOf(tCoin);
+            this.tweens.add({ targets: tCoin, scale: { from: 1.35, to: 1 }, duration: 200, ease: 'Back.easeOut' });
+            this.tweens.add({ targets: total, scale: { from: 1.12, to: 1 }, duration: 200, ease: 'Back.easeOut' });
+          });
+        });
+      });
+      if (gained > 0) this.time.delayedCall(200 + cards.length * 220 + 400, () => sfx(this, 'recolectar-monedas', 0.8));
+    });
+  }
+
   /** maestría ganada en este partido (null = ninguna) y el alto que añade al panel */
   private mastery: { skin: string; before: number; after: number } | null = null;
   private mrow = 0;
@@ -1015,13 +1163,18 @@ export class MatchEndScene extends Phaser.Scene {
         this.scene.start('Matchmaking', { ranked: { bet: d.ranked.bet ?? 1 } });
         return;
       }
+      if (d.lan && d.doubles) {
+        this.scene.stop(matchKey);
+        this.scene.start('LanSearch', { mode: '2v2', fallback: { unranked: false, from: 'Menu', mode: '2v2' } });
+        return;
+      }
       if (d.lan) {
         // red: nueva búsqueda de rival (sin rival, se ofrece el BOT como siempre)
         this.scene.stop(matchKey);
         this.scene.start('LanSearch', { fallback: { unranked: true, from: 'Menu' } });
         return;
       }
-      this.scene.start(matchKey, { botName: d.botName, rivalLevel: d.rivalLevel });
+      this.scene.start(matchKey, d.doubles ? { botName: d.botName, rivalLevel: d.rivalLevel, mode: '2v2', allyName: d.doubles.allyName, rival2Name: d.doubles.rival2Name } : { botName: d.botName, rivalLevel: d.rivalLevel });
     }, { palette: 'blue' });
     for (const [b, delay] of [[cont, 550], [again, 620]] as const) {
       b.setAlpha(0).setY(y + 40);

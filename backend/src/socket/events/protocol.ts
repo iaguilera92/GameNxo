@@ -47,6 +47,10 @@ export const EV = {
   OPPONENT_AWAY: 'game:opponent-away',
   /** el rival volvió (data: ScoreMsg oficial): se rejuega el punto en curso */
   OPPONENT_BACK: 'game:opponent-back',
+  /** 2v2: el compañero se cortó o se fue (data: { gone: boolean }): un BOT juega por él; gone = ya no vuelve */
+  MATE_AWAY: 'game:mate-away',
+  /** 2v2: el compañero volvió y recupera su personaje */
+  MATE_BACK: 'game:mate-back',
   /** reconexión aceptada (data: ResumedMsg) */
   RESUMED: 'game:resumed',
   SCORE: 'game:score',
@@ -73,8 +77,13 @@ export interface PlayerProfile {
   zone?: string;
 }
 
+/** modo de la partida: 1v1 (de siempre) o 2v2 (2 humanos del MISMO equipo contra 2 bots que simula el host; 21-11-2026) */
+export type GameMode = '1v1' | '2v2';
+
 export interface FindRequest {
   profile: PlayerProfile;
+  /** sin él, '1v1' */
+  mode?: GameMode;
 }
 
 export interface SearchingMsg {
@@ -88,6 +97,8 @@ export interface MatchedMsg {
   roomId: string;
   role: Role;
   opponent: PlayerProfile;
+  /** modo de la sala (sin él, '1v1'). En '2v2' opponent es el COMPAÑERO (no hay rival humano: los rivales son bots que simula el host) */
+  mode?: GameMode;
   /** reglas del partido (las mismas que el modo BOT) */
   gamesToWin: number;
   /** clave para reconectar a esta sala si se corta la conexión (game:resume) */
@@ -144,6 +155,8 @@ export interface StateMsg {
    * El receptor descarta los estados de un punto anterior (el rival "volvía corriendo" al empezar cada punto).
    */
   pt?: number;
+  /** 2v2: de quién es el estado (0 = el emisor; 1 y 2 = los bots que simula el host). Sin él, 0 */
+  a?: number;
 }
 
 export type HitKind = 'hit' | 'serve';
@@ -175,6 +188,10 @@ export interface HitMsg {
   lunge?: number;
   /** devolución del impacto de una bola de fuego: el emisor está aturdido, el receptor NO anima un golpe */
   impact?: boolean;
+  /** 2v2: quién golpea (0 = el emisor; 1 y 2 = los bots que simula el host). Sin él, 0 */
+  a?: number;
+  /** 2v2: poder de la bola de un ESPECIAL / ULTI (fire, ice, wind, lightning…): cada teléfono la dibuja con el mismo aspecto */
+  el?: string;
 }
 
 /**

@@ -10,7 +10,7 @@ import { BP_SEASON, BP_TIERS, type BpReward, type BpTrack, bpBonusSpinIndex, bpB
 import type { PlayerState } from '../domain/player';
 import { type ChargeFxId, chargeFxDef } from '../domain/chargeFx';
 import type { EmoteKind } from '../domain/emotes';
-import { EMOTE_TEXTURE, queueEmoteArt } from '../ui/Emotes';
+import { EMOTE_ANIM, EMOTE_TEXTURE, MAI_EMOTE_TEXTURE, ensureEmoteAnims, queueEmoteArt } from '../ui/Emotes';
 import { styleLook } from '../ui/styleLook';
 import { passiveOf } from '../domain/characterPassives';
 import { openPassiveDialog } from '../ui/passiveInfo';
@@ -32,7 +32,7 @@ const GOLD = 0xffc42e;
 /** alto de una fila de nivel; la del último nivel (el personaje nuevo) mide el doble */
 const ROW_H = 200;
 /** alto de la fila del bonus final (ruleta) */
-const BONUS_H = 140;
+const BONUS_H = 210; // (18-11-2026, usuario) más alta (antes 140)
 /** alto de la cabecera (la lista empieza aquí; el escudo del Premium se monta un poco sobre ella) */
 const HEAD_H = 280;
 /** filas: 0 = regalo de bienvenida, 1..BP_TIERS = niveles, BP_TIERS + 1 = bonus */
@@ -369,9 +369,9 @@ export class BattlePassScene extends Phaser.Scene {
         c.add(glow);
         this.loop({ targets: glow, scale: { from: 0.85, to: 1.15 }, alpha: { from: 0.5, to: 0.15 }, duration: 800, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
       }
-      const cashKey = reward.kind !== 'cash' ? null : reward.amount === 1 ? 'bp-cash-1' : reward.amount < 5 ? 'bp-cash-pack' : null;
+      const cashKey = reward.kind !== 'cash' ? null : reward.amount === 1 ? 'bp-cash-1' : reward.amount < 10 ? 'bp-cash-pack' : null;
       if (cashKey && this.textures.exists(cashKey)) {
-        // DINERO (usuario 16-11-2026): 1 = un billete; 2 a 4 = fardo chico; 5 o más, el dibujo de siempre
+        // DINERO (usuario 16-11-2026): 1 = un billete; 2 a 9 = fardo chico (18-11-2026: antes hasta 4); 10 o más, el dibujo de siempre
         c.add(this.add.image(cx, iy, cashKey).setDisplaySize(cashKey === 'bp-cash-1' ? 92 : 100, cashKey === 'bp-cash-1' ? 92 : 100));
       } else {
         const ic = this.add.graphics({ x: cx, y: iy }).setScale(1.6);
@@ -379,8 +379,12 @@ export class BattlePassScene extends Phaser.Scene {
         c.add(ic);
       }
       if (reward.kind === 'item' && reward.item.startsWith('emote:')) {
-        const key = EMOTE_TEXTURE[reward.item.split(':')[1] as EmoteKind];
-        if (key && this.textures.exists(key)) c.add(this.add.image(cx, iy, key).setDisplaySize(76, 76));
+        const kind = reward.item.split(':')[1] as EmoteKind;
+        if (EMOTE_ANIM[kind]) this.legendEmoteArt(c, cx, iy, w, h, kind);
+        else {
+          const key = EMOTE_TEXTURE[kind];
+          if (key && this.textures.exists(key)) c.add(this.add.image(cx, iy, key).setDisplaySize(76, 76));
+        }
       }
       if (reward.kind === 'character' && this.textures.exists('portrait-mai')) c.add(this.add.image(cx, iy, 'portrait-mai').setDisplaySize(68, 88));
       const label = rewardLabel(reward);
@@ -536,35 +540,87 @@ export class BattlePassScene extends Phaser.Scene {
     const pending = spinIndex >= 0 && !s.wheel.bonusSpins[spinIndex]?.claimed;
     const unlocked = level >= BP_TIERS;
     const ready = unlocked && (!s.bp.bonusClaimed || pending);
+    // (18-11-2026, usuario) más alta y MUCHO más llamativa: degradado morado-dorado, rayos que giran detrás de una ruleta grande que gira,
+    // destellos y, si se puede girar, un botón ¡GIRAR! que late
+    const ADD = Phaser.BlendModes.ADD;
     const bg = this.add.graphics();
-    bg.fillStyle(0x000000, 0.42).fillRoundedRect(-w / 2 + 3, -h / 2 + 5, w, h, 18);
-    bg.fillStyle(0x20183d, 0.98).fillRoundedRect(-w / 2, -h / 2, w, h, 18);
-    bg.fillStyle(0xffffff, 0.07).fillRoundedRect(-w / 2 + 3, -h / 2 + 3, w - 6, h * 0.42, { tl: 15, tr: 15, bl: 5, br: 5 });
-    bg.lineStyle(ready ? 6 : 4, ready ? GOLD : 0x80682e, 1).strokeRoundedRect(-w / 2, -h / 2, w, h, 18);
+    bg.fillStyle(0x000000, 0.45).fillRoundedRect(-w / 2 + 4, -h / 2 + 7, w, h, 22);
+    bg.fillGradientStyle(0x5a2ea8, 0x5a2ea8, 0x1c0f3d, 0x1c0f3d, 1).fillRoundedRect(-w / 2, -h / 2, w, h, 22);
+    if (ready) bg.fillGradientStyle(0xffb13b, 0xffb13b, 0xffb13b, 0xffb13b, 0.18, 0.18, 0, 0).fillRoundedRect(-w / 2, -h / 2, w, h * 0.6, { tl: 22, tr: 22, bl: 0, br: 0 });
+    bg.fillStyle(0xffffff, 0.08).fillRoundedRect(-w / 2 + 4, -h / 2 + 4, w - 8, h * 0.36, { tl: 18, tr: 18, bl: 6, br: 6 });
+    bg.lineStyle(ready ? 7 : 4, ready ? GOLD : 0x80682e, 1).strokeRoundedRect(-w / 2, -h / 2, w, h, 22);
+    if (ready) bg.lineStyle(2, 0xfff3a0, 0.9).strokeRoundedRect(-w / 2 + 7, -h / 2 + 7, w - 14, h - 14, 16);
     card.add(bg);
 
-    const wheel = this.add.graphics({ x: -w / 2 + 60, y: 0 });
-    const colors = [GOLD, 0xff6d4a, 0x5fd0ff, 0x9b72ff, 0x68d966, 0xff80b8];
-    const radius = 34;
-    for (let i = 0; i < 6; i++) {
-      const a0 = (i / 6) * Math.PI * 2 - Math.PI / 2;
-      const a1 = ((i + 1) / 6) * Math.PI * 2 - Math.PI / 2;
+    const radius = Math.min(70, h * 0.36);
+    const wx = -w / 2 + radius + 34;
+    if (ready) {
+      // rayos de luz detrás de la ruleta
+      const rays = this.add.graphics({ x: wx, y: 0 }).setBlendMode(ADD);
+      for (let i = 0; i < 14; i++) {
+        const a = (i / 14) * Math.PI * 2;
+        rays.fillStyle(0xffe680, i % 2 ? 0.14 : 0.28).fillTriangle(0, 0, Math.cos(a - 0.11) * radius * 1.9, Math.sin(a - 0.11) * radius * 1.9, Math.cos(a + 0.11) * radius * 1.9, Math.sin(a + 0.11) * radius * 1.9);
+      }
+      card.add(rays);
+      this.loop({ targets: rays, angle: 360, duration: 8000, repeat: -1 });
+    }
+    const wheel = this.add.graphics({ x: wx, y: 0 });
+    const colors = [GOLD, 0xff6d4a, 0x5fd0ff, 0x9b72ff, 0x68d966, 0xff80b8, 0xffe14d, 0x3fe0a0];
+    const n = colors.length;
+    wheel.fillStyle(0x0a1638, 1).fillCircle(0, 0, radius + 7);
+    wheel.fillStyle(GOLD, 1).fillCircle(0, 0, radius + 4);
+    for (let i = 0; i < n; i++) {
+      const a0 = (i / n) * Math.PI * 2 - Math.PI / 2;
+      const a1 = ((i + 1) / n) * Math.PI * 2 - Math.PI / 2;
       const points = [{ x: 0, y: 0 }];
-      for (let j = 0; j <= 5; j++) {
-        const a = a0 + ((a1 - a0) * j) / 5;
+      for (let j = 0; j <= 6; j++) {
+        const a = a0 + ((a1 - a0) * j) / 6;
         points.push({ x: Math.cos(a) * radius, y: Math.sin(a) * radius });
       }
       wheel.fillStyle(colors[i], 1).fillPoints(points, true);
     }
-    wheel.lineStyle(3, 0xffffff, 1).strokeCircle(0, 0, radius);
-    wheel.fillStyle(0xffffff, 1).fillTriangle(-5, -radius - 2, 5, -radius - 2, 0, -radius + 8);
+    wheel.fillStyle(0xffffff, 0.18).fillEllipse(0, -radius * 0.4, radius * 1.4, radius * 0.7);
+    for (let i = 0; i < n; i++) {
+      const a = (i / n) * Math.PI * 2 - Math.PI / 2;
+      wheel.fillStyle(0xffffff, 1).fillCircle(Math.cos(a) * (radius + 2), Math.sin(a) * (radius + 2), 2.6); // focos del borde
+    }
+    wheel.fillStyle(0x0a1638, 1).fillCircle(0, 0, radius * 0.2);
+    wheel.fillStyle(GOLD, 1).fillCircle(0, 0, radius * 0.15);
     card.add(wheel);
+    if (ready) this.loop({ targets: wheel, angle: 360, duration: 6000, repeat: -1 });
+    // flecha fija arriba de la ruleta
+    const ptr = this.add.graphics({ x: wx, y: -radius - 2 });
+    ptr.fillStyle(0x0a1638, 1).fillTriangle(-11, -10, 11, -10, 0, 12);
+    ptr.fillStyle(0xffffff, 1).fillTriangle(-8, -8, 8, -8, 0, 8);
+    card.add(ptr);
 
-    card.add(this.add.text(-w / 2 + 112, -18, pending ? '¡RULETA DISPONIBLE!' : 'BONUS FINAL', {
-      fontFamily: FONT, fontSize: '26px', color: ready ? '#ffd23f' : '#ffffff', fontStyle: 'bold',
-    }).setOrigin(0, 0.5));
-    const sub = pending ? 'Toca aquí para girar' : s.bp.bonusClaimed ? 'BONUS RECLAMADO' : '1 GIRO DE RULETA · COMPARTIDO';
-    card.add(this.add.text(-w / 2 + 113, 19, sub, { fontFamily: FONT, fontSize: '15px', color: '#c4d2f0' }).setOrigin(0, 0.5).setLetterSpacing(1));
+    const tx = wx + radius + 30;
+    const title = this.add.text(tx, -h * 0.17, pending ? '¡RULETA DISPONIBLE!' : 'BONUS FINAL', {
+      fontFamily: FONT, fontSize: '34px', color: ready ? '#ffd23f' : '#ffffff', stroke: '#1a0a33', strokeThickness: 6,
+    }).setOrigin(0, 0.5);
+    const sub = pending ? 'Toca para girar' : s.bp.bonusClaimed ? 'BONUS RECLAMADO' : '1 GIRO DE RULETA · COMPARTIDO';
+    const subT = this.add.text(tx + 2, h * 0.06, sub, { fontFamily: FONT, fontSize: '17px', color: '#e2d6ff' }).setOrigin(0, 0.5).setLetterSpacing(1);
+    card.add([title, subT]);
+    const maxTW = w / 2 - 20 - tx;
+    if (title.width > maxTW) title.setScale(maxTW / title.width);
+    if (subT.width > maxTW) subT.setScale(maxTW / subT.width);
+    if (ready) {
+      // botón ¡GIRAR! que late
+      const bw = 150;
+      const btn = this.add.container(tx + bw / 2, h * 0.3);
+      const bgb = this.add.graphics();
+      bgb.fillStyle(0x0a1638, 1).fillRoundedRect(-bw / 2 - 3, -20, bw + 6, 42, 21);
+      bgb.fillGradientStyle(0xffe55a, 0xffe55a, 0xf29a0c, 0xf29a0c, 1).fillRoundedRect(-bw / 2, -18, bw, 36, 18);
+      bgb.fillStyle(0xffffff, 0.35).fillRoundedRect(-bw / 2 + 8, -15, bw - 16, 11, 5);
+      btn.add([bgb, this.add.text(0, 0, '¡GIRAR!', { fontFamily: FONT, fontSize: '22px', color: '#3a1600' }).setOrigin(0.5)]);
+      card.add(btn);
+      this.loop({ targets: btn, scale: { from: 1, to: 1.08 }, duration: 520, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
+      for (let i = 0; i < 4; i++) {
+        const st = this.add.star(-w / 2 + 30 + ((i * 197) % (w - 60)), -h / 2 + 22 + ((i * 71) % (h - 44)), 4, 3, 10, 0xffffff).setBlendMode(ADD).setScale(0);
+        card.add(st);
+        this.loop({ targets: st, scale: { from: 0, to: 1.2 }, alpha: { from: 1, to: 0 }, angle: 90, delay: i * 300, duration: 700, repeat: -1, repeatDelay: 500 });
+      }
+    }
 
     if (s.bp.bonusClaimed && !pending) {
       const ok = this.add.graphics({ x: w / 2 - 30, y: 0 });
@@ -614,9 +670,11 @@ export class BattlePassScene extends Phaser.Scene {
       g.lineStyle(3, accent, 1).strokeCircle(0, 0, 27);
       g.fillStyle(accent, 0.25).fillCircle(0, 0, 23);
     } else if (r.item.startsWith('emote:')) {
-      // emote: disco claro detrás de la carita (la imagen la pone rewardCell)
-      g.fillStyle(0x07152f, 1).fillCircle(0, 0, 29);
-      g.fillStyle(0xffffff, 0.9).fillCircle(0, 0, 26);
+      // emote: disco claro detrás de la carita (la imagen la pone rewardCell); el LEGENDARIO trae su propio fondo (legendEmoteArt)
+      if (!EMOTE_ANIM[r.item.slice(6) as EmoteKind]) {
+        g.fillStyle(0x07152f, 1).fillCircle(0, 0, 29);
+        g.fillStyle(0xffffff, 0.9).fillCircle(0, 0, 26);
+      }
     } else if (r.item.startsWith('charge:')) {
       // cargando golpe: aro del suelo con el color del efecto
       const col = chargeFxDef(r.item.split(':')[1] as ChargeFxId).color;
@@ -656,6 +714,56 @@ export class BattlePassScene extends Phaser.Scene {
     if (r.kind === 'cash' || r.kind === 'rays') this.flyToWallet(r, x, y);
     else if (r.kind === 'character') this.characterUnlock(r);
     else this.toast(`¡${rewardLabel(r).top}!`);
+  }
+
+  /**
+   * (18-11-2026, usuario) Celda de un EMOTE LEGENDARIO (animado): fondo dorado-naranja con rayos de luz que giran, cinta "LEGENDARIO" y el emote
+   * ANIMADO en bucle con la cara de MAI (es el Pase de Mai). (cx, iy) = centro del icono; w × h = la celda.
+   */
+  private legendEmoteArt(c: Phaser.GameObjects.Container, cx: number, iy: number, w: number, h: number, kind: EmoteKind) {
+    const ADD = Phaser.BlendModes.ADD;
+    // fondo de la celda: marco dorado y degradado naranja
+    const bw = w - 24;
+    const bh = h - 20;
+    const top = h / 2 - bh / 2;
+    const bg = this.add.graphics();
+    bg.fillGradientStyle(0xffb13b, 0xffb13b, 0xb3360e, 0xb3360e, 0.55).fillRoundedRect(cx - bw / 2, top, bw, bh, 16);
+    bg.lineStyle(4, 0xffd23f, 1).strokeRoundedRect(cx - bw / 2, top, bw, bh, 16);
+    c.add(bg);
+    // rayos de luz que giran detrás del emote
+    const rays = this.add.graphics({ x: cx, y: iy }).setBlendMode(ADD);
+    for (let i = 0; i < 12; i++) {
+      const a = (i / 12) * Math.PI * 2;
+      rays.fillStyle(0xfff1a0, i % 2 ? 0.18 : 0.32).fillTriangle(0, 0, Math.cos(a - 0.12) * 78, Math.sin(a - 0.12) * 78, Math.cos(a + 0.12) * 78, Math.sin(a + 0.12) * 78);
+    }
+    c.add(rays);
+    this.loop({ targets: rays, angle: 360, duration: 9000, repeat: -1 });
+    const halo = this.add.circle(cx, iy, 46, 0xffd23f, 0.35).setBlendMode(ADD);
+    c.add(halo);
+    this.loop({ targets: halo, scale: { from: 0.9, to: 1.15 }, alpha: { from: 0.45, to: 0.2 }, duration: 700, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
+    // el emote ANIMADO con la cara de MAI (si no cargó la de Mai, la de NXO)
+    ensureEmoteAnims(this);
+    const mai = MAI_EMOTE_TEXTURE[kind];
+    const key = mai && this.textures.exists(mai) ? mai : EMOTE_TEXTURE[kind];
+    if (this.textures.exists(key)) {
+      const spr = this.add.sprite(cx, iy, key, EMOTE_ANIM[kind]?.still ?? 0).setDisplaySize(96, 96);
+      c.add(spr);
+      if (this.anims.exists(`${key}-loop`)) spr.play(`${key}-loop`);
+    }
+    // cinta LEGENDARIO arriba
+    const rw = 132;
+    const ry = top + 4;
+    const rib = this.add.graphics();
+    rib.fillStyle(0x3a1600, 1).fillRoundedRect(cx - rw / 2 - 2, ry - 2, rw + 4, 26, 13);
+    rib.fillGradientStyle(0xffe14d, 0xffe14d, 0xff8a1e, 0xff8a1e, 1).fillRoundedRect(cx - rw / 2, ry, rw, 22, 11);
+    c.add(rib);
+    c.add(this.add.text(cx, ry + 11, 'LEGENDARIO', { fontFamily: FONT, fontSize: '15px', color: '#3a1600' }).setOrigin(0.5).setLetterSpacing(2));
+    // destellos
+    for (let i = 0; i < 3; i++) {
+      const st = this.add.star(cx + (i - 1) * 46, iy - 30 + (i % 2) * 50, 4, 3, 9, 0xffffff).setBlendMode(ADD).setScale(0);
+      c.add(st);
+      this.loop({ targets: st, scale: { from: 0, to: 1.1 }, alpha: { from: 1, to: 0 }, angle: 90, delay: i * 350, duration: 700, repeat: -1, repeatDelay: 400 });
+    }
   }
 
   private walletIcon(r: Extract<BpReward, { kind: 'cash' | 'rays' }>, x: number, y: number, size: number): Phaser.GameObjects.Image | Phaser.GameObjects.Graphics {
@@ -981,6 +1089,6 @@ function rewardLabel(r: BpReward): { top: string; sub: string } {
   if (r.kind === 'cash') return { top: String(r.amount), sub: 'DINERO' };
   if (r.kind === 'rays') return { top: `${r.amount} ${r.amount === 1 ? 'RAYO' : 'RAYOS'}`, sub: 'PARA LA ZONA' };
   if (r.kind === 'character') return { top: r.name.toUpperCase(), sub: r.style ? 'PERSONAJE · ESTILO ORO' : 'PERSONAJE NUEVO' };
-  const sub = r.item.startsWith('emote:') ? 'EMOTE' : r.item.startsWith('charge:') ? 'CARGANDO GOLPE' : r.item.startsWith('style:') ? 'EFECTO PELOTA' : r.item.startsWith('color:') ? 'COLOR DE ROPA' : 'ESTILO';
+  const sub = r.item.startsWith('emote:') ? (EMOTE_ANIM[r.item.slice(6) as EmoteKind] ? 'EMOTE LEGENDARIO' : 'EMOTE') : r.item.startsWith('charge:') ? 'CARGANDO GOLPE' : r.item.startsWith('style:') ? 'EFECTO PELOTA' : r.item.startsWith('color:') ? 'COLOR DE ROPA' : 'ESTILO';
   return { top: r.name.replace('Estilo ', '').toUpperCase(), sub };
 }

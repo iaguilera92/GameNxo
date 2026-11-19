@@ -173,7 +173,8 @@ export function registerSocketHandlers(io: Server) {
             resistance: clampZone(rawZone.resistance),
           },
         };
-        const res = rooms.find(socket.id, clean);
+        const mode = req?.mode === '2v2' ? '2v2' : '1v1'; // (21-11-2026) 2v2: dos humanos del mismo equipo contra 2 bots del host
+        const res = rooms.find(socket.id, clean, mode);
         if (res.type === 'error') {
           socket.emit(EV.ERROR, { code: res.code, message: res.code === 'already_searching' ? 'Ya estás buscando partida' : 'Ya estás en una partida' });
           return;
@@ -187,8 +188,8 @@ export function registerSocketHandlers(io: Server) {
         }
         // emparejados: los dos pasan al partido sin confirmaciones
         const [host, guest] = room.players;
-        const toHost: MatchedMsg = { roomId: room.id, role: 'host', opponent: guest.profile, gamesToWin: CONFIG.gamesToWin, token: host.token };
-        const toGuest: MatchedMsg = { roomId: room.id, role: 'guest', opponent: host.profile, gamesToWin: CONFIG.gamesToWin, token: guest.token };
+        const toHost: MatchedMsg = { roomId: room.id, role: 'host', opponent: guest.profile, gamesToWin: CONFIG.gamesToWin, token: host.token, ...(room.mode === '2v2' ? { mode: room.mode } : {}) };
+        const toGuest: MatchedMsg = { roomId: room.id, role: 'guest', opponent: host.profile, gamesToWin: CONFIG.gamesToWin, token: guest.token, ...(room.mode === '2v2' ? { mode: room.mode } : {}) };
         io.to(host.id).emit(EV.MATCHED, toHost);
         io.to(guest.id).emit(EV.MATCHED, toGuest);
         log(`emparejados ${host.profile.name} vs ${guest.profile.name} sala ${short(room.id)} 2/2 → PLAYING`);
@@ -271,6 +272,8 @@ export function registerSocketHandlers(io: Server) {
         const room = rooms.roomOf(socket.id);
         if (!msg || !room || room.status !== 'PLAYING') return;
         const opp = rooms.opponentOf(room, socket.id);
+        // 2v2: solo el host juzga (simula a los bots); un punto del compañero se ignora
+        if (room.mode === '2v2' && rooms.roleOf(room, socket.id) !== 'host') return;
         if (opp) io.to(opp.id).emit(EV.POINT, msg);
         if (msg.kind !== 'point') return; // faltas y let no suman en el marcador oficial
         const res = rooms.point(socket.id, msg.seq, msg.to === 'me');
@@ -297,7 +300,8 @@ export function registerSocketHandlers(io: Server) {
         const msg: ResumedMsg = { score: scoreMsg(r.room) };
         socket.emit(EV.RESUMED, msg);
         matchLog.write(r.room.id, 'srv', { ev: 'rejoin', who: r.player.profile.name });
-        if (r.opponent) io.to(r.opponent.id).emit(EV.OPPONENT_BACK, msg.score);
+        // 2v2: si vuelve el compañero, el host sigue sin repetir el punto: solo le devuelve su personaje (MATE_BACK)
+        if (r.opponent) io.to(r.opponent.id).emit(r.room.mode === '2v2' && rooms.roleOf(r.room, socket.id) === 'guest' ? EV.MATE_BACK : EV.OPPONENT_BACK, msg.score);
         log(`reconectado ${r.player.profile.name} a la sala ${short(r.room.id)} (${short(socket.id)})`);
       }),
     );
@@ -307,6 +311,13 @@ export function registerSocketHandlers(io: Server) {
       if (!r) return;
       if (!r.wasPlaying) {
         log(`búsqueda terminada por ${reason} ${short(socket.id)}`);
+        return;
+      }
+      // 2v2: se fue el compañero: el partido sigue con un bot en su lugar (el host lo juega)
+      if (r.continues) {
+        if (r.opponent) io.to(r.opponent.id).emit(EV.MATE_AWAY, { gone: reason === 'abandon' });
+        log(`compañero fuera (${reason}) en la sala ${short(r.room.id)}: juega un bot`);
+        matchLog.write(r.room.id, 'srv', { ev: 'mate-away', reason });
         return;
       }
       if (r.opponent) io.to(r.opponent.id).emit(EV.OPPONENT_LEFT, { reason });
@@ -325,6 +336,11 @@ export function registerSocketHandlers(io: Server) {
         const room = rooms.roomOf(socket.id);
         // (solo cortes de red: 'ping timeout' / 'transport close'; un corte forzado por abuso o mensaje enorme pierde al instante)
         const netDrop = why === 'ping timeout' || why === 'transport close';
+        // 2v2: el compañero que se corta NO pausa el partido (un bot lo reemplaza y puede volver con su clave): sin periodo de gracia
+        if (room && room.mode === '2v2' && room.status === 'PLAYING' && rooms.roleOf(room, socket.id) === 'guest') {
+          leave('disconnect');
+          return;
+        }
         if (netDrop && room && room.status === 'PLAYING' && started.has(room.id) && CONFIG.reconnectGraceMs > 0) {
           const a = rooms.markAway(socket.id);
           if (a) {

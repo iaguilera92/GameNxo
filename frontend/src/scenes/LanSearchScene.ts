@@ -14,6 +14,8 @@ import type { SkinId } from '../characters/skins';
 import { getProfile } from '../logic/Profile';
 import { charColorOf } from '../domain/charColors';
 import { connect } from '../net/NetClient';
+import { botNamesFor } from '../net/doubles';
+import { rivalFor } from '../characters/catalog';
 import { MatchNet } from '../net/MatchNet';
 import { rankedSearchPanel } from '../ui/searchPanel';
 import { startIntroMusic, stopIntroMusic } from '../fx/introMusic';
@@ -31,10 +33,13 @@ import { EV, type ErrorMsg, type MatchedMsg, type SearchingMsg } from '../net/pr
 export interface LanSearchData {
   /** datos con los que se abre el flujo BOT de siempre si no hay rival */
   fallback: Record<string, unknown>;
+  /** (21-11-2026) '2v2': busca un COMPAÑERO (2 humanos del mismo equipo contra 2 bots); sin él se ofrece el 2v2 contra bots */
+  mode?: '1v1' | '2v2';
 }
 
 export class LanSearchScene extends Phaser.Scene {
   private fallback: Record<string, unknown> = {};
+  private mode: '1v1' | '2v2' = '1v1';
   private done = false;
   private cleanup: (() => void)[] = [];
 
@@ -44,6 +49,7 @@ export class LanSearchScene extends Phaser.Scene {
 
   init(data: LanSearchData) {
     this.fallback = data?.fallback ?? {};
+    this.mode = data?.mode === '2v2' ? '2v2' : '1v1';
     this.done = false;
     this.matched = false;
     this.cleanup = [];
@@ -81,7 +87,7 @@ export class LanSearchScene extends Phaser.Scene {
     // mismo aspecto que la búsqueda contra el BOT (MatchmakingScene): anillo con la pelota, reloj encima del título
     const c = this.add.container(W / 2, H * 0.44);
     searchSpinner(this, c, W, H);
-    const title = this.add.text(0, 196, 'BUSCANDO RIVAL', { fontFamily: FONT, fontSize: '40px', color: UI.text }).setOrigin(0.5).setLetterSpacing(2);
+    const title = this.add.text(0, 196, this.mode === '2v2' ? 'BUSCANDO COMPAÑERO' : 'BUSCANDO RIVAL', { fontFamily: FONT, fontSize: '40px', color: UI.text }).setOrigin(0.5).setLetterSpacing(2);
     const count = this.add.text(0, 148, '0:00', { fontFamily: FONT, fontSize: '30px', color: '#37e0ff' }).setOrigin(0.5);
     c.add([title, count]);
     // liga + lo invertido / premio (o AMISTOSO), como en la búsqueda contra el BOT
@@ -92,7 +98,7 @@ export class LanSearchScene extends Phaser.Scene {
       .then((tr) => {
         if (this.done || !this.scene.isActive()) return;
         const onSearching = (m: SearchingMsg) => {
-          title.setText('BUSCANDO RIVAL 1/2'); // jugadores en la sala
+          title.setText(this.mode === '2v2' ? 'BUSCANDO COMPAÑERO 1/2' : 'BUSCANDO RIVAL 1/2'); // jugadores en la sala
           // cuenta atrás visual; el tiempo real lo controla el servidor (mm:timeout)
           const end = this.time.now + m.timeoutMs;
           const tick = () => count.setText(`0:${String(Math.max(0, Math.ceil((end - this.time.now) / 1000))).padStart(2, '0')}`);
@@ -105,7 +111,7 @@ export class LanSearchScene extends Phaser.Scene {
           cancel.destroy();
           if (panel.length) this.tweens.add({ targets: panel, alpha: 0, duration: 220, onComplete: () => panel.forEach((o) => o.destroy()) });
           this.tweens.add({ targets: c, alpha: 0, scale: 0.85, duration: 220 });
-          this.versus(new MatchNet(tr, m.roomId, m.role, m.opponent, m.gamesToWin, m.token));
+          this.versus(new MatchNet(tr, m.roomId, m.role, m.opponent, m.gamesToWin, m.token, m.mode ?? '1v1'));
         };
         const onTimeout = () => this.noRival('No se encontró rival');
         const onError = (e: ErrorMsg) => this.noRival(e.message);
@@ -123,7 +129,7 @@ export class LanSearchScene extends Phaser.Scene {
           tr.off('disconnect', onDisc as (d: never) => void);
         });
         const p = getProfile();
-        tr.emit(EV.FIND, { profile: { name: p.name, level: p.level, skin: p.skin, zoneStats: p.zoneStats, charge: p.charge, color: p.color, wins: totalWins(), frame: equippedFrame(getPlayer() as PlayerState) ?? undefined, zone: getPlayer().equipped.zone } });
+        tr.emit(EV.FIND, { mode: this.mode, profile: { name: p.name, level: p.level, skin: p.skin, zoneStats: p.zoneStats, charge: p.charge, color: p.color, wins: totalWins(), frame: equippedFrame(getPlayer() as PlayerState) ?? undefined, zone: getPlayer().equipped.zone } });
         this.cleanup.push(() => {
           // salir de la escena sin emparejar = cancelar la búsqueda (no queda sala fantasma)
           if (!this.matched) tr.emit(EV.CANCEL);
@@ -147,9 +153,9 @@ export class LanSearchScene extends Phaser.Scene {
     if (this.done) return;
     this.done = true;
     showConfirm(this, {
-      title: 'SIN RIVAL',
+      title: this.mode === '2v2' ? 'SIN COMPAÑERO' : 'SIN RIVAL',
       message: why,
-      detail: '¿Quieres jugar contra el BOT?',
+      detail: this.mode === '2v2' ? '¿Jugar 2v2 con un BOT de compañero?' : '¿Quieres jugar contra el BOT?',
       confirmLabel: 'JUGAR VS BOT',
       cancelLabel: 'MENÚ',
       onConfirm: () => this.scene.start('Matchmaking', { ...this.fallback, skipSearch: true }), // la búsqueda online ya esperó: directo al VS
@@ -163,11 +169,16 @@ export class LanSearchScene extends Phaser.Scene {
     this.matched = true;
     const p = getProfile();
     const opp = net.opponent;
+    // 2v2: opponent es tu COMPAÑERO; enfrente van 2 bots (nombres iguales en los dos teléfonos)
+    const [b1, b2] = botNamesFor(net.roomId);
+    const duo = net.mode === '2v2';
     showVersusScreen(
       this,
-      { name: p.name, level: p.level, look: playerLook(p.skin), portraitSkin: p.skin as SkinId, wins: totalWins(), color: p.color, frame: equippedFrame(getPlayer() as PlayerState) },
+      { name: duo ? p.name + ' + ' + opp.name : p.name, level: p.level, look: playerLook(p.skin), portraitSkin: p.skin as SkinId, wins: totalWins(), color: p.color, frame: equippedFrame(getPlayer() as PlayerState) },
       // el rival con SU personaje (opponent.skin); si no se conoce, el respaldo de siempre
-      { name: opp.name, level: opp.level, look: lookForSkin(opp.skin, 'front', p.skin), portraitSkin: opp.skin as SkinId, color: charColorOf(opp.color), wins: opp.wins, frame: isFrameId(opp.frame) ? opp.frame : null }, // sus victorias y su marco, si los mandó
+      duo
+        ? { name: b1 + ' + ' + b2, level: Math.round((p.level + opp.level) / 2), look: lookForSkin(p.skin, 'front', p.skin), portraitSkin: rivalFor(p.skin), wins: 0, frame: null }
+        : { name: opp.name, level: opp.level, look: lookForSkin(opp.skin, 'front', p.skin), portraitSkin: opp.skin as SkinId, color: charColorOf(opp.color), wins: opp.wins, frame: isFrameId(opp.frame) ? opp.frame : null }, // sus victorias y su marco, si los mandó
     );
     // 1 s después del sonido del VS entra la música de la cancha (sigue sonando en el partido)
     const musicIn = this.time.delayedCall(1000, () => playMatchMusic(this, this.ambiente));
@@ -183,11 +194,11 @@ export class LanSearchScene extends Phaser.Scene {
       net.dispose();
       showConfirm(this, {
         title: 'PARTIDA CANCELADA',
-        message: e.kind === 'disconnect' ? 'Se perdió la conexión con el servidor' : 'El rival abandonó antes de empezar',
+        message: e.kind === 'disconnect' ? 'Se perdió la conexión con el servidor' : net.mode === '2v2' ? 'Tu compañero abandonó antes de empezar' : 'El rival abandonó antes de empezar',
         detail: '¿Buscar otra partida?',
         confirmLabel: 'BUSCAR',
         cancelLabel: 'MENÚ',
-        onConfirm: () => this.scene.restart({ fallback: this.fallback }),
+        onConfirm: () => this.scene.restart({ fallback: this.fallback, mode: this.mode }),
         onCancel: () => this.scene.start('Menu'),
         depth: 9000,
       });
@@ -201,7 +212,7 @@ export class LanSearchScene extends Phaser.Scene {
       this.cameras.main.fadeOut(250, 0, 0, 0);
       this.cameras.main.once('camerafadeoutcomplete', () => {
         this.toMatch = true;
-        this.scene.start('Match', { botName: opp.name, rivalLevel: opp.level, net, ambiente: this.ambiente });
+        this.scene.start('Match', { botName: opp.name, rivalLevel: opp.level, net, ambiente: this.ambiente, ...(net.mode === '2v2' ? { mode: '2v2' as const } : {}) });
       });
     });
   }

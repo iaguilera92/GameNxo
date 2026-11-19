@@ -13,7 +13,7 @@
  *    No hay límite de tiempo de partido.
  */
 import { randomUUID } from 'node:crypto';
-import type { PlayerProfile, Role } from '../events/protocol.js';
+import type { GameMode, PlayerProfile, Role } from '../events/protocol.js';
 import { type ScoreState, newScore, scorePoint } from './score.js';
 
 export type RoomStatus = 'WAITING' | 'FULL' | 'PLAYING' | 'FINISHED';
@@ -26,6 +26,8 @@ export interface RoomPlayer {
   token: string;
   /** desconectado y esperando a que reconecte (el partido sigue reservado unos segundos) */
   away?: boolean;
+  /** 2v2: se fue para siempre (se rindió): su personaje lo juega un bot y no puede volver */
+  gone?: boolean;
 }
 
 export interface RoomResult {
@@ -36,6 +38,8 @@ export interface RoomResult {
 
 export interface Room {
   id: string;
+  /** '2v2' = 2 humanos del MISMO equipo (host + guest) contra 2 bots que simula el host (21-11-2026) */
+  mode: GameMode;
   status: RoomStatus;
   /** [host, guest] */
   players: RoomPlayer[];
@@ -105,13 +109,13 @@ export class RoomManager {
   }
 
   /** JUGAR: unirse a una sala en espera o crear una. */
-  find(playerId: string, profile: PlayerProfile): FindResult {
+  find(playerId: string, profile: PlayerProfile, mode: GameMode = '1v1'): FindResult {
     const cur = this.roomOf(playerId);
     if (cur) return { type: 'error', code: cur.status === 'WAITING' ? 'already_searching' : 'already_in_room' };
     // la sala en espera más antigua de OTRO jugador
     let target: Room | undefined;
     for (const r of this.rooms.values())
-      if (r.status === 'WAITING' && r.players.length === 1 && r.players[0].id !== playerId && (!target || r.createdAt < target.createdAt)) target = r;
+      if (r.status === 'WAITING' && r.mode === mode && r.players.length === 1 && r.players[0].id !== playerId && (!target || r.createdAt < target.createdAt)) target = r;
     if (target) {
       this.clearSearch(target.id);
       target.players.push({ id: playerId, profile, ready: false, token: randomUUID() });
@@ -123,6 +127,7 @@ export class RoomManager {
     }
     const room: Room = {
       id: randomUUID(),
+      mode,
       status: 'WAITING',
       players: [{ id: playerId, profile, ready: false, token: randomUUID() }],
       createdAt: this.now(),
@@ -181,6 +186,7 @@ export class RoomManager {
     if (!room || room.status !== 'PLAYING') return null;
     const role = this.roleOf(room, playerId);
     if (!role) return null;
+    if (room.mode === '2v2' && role !== 'host') return null; // 2v2: el host es el juez único (simula a los bots)
     if ((room.pointSeq[playerId] ?? -1) >= seq) return { room, matchOver: false }; // repetido
     room.pointSeq[playerId] = seq;
     const me = role === 'host' ? 0 : 1;
@@ -217,7 +223,7 @@ export class RoomManager {
    * Un jugador abandona (rendición) o se desconecta. En búsqueda: se cancela. En partido: gana el rival y la
    * sala queda FINISHED (luego finish()). Devuelve la sala afectada y al rival a avisar.
    */
-  leave(playerId: string, reason: 'abandon' | 'disconnect'): { room: Room; opponent?: RoomPlayer; wasPlaying: boolean } | null {
+  leave(playerId: string, reason: 'abandon' | 'disconnect'): { room: Room; opponent?: RoomPlayer; wasPlaying: boolean; continues?: boolean } | null {
     const room = this.roomOf(playerId);
     if (!room) return null;
     if (room.status === 'WAITING') {
@@ -225,6 +231,15 @@ export class RoomManager {
       return { room, wasPlaying: false };
     }
     const opponent = this.opponentOf(room, playerId);
+    // 2v2: si se va el COMPAÑERO (guest) el partido sigue: un bot juega por él (si fue un corte, puede volver: rejoin)
+    if (room.mode === '2v2' && room.status === 'PLAYING' && this.roleOf(room, playerId) === 'guest') {
+      const p = room.players.find((x) => x.id === playerId);
+      if (p) {
+        if (reason === 'abandon') p.gone = true;
+        else p.away = true;
+      }
+      return { room, opponent, wasPlaying: true, continues: true };
+    }
     if (room.status !== 'FINISHED') {
       const role = this.roleOf(room, playerId);
       room.status = 'FINISHED';
@@ -254,7 +269,7 @@ export class RoomManager {
     const room = this.rooms.get(roomId);
     if (!room || room.status !== 'PLAYING' || typeof token !== 'string') return null;
     const player = room.players.find((p) => p.token === token);
-    if (!player || !player.away) return null;
+    if (!player || !player.away || player.gone) return null;
     const cur = this.playerRoom.get(newId);
     if (cur && cur !== roomId) return null;
     if (this.playerRoom.get(player.id) === room.id) this.playerRoom.delete(player.id);

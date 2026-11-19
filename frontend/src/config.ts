@@ -141,6 +141,14 @@ export const SERVE = {
    */
   // más rápido y casi recto (margen mínimo sobre la red): difícil de devolver si se golpea en el punto justo
   direct: { speedMult: 1.4, margin: 4, depth: 0.9 },
+  /** Botón verde SIN dar en el aro (calidad 'normal'): algo de directo (más rápido y bajo que un saque común). Flojo = común. */
+  directPartial: { speedMult: 1.15, margin: 11 },
+  /** Saque por TOQUE (sin botón) dado en el aro: fuerte pero sin directo ni efecto; sale un poco alto. */
+  tapPerfect: { margin: 34 },
+  /** Saque con EFECTO sin aro: buen efecto pero vuelo más bajo (margen sobre la red). */
+  spinMargin: 10,
+  /** Saque con EFECTO dado en el aro: curva grande (aceleración lateral, px/s²). */
+  spinBigAy: 600,
   /** Aceleración lateral del saque con efecto (px/s²) y su "patada" al botar (ver stepBall). */
   spinAy: 260,
   /** Zona de cinta de la red: un saque que roza la red por encima y cae bien es let. */

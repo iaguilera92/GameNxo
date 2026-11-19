@@ -92,7 +92,10 @@ export interface PlayerState {
   chest?: ChestState;
   /** MAESTRÍAS: puntos por personaje (id de skin). Se ganan al ganar partidos, desde el nivel 20 de la cuenta (domain/characterPassives.ts). Sin puntos = undefined */
   mastery?: Record<string, number>;
+  /** MODO RIESGO x2 (domain/riskMode.ts): última activación confirmada por el servidor; nunca usado = undefined */
+  riskMode?: RiskModeState;
 }
+import type { RiskModeState } from './riskMode';
 
 export const itemId = {
   ability: (id: AbilityId): ItemId => `ability:${id}`,
@@ -138,5 +141,5 @@ export function owns(s: PlayerState, id: ItemId) {
 
 /** Copia profunda (las operaciones nunca mutan el estado recibido). */
 export function clonePlayer(s: PlayerState): PlayerState {
-  return { ...s, owned: [...s.owned], equipped: { ...s.equipped, abilities: [...s.equipped.abilities] }, wheel: cloneWheel(s.wheel), bp: cloneBattlePass(s.bp), ranked: cloneRanked(s.ranked), login: { ...s.login, days: [...(s.login.days ?? [])] }, zone: cloneZoneProgress(s.zone), ...(s.tutorial ? { tutorial: [...s.tutorial] } : {}), ...(s.chest ? { chest: { ...s.chest } } : {}), ...(s.mastery ? { mastery: { ...s.mastery } } : {}) };
+  return { ...s, owned: [...s.owned], equipped: { ...s.equipped, abilities: [...s.equipped.abilities] }, wheel: cloneWheel(s.wheel), bp: cloneBattlePass(s.bp), ranked: cloneRanked(s.ranked), login: { ...s.login, days: [...(s.login.days ?? [])] }, zone: cloneZoneProgress(s.zone), ...(s.tutorial ? { tutorial: [...s.tutorial] } : {}), ...(s.chest ? { chest: { ...s.chest } } : {}), ...(s.mastery ? { mastery: { ...s.mastery } } : {}), ...(s.riskMode ? { riskMode: { ...s.riskMode } } : {}) };
 }

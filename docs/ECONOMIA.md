@@ -26,6 +26,7 @@ salen del código (`frontend/`). Si cambias uno, corre el simulador (sección 14
 |---|---|
 | Saldo inicial | 5.000 (10 entradas de Bronce) |
 | Partida | +50 victoria · +10 derrota · 0 rendición |
+| Misiones por partida (1v1) | hasta +100 por partida, también perdiendo ([MISIONES.md](MISIONES.md)) |
 | Ruleta diaria | ~45 de media por giro (sección 8) |
 | Regalo gratis de la Tienda | 5 (60 %), 10 (30 %) o 15 (10 %) monedas, 1 vez al día (`domain/shopGift.ts`) |
 | Premio diario | 6.350 por semana (sección 9) |
@@ -112,7 +113,8 @@ Techo semanal sin pagar: ~165 (30 del diario con anuncio + 125 de Challenger Top
 | ULTI Bola de Energía (17-11-2026; LEGENDARIA, la primera ULTI legendaria; solo dinero real) | 3500 | $59.990 | 1 |
 | ULTI HURACÁN (`inferno:hurricane`, 17-11-2026; LEGENDARIA; solo dinero real) | 3500 | $59.990 | 1 |
 | DEFENSIVO Relámpago (18-11-2026; ÉPICO, el primero; solo dinero real) | 85 | $2.490 | 1 |
-| **Todas las legendarias cuestan $59.990** (`LEGENDARY_PRICE` en `shopCatalog.ts`): Bola de Energía, HURACÁN, Estrellas, Arcoíris y Zona Sombra. | | | |
+| DEFENSIVO Tiempo Lento (`defensive:slowmo`, 18-11-2026; LEGENDARIO, el primero; solo dinero real) | 3500 | $59.990 | 1 |
+| **Todas las legendarias cuestan $59.990** (`LEGENDARY_PRICE` en `shopCatalog.ts`): Bola de Energía, HURACÁN, Tiempo Lento, Estrellas, Arcoíris y Zona Sombra. | | | |
 | ESPECIAL (SMASH) Hielo | 45 | $1.390 | 1 |
 | ESPECIAL Viento | 50 | $1.490 | 1 |
 | ESPECIAL Rayo | 55 | $1.990 | 1 |

@@ -40,6 +40,13 @@ const GLOW: Record<SmashPower, [number, number]> = {
 
 const R = Phaser.Math.FloatBetween;
 
+/**
+ * (18-11-2026, usuario) PELOTA DRAGÓN del ESPECIAL LEGENDARIO: cabeza de dragón de fuego vista desde arriba con el hocico HACIA ARRIBA
+ * (tools/build-dragon-ball.mjs → public/assets/ball-dragon.webp, 8 frames en bucle). Se gira hacia donde vuela y lleva detrás el rastro de
+ * fuego. `size` = alto en pantalla respecto a la escala de la pelota; `lead` = cuánto se adelanta la imagen para que la CABEZA quede en la pelota.
+ */
+export const DRAGON_BALL = { key: 'ball-dragon', file: 'assets/ball-dragon.webp', cell: 256, frames: 8, fps: 14, anim: 'ball-dragon-fly', size: 64, lead: 0.28 };
+
 export class SmashElementFx {
   private g: Phaser.GameObjects.Graphics;
   private parts: Part[] = [];
@@ -55,7 +62,10 @@ export class SmashElementFx {
   /** capa NORMAL (no aditiva) para lo oscuro de la SOMBRA (lo aditivo no puede oscurecer) */
   private dark: Phaser.GameObjects.Graphics;
 
-  constructor(scene: Phaser.Scene) {
+  /** sprite de la PELOTA DRAGÓN (se crea al primer uso si su hoja cargó) */
+  private dragonImg?: Phaser.GameObjects.Sprite;
+
+  constructor(private scene: Phaser.Scene) {
     this.g = scene.add.graphics().setBlendMode(Phaser.BlendModes.ADD);
     this.dark = scene.add.graphics();
   }
@@ -104,12 +114,14 @@ export class SmashElementFx {
       else if (this.el === 'light') this.drawLight(bx, by, k * S, dx, dy, dt);
       else if (this.el === 'fire') this.drawFire(bx, by, k * S, dx, dy, dt, strong);
       else if (this.el === 'comet') this.drawMeteor(bx, by, k * S, dx, dy, dt, strong);
-      else if (this.el === 'dragon') this.drawDragon(bx, by, k * S, dx, dy, dt, strong);
-      else this.drawLightning(bx, by, k * S, dt);
+      else if (this.el === 'dragon') {
+        if (!this.drawDragonSprite(bx, by, k * S, dx, dy, dt, strong, ground.sy)) this.drawDragon(bx, by, k * S, dx, dy, dt, strong);
+      } else this.drawLightning(bx, by, k * S, dt);
     } else {
       this.hist.length = 0;
       this.bolts.length = 0;
     }
+    if (!(active && this.el === 'dragon')) this.dragonImg?.setVisible(false);
     // partículas sueltas (esquirlas / ráfagas / chispas)
     for (let i = this.parts.length - 1; i >= 0; i--) {
       const p = this.parts[i];
@@ -630,7 +642,40 @@ export class SmashElementFx {
     }
   }
 
+  /**
+   * (18-11-2026, usuario) PELOTA DRAGÓN con su sprite (DRAGON_BALL): la cabeza girada hacia donde vuela y, detrás, el RASTRO DE FUEGO de la
+   * pelota de fuego (lenguas, resplandor y brasas) más brasas doradas que quedan por el camino. false = la hoja no cargó (se dibuja por código).
+   */
+  private drawDragonSprite(x: number, y: number, k: number, dx: number, dy: number, dt: number, strong: boolean, groundY: number): boolean {
+    const sc = this.scene;
+    if (!sc.textures.exists(DRAGON_BALL.key)) return false;
+    if (!sc.anims.exists(DRAGON_BALL.anim)) {
+      sc.anims.create({ key: DRAGON_BALL.anim, frames: sc.anims.generateFrameNumbers(DRAGON_BALL.key, { start: 0, end: DRAGON_BALL.frames - 1 }), frameRate: DRAGON_BALL.fps, repeat: -1 });
+    }
+    if (!this.dragonImg || !this.dragonImg.active) {
+      this.dragonImg = sc.add.sprite(0, 0, DRAGON_BALL.key, 0);
+      this.dragonImg.play(DRAGON_BALL.anim);
+    }
+    // rastro: el fuego de la pelota de fuego (más largo) y brasas que se quedan atrás
+    this.drawFire(x, y, k * 1.25, dx, dy, dt, true);
+    this.emit -= dt;
+    while (this.emit <= 0) {
+      this.emit += strong ? 0.02 : 0.032;
+      const b = this.hist.length ? this.hist[Math.floor(R(0, Math.min(this.hist.length, 12)))] : { x, y };
+      this.add({ x: b.x + R(-10, 10) * k, y: b.y + R(-10, 10) * k, vx: R(-30, 30), vy: -R(20, 70), life: R(0.45, 0.85), rot: 0, vr: 0, size: R(3, 6) * k, col: Phaser.Utils.Array.GetRandom([0xfff1a0, 0xffd23f, 0xff7a1a, 0xd6201e]) });
+    }
+    // cabeza: el hocico (arriba en la imagen) apunta hacia donde vuela; se adelanta para que la cabeza quede sobre la pelota
+    const img = this.dragonImg.setVisible(true);
+    const hgt = DRAGON_BALL.size * k;
+    img.setScale(hgt / DRAGON_BALL.cell);
+    img.setRotation(Math.atan2(dy, dx) + Math.PI / 2);
+    img.setPosition(x - dx * hgt * DRAGON_BALL.lead, y - dy * hgt * DRAGON_BALL.lead);
+    img.setDepth(groundY + 3.2);
+    return true;
+  }
+
   clear() {
+    this.dragonImg?.setVisible(false);
     this.dark.clear();
     this.parts.length = 0;
     this.hist.length = 0;

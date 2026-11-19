@@ -78,7 +78,7 @@ const INFO = {
   },
   defensive: {
     title: 'PODERES DEFENSIVOS',
-    text: `El DEFENSIVO te ayuda a llegar a pelotas lejanas y se recarga cada ${DASH_COOLDOWN} segundos.\n\nCada poder cambia lo que hace: el DASH (gratis) es un sprint hasta la pelota, el DESTELLO te teletransporta, la SOMBRA cambia tu lugar con un clon, el SUPERSALTO salta hasta ella, la VOLTERETA llega con dos volteretas el PATINAJE patina dejando un camino de hielo y el RELÁMPAGO (épico) te vuelve un rayo azul neón que deja rayos en el suelo. Todos devuelven asegurado y se recargan igual.\n\nLa Tienda muestra 3 a la vez y cambia la selección cada 12 horas.`,
+    text: `El DEFENSIVO te ayuda a llegar a pelotas lejanas y se recarga cada ${DASH_COOLDOWN} segundos.\n\nCada poder cambia lo que hace: el DASH (gratis) es un sprint hasta la pelota, el DESTELLO te teletransporta, la SOMBRA cambia tu lugar con un clon, el SUPERSALTO salta hasta ella, la VOLTERETA llega con dos volteretas, el PATINAJE patina dejando un camino de hielo, el RELÁMPAGO (épico) te vuelve un rayo azul neón que deja rayos en el suelo y el TIEMPO LENTO (legendario) frena el tiempo mientras corres y te estira hacia la pelota con la cámara cerca. Todos devuelven asegurado y se recargan igual.\n\nLa Tienda muestra 3 a la vez y cambia la selección cada 12 horas.`,
   },
   zone: {
     title: 'ZONA',
@@ -132,6 +132,7 @@ export class ShopScene extends Phaser.Scene {
     if (!this.textures.exists('menu-bg')) this.load.image('menu-bg', 'assets/menu-bg.webp');
     if (!this.textures.exists('shop-title')) this.load.image('shop-title', 'assets/tienda-titulo.webp');
     if (!this.textures.exists('cash-1')) this.load.image('cash-1', 'assets/dinero-virtual-1.webp'); // icono de DINERO (16-11-2026)
+    if (!this.textures.exists('icon-zona')) this.load.image('icon-zona', 'assets/icon-zona.webp'); // cards de ZONA (recoloreada por estilo)
     if (!this.textures.exists('cash-pack')) this.load.image('cash-pack', 'assets/dinero-fardo-chico.webp'); // precios de más de 1
     // retrato de Mai (premio mayor del Pase, en OFERTAS): ya lo carga BootScene; solo se descarga si falta
     if (!this.textures.exists('portrait-mai')) this.load.image('portrait-mai', 'assets/characters/mai_portrait.webp');
@@ -272,8 +273,7 @@ export class ShopScene extends Phaser.Scene {
     y += ch + 52;
 
     // ---------------------------------------------------------------- cargando golpe (aro al cargar)
-    this.sectionTitle(W, y, 'CARGANDO GOLPE', INFO.charge);
-    this.rotationLabel(W, y, 'charge', now);
+    this.sectionTitle(W, y, 'CARGANDO GOLPE', INFO.charge, { kind: 'charge', now });
     y += titleGap;
     const charges = shopOffers('charge', now);
     const cc = cols3(charges.length);
@@ -284,8 +284,7 @@ export class ShopScene extends Phaser.Scene {
     y += ch + 52;
 
     // ---------------------------------------------------------------- poderes de la ULTI (antes INFERNO)
-    this.sectionTitle(W, y, 'PODERES ULTI', INFO.ulti);
-    this.rotationLabel(W, y, 'inferno', now);
+    this.sectionTitle(W, y, 'PODERES ULTI', INFO.ulti, { kind: 'inferno', now });
     y += titleGap;
     const powers = shopOffers('inferno', now);
     const pc = cols3(powers.length);
@@ -296,8 +295,7 @@ export class ShopScene extends Phaser.Scene {
     y += ch + 52;
 
     // ---------------------------------------------------------------- poderes del ESPECIAL y del DEFENSIVO
-    this.sectionTitle(W, y, 'PODERES ESPECIALES', INFO.special);
-    this.rotationLabel(W, y, 'smash', now);
+    this.sectionTitle(W, y, 'PODERES ESPECIALES', INFO.special, { kind: 'smash', now });
     y += titleGap;
     // 3 a la vez (el FUEGO es gratis y no entra en la rotación: se elige en PERSONALIZAR)
     const smashItems = shopOffers('smash', now);
@@ -308,8 +306,7 @@ export class ShopScene extends Phaser.Scene {
       this.reg(y, smashH);
     });
     y += smashH + 52;
-    this.sectionTitle(W, y, 'PODERES DEFENSIVOS', INFO.defensive);
-    this.rotationLabel(W, y, 'defensive', now);
+    this.sectionTitle(W, y, 'PODERES DEFENSIVOS', INFO.defensive, { kind: 'defensive', now });
     y += titleGap;
     const defs = shopOffers('defensive', now);
     const dc = cols3(defs.length);
@@ -364,12 +361,37 @@ export class ShopScene extends Phaser.Scene {
     return (['charge', 'inferno', 'smash', 'defensive'] as ItemKind[]).map((k) => shopOffers(k, now).map((i) => i.id).join(',')).join('|');
   }
 
-  /** "NUEVOS EN 04:12:09" bajo el título de una categoría que rota (si no hay otros que mostrar, no sale). */
-  private rotationLabel(W: number, y: number, kind: ItemKind, now: number) {
-    const ms = offersChangeIn(kind, now);
-    if (ms === null) return;
-    const t = this.add.text(W / 2, y + 27, '', { fontFamily: FONT, fontSize: '13px', color: '#9fb4e0' }).setOrigin(0.5).setLetterSpacing(1);
-    this.body.add(t);
+  /** ancho de la píldora del contador de ofertas (a la derecha del título de las categorías que rotan) */
+  private static readonly ROT_PILL_W = 168;
+
+  /**
+   * (18-11-2026, usuario) Contador de las ofertas que rotan: píldora roja con reloj y "04:12:09", a la DERECHA en la misma
+   * fila del título (antes "NUEVOS EN …" chico bajo el título: no se veía). Late suave para que se note que se acaban.
+   */
+  private rotationPill(W: number, y: number, kind: ItemKind, ms: number) {
+    const pw = ShopScene.ROT_PILL_W;
+    const ph = 38;
+    const cx = W - 30 - pw / 2;
+    const c = this.add.container(cx, y);
+    const glow = this.add.graphics();
+    glow.lineStyle(8, 0xff4a3a, 0.3).strokeRoundedRect(-pw / 2 - 2, -ph / 2 - 2, pw + 4, ph + 4, ph / 2 + 2);
+    const g = this.add.graphics();
+    g.fillStyle(0x000000, 0.35).fillRoundedRect(-pw / 2 + 2, -ph / 2 + 4, pw, ph, ph / 2);
+    g.fillStyle(0x0a1638, 1).fillRoundedRect(-pw / 2 - 3, -ph / 2 - 3, pw + 6, ph + 6, ph / 2 + 3);
+    g.fillStyle(0xc4192e, 1).fillRoundedRect(-pw / 2, -ph / 2, pw, ph, ph / 2);
+    g.fillStyle(0xffffff, 0.18).fillRoundedRect(-pw / 2 + 8, -ph / 2 + 3, pw - 16, ph * 0.38, ph / 4);
+    g.lineStyle(2, 0xff8a7a, 1).strokeRoundedRect(-pw / 2, -ph / 2, pw, ph, ph / 2);
+    // reloj
+    const ix = -pw / 2 + 22;
+    const clock = this.add.graphics({ x: ix, y: 0 });
+    clock.fillStyle(0xffffff, 1).fillCircle(0, 0, 11);
+    clock.fillStyle(0xc4192e, 1).fillCircle(0, 0, 8);
+    clock.lineStyle(2.5, 0xffffff, 1).lineBetween(0, 0, 0, -6).lineBetween(0, 0, 4.5, 2);
+    const t = this.add.text(ix + 18, 1, '', { fontFamily: FONT, fontSize: '22px', color: '#ffffff', stroke: '#5a0812', strokeThickness: 4 }).setOrigin(0, 0.5).setLetterSpacing(1);
+    c.add([glow, g, clock, t]);
+    this.body.add(c);
+    this.tweens.add({ targets: glow, alpha: { from: 1, to: 0.25 }, duration: 800, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
+    this.tweens.add({ targets: clock, scale: { from: 1, to: 1.15 }, duration: 500, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
     this.rotLabels.push({ t, kind });
     this.setRotationText(t, ms);
   }
@@ -377,7 +399,9 @@ export class ShopScene extends Phaser.Scene {
   private setRotationText(t: Phaser.GameObjects.Text, ms: number) {
     const s = Math.max(0, Math.ceil(ms / 1000));
     const two = (n: number) => String(n).padStart(2, '0');
-    t.setText(`NUEVOS EN ${two(Math.floor(s / 3600))}:${two(Math.floor((s % 3600) / 60))}:${two(s % 60)}`);
+    t.setText(`${two(Math.floor(s / 3600))}:${two(Math.floor((s % 3600) / 60))}:${two(s % 60)}`);
+    // última hora: en amarillo (se acaban ya)
+    t.setColor(s < 3600 ? '#ffe14d' : '#ffffff');
   }
 
   /** Una vez por segundo: cuenta atrás de las categorías que rotan; si cambió la selección, se dibuja la nueva. */
@@ -833,6 +857,45 @@ export class ShopScene extends Phaser.Scene {
    * Tarjeta de un ESTILO DE ZONA (domain/zoneSkins.ts): un rostro con su aura y el rayo de los ojos, nombre y botón. La Eléctrica es de todos (USAR /
    * EN USO); la de FUEGO (épica) se VE en acción y se compra dentro; la SOMBRA (legendaria) no se muestra: precio en CLP / USAR / EN USO.
    */
+  /**
+   * (18-11-2026) icon-zona (silueta negra con el rayo MORADO en los ojos) recoloreado para un estilo: los píxeles de color (el rayo y su
+   * brillo) pasan al color del estilo (su `col`, con el núcleo hacia `hot`), con la misma luz; la silueta negra y el blanco no cambian. Se
+   * genera una vez por estilo (textura `icon-zona-<id>`). null si la imagen no cargó.
+   */
+  private zoneIconTex(zid: ZoneSkinId): string | null {
+    if (!this.textures.exists('icon-zona')) return null;
+    const key = `icon-zona-${zid}`;
+    if (this.textures.exists(key)) return key;
+    const src = this.textures.get('icon-zona').getSourceImage() as HTMLImageElement | HTMLCanvasElement;
+    const cw = src.width;
+    const ch = src.height;
+    const ct = this.textures.createCanvas(key, cw, ch);
+    if (!ct) return 'icon-zona';
+    const ctx = ct.getContext();
+    ctx.drawImage(src, 0, 0);
+    const def = ZONE_SKINS[zid];
+    // la Sombra ya es morada: la imagen tal cual
+    if (zid !== 'shadow') {
+      const id = ctx.getImageData(0, 0, cw, ch);
+      const d = id.data;
+      const c1 = [(def.col >> 16) & 255, (def.col >> 8) & 255, def.col & 255];
+      const c2 = [(def.hot >> 16) & 255, (def.hot >> 8) & 255, def.hot & 255];
+      for (let i = 0; i < d.length; i += 4) {
+        if (d[i + 3] === 0) continue;
+        const r = d[i], g = d[i + 1], b = d[i + 2];
+        const mx = Math.max(r, g, b);
+        const mn = Math.min(r, g, b);
+        if (mx < 40 || mx - mn < 40) continue; // negro / gris / blanco: igual
+        const L = mx / 255;
+        const wht = mn / mx; // núcleo blanquecino → hacia `hot`
+        for (let k = 0; k < 3; k++) d[i + k] = Math.round((c1[k] + (c2[k] - c1[k]) * wht) * L);
+      }
+      ctx.putImageData(id, 0, 0);
+    }
+    ct.refresh();
+    return key;
+  }
+
   private zoneCard(x: number, y: number, w: number, h: number, zid: ZoneSkinId, it?: ShopItem) {
     const s = getPlayer();
     const def = ZONE_SKINS[zid];
@@ -853,12 +916,20 @@ export class ShopScene extends Phaser.Scene {
         ic.lineStyle(4, k % 2 ? def.hot : def.col, 0.9).lineBetween(Math.cos(a) * 30, Math.sin(a) * 30, Math.cos(a) * 46, Math.sin(a) * 46);
       }
     }
-    ic.fillStyle(0x0a1638, 1).fillCircle(0, 4, 26);
-    ic.fillStyle(0x16244a, 1).fillCircle(0, 4, 22);
-    ic.lineStyle(9, def.col, 0.45).lineBetween(-8, 0, -46, -10);
-    ic.lineStyle(3.5, def.hot, 1).lineBetween(-8, 0, -46, -10);
-    ic.fillStyle(def.hot, 1).fillCircle(-8, 0, 4.5).fillCircle(8, 0, 4.5);
-    c.add(ic);
+    // (18-11-2026, usuario) la cabeza es la imagen de la ZONA de PERSONALIZAR (icon-zona) con el rayo de los ojos del color de este estilo
+    const tex = this.zoneIconTex(zid);
+    if (tex) {
+      c.add(ic);
+      const img = this.add.image(sx, y + 70, tex);
+      c.add(img.setScale(Math.min(112 / img.width, 112 / img.height)));
+    } else {
+      ic.fillStyle(0x0a1638, 1).fillCircle(0, 4, 26);
+      ic.fillStyle(0x16244a, 1).fillCircle(0, 4, 22);
+      ic.lineStyle(9, def.col, 0.45).lineBetween(-8, 0, -46, -10);
+      ic.lineStyle(3.5, def.hot, 1).lineBetween(-8, 0, -46, -10);
+      ic.fillStyle(def.hot, 1).fillCircle(-8, 0, 4.5).fillCircle(8, 0, 4.5);
+      c.add(ic);
+    }
     c.add(this.add.text(sx, y + 140, def.name.toUpperCase(), { fontFamily: FONT, fontSize: '24px', color: '#' + def.hot.toString(16).padStart(6, '0') }).setOrigin(0.5));
     c.add(this.add.text(sx, y + 164, has ? (it ? 'COMPRADO' : 'INCLUIDO') : def.desc, { fontFamily: FONT, fontSize: '13px', color: has ? '#9fe8a0' : '#9fb4e0', align: 'center', wordWrap: { width: w - 16 } }).setOrigin(0.5, 0));
     const by = y + h - 64;
@@ -1436,19 +1507,29 @@ export class ShopScene extends Phaser.Scene {
   }
 
   /** Título de sección con su línea a cada lado; con `info`, un (i) a la derecha del texto abre su explicación. */
-  private sectionTitle(W: number, y: number, label: string, info?: Info) {
+  /** `rot`: categoría que rota → contador de las ofertas a la derecha, en la misma fila (si no hay otros que mostrar, no sale). */
+  private sectionTitle(W: number, y: number, label: string, info?: Info, rot?: { kind: ItemKind; now: number }) {
+    const ms = rot ? offersChangeIn(rot.kind, rot.now) : null;
+    // con contador, el título se centra en lo que queda a la izquierda de la píldora
+    const x1 = ms !== null ? W - 30 - ShopScene.ROT_PILL_W - 14 : W - 40;
     const t = this.add.text(W / 2, y, label, { fontFamily: FONT, fontSize: '28px', color: '#ffffff' }).setOrigin(0.5).setLetterSpacing(3);
     const iconGap = 12;
     const iconD = 32;
     const extra = info ? iconGap + iconD : 0;
+    // título largo + contador: se encoge para no tocar la píldora
+    const room = x1 - 40 - extra - 24;
+    if (t.width > room) t.setScale(room / t.width);
     // texto + icono centrados juntos
-    const left = W / 2 - (t.width + extra) / 2;
-    t.setX(left + t.width / 2);
-    const right = left + t.width + extra;
+    const left = (40 + x1) / 2 - (t.displayWidth + extra) / 2;
+    t.setX(left + t.displayWidth / 2);
+    const right = left + t.displayWidth + extra;
     const g = this.add.graphics();
-    g.lineStyle(2, NEON, 0.7).lineBetween(40, y, left - 18, y).lineBetween(right + 18, y, W - 40, y);
+    g.lineStyle(2, NEON, 0.7);
+    if (left - 18 > 40) g.lineBetween(40, y, left - 18, y);
+    if (x1 > right + 18) g.lineBetween(right + 18, y, x1, y);
     this.body.add([g, t]);
-    if (info) this.body.add(this.infoButton(left + t.width + iconGap + iconD / 2, y, info));
+    if (info) this.body.add(this.infoButton(left + t.displayWidth + iconGap + iconD / 2, y, info));
+    if (rot && ms !== null) this.rotationPill(W, y, rot.kind, ms);
   }
 
   private backButton(x: number, y: number, onClick: () => void) {

@@ -9,11 +9,14 @@ import { roundedPoly } from '../ui/shapes';
 import { RankBadge, preloadRankBadges } from '../ui/RankBadge';
 import { rankDef } from '../domain/ranks';
 import { showRankList } from '../ui/RankListDialog';
-import { arcadeButton } from '../ui/modeButtons';
+import { arcadeButton, modeBand, modeShape } from '../ui/modeButtons';
+import { chestStatus } from '../domain/chest';
+import { gameClock } from '../domain/timeSource';
 import { isDevMode } from '../domain/devMode';
 import { maybeShowTutorial } from '../ui/TutorialDialog';
 import { fitText } from '../ui/fitText';
-import { myLeague, myPosition, rankedState, rankedView, syncRanked } from '../logic/Ranked';
+import { myLeague, myPosition, rankedState, rankedView, riskModeStatus, riskUsedThisWeek, syncRanked, syncRiskMode, activateRiskMode, devActivateRisk, type RiskActivateError } from '../logic/Ranked';
+import { formatRiskLeft } from '../domain/riskMode';
 import { dailyLoginButton } from '../ui/DailyLoginButton';
 import { friendsButton } from '../ui/FriendsButton';
 import { globalRankingButton } from '../ui/GlobalRanking';
@@ -22,7 +25,8 @@ import { navLigaLabel } from '../ui/navLabel';
 import { drawProfileFrame, openProfileDialog } from '../ui/ProfileDialog';
 import { equippedFrame } from '../domain/profileFrames';
 import { chestButton } from '../ui/ChestButton';
-import { rankedPlayButton } from '../ui/PlayEntry';
+import { loadBet, rankedPlayButton } from '../ui/PlayEntry';
+import { matchStakes } from '../domain/rankedConfig';
 import { serverUrl } from '../net/config';
 import { MAX_LEVEL } from '../config';
 import { getPlayer, onPlayerChange } from '../domain/playerStore';
@@ -35,7 +39,7 @@ import type { PlayerState } from '../domain/player';
 import { openWheel, whenWheelReady } from './WheelScene';
 import { uiSound } from '../fx/uiSound';
 import { sfx } from '../fx/sfx';
-import { masteryLevel, passiveOf } from '../domain/characterPassives';
+import { masteryLevel, masteryProgress, passiveOf } from '../domain/characterPassives';
 import { drawPassiveIcon } from '../ui/passiveInfo';
 import { startIntroMusic } from '../fx/introMusic';
 import { grantTestSpin, markWheelPresented, syncWheels, wheelToPresent } from '../logic/Wheels';
@@ -77,6 +81,16 @@ const BG_ZOOM = 1.12;
  * de la imagen (sin el margen transparente); `split` = límites entre las 3 pestañas (0..1).
  * Si la imagen no existe se dibuja la barra vectorial de antes.
  */
+/** MODO RIESGO x2: pulsación más corta que esto = toque (abre la explicación); mantener RISK_HOLD_MS = activarlo */
+const RISK_TAP_MS = 280;
+const RISK_HOLD_MS = 3000;
+const RISK_MSG: Record<RiskActivateError, string> = {
+  offline: 'Necesitas conexión para activar el MODO RIESGO',
+  not_monday: 'El MODO RIESGO solo se activa los lunes',
+  already_used: 'Ya usaste el MODO RIESGO esta semana',
+  active: 'El MODO RIESGO ya está activo',
+  unknown: 'No se pudo activar el MODO RIESGO',
+};
 const NAV = {
   key: 'nav-home',
   file: 'assets/barra-inicio.webp',
@@ -95,7 +109,6 @@ export class MenuScene extends Phaser.Scene {
 
   preload() {
     if (!this.textures.exists('menu-bg')) this.load.image('menu-bg', 'assets/menu-bg.webp');
-    if (!this.textures.exists('btn-jugar')) this.load.image('btn-jugar', 'assets/btn-jugar.webp');
     if (!this.textures.exists('daily-coins-art')) this.load.image('daily-coins-art', 'assets/monedas.webp');
     if (!this.textures.exists('daily-cash-art')) this.load.image('daily-cash-art', 'assets/billetes.webp');
     // icono del contador de DINERO (16-11-2026, usuario): el fardo chico (sin fondo; original magenta en dinero-virtual-2.webp)
@@ -127,6 +140,15 @@ export class MenuScene extends Phaser.Scene {
   private coinObj: Phaser.GameObjects.Container | null = null;
   /** monedas de una ruleta ya cobrada que esperan a verse llegar a su card */
   private pendingCoins = 0;
+  /** monedas ganadas en la partida que aún no se vieron llegar al monedero (playMatchCoins) */
+  private matchCoins = 0;
+  /** pone el monedero de arriba en un valor al instante (cada moneda que llega suma su parte) */
+  private coinSet: ((v: number) => void) | null = null;
+  /** monedas de la LIGA (apuesta Ranked ganada) que la card de la liga aún no muestra: bajan al llegar cada moneda */
+  private leagueHold = 0;
+  private leagueObj: Phaser.GameObjects.Container | null = null;
+  private leagueRect: { x: number; y: number; w: number; h: number } | null = null;
+  private leagueRepaint: (() => void) | null = null;
   private profileRefresh: (() => void) | null = null;
   private passRefresh: (() => void) | null = null;
   private wheelOpenNow() {
@@ -150,6 +172,14 @@ export class MenuScene extends Phaser.Scene {
     this.xpAnims = [];
     this.xpAt = [];
     this.pendingCoins = this.wheelGain?.coins ?? 0;
+    // (18-11-2026, usuario) monedas que entraron con la(s) partida(s) (MatchEndScene): vuelan al monedero ANTES de la EXP
+    this.matchCoins = Math.max(0, (this.registry.get('menu.coinGain') as number | undefined) ?? 0);
+    this.registry.remove('menu.coinGain');
+    this.coinSet = null;
+    // lo que de eso sumó a la LIGA: la card de la liga lo espera (solo si hay monedas que animar)
+    this.leagueHold = this.matchCoins > 0 ? Math.max(0, (this.registry.get('menu.leagueGain') as number | undefined) ?? 0) : 0;
+    this.registry.remove('menu.leagueGain');
+    this.leagueObj = this.leagueRect = this.leagueRepaint = null;
     this.coinRect = this.coinRefresh = this.profileRefresh = this.passRefresh = null;
     // la ruleta se cierra con el menú ya abierto: el premio (monedas, EXP) se ve pasar a las cards
     const onWheelClosed = () => this.time.delayedCall(120, () => this.wheelClosed());
@@ -235,7 +265,9 @@ export class MenuScene extends Phaser.Scene {
     }, () => {
       uiSound(this, 'play');
       this.cameras.main.fadeOut(200, 0, 0, 0);
-      this.cameras.main.once('camerafadeoutcomplete', () => this.scene.start('Matchmaking', { unranked: false, from: 'Menu', mode: '2v2' }));
+      // con servidor: primero se busca un COMPAÑERO humano (2 humanos contra 2 bots); sin él, 2v2 contra bots como siempre
+      const fb = { unranked: false, from: 'Menu', mode: '2v2' };
+      this.cameras.main.once('camerafadeoutcomplete', () => (serverUrl() !== null ? this.scene.start('LanSearch', { mode: '2v2', fallback: fb }) : this.scene.start('Matchmaking', fb)));
     });
 
     // --- ruletas diarias (encima de JUGAR). Una ruleta recién ganada se abre sola UNA vez.
@@ -244,7 +276,13 @@ export class MenuScene extends Phaser.Scene {
     // TUTORIAL por nivel (domain/tutorial.ts; solo con el modo desarrollo apagado): DESPUÉS de la ruleta y de la presentación de la EXP
     // (que dura ~6 s), para que el aviso de un nivel recién alcanzado no se pise con ellas
     const tutorial = (delay: number) => this.time.delayedCall(delay, () => maybeShowTutorial(this));
-    if (this.xpGain > 0) {
+    // (18-11-2026, usuario) PRIMERO las monedas de la partida vuelan al monedero (≤ 1,5 s) y LUEGO la EXP
+    if (this.matchCoins > 0) {
+      const coinsFirst = (then: () => void) => this.playMatchCoins(this.matchCoins, then);
+      const xpAfter = this.xpGain > 0 ? () => (this.playXpGain(), tutorial(6500)) : () => tutorial(500);
+      if (wheelOpened) this.time.delayedCall(700, () => whenWheelReady(this, (w) => w.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.time.delayedCall(250, () => coinsFirst(xpAfter)))));
+      else this.time.delayedCall(450, () => coinsFirst(xpAfter));
+    } else if (this.xpGain > 0) {
       const play = () => {
         this.playXpGain();
         tutorial(6500);
@@ -255,7 +293,7 @@ export class MenuScene extends Phaser.Scene {
     else tutorial(1600); // tras el fundido y la cascada de ruletas
 
     // monedas de una ruleta cobrada al final de la partida: llegan a su card tras la presentación de la EXP (o enseguida si no hay)
-    if (this.pendingCoins > 0 && !wheelOpened) this.time.delayedCall(this.xpGain > 0 ? 550 + 6200 : 900, () => {
+    if (this.pendingCoins > 0 && !wheelOpened) this.time.delayedCall((this.xpGain > 0 ? 550 + 6200 : 900) + (this.matchCoins > 0 ? 1500 : 0), () => {
       const c = this.pendingCoins;
       this.pendingCoins = 0;
       if (c > 0) this.playCoinGain(c);
@@ -263,6 +301,405 @@ export class MenuScene extends Phaser.Scene {
 
     if (this.textures.exists(NAV.key)) this.navImage(W, H);
     else this.bottomBar(W, navTop, navH);
+    this.riskCard(W, playY);
+  }
+
+  /** zonas de los botones JUGAR y 2v2 (playRow): el MODO RIESGO los hace brillar mientras corre */
+  private modeRects: { x: number; y: number; w: number; h: number }[] = [];
+
+  /**
+   * (18-11-2026, usuario) MODO RIESGO x2 en el menú: card del MISMO tamaño y forma que la del COFRE, en su sitio (sobre RULETAS DIARIAS,
+   * borde derecho); si hay cofre, el sitio es suyo y esta card va a su izquierda. Sale siempre salvo si ya se usó esta semana (vuelve el
+   * lunes). Etiqueta: "10 MIN" (lo que dura) o la cuenta atrás. TOCARLA abre la explicación; MANTENERLA 3 s lo activa. Mientras corre,
+   * JUGAR y 2v2 brillan en rojo/dorado con "x2".
+   */
+  private riskCard(W: number, playY: number) {
+    const w = 150;
+    const h = 104;
+    const gap = 12;
+    const xChest = W - 26 - w / 2;
+    const y = playY - 54 - 18 - 52 - 104 - 30; // misma fila que el cofre (dailyWheels)
+    const c = this.add.container(xChest, y).setDepth(50).setVisible(false);
+    const off = (pts: Phaser.Math.Vector2[], dx: number, dy: number) => pts.map((p) => ({ x: p.x + dx, y: p.y + dy }));
+    const g = this.add.graphics();
+    const x2 = this.add.text(0, -4, 'x2', { fontFamily: FONT, fontSize: '50px', color: '#ffffff', stroke: '#4a0d00', strokeThickness: 7 }).setOrigin(0.5);
+    const name = this.add.text(0, 32, 'RIESGO', { fontFamily: FONT, fontSize: '17px', color: '#ffd23f', stroke: '#2a0a00', strokeThickness: 4 }).setOrigin(0.5).setLetterSpacing(2);
+    // ACTIVO: capa naranja brillante con destello que la recorre y borde dorado que late (encima del fondo, debajo del texto)
+    const hot = this.add.container(0, 0).setVisible(false);
+    const hotG = this.add.graphics();
+    hotG.fillStyle(0xff7a00, 1).fillPoints(modeShape(w, h), true);
+    hotG.fillStyle(0xffb13b, 1).fillPoints(modeBand(w, h, -h * 0.44, -h * 0.02, 6, 9), true);
+    hotG.fillStyle(0xffffff, 0.3).fillPoints(modeBand(w, h, -h * 0.4, -h * 0.28, 12, 4), true);
+    const hotMask = this.make.graphics({}, false);
+    const hotShine = this.add.rectangle(-w, 0, h * 0.45, h * 1.8, 0xffffff, 0.55).setAngle(20).setBlendMode(Phaser.BlendModes.ADD);
+    const hotEdge = this.add.graphics().setBlendMode(Phaser.BlendModes.ADD);
+    hotEdge.lineStyle(9, 0xffd23f, 0.55).strokePoints(modeShape(w, h), true, true);
+    hotEdge.lineStyle(4, 0xfff3a0, 1).strokePoints(modeShape(w, h), true, true);
+    hot.add([hotG, hotShine, hotEdge]);
+    const hotTws = [
+      this.tweens.add({ targets: hotShine, x: { from: -w * 0.75, to: w * 0.75 }, duration: 900, repeat: -1, repeatDelay: 500, ease: 'Sine.easeInOut', paused: true }),
+      this.tweens.add({ targets: hotEdge, alpha: { from: 1, to: 0.35 }, duration: 450, yoyo: true, repeat: -1, ease: 'Sine.easeInOut', paused: true }),
+    ];
+    const ring = this.add.graphics();
+    const tag = this.add.graphics();
+    // (18-11-2026, usuario) la etiqueta va centrada (la forma inclinada la hacía verse algo a la izquierda con 0: +8)
+    const TAG_X = 8;
+    const tagText = this.add.text(TAG_X, -h / 2 - 2, '', { fontFamily: FONT, fontSize: '17px', color: '#ffd23f' }).setOrigin(0.5).setLetterSpacing(1);
+    c.add([g, hot, x2, name, ring, tag, tagText]);
+    c.setSize(w, h).setInteractive({ useHandCursor: true });
+    // el borde se llena desde arriba, justo a la derecha de la etiqueta "10 MIN" (mide ~90 de ancho)
+    this.holdPress(c, ring, modeShape(w, h), 0xffd23f, () => this.riskInfo(), () => this.tryActivateRisk(() => paint()), TAG_X + 46, () => riskModeStatus().phase !== 'active');
+    const glow = this.riskGlow();
+    let shown = '';
+    const paint = () => {
+      if (!c.active) return;
+      const rs = riskModeStatus();
+      const active = rs.phase === 'active';
+      glow(active);
+      const on = active || !riskUsedThisWeek();
+      c.setVisible(on);
+      if (!on) return;
+      // con cofre, su sitio es del cofre: esta card a su izquierda
+      c.x = chestStatus(getPlayer() as never, gameClock.now()).kind !== 'none' ? xChest - w - gap : xChest;
+      // la máscara del destello sigue a la card (posición en pantalla)
+      hotMask.clear().fillStyle(0xffffff).fillPoints(modeShape(w, h).map((p) => ({ x: p.x + c.x, y: p.y + c.y })), true);
+      const live = rs.phase !== 'closed';
+      tagText.setText(active ? formatRiskLeft(rs.msLeft) : '10 MIN');
+      const key = `${live}|${active}|${Math.ceil(tagText.width)}`;
+      if (key === shown) return;
+      shown = key;
+      const col = live ? 0xd8361e : 0x6a4a56;
+      g.clear();
+      g.fillStyle(active ? 0xffb13b : col, 0.5).fillPoints(off(modeShape(w, h, 4), 6, 9), true);
+      g.fillStyle(0x0a1638, 1).fillPoints(modeShape(w, h, 5), true);
+      g.fillStyle(live ? 0x3a0d06 : 0x1c1622, 0.97).fillPoints(modeShape(w, h), true);
+      g.fillStyle(col, 0.3).fillPoints(modeBand(w, h, -h * 0.44, -h * 0.02, 6, 9), true);
+      g.lineStyle(2.5, live ? 0xffd23f : 0x9a7f8a, 0.95).strokePoints(modeShape(w, h), true, true);
+      hot.setVisible(active);
+      for (const t of hotTws) {
+        if (active) t.resume();
+        else t.pause();
+      }
+      x2.setAlpha(live ? 1 : 0.55).setStroke(active ? '#7a2a00' : '#4a0d00', 7);
+      name.setColor(active ? '#ffffff' : live ? '#ffd23f' : '#b8a2ac').setStroke(active ? '#7a2a00' : '#2a0a00', 4);
+      const tw = Math.max(80, tagText.width + 30);
+      tag.clear();
+      tag.fillStyle(active ? 0x7a2a00 : 0x0a1638, 1).fillRoundedRect(TAG_X - tw / 2, -h / 2 - 17, tw, 30, 15);
+      tag.lineStyle(2, active ? 0xfff3a0 : live ? 0xffd23f : 0x9a7f8a, 1).strokeRoundedRect(TAG_X - tw / 2, -h / 2 - 17, tw, 30, 15);
+      tagText.setColor(active ? '#ffffff' : live ? '#ffd23f' : '#b8a2ac');
+      if (live) pulse.resume();
+      else {
+        pulse.pause();
+        x2.setScale(1);
+      }
+    };
+    hotShine.setMask(hotMask.createGeometryMask());
+    const pulse = this.tweens.add({ targets: x2, scale: { from: 1, to: 1.12 }, duration: 560, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
+    paint();
+    this.time.addEvent({ delay: 250, loop: true, callback: paint }); // cuenta atrás (9:59 → 0:00), fin del evento y cofre abierto
+    const offP = onPlayerChange(() => paint());
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => offP());
+    void syncRiskMode(); // el servidor manda: si cambia la activación, onPlayerChange repinta
+  }
+
+  /**
+   * Pulsación con dos usos: TOQUE corto → `onTap`; MANTENER `RISK_HOLD_MS` → `onDone` (un anillo se va llenando alrededor de `ring`).
+   * Soltar antes de completarlo (tras el toque corto) no hace nada.
+   */
+  private holdPress(
+    target: Phaser.GameObjects.Container,
+    ring: Phaser.GameObjects.Graphics,
+    r: number | { x: number; y: number }[],
+    color: number,
+    onTap: () => void,
+    onDone: () => void,
+    startX = 0,
+    canHold: () => boolean = () => true,
+  ) {
+    let t0 = -1;
+    // `r` número = anillo circular (botón del diálogo); lista de puntos = se llena el BORDE de esa forma (card del menú), empezando en el
+    // borde de ARRIBA en x = `startX` (justo a la derecha de la etiqueta "10 MIN") y avanzando hacia la derecha
+    const poly = Array.isArray(r) ? this.borderFrom(r, startX) : null;
+    const lens = poly ? poly.map((p, i) => Phaser.Math.Distance.BetweenPoints(p, poly[(i + 1) % poly.length])) : [];
+    const perim = lens.reduce((a, b) => a + b, 0);
+    const draw = (f: number) => {
+      ring.clear();
+      if (f <= 0) return;
+      const k = Math.min(1, f);
+      if (!poly) {
+        ring.lineStyle(9, 0x0a1638, 0.85).strokeCircle(0, 0, r as number);
+        ring.lineStyle(6, color, 1).beginPath().arc(0, 0, r as number, -Math.PI / 2, -Math.PI / 2 + k * Math.PI * 2).strokePath();
+        return;
+      }
+      ring.lineStyle(6, color, 1).beginPath().moveTo(poly[0].x, poly[0].y);
+      let left = k * perim;
+      for (let i = 0; i < poly.length && left > 0; i++) {
+        const a = poly[i];
+        const b = poly[(i + 1) % poly.length];
+        const t = Math.min(1, left / lens[i]);
+        ring.lineTo(a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t);
+        left -= lens[i];
+      }
+      ring.strokePath();
+    };
+    const tick = () => {
+      if (t0 < 0 || !target.active) return;
+      const held = this.time.now - t0;
+      if (held < RISK_TAP_MS || !canHold()) return; // aún puede ser un toque (o no se puede mantener: ya activo)
+      const f = (held - RISK_TAP_MS) / (RISK_HOLD_MS - RISK_TAP_MS);
+      if (f >= 1) {
+        t0 = -1;
+        draw(0);
+        target.setScale(1);
+        onDone();
+        return;
+      }
+      draw(f);
+      target.setScale(1 - 0.06 * f);
+    };
+    this.events.on(Phaser.Scenes.Events.UPDATE, tick);
+    target.once(Phaser.GameObjects.Events.DESTROY, () => this.events.off(Phaser.Scenes.Events.UPDATE, tick));
+    target.on('pointerdown', () => (t0 = this.time.now));
+    const stop = (tap: boolean) => {
+      if (t0 < 0) return;
+      const held = this.time.now - t0;
+      t0 = -1;
+      draw(0);
+      this.tweens.add({ targets: target, scale: 1, duration: 160, ease: 'Back.easeOut' });
+      if (tap && held < RISK_TAP_MS) onTap();
+    };
+    target.on('pointerup', () => stop(true));
+    target.on('pointerout', () => stop(false));
+  }
+
+  /**
+   * Contorno (cerrado) reordenado para empezar en el borde de arriba en x = `sx` y recorrerse hacia la derecha (sentido horario en pantalla).
+   */
+  private borderFrom(pts: { x: number; y: number }[], sx: number): { x: number; y: number }[] {
+    const n = pts.length;
+    // sentido horario en pantalla (y hacia abajo): área con signo positiva
+    let area = 0;
+    for (let i = 0; i < n; i++) area += pts[i].x * pts[(i + 1) % n].y - pts[(i + 1) % n].x * pts[i].y;
+    const p = area >= 0 ? pts : [...pts].reverse();
+    // arista de arriba que cruza x = sx (la de menor y)
+    let best = -1;
+    let by = Infinity;
+    for (let i = 0; i < n; i++) {
+      const a = p[i];
+      const b = p[(i + 1) % n];
+      if (b.x <= a.x || sx < a.x || sx > b.x) continue; // de arriba y hacia la derecha
+      const y = a.y + ((b.y - a.y) * (sx - a.x)) / (b.x - a.x);
+      if (y < by) {
+        by = y;
+        best = i;
+      }
+    }
+    if (best < 0) return p;
+    const out = [{ x: sx, y: by }];
+    for (let k = 1; k <= n; k++) out.push(p[(best + k) % n]);
+    return out;
+  }
+
+  /** Pide activar el MODO RIESGO (servidor). Hoy no es lunes / ya usado / sin conexión: aviso. `onOk` si se activó. */
+  private tryActivateRisk(onOk?: () => void) {
+    const rs = riskModeStatus();
+    if (rs.phase === 'active') return this.toast(RISK_MSG.active);
+    const done = (msg: string) => {
+      onOk?.();
+      sfx(this, 'power-up');
+      this.cameras.main.flash(260, 255, 140, 30);
+      this.toast(msg);
+    };
+    // MODO DESARROLLO: fuera del lunes (o ya usado / sin servidor) se puede PROBAR: 10 min locales, solo visual (no dobla apuestas)
+    const devTest = () => {
+      devActivateRisk();
+      done('(PRUEBA) MODO RIESGO x2: 10 minutos, solo visual');
+    };
+    if (rs.phase === 'closed') {
+      if (isDevMode()) return devTest();
+      return this.toast(riskUsedThisWeek() ? RISK_MSG.already_used : RISK_MSG.not_monday);
+    }
+    void activateRiskMode().then((r) => {
+      if (!this.sys.isActive()) return;
+      if (!r.ok) return isDevMode() ? devTest() : this.toast(RISK_MSG[r.error]);
+      done('¡MODO RIESGO x2 activado por 10 minutos!');
+    });
+  }
+
+  /**
+   * Brillo de JUGAR y 2v2 mientras corre el MODO RIESGO: capa roja/dorada sobre cada botón (sin tapar sus toques), un destello que la
+   * recorre y la marca "x2" en la esquina. Devuelve la función que la enciende / apaga.
+   */
+  private riskGlow(): (on: boolean) => void {
+    const parts = this.modeRects.map((r) => {
+      // (18-11-2026, usuario) encima de la card de RULETAS (profundidad 50): la marca "x2" de la esquina asoma sobre ella
+      const c = this.add.container(r.x, r.y).setDepth(55).setVisible(false);
+      const g = this.add.graphics();
+      g.fillStyle(0xff3b1e, 0.42).fillPoints(modeShape(r.w, r.h), true);
+      g.lineStyle(4, 0xffd23f, 1).strokePoints(modeShape(r.w, r.h), true, true);
+      g.setBlendMode(Phaser.BlendModes.ADD);
+      // destello que recorre el botón (recortado a su forma)
+      const maskG = this.make.graphics({ x: r.x, y: r.y }, false);
+      maskG.fillStyle(0xffffff).fillPoints(modeShape(r.w, r.h), true);
+      const shine = this.add.rectangle(-r.w, 0, r.h * 0.5, r.h * 1.6, 0xffffff, 0.5).setAngle(20).setBlendMode(Phaser.BlendModes.ADD);
+      shine.setMask(maskG.createGeometryMask());
+      const sweep = this.tweens.add({ targets: shine, x: { from: -r.w * 0.7, to: r.w * 0.7 }, duration: 1100, repeat: -1, repeatDelay: 700, ease: 'Sine.easeInOut', paused: true });
+      const badge = this.add.container(r.w / 2 - 22, -r.h / 2 + 4);
+      const bg = this.add.graphics();
+      bg.fillStyle(0x0a1638, 1).fillCircle(0, 0, 21);
+      bg.fillStyle(0xd8361e, 1).fillCircle(0, 0, 18);
+      bg.lineStyle(2.5, 0xffd23f, 1).strokeCircle(0, 0, 18);
+      badge.add([bg, this.add.text(0, 0, 'x2', { fontFamily: FONT, fontSize: '19px', color: '#ffffff', stroke: '#4a0d00', strokeThickness: 4 }).setOrigin(0.5)]);
+      c.add([g, shine, badge]);
+      const beat = this.tweens.add({ targets: g, alpha: { from: 1, to: 0.55 }, duration: 520, yoyo: true, repeat: -1, ease: 'Sine.easeInOut', paused: true });
+      const bBeat = this.tweens.add({ targets: badge, scale: { from: 1, to: 1.15 }, duration: 520, yoyo: true, repeat: -1, ease: 'Sine.easeInOut', paused: true });
+      return { c, tws: [sweep, beat, bBeat] };
+    });
+    let cur = false;
+    return (on: boolean) => {
+      if (on === cur) return;
+      cur = on;
+      for (const p of parts) {
+        p.c.setVisible(on);
+        for (const t of p.tws) {
+          if (on) t.resume();
+          else t.pause();
+        }
+      }
+    };
+  }
+
+  /**
+   * Ventana del MODO RIESGO (toque en su card): para qué sirve y un botón grande circular; MANTENERLO 3 s lo activa (JUGAR y 2v2 brillan)
+   * y la ventana se cierra. Se cierra tocando fuera o con la X.
+   */
+  private riskInfo() {
+    const W = this.scale.width;
+    const H = this.scale.height;
+    const root = this.add.container(0, 0).setDepth(8500);
+    const dim = this.add.rectangle(0, 0, W, H, 0x000000, 0.7).setOrigin(0).setInteractive();
+    const pw = Math.min(540, W - 48);
+    const ph = 720;
+    const p = this.add.container(W / 2, H / 2);
+    const panel = this.add.graphics();
+    panel.fillStyle(0xd8361e, 0.35).fillRoundedRect(-pw / 2 + 6, -ph / 2 + 9, pw, ph, 26);
+    panel.fillStyle(0x0a1638, 1).fillRoundedRect(-pw / 2 - 4, -ph / 2 - 4, pw + 8, ph + 8, 28);
+    panel.fillStyle(0x1a0c18, 1).fillRoundedRect(-pw / 2, -ph / 2, pw, ph, 26);
+    panel.fillStyle(0xd8361e, 0.25).fillRoundedRect(-pw / 2 + 6, -ph / 2 + 6, pw - 12, 96, { tl: 22, tr: 22, bl: 8, br: 8 });
+    panel.lineStyle(3, 0xffd23f, 1).strokeRoundedRect(-pw / 2, -ph / 2, pw, ph, 26);
+    p.add(panel);
+    p.add(this.add.text(0, -ph / 2 + 52, 'MODO RIESGO x2', { fontFamily: FONT, fontSize: '38px', color: '#ffd23f', stroke: '#2a0a00', strokeThickness: 7 }).setOrigin(0.5).setLetterSpacing(1));
+    const rs = riskModeStatus();
+    p.add(
+      this.add
+        .text(0, -ph / 2 + 112, 'Durante 10 minutos tus partidas de LIGA valen el DOBLE.', { fontFamily: FONT, fontSize: '21px', color: '#ffffff', align: 'center', wordWrap: { width: pw - 64 } })
+        .setOrigin(0.5, 0),
+    );
+    // (18-11-2026, usuario) con TU apuesta: lo que arriesgas ahora y lo que arriesgarías activándolo (entrada y premio de tu liga, sin x2)
+    const st = matchStakes(rankedState().league, loadBet());
+    const n = (v: number) => v.toLocaleString('es-CL');
+    const bx = pw - 56;
+    const boxY = -ph / 2 + 176;
+    const box = this.add.graphics();
+    box.fillStyle(0x0a1638, 0.9).fillRoundedRect(-bx / 2, boxY, bx, 128, 16);
+    box.lineStyle(2, 0x2c3d66, 1).strokeRoundedRect(-bx / 2, boxY, bx, 128, 16);
+    box.fillStyle(0xd8361e, 0.3).fillRoundedRect(-bx / 2 + 6, boxY + 66, bx - 12, 56, 12);
+    box.lineStyle(2, 0xffd23f, 1).strokeRoundedRect(-bx / 2 + 6, boxY + 66, bx - 12, 56, 12);
+    p.add(box);
+    const row = (y: number, head: string, txt: string, col: string, size: number) => {
+      p.add(this.add.text(-bx / 2 + 22, y, head, { fontFamily: FONT, fontSize: '17px', color: '#9fb3d9' }).setOrigin(0, 0.5).setLetterSpacing(1));
+      const t = this.add.text(bx / 2 - 20, y, txt, { fontFamily: FONT, fontSize: `${size}px`, color: col, stroke: '#0a1638', strokeThickness: 4 }).setOrigin(1, 0.5);
+      if (t.width > bx - 130) t.setScale((bx - 130) / t.width);
+      p.add(t);
+    };
+    row(boxY + 33, 'AHORA', `apuestas ${n(st.entry)} · ganas ${n(st.prize)}`, '#ffffff', 21);
+    row(boxY + 94, 'CON x2', `arriesgas ${n(st.entry * 2)} · ganas ${n(st.prize * 2)}`, '#ffd23f', 23);
+    p.add(
+      this.add
+        .text(0, boxY + 146, 'Si pierdes, pierdes el doble. Solo los lunes, una vez por semana; el tiempo corre aunque cierres el juego.', {
+          fontFamily: FONT,
+          fontSize: '17px',
+          color: '#c9b8c0',
+          align: 'center',
+          wordWrap: { width: pw - 64 },
+        })
+        .setOrigin(0.5, 0),
+    );
+    // botón circular grande: mantener 3 s
+    const by = ph / 2 - 190;
+    const R = 96; // (18-11-2026, usuario) círculo más grande (antes 78)
+    const live = rs.phase === 'available';
+    // (18-11-2026, usuario) ya ACTIVO: el círculo se ve como la card del menú activa (naranja brillante, borde dorado que late, destello)
+    // y muestra el tiempo que queda; no se puede volver a activar
+    const active = rs.phase === 'active';
+    const btn = this.add.container(0, by);
+    const bg = this.add.graphics();
+    bg.fillStyle(0x000000, 0.4).fillCircle(4, 8, R);
+    bg.fillStyle(active ? 0xffb13b : 0x0a1638, active ? 0.5 : 1).fillCircle(0, 0, R + 10);
+    bg.fillStyle(0x0a1638, 1).fillCircle(0, 0, R + 6);
+    bg.fillStyle(active ? 0xff7a00 : live ? 0xd8361e : 0x5a3a46, 1).fillCircle(0, 0, R);
+    if (active) bg.fillStyle(0xffb13b, 1).fillCircle(0, -R * 0.12, R * 0.82);
+    bg.fillStyle(0xffffff, active ? 0.3 : live ? 0.22 : 0.08).fillEllipse(0, -R * 0.45, R * 1.3, R * 0.6);
+    bg.lineStyle(3, active ? 0xfff3a0 : live ? 0xffd23f : 0x9a7f8a, 1).strokeCircle(0, 0, R);
+    const bt = this.add.text(0, -8, 'x2', { fontFamily: FONT, fontSize: '72px', color: '#ffffff', stroke: active ? '#7a2a00' : '#4a0d00', strokeThickness: 9 }).setOrigin(0.5);
+    const bs = this.add
+      .text(0, 46, active ? formatRiskLeft(rs.msLeft) : 'MANTÉN 3 s', { fontFamily: FONT, fontSize: active ? '24px' : '18px', color: active ? '#ffffff' : '#ffd23f', stroke: active ? '#7a2a00' : '#2a0a00', strokeThickness: 4 })
+      .setOrigin(0.5)
+      .setLetterSpacing(1);
+    const ring = this.add.graphics();
+    btn.add([bg, bt, bs, ring]);
+    if (active) {
+      // borde dorado que late y destello que cruza el círculo
+      const edge = this.add.graphics().setBlendMode(Phaser.BlendModes.ADD);
+      edge.lineStyle(10, 0xffd23f, 0.55).strokeCircle(0, 0, R);
+      edge.lineStyle(4, 0xfff3a0, 1).strokeCircle(0, 0, R);
+      const mask = this.make.graphics({}, false);
+      const shine = this.add.rectangle(-R * 2, 0, R * 0.45, R * 2.4, 0xffffff, 0.5).setAngle(20).setBlendMode(Phaser.BlendModes.ADD);
+      btn.addAt(shine, 1);
+      btn.add(edge);
+      this.tweens.add({ targets: edge, alpha: { from: 1, to: 0.35 }, duration: 450, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
+      this.tweens.add({ targets: shine, x: { from: -R * 1.2, to: R * 1.2 }, duration: 900, repeat: -1, repeatDelay: 500, ease: 'Sine.easeInOut' });
+      // la máscara (en pantalla) sigue al círculo mientras el panel entra con su escala
+      const fitMask = () => {
+        if (!btn.active) return;
+        const m = btn.getWorldTransformMatrix();
+        mask.clear().fillStyle(0xffffff).fillCircle(m.tx, m.ty, R * m.scaleX);
+      };
+      shine.setMask(mask.createGeometryMask());
+      fitMask();
+      // cuenta atrás en vivo
+      const tick = this.time.addEvent({
+        delay: 250,
+        loop: true,
+        callback: () => {
+          if (!btn.active) return void tick.remove();
+          fitMask();
+          const now = riskModeStatus();
+          bs.setText(now.phase === 'active' ? formatRiskLeft(now.msLeft) : '0:00');
+        },
+      });
+    }
+    btn.setSize(R * 2, R * 2).setInteractive({ useHandCursor: true });
+    p.add(btn);
+    if (live || active) this.tweens.add({ targets: bt, scale: { from: 1, to: 1.1 }, duration: 560, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
+    const status = active ? 'ACTIVO: tus partidas de LIGA valen x2' : rs.phase === 'available' ? 'Disponible HOY' : riskUsedThisWeek() ? 'Ya lo usaste esta semana' : 'Disponible el lunes';
+    p.add(this.add.text(0, by + R + 34, status, { fontFamily: FONT, fontSize: '19px', color: active ? '#ffb13b' : live ? '#7dffa8' : '#b8a2ac' }).setOrigin(0.5));
+    const close = () => {
+      if (!root.active) return;
+      this.tweens.add({ targets: root, alpha: 0, duration: 160, onComplete: () => root.destroy() });
+    };
+    const x = this.add.text(pw / 2 - 30, -ph / 2 + 30, '✕', { fontFamily: FONT, fontSize: '30px', color: '#ffffff' }).setOrigin(0.5).setInteractive({ useHandCursor: true });
+    x.on('pointerup', close);
+    p.add(x);
+    dim.on('pointerup', close);
+    // ya ACTIVO: el botón solo muestra el tiempo (no se puede volver a activar)
+    if (active) btn.on('pointerup', () => this.toast(RISK_MSG.active));
+    else this.holdPress(btn, ring, R + 10, 0xffd23f, () => this.toast('Mantén presionado 3 segundos'), () => this.tryActivateRisk(close));
+    root.add([dim, p]);
+    root.setAlpha(0);
+    p.setScale(0.85);
+    this.tweens.add({ targets: root, alpha: 1, duration: 180 });
+    this.tweens.add({ targets: p, scale: 1, duration: 260, ease: 'Back.easeOut' });
   }
 
   // ---------------------------------------------------------------- barra inferior (imagen)
@@ -513,6 +950,155 @@ export class MenuScene extends Phaser.Scene {
     else this.coinRefresh?.();
   }
 
+  /**
+   * (18-11-2026, usuario) Monedas ganadas en la partida (apuesta, partida y misiones): el total sale en el centro y varias monedas
+   * (más cuanto más ganaste) vuelan al MONEDERO de arriba; cada una suma su parte al saldo. Dura ≤ 1,5 s y luego `then` (la EXP).
+   */
+  private playMatchCoins(amount: number, then: () => void) {
+    this.matchCoins = 0;
+    const card = this.coinObj;
+    const rect = this.coinRect;
+    const set = this.coinSet;
+    if (!this.sys.isActive() || !card || !rect || !set || amount <= 0) {
+      this.coinRefresh?.();
+      then();
+      return;
+    }
+    const TOTAL_MS = 1500;
+    const FLY = 560;
+    const N = Phaser.Math.Clamp(Math.round(4 + amount / 15), 4, 16);
+    const gap = Math.min(50, 560 / N);
+    const W = this.scale.width;
+    const src = { x: W / 2, y: this.scale.height * 0.46 };
+    const base = getPlayer().coins - amount - this.pendingCoins; // lo que muestra el monedero antes de que lleguen
+    set(base);
+    const prevDepth = card.depth;
+    card.setDepth(195);
+    const glow = this.add.circle(src.x, src.y, 110, 0xffd23f, 0.22).setBlendMode(Phaser.BlendModes.ADD).setDepth(200).setScale(0.2);
+    const total = this.add.text(src.x, src.y, `+${amount.toLocaleString('es-CL')}`, { fontFamily: FONT, fontSize: '72px', color: '#ffd23f', stroke: '#0a1638', strokeThickness: 10 }).setOrigin(0.5).setDepth(201).setScale(0.3);
+    // (18-11-2026, usuario) la cifra lleva al lado el icono de MONEDAS (monedas.webp), el par centrado; las monedas salen del icono
+    const ICON = 92;
+    const icon = this.textures.exists('daily-coins-art') ? this.add.image(0, src.y, 'daily-coins-art').setDepth(201) : null;
+    fitText(total, W - 60 - (icon ? ICON + 12 : 0));
+    const ts = total.scale;
+    if (icon) {
+      const is = Math.min(ICON / icon.width, ICON / icon.height);
+      const pairW = total.width * ts + 12 + ICON;
+      total.setX(src.x - pairW / 2 + (total.width * ts) / 2);
+      icon.setX(src.x + pairW / 2 - ICON / 2).setScale(is * 0.3);
+      this.tweens.add({ targets: icon, scale: is, duration: 300, delay: 60, ease: 'Back.easeOut' });
+    }
+    total.setScale(ts * 0.3);
+    this.tweens.add({ targets: glow, scale: 1, duration: 300, ease: 'Cubic.easeOut' });
+    this.tweens.add({ targets: total, scale: ts, duration: 260, ease: 'Back.easeOut' });
+    sfx(this, 'recolectar-monedas');
+    const dx = rect.x + rect.w * 0.3;
+    const dy = rect.y + rect.h / 2;
+    let arrived = 0;
+    for (let o = 0; o < N; o++) {
+      this.time.delayedCall(180 + o * gap, () => {
+        if (!this.sys.isActive()) return;
+        const coin = this.textures.exists('coin-1') ? this.add.image(0, 0, 'coin-1').setDisplaySize(34, 34) : this.add.circle(0, 0, 15, 0xffd23f).setStrokeStyle(3, 0x7a4a00);
+        const orb = this.add.container((icon ? icon.x : src.x) + Phaser.Math.Between(-36, 36), src.y + Phaser.Math.Between(-16, 16), [coin]).setDepth(202).setScale(0.5);
+        const sx = orb.x;
+        const sy = orb.y;
+        const arc = Phaser.Math.Between(50, 120);
+        const side = (dx < src.x ? -1 : 1) * Phaser.Math.Between(20, 60);
+        const k = { v: 0 };
+        this.tweens.add({ targets: orb, scale: 1, duration: 140 });
+        this.tweens.add({
+          targets: k,
+          v: 1,
+          duration: FLY,
+          ease: 'Sine.easeIn',
+          onUpdate: () => {
+            orb.setPosition(sx + (dx - sx) * k.v + Math.sin(k.v * Math.PI) * side, sy + (dy - sy) * k.v - Math.sin(k.v * Math.PI) * arc);
+            orb.setAngle(k.v * 360);
+          },
+          onComplete: () => {
+            orb.destroy();
+            arrived++;
+            set(base + Math.round((amount * arrived) / N));
+            const spark = this.add.circle(dx, dy, 7, 0xffffff, 0.9).setDepth(203).setBlendMode(Phaser.BlendModes.ADD);
+            this.tweens.add({ targets: spark, scale: 3, alpha: 0, duration: 260, onComplete: () => spark.destroy() });
+            this.tweens.add({ targets: card, scale: { from: 1.08, to: 1 }, duration: 140 });
+            if (arrived === N) {
+              const flash = this.add.graphics().setDepth(196).setBlendMode(Phaser.BlendModes.ADD);
+              flash.fillStyle(0xffd23f, 0.45).fillRoundedRect(rect.x, rect.y, rect.w, rect.h, rect.h / 2);
+              this.tweens.add({ targets: flash, alpha: 0, duration: 420, onComplete: () => flash.destroy() });
+              const outs = [total, glow, ...(icon ? [icon] : [])];
+              this.tweens.add({ targets: outs, alpha: 0, duration: 200, onComplete: () => outs.forEach((x) => x.destroy()) });
+            }
+          },
+        });
+      });
+    }
+    // (18-11-2026, usuario) lo que también sumó a la LIGA (apuesta Ranked ganada): otras monedas, a la vez, vuelan a su card
+    const lg = this.leagueHold;
+    const lc = this.leagueObj;
+    const lr = this.leagueRect;
+    const NL = Math.min(10, N);
+    let lArrived = 0;
+    if (lg > 0 && lc && lr && this.leagueRepaint) {
+      const lPrev = lc.depth;
+      lc.setDepth(195);
+      const ldx = lr.x + lr.w * 0.55;
+      const ldy = lr.y + lr.h * 0.7;
+      for (let o = 0; o < NL; o++) {
+        this.time.delayedCall(180 + gap / 2 + o * Math.min(55, 560 / NL), () => {
+          if (!this.sys.isActive()) return;
+          const coin = this.textures.exists('coin-1') ? this.add.image(0, 0, 'coin-1').setDisplaySize(30, 30) : this.add.circle(0, 0, 13, 0xffd23f).setStrokeStyle(3, 0x7a4a00);
+          const orb = this.add.container(src.x + Phaser.Math.Between(-50, 50), src.y + Phaser.Math.Between(-16, 16), [coin]).setDepth(202).setScale(0.5);
+          const sx = orb.x;
+          const sy = orb.y;
+          const arc = Phaser.Math.Between(50, 120);
+          const side = (ldx < src.x ? -1 : 1) * Phaser.Math.Between(20, 60);
+          const k = { v: 0 };
+          this.tweens.add({ targets: orb, scale: 1, duration: 140 });
+          this.tweens.add({
+            targets: k,
+            v: 1,
+            duration: FLY,
+            ease: 'Sine.easeIn',
+            onUpdate: () => {
+              orb.setPosition(sx + (ldx - sx) * k.v + Math.sin(k.v * Math.PI) * side, sy + (ldy - sy) * k.v - Math.sin(k.v * Math.PI) * arc);
+              orb.setAngle(-k.v * 360);
+            },
+            onComplete: () => {
+              orb.destroy();
+              lArrived++;
+              this.leagueHold = lg - Math.round((lg * lArrived) / NL);
+              this.leagueRepaint?.();
+              const spark = this.add.circle(ldx, ldy, 7, 0xffffff, 0.9).setDepth(203).setBlendMode(Phaser.BlendModes.ADD);
+              this.tweens.add({ targets: spark, scale: 3, alpha: 0, duration: 260, onComplete: () => spark.destroy() });
+              if (lArrived === NL) {
+                const flash = this.add.graphics().setDepth(196).setBlendMode(Phaser.BlendModes.ADD);
+                flash.fillStyle(0xffc24a, 0.4).fillRoundedRect(lr.x, lr.y, lr.w, lr.h, 20);
+                this.tweens.add({ targets: flash, alpha: 0, duration: 420, onComplete: () => flash.destroy() });
+                const add = this.add.text(ldx, lr.y - 6, `+${lg.toLocaleString('es-CL')}`, { fontFamily: FONT, fontSize: '28px', color: '#ffc24a', stroke: '#0a1638', strokeThickness: 6 }).setOrigin(0.5).setDepth(204).setScale(0.4);
+                this.tweens.add({ targets: add, scale: 1, duration: 200, ease: 'Back.easeOut' });
+                this.tweens.add({ targets: add, y: lr.y - 36, alpha: 0, delay: 500, duration: 450, onComplete: () => add.destroy() });
+              }
+            },
+          });
+        });
+      }
+      this.time.delayedCall(TOTAL_MS, () => lc.active && lc.setDepth(lPrev));
+    }
+    // fin fijo a los 1,5 s (aunque alguna moneda se atrase): la EXP no espera más
+    this.time.delayedCall(TOTAL_MS, () => {
+      if (!this.sys.isActive()) return;
+      card.setDepth(prevDepth);
+      if (arrived < N) set(base + amount);
+      if (this.leagueHold > 0) {
+        this.leagueHold = 0;
+        this.leagueRepaint?.();
+      }
+      this.time.delayedCall(600, () => this.coinSet && (this.coinObj?.getData('text') as Phaser.GameObjects.Text | undefined)?.setColor('#ffffff'));
+      then();
+    });
+  }
+
   /** (21-11-2026) Las MONEDAS que dio la ruleta salen del centro y llegan a la card de monedas, que sube su saldo con un destello. */
   private playCoinGain(amount: number) {
     const card = this.coinObj;
@@ -532,9 +1118,24 @@ export class MenuScene extends Phaser.Scene {
     this.tweens.add({ targets: glow, scale: 1, duration: 420, ease: 'Cubic.easeOut' });
     const label = this.add.text(src.x, src.y - 62, 'MONEDAS GANADAS', { fontFamily: FONT, fontSize: '26px', color: '#ffffff', stroke: '#0a1638', strokeThickness: 6 }).setOrigin(0.5).setDepth(201).setLetterSpacing(3).setAlpha(0);
     const total = this.add.text(src.x, src.y, `+${amount.toLocaleString('es-CL')}`, { fontFamily: FONT, fontSize: '96px', color: '#ffd23f', stroke: '#0a1638', strokeThickness: 12 }).setOrigin(0.5).setDepth(201).setScale(0.3);
-    fitText(total, W - 60);
+    // (18-11-2026, usuario) la cifra lleva al lado el icono de MONEDAS (monedas.webp); el par queda centrado
+    const ICON = 104;
+    const hasIcon = this.textures.exists('daily-coins-art');
+    fitText(total, W - 60 - (hasIcon ? ICON + 14 : 0));
+    const fs = total.scale;
+    total.setScale(0.3);
+    const icon = hasIcon ? this.add.image(0, src.y, 'daily-coins-art').setDepth(201) : null;
+    if (icon) {
+      icon.setScale(Math.min(ICON / icon.width, ICON / icon.height));
+      const pairW = total.width * fs + 14 + ICON;
+      total.setX(src.x - pairW / 2 + (total.width * fs) / 2);
+      icon.setX(src.x + pairW / 2 - ICON / 2);
+      const is = icon.scale;
+      icon.setScale(is * 0.3);
+      this.tweens.add({ targets: icon, scale: is, duration: 420, delay: 80, ease: 'Back.easeOut' });
+    }
     this.tweens.add({ targets: label, alpha: 1, duration: 250 });
-    this.tweens.add({ targets: total, scale: total.scale > 0 ? 1 : 1, duration: 420, ease: 'Back.easeOut' });
+    this.tweens.add({ targets: total, scale: fs, duration: 420, ease: 'Back.easeOut' });
     sfx(this, 'recolectar-monedas');
     const dx = rect.x + rect.w * 0.3;
     const dy = rect.y + rect.h / 2;
@@ -544,7 +1145,9 @@ export class MenuScene extends Phaser.Scene {
       this.time.delayedCall(700 + o * 70, () => {
         if (!this.sys.isActive()) return;
         const coin = this.textures.exists('coin-1') ? this.add.image(0, 0, 'coin-1').setDisplaySize(38, 38) : this.add.circle(0, 0, 17, 0xffd23f).setStrokeStyle(3, 0x7a4a00);
-        const orb = this.add.container(src.x + Phaser.Math.Between(-60, 60), src.y + Phaser.Math.Between(-20, 20), [coin]).setDepth(202).setScale(0.4);
+        // las monedas salen del icono de monedas (si lo hay) y van al monedero
+        const ox = icon ? icon.x : src.x;
+        const orb = this.add.container(ox + Phaser.Math.Between(-40, 40), src.y + Phaser.Math.Between(-20, 20), [coin]).setDepth(202).setScale(0.4);
         const sx = orb.x;
         const sy = orb.y;
         const arc = Phaser.Math.Between(60, 140);
@@ -571,7 +1174,8 @@ export class MenuScene extends Phaser.Scene {
               const add = this.add.text(dx + 30, rect.y - 6, `+${amount.toLocaleString('es-CL')}`, { fontFamily: FONT, fontSize: '34px', color: '#ffd23f', stroke: '#0a1638', strokeThickness: 7 }).setOrigin(0.5).setDepth(204).setScale(0.4);
               this.tweens.add({ targets: add, scale: 1, duration: 220, ease: 'Back.easeOut' });
               this.tweens.add({ targets: add, y: rect.y - 44, alpha: 0, delay: 600, duration: 520, onComplete: () => add.destroy() });
-              this.tweens.add({ targets: [total, label, glow], alpha: 0, duration: 350, onComplete: () => [total, label, glow].forEach((x) => x.destroy()) });
+              const outs = [total, label, glow, ...(icon ? [icon] : [])];
+              this.tweens.add({ targets: outs, alpha: 0, duration: 350, onComplete: () => outs.forEach((x) => x.destroy()) });
               this.tweens.add({
                 targets: dim,
                 fillAlpha: 0,
@@ -709,6 +1313,74 @@ export class MenuScene extends Phaser.Scene {
     this.tweens.add({ targets: t, scale: s1, duration: 380, ease: 'Back.easeOut' });
     this.tweens.add({ targets: t, alpha: 0, y: t.y - 30, delay: 1500, duration: 450, onComplete: () => t.destroy() });
     if (up) sfx(this, 'equipar');
+    // (18-11-2026, usuario) la barra va SOBRE la cabeza del personaje (antes le tapaba la cara), sin meterse bajo el PASE
+    this.masteryBar(m, color, passiveName, cx, Math.max(PASS_BOTTOM + 30, r.y - 70), D + 3); // (18-11-2026) más arriba: seguía sobre la cabeza
+  }
+
+  /**
+   * (18-11-2026, usuario) Barra de MAESTRÍA bajo el texto: se llena de lo que tenía a lo que tiene ahora. Si sube de nivel se llena
+   * entera, destella dorada y vuelve a empezar con el nivel nuevo. Muestra "PASIVA NV n" y "puntos / necesarios".
+   */
+  private masteryBar(m: { before: number; after: number }, color: number, passiveName: string, cx: number, y: number, depth: number) {
+    const w = Math.min(340, this.scale.width - 80);
+    const h = 34; // (18-11-2026, usuario) más alta (antes 24)
+    const p0 = masteryProgress(m.before);
+    const p1 = masteryProgress(m.after);
+    const box = this.add.container(cx, y).setDepth(depth).setAlpha(0);
+    const bg = this.add.graphics();
+    bg.fillStyle(0x000000, 0.45).fillRoundedRect(-w / 2 + 3, 4, w, h, h / 2);
+    bg.fillStyle(0x0a1638, 1).fillRoundedRect(-w / 2 - 4, -4, w + 8, h + 8, (h + 8) / 2);
+    bg.fillStyle(0x1b2a4e, 1).fillRoundedRect(-w / 2, 0, w, h, h / 2);
+    const fill = this.add.graphics();
+    const shine = this.add.graphics();
+    shine.fillStyle(0xffffff, 0.18).fillRoundedRect(-w / 2 + 4, 3, w - 8, h * 0.38, { tl: 9, tr: 9, bl: 3, br: 3 });
+    const name = this.add.text(-w / 2 + 4, -20, '', { fontFamily: FONT, fontSize: '20px', color: '#ffffff', stroke: '#0a1638', strokeThickness: 5 }).setOrigin(0, 0.5);
+    const nums = this.add.text(0, h / 2, '', { fontFamily: FONT, fontSize: '21px', color: '#ffffff', stroke: '#0a1638', strokeThickness: 4 }).setOrigin(0.5);
+    box.add([bg, fill, shine, name, nums]);
+    const paint = (frac: number, col: number) => {
+      fill.clear();
+      const fw = Math.max(0, Math.min(1, frac)) * w;
+      if (fw < 2) return;
+      fill.fillStyle(col, 1).fillRoundedRect(-w / 2, 0, Math.max(fw, h), h, h / 2);
+    };
+    const label = (p: ReturnType<typeof masteryProgress>, into: number) => {
+      name.setText(`${passiveName.toUpperCase()}  NV ${p.level}`);
+      nums.setText(p.max ? 'MÁX' : `${Math.round(into)} / ${p.need}`);
+    };
+    label(p0, p0.into);
+    paint(p0.frac, color);
+    this.tweens.add({ targets: box, alpha: 1, duration: 220 });
+    const grow = (p: ReturnType<typeof masteryProgress>, fromInto: number, toInto: number, delay: number, onDone?: () => void) => {
+      const k = { v: fromInto };
+      this.tweens.add({
+        targets: k,
+        v: toInto,
+        delay,
+        duration: 650,
+        ease: 'Cubic.easeOut',
+        onUpdate: () => {
+          label(p, k.v);
+          paint(p.need > 0 ? k.v / p.need : 1, color);
+        },
+        onComplete: onDone,
+      });
+    };
+    if (p1.level > p0.level) {
+      // sube de nivel: se llena entera, destello dorado y empieza el nivel nuevo
+      grow(p0, p0.into, p0.need, 250, () => {
+        if (!box.scene) return;
+        paint(1, 0xffe14d);
+        const fl = this.add.graphics().setBlendMode(Phaser.BlendModes.ADD);
+        fl.fillStyle(0xffffff, 0.8).fillRoundedRect(-w / 2, 0, w, h, h / 2);
+        box.add(fl);
+        this.tweens.add({ targets: fl, alpha: 0, duration: 380, onComplete: () => fl.destroy() });
+        this.tweens.add({ targets: box, scale: { from: 1.08, to: 1 }, duration: 300, ease: 'Back.easeOut' });
+        label(p1, 0);
+        if (p1.max) return paint(1, 0xffe14d);
+        this.time.delayedCall(380, () => box.scene && (paint(0, color), grow(p1, 0, p1.into, 0)));
+      });
+    } else grow(p1, p0.into, p1.into, 250);
+    this.tweens.add({ targets: box, alpha: 0, delay: 2600, duration: 450, onComplete: () => box.destroy() });
   }
 
   /** Devuelve true si se abrió sola una ruleta recién ganada. */
@@ -759,6 +1431,10 @@ export class MenuScene extends Phaser.Scene {
     const avail = W - margin * 2 - gap;
     const jw = Math.round(avail * 0.7);
     const vw = avail - jw;
+    this.modeRects = [
+      { x: margin + jw / 2, y, w: jw, h },
+      { x: margin + jw + gap + vw / 2, y, w: vw, h },
+    ];
     // MODO DESARROLLO apagado: solo JUGAR, sin entrada (partida amistosa, no cuesta monedas)
     if (isDevMode()) rankedPlayButton(this, margin + jw / 2, y, jw, h, onPlay);
     else arcadeButton(this, margin + jw / 2, y, jw, h, 'JUGAR', () => onPlay(null), { palette: 'yellow' });
@@ -1190,8 +1866,9 @@ export class MenuScene extends Phaser.Scene {
     const fmt = (n: number) => Math.round(n).toLocaleString('es-CL');
     const now = getPlayer().coins;
     // (21-11-2026) premio de la ruleta cobrado antes de abrir el menú: el contador espera a que lleguen las monedas (playCoinGain)
-    const holdC = this.wheelGain?.coins ?? 0;
-    const prev = (this.registry.get(KEY) as number | undefined) ?? (holdC > 0 ? now - holdC : undefined);
+    const holdC = (this.wheelGain?.coins ?? 0) + this.matchCoins;
+    // con monedas de la partida, el monedero arranca SIN ellas: suben al llegar cada moneda (playMatchCoins)
+    const prev = this.matchCoins > 0 ? now - holdC : (this.registry.get(KEY) as number | undefined) ?? (holdC > 0 ? now - holdC : undefined);
     const c = this.counter(right, y, 'coin', fmt(prev ?? now));
     this.coinObj = c;
     const txt = c.getData('text') as Phaser.GameObjects.Text;
@@ -1221,6 +1898,13 @@ export class MenuScene extends Phaser.Scene {
     if (holdC <= 0) animateTo(now);
     this.coinRect = { x: right - COUNTER_W, y, w: COUNTER_W, h: COUNTER_H };
     this.coinRefresh = () => animateTo(getPlayer().coins);
+    this.coinSet = (v: number) => {
+      this.tweens.killTweensOf(shown);
+      shown.v = v;
+      this.registry.set(KEY, v);
+      txt.setText(fmt(v)).setColor('#ffe27a');
+      fitText(txt, COUNTER_TEXT_W);
+    };
     // con la ruleta abierta no se actualiza solo: lo hace coinRefresh cuando las monedas llegan a la card
     const off = onPlayerChange((s) => {
       if (this.wheelOpenNow()) return;
@@ -1265,7 +1949,7 @@ export class MenuScene extends Phaser.Scene {
       // la barra: lo que llevas, hacia la meta (sin mostrarla)
       const bh = 24;
       const by = h - 14 - bh;
-      const net = r.weekNet;
+      const net = Math.max(0, r.weekNet - this.leagueHold); // (monedas de la liga aún en vuelo: playMatchCoins)
       const prog = r.target == null || r.promoting ? 1 : Math.max(0, Math.min(1, net / r.target));
       const bar = this.add.graphics();
       bar.fillStyle(0x05112c, 1).fillRoundedRect(tx, by, tw, bh, bh / 2);
@@ -1283,6 +1967,9 @@ export class MenuScene extends Phaser.Scene {
       c.add(val);
     };
     paint();
+    this.leagueObj = c;
+    this.leagueRect = { x: left, y, w, h };
+    this.leagueRepaint = () => c.active && paint();
     c.setSize(w, h).setInteractive(new Phaser.Geom.Rectangle(0, 0, w, h), Phaser.Geom.Rectangle.Contains);
     // (21-11-2026) tocarla abre el TOP 100 de tu liga (la misma ventana de LIGA › VER TOP 100: ui/LeagueRanking.ts), sin salir del menú
     c.on('pointerup', () => {

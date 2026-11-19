@@ -21,7 +21,7 @@ Solo es una demostración visual: no toca el partido, la red ni lo guardado. Nad
 | Demostración del DEFENSIVO | `fx/powerDemo.ts` | `createDefensiveDemo(...)`: escenario (cancha, red, máquina), pelota, ciclo y el movimiento de cada poder |
 | Efectos compartidos | `fx/defensiveFx.ts` | Portal, polvo, despegue y aterrizaje del SUPERSALTO, humo de la SOMBRA, caída de la VOLTERETA. **Los usan el partido y la demostración** |
 | Colocación del personaje | `fx/actorPose.ts` | `placeActor`: posición, escala, giro, agachado, transparencia y sombra. **Lo usa `MatchScene.renderActors` y la demostración** |
-| Tiempos de cada poder | `logic/DefensiveMoves.ts` | Ahora también `SHADOW`, `JUMP`, `DASH_WARP` y `BLINK` (antes constantes de `MatchScene`) |
+| Tiempos de cada poder | `logic/DefensiveMoves.ts` | Ahora también `SHADOW`, `JUMP`, `DASH_WARP` y `BLINK` (antes constantes de `MatchScene`). TIEMPO LENTO: `SLOWMO` (+ `fx/slowmoCine.ts`); su demostración es `execSlowmo` en `fx/powerDemo.ts` (misma coreografía que `MatchScene.startSlowmo`: si una cambia, copiar el cambio a la otra) |
 | Sombras del DASH en un escenario | `fx/dashFx.ts` | `ghost(ch, i, depth, space?)`: con `space` convierte la posición del mundo al contenedor del escenario |
 
 Idea: **lo que cambie en un poder (efectos, tiempos, forma) cambia a la vez en el partido y en la demostración.** Por eso los efectos y los números se
@@ -59,11 +59,11 @@ Con la televisi�n grande (igTv, hoy el DEFENSIVO) y m�s de 10 poderes, la l
 - Falta: la franja de la mirada del INFERNO (`showInfernoGaze`, usa máscara propia: no cabe dentro de la máscara de la TV).
 - Solo visual: no toca el partido, el bot ni el online.
 ## CARGANDO GOLPE y Tienda (21-11-2026)
-- `createSpecialDemo(..., 'charge', id)`: la m�quina tira directo; el personaje se pone en guardia de carga (`setCharging`) y el aro del suelo crece ~1,1 s hasta el m�ximo (`ChargeSpriteFx` del partido con su hoja; el cl�sico, el aro dibujado como `MatchScene.renderCharge`). Al llegar la pelota, golpe cargado (estela ancha del cargado) y el aro se disipa.
+- `createSpecialDemo(..., 'charge', id)`: la m�quina tira directo; el personaje se pone en guardia de carga (`setCharging`) y el aro del suelo crece ~1,1 s hasta el m�ximo (`ChargeSpriteFx` del partido con su hoja; el cl�sico, el aro dibujado como `MatchScene.renderCharge`). Al llegar la pelota, golpe cargado (estela ancha del cargado) y el aro se disipa.
 - TIENDA: todas las tarjetas (efecto de pelota, CARGANDO GOLPE, ULTI, ESPECIAL, DEFENSIVO, ZONA) tienen VER en vez de USAR (`ShopScene.openPreviewOf`). Dentro: COMPRAR si no lo tienes; USAR / EN USO si ya es tuyo. Lo legendario que no tienes sigue sin VER.
 
 ## EFECTO PELOTA y CARGANDO GOLPE en PERSONALIZAR (21-11-2026)
-Los dos di�logos usan `bigTv` + `demo` como el DEFENSIVO: p�gina de informaci�n y, deslizando, "En acci�n" contra la m�quina.
+Los dos di�logos usan `bigTv` + `demo` como el DEFENSIVO: p�gina de informaci�n y, deslizando, "En acci�n" contra la m�quina.
 - EFECTO PELOTA: `createStyleDemo(..., look, lookOf)`; al elegir otro efecto de la lista cambia la estela (`setPower` ? `lookOf(id)`). 13 efectos: la lista se pagina de a 10.
 - CARGANDO GOLPE: `createSpecialDemo(..., 'charge', id)` (aro del suelo creciendo + golpe cargado).
 - Los slots llevan `id` y `demoName`. Rarezas y "POR DEFECTO" como antes.

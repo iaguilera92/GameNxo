@@ -1,5 +1,7 @@
 import { commit, getPlayer } from '../domain/playerStore';
-import { gameClock } from '../domain/timeSource';
+import { gameClock, setServerTime } from '../domain/timeSource';
+import * as risk from '../domain/riskMode';
+import { fetchRisk, postRiskActivate } from '../net/riskApi';
 import * as ranked from '../domain/ranked';
 import * as login from '../domain/dailyLogin';
 import * as shopGift from '../domain/shopGift';
@@ -73,6 +75,53 @@ export function markRankedSeen() {
   const before = getPlayer();
   const after = ranked.markRankedSeen(before as never);
   if (after !== before) commit(() => ({ ok: true as const, state: after }));
+}
+
+// ---------------------------------------------------------------- MODO RIESGO x2
+
+/** Estado del evento con la hora del juego (sincronizada con el servidor). */
+export const riskModeStatus = (): risk.RiskStatus => {
+  const t = now();
+  // PRUEBA de MODO DESARROLLO (devActivateRisk): se ve activo 10 min; las apuestas NO se doblan (eso solo lo decide la activación real)
+  if (devRiskEnd > t) return { phase: 'active', multiplier: 1, msLeft: devRiskEnd - t, endsAt: devRiskEnd };
+  return risk.riskStatus(getPlayer().riskMode, t);
+};
+
+/** fin de la PRUEBA local del MODO RIESGO (solo MODO DESARROLLO, en memoria) */
+let devRiskEnd = 0;
+/** (18-11-2026) MODO DESARROLLO: activa una PRUEBA visual de 10 min cualquier día (sin servidor, sin x2 real en las apuestas). */
+export function devActivateRisk() {
+  devRiskEnd = now() + risk.RISK_MODE.durationMs;
+}
+
+/** ¿Ya se activó esta semana (se esté jugando o ya terminado)? Se restablece el lunes siguiente. */
+export const riskUsedThisWeek = () => getPlayer().riskMode?.week === risk.riskWeekAt(now());
+
+/** Aplica la respuesta del servidor: su hora y su activación mandan. */
+function applyRiskReply(r: { now: number; risk: unknown }) {
+  setServerTime(r.now);
+  const before = getPlayer();
+  const after = risk.applyServerRisk(before as never, r.risk);
+  if (after !== before) commit(() => ({ ok: true as const, state: after }));
+}
+
+/** Pide el estado al servidor (al abrir Ranked / reconectar). false = sin conexión: se sigue con lo guardado. */
+export async function syncRiskMode(): Promise<boolean> {
+  const r = await fetchRisk();
+  if (!r) return false;
+  applyRiskReply(r);
+  return true;
+}
+
+export type RiskActivateError = risk.RiskError | 'offline' | 'unknown';
+/** Activa el MODO RIESGO x2 en el servidor (único que lo decide). */
+export async function activateRiskMode(): Promise<{ ok: true } | { ok: false; error: RiskActivateError }> {
+  const r = await postRiskActivate();
+  if (!r) return { ok: false, error: 'offline' };
+  applyRiskReply(r);
+  if (r.ok) return { ok: true };
+  const e = r.error;
+  return { ok: false, error: e === 'not_monday' || e === 'already_used' || e === 'active' ? e : 'unknown' };
 }
 
 // ---------------------------------------------------------------- premio diario

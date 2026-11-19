@@ -11,7 +11,49 @@ import { isShown } from './barrageFx';
  */
 export const ENERGY_COL = { core: 0xffffff, light: 0xc8f8ff, cyan: 0x5fe8ff, deep: 0x1f8cff };
 
-const GLOW = 'fx-energy-glow';
+export const GLOW = 'fx-energy-glow';
+/** (18-11-2026, rendimiento) disco macizo de borde suave (blanco, se tiñe): círculos rellenos como imagen en vez de Graphics */
+export const DISC = 'fx-disc';
+
+/** Textura de disco macizo con el borde apenas suavizado (se tiñe con setTint). */
+export function ensureDisc(scene: Phaser.Scene) {
+  if (scene.textures.exists(DISC)) return;
+  const size = 128;
+  const t = scene.textures.createCanvas(DISC, size, size);
+  if (!t) return;
+  const ctx = t.getContext();
+  const g = ctx.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2);
+  g.addColorStop(0, 'rgba(255,255,255,1)');
+  g.addColorStop(0.92, 'rgba(255,255,255,1)');
+  g.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, size, size);
+  t.refresh();
+}
+
+/**
+ * (18-11-2026, rendimiento) Redibujo de una vista previa animada (Tienda / PERSONALIZAR): solo si se ve (contenedores visibles y DENTRO de
+ * la cámara: las tarjetas fuera de la pantalla del scroll no se redibujan) y a ~30 fps (la mitad de trabajo; a ese tamaño no se nota).
+ */
+export function previewTicker(scene: Phaser.Scene, c: Phaser.GameObjects.Container, draw: (dt: number) => void) {
+  let acc = 0;
+  const tick = (_t: number, delta: number) => {
+    if (!c.active || !isShown(c)) return;
+    acc += delta;
+    if (acc < 30) return;
+    const dt = Math.min(0.05, acc / 1000);
+    acc = 0;
+    const m = c.getWorldTransformMatrix();
+    const cam = scene.cameras.main;
+    const sy = m.ty - cam.scrollY;
+    if (sy < -200 || sy > cam.height + 200) return; // fuera de la pantalla
+    draw(dt);
+  };
+  scene.events.on(Phaser.Scenes.Events.UPDATE, tick);
+  const off = () => scene.events.off(Phaser.Scenes.Events.UPDATE, tick);
+  c.once(Phaser.GameObjects.Events.DESTROY, off);
+  scene.events.once(Phaser.Scenes.Events.SHUTDOWN, off);
+}
 
 /** Textura de brillo suave (degradado radial blanco): se tiñe con setTint. */
 export function ensureEnergyGlow(scene: Phaser.Scene) {
@@ -132,28 +174,33 @@ export class EnergyBallFx {
 
   /** Rayos en zigzag que salen del borde de la esfera, respecto a su centro (se quedan hasta el siguiente salto). */
   private drawBolts(R: number) {
-    const x = 0;
-    const y = 0;
     const g = this.bolts.clear();
     const n = 4 + Math.floor(Math.random() * 3);
+    // (18-11-2026, rendimiento) el zigzag se calcula UNA vez por rayo (antes se recalculaba por capa) y sin arreglos nuevos
+    const px = this.bx;
+    const py = this.by;
     for (let i = 0; i < n; i++) {
       const a = Math.random() * Math.PI * 2;
       const r1 = R * (1.6 + Math.random() * 0.9);
-      for (const [w, col, al] of [
-        [Math.max(3, R * 0.2), ENERGY_COL.cyan, 0.5],
-        [Math.max(1.4, R * 0.08), ENERGY_COL.core, 1],
-      ] as const) {
-        g.lineStyle(w, col, al).beginPath();
-        g.moveTo(x + Math.cos(a) * R * 0.9, y + Math.sin(a) * R * 0.9);
-        for (let k = 1; k <= 3; k++) {
-          const rr = R * 0.9 + ((r1 - R * 0.9) * k) / 3;
-          const j = k === 3 ? 0 : (Math.random() - 0.5) * 0.5;
-          g.lineTo(x + Math.cos(a + j) * rr, y + Math.sin(a + j) * rr);
-        }
+      px[0] = Math.cos(a) * R * 0.9;
+      py[0] = Math.sin(a) * R * 0.9;
+      for (let k = 1; k <= 3; k++) {
+        const rr = R * 0.9 + ((r1 - R * 0.9) * k) / 3;
+        const j = k === 3 ? 0 : (Math.random() - 0.5) * 0.5;
+        px[k] = Math.cos(a + j) * rr;
+        py[k] = Math.sin(a + j) * rr;
+      }
+      for (let layer = 0; layer < 2; layer++) {
+        if (layer === 0) g.lineStyle(Math.max(3, R * 0.2), ENERGY_COL.cyan, 0.5);
+        else g.lineStyle(Math.max(1.4, R * 0.08), ENERGY_COL.core, 1);
+        g.beginPath().moveTo(px[0], py[0]);
+        for (let k = 1; k <= 3; k++) g.lineTo(px[k], py[k]);
         g.strokePath();
       }
     }
   }
+  private readonly bx = new Float32Array(4);
+  private readonly by = new Float32Array(4);
 
   hide() {
     if (!this.visible) return;
@@ -212,15 +259,7 @@ export function addEnergyPreview(scene: Phaser.Scene, c: Phaser.GameObjects.Cont
   c.add([...parts.trail, parts.halo, parts.body, parts.core, parts.ring, parts.bolts]);
   fx.draw(0.016, 0, 0, R, 0, false);
   if (!animate) return;
-  const tick = (_t: number, delta: number) => {
-    if (!c.active) return;
-    if (!isShown(c)) return;
-    fx.draw(Math.min(0.05, delta / 1000), 0, 0, R, 0, false);
-  };
-  scene.events.on(Phaser.Scenes.Events.UPDATE, tick);
-  const off = () => scene.events.off(Phaser.Scenes.Events.UPDATE, tick);
-  c.once(Phaser.GameObjects.Events.DESTROY, off);
-  scene.events.once(Phaser.Scenes.Events.SHUTDOWN, off);
+  previewTicker(scene, c, (dt) => fx.draw(dt, 0, 0, R, 0, false));
 }
 
 // ---------------------------------------------------------------- (17-11-2026) IMPACTO FINAL DE LA BOLA DE ENERGÍA

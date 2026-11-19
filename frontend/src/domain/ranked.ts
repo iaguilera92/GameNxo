@@ -22,6 +22,7 @@ import { LEAGUE_ORDER, RANKED, league, matchStakes, nextLeague, positionPrize } 
 import { type BoardEntry, type BotClock, buildBoard, buildGlobalBoard, prizePosition } from './rankedBots';
 import { type RankedMatchHistory, type RankedOutcome, type WeeklyReward, newStats } from './rankedState';
 import type { RankId } from './ranks';
+import { type RiskStatus, riskStatus } from './riskMode';
 
 export const ME = 'me';
 
@@ -189,21 +190,26 @@ export function syncRanked(s: PlayerState, now: number): PlayerState {
 }
 
 /** Entra a una partida Ranked: paga la entrada y deja la partida pendiente de liquidar. */
-export function enterRanked(s: PlayerState, matchId: string, bet: number, now: number): RankedResult<{ entry: number; prize: number }> {
+export function enterRanked(s: PlayerState, matchId: string, bet: number, now: number): RankedResult<{ entry: number; prize: number; risk: number }> {
   if (!matchId) return fail('invalid');
   const n0 = syncRanked(s, now);
   const r = n0.ranked;
   if (!r.unlocked) return fail('locked');
   if (!(RANKED.bets as readonly number[]).includes(bet)) return fail('invalid_bet');
   if (r.pending || r.settled.includes(matchId)) return fail('pending');
-  const { entry, prize } = matchStakes(r.league, bet);
+  // MODO RIESGO x2 (domain/riskMode.ts): lo decide la hora de entrada y la activación guardada, nunca la pantalla.
+  // Queda fijado en la partida: la liquidación usa entry / prize guardados (se aplica una sola vez)
+  const risk = riskStatus(n0.riskMode, now).multiplier;
+  const base = matchStakes(r.league, bet);
+  const entry = base.entry * risk;
+  const prize = base.prize * risk;
   // D3: saldo ≥ entrada × apuesta (nunca negativo); si no alcanza, solo amistoso
   if (n0.coins < entry) return fail('not_enough_coins');
   const n = clonePlayer(n0);
   n.coins -= entry;
   // (16-11-2026) el neto semanal ya NO baja al apostar: se ajusta al liquidar la partida (resultado − entrada), con mínimo 0
-  n.ranked.pending = { matchId, league: r.league, bet, entry, prize, startedAt: now };
-  return { ok: true, state: n, entry, prize };
+  n.ranked.pending = { matchId, league: r.league, bet, entry, prize, startedAt: now, risk };
+  return { ok: true, state: n, entry, prize, risk };
 }
 
 export interface Settlement {
@@ -216,6 +222,8 @@ export interface Settlement {
   league: RankId;
   promotedTo: RankId | null;
   duplicate: boolean;
+  /** MODO RIESGO: multiplicador con el que se jugó (1 o 2) */
+  risk: number;
 }
 
 /**
@@ -229,7 +237,7 @@ export function settleRanked(s: PlayerState, matchId: string, outcome: RankedOut
   const n0 = syncRanked(s, now);
   const r0 = n0.ranked;
   if (r0.settled.includes(matchId))
-    return { ok: true, state: n0, settlement: { outcome, entry: 0, prize: 0, delta: 0, counted: false, league: r0.league, promotedTo: null, duplicate: true } };
+    return { ok: true, state: n0, settlement: { outcome, entry: 0, prize: 0, delta: 0, counted: false, league: r0.league, promotedTo: null, duplicate: true, risk: 1 } };
   const p = r0.pending;
   if (!p || p.matchId !== matchId) return fail('not_found');
   const n = clonePlayer(n0);
@@ -259,7 +267,7 @@ export function settleRanked(s: PlayerState, matchId: string, outcome: RankedOut
     r.history.unshift({ outcome: win ? 'win' : 'loss', delta: prize - p.entry, league: p.league, playedAt: now });
     r.history = r.history.slice(0, 20);
   }
-  return { ok: true, state: n, settlement: { outcome, entry: p.entry, prize, delta: prize - p.entry, counted, league: r.league, promotedTo: null, duplicate: false } };
+  return { ok: true, state: n, settlement: { outcome, entry: p.entry, prize, delta: prize - p.entry, counted, league: r.league, promotedTo: null, duplicate: false, risk: p.risk ?? 1 } };
 }
 
 /** Partida pendiente de una sesión anterior (app cerrada en pleno partido) = abandono. */
@@ -327,7 +335,10 @@ export interface RankedView {
   estimate: { coins: number; cash: number; rays: number; label: string | null; eligible: boolean };
   season: PlayerState['ranked']['season'];
   total: PlayerState['ranked']['total'];
+  /** apuestas que se pagarían AHORA (con MODO RIESGO activo, x2) */
   stakes: { bet: number; entry: number; prize: number; affordable: boolean }[];
+  /** MODO RIESGO x2 */
+  risk: RiskStatus;
   history: RankedMatchHistory[];
 }
 
@@ -342,6 +353,7 @@ export function rankedView(s0: PlayerState, now: number): RankedView {
   const eligible = r.weekWins >= RANKED.minWinsForReward;
   const base = league(r.league).weekly;
   const next = nextLeague(r.league);
+  const risk = riskStatus(s.riskMode, now);
   return {
     unlocked: r.unlocked,
     league: r.league,
@@ -365,8 +377,10 @@ export function rankedView(s0: PlayerState, now: number): RankedView {
     total: r.total,
     stakes: RANKED.bets.map((bet) => {
       const st = matchStakes(r.league, bet);
-      return { bet, ...st, affordable: s.coins >= st.entry };
+      const entry = st.entry * risk.multiplier;
+      return { bet, entry, prize: st.prize * risk.multiplier, affordable: s.coins >= entry };
     }),
+    risk,
     history: r.history,
   };
 }
@@ -396,7 +410,7 @@ export function sanitizeRanked(raw: unknown): PlayerState['ranked'] {
   const p = o.pending as Record<string, unknown> | null | undefined;
   const pending =
     p && typeof p === 'object' && typeof p.matchId === 'string' && p.matchId
-      ? { matchId: p.matchId, league: leagueOr(p.league, leagueId), bet: int0(p.bet) || 1, entry: int0(p.entry), prize: int0(p.prize), startedAt: int0(p.startedAt) }
+      ? { matchId: p.matchId, league: leagueOr(p.league, leagueId), bet: int0(p.bet) || 1, entry: int0(p.entry), prize: int0(p.prize), startedAt: int0(p.startedAt), risk: p.risk === 2 ? 2 : 1 }
       : null;
   const rewards: WeeklyReward[] = (Array.isArray(o.rewards) ? o.rewards : [])
     .filter((w): w is Record<string, unknown> => !!w && typeof w === 'object' && typeof (w as Record<string, unknown>).week === 'string')

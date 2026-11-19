@@ -98,6 +98,16 @@ const JUMP_H = CHAR_UNITS_H * 0.22;
 const WALK_MS = 500;
 /** caminata lenta de la ENTRADA al partido (sprites HD, `<pack>-extras-1`); no todos los packs la traen */
 const WALK_INTRO = 'walk-intro' as ExtraAnim;
+/** (18-11-2026, usuario) reacción TRISTE al perder un punto (`<pack>-extras-5`); se alterna con point-lost (enojado) si el pack la trae */
+const POINT_SAD = 'point-sad' as ExtraAnim;
+/** (18-11-2026, usuario) 3.ª reacción al perder un punto: incrédulo (`<pack>-reacciones-4`) */
+const POINT_DOUBT = 'point-doubt' as ExtraAnim;
+/** (18-11-2026, usuario) 2.ª celebración de punto: de rodillas deslizándose, "¡VAMOS!" (`<pack>-reacciones-5`) */
+const POINT_CHEER = 'point-cheer' as ExtraAnim;
+/** frame (0 = primero) donde se congela `point-cheer` al ganar el partido: de rodillas gritando "¡VAMOS!" */
+const CHEER_HOLD = 5;
+/** desplazamiento lateral de `point-cheer` por frame (fracción del alto del personaje): se desliza de rodillas en los frames 3-5 */
+const CHEER_SLIDE = [0, 0, 0.1, 0.18, 0.22, 0.22, 0.1, 0];
 
 type State = 'idle' | 'run' | 'runstop' | 'hold' | 'swing' | 'serve' | 'victory' | 'turn' | 'sprint' | 'land' | 'inferno' | 'dive' | 'stun' | 'emote' | 'remate' | 'pickup';
 
@@ -295,7 +305,12 @@ const LAUNCH_ONLY: Partial<Record<SpriteCharId, { key: string; file: string; inf
 };
 
 export function queueNxoSpriteLoads(load: Phaser.Loader.LoaderPlugin) {
-  for (const l of Object.values(LAUNCH_ONLY)) if (l && !load.textureManager.exists(l.key)) load.spritesheet(l.key, l.file, { frameWidth: l.inf.cell.w, frameHeight: l.inf.cell.h });
+  // (18-11-2026) la tira ulti-hit trae su PROPIA celda (130 x 175); con la general de la hoja (132 x 177) salían cero frames
+  for (const l of Object.values(LAUNCH_ONLY)) {
+    if (!l || load.textureManager.exists(l.key)) continue;
+    const cell = (l.inf.animations['ulti-hit'] as (AnimInfo & { cell?: { w: number; h: number } }) | undefined)?.cell ?? l.inf.cell;
+    load.spritesheet(l.key, l.file, { frameWidth: cell.w, frameHeight: cell.h });
+  }
   if (!load.textureManager.exists(MAI_DEFEAT.key)) load.spritesheet(MAI_DEFEAT.key, MAI_DEFEAT.file, { frameWidth: MAI_DEFEAT.w, frameHeight: MAI_DEFEAT.h });
   if (skinMode() !== 'off') {
     for (const p of PACK_LIST) {
@@ -600,7 +615,27 @@ export class NxoActor {
   private playClip(key: string, startFrame = 0) {
     this.fitTo(key);
     this.sprite.y = 0; // sin salto por cÃ³digo salvo en los clips que lo llevan (jumpAt)
+    // sin deslizamiento por código salvo en la celebración de rodillas (slideAt)
+    if (this.slide) {
+      this.slide.remove();
+      this.slide = undefined;
+      if (!this.shake) this.sprite.x = 0;
+    }
     this.sprite.play({ key, startFrame });
+  }
+
+  private slide?: Phaser.Tweens.Tween;
+  /**
+   * (18-11-2026, usuario) Celebración de rodillas (`point-cheer`): en los frames 3-5 (índices 2-4) se DESLIZA un poco de rodillas y al
+   * levantarse (índices 6-7) vuelve a su sitio. Cada tramo dura un frame (suave, no a saltos).
+   */
+  private slideAt(key: string | undefined, frame: number) {
+    if (key !== this.xk(POINT_CHEER)) return;
+    const to = (CHEER_SLIDE[frame] ?? 0) * CHAR_UNITS_H;
+    if (Math.abs(this.sprite.x - to) < 0.5) return;
+    this.slide?.remove();
+    const ms = 1000 / Math.max(1, (this.sprite.anims.currentAnim?.frameRate ?? 10) * this.sprite.anims.timeScale);
+    this.slide = this.scene.tweens.add({ targets: this.sprite, x: to, duration: ms, ease: frame <= 4 ? 'Quad.easeOut' : 'Sine.easeInOut' });
   }
 
   /**
@@ -1119,7 +1154,7 @@ export class NxoActor {
   }
 
   /** ReacciÃ³n al acabar un punto (ganado / perdido). Se corta sola al empezar el siguiente. */
-  pointEnd(won: boolean) {
+  pointEnd(won: boolean, epic = false) {
     if (!this.v2 || this.state === 'victory') return;
     // (18-11-2026, usuario: "tras el smash el rival no hizo el punto perdido") ATURDIDO por el golpe: la reacción queda pendiente y sale al
     // terminar el aturdimiento (endBusy); antes se perdía
@@ -1129,7 +1164,15 @@ export class NxoActor {
     }
     // sin raqueta (ULTI recibida, aún en el suelo): sus reacciones llevan raqueta; se queda en el reposo sin raqueta
     if (this.noRacketClips) return;
-    this.emote(won ? 'point-won' : 'point-lost');
+    this.emote(this.pointAnim(won, epic));
+  }
+
+  /** Clip de la reacción al punto: perdido = enojado (point-lost), triste (point-sad) o incrédulo (point-doubt), al azar entre los que trae el pack. */
+  private pointAnim(won: boolean, epic = false): ExtraAnim {
+    // ganado: la de siempre; PUNTO ÉPICO (devolvió ULTI / ESPECIAL o usó el DASH): de rodillas, "¡VAMOS!"
+    if (won) return epic && this.xr(POINT_CHEER) ? POINT_CHEER : 'point-won';
+    const opts: ExtraAnim[] = ['point-lost', ...[POINT_SAD, POINT_DOUBT].filter((a) => this.xr(a))];
+    return opts[Math.floor(Math.random() * opts.length)];
   }
 
   /** (18-11-2026) reacción al punto que llegó mientras estaba aturdido (null = ninguna) */
@@ -1229,7 +1272,7 @@ export class NxoActor {
     const pending = s === 'stun' ? this.pendingPoint : null;
     this.pendingPoint = null;
     if (pending !== null && !this.noRacketClips) {
-      this.emote(pending ? 'point-won' : 'point-lost');
+      this.emote(this.pointAnim(pending));
       if ((this.state as State) === 'emote') return;
     }
     this.refresh();
@@ -1261,12 +1304,19 @@ export class NxoActor {
     this.scene.tweens.add({ targets: r, alpha: 0, scale: r.scale * 0.6, duration: 140, onComplete: () => r.destroy() });
   }
 
-  victory() {
+  /** `close` = victoria ajustada (el rival ganó algún juego): celebra de rodillas (`point-cheer`) y queda en el grito. */
+  victory(close = false) {
     this.stopShake();
     this.stopLean();
     this.sprite.setFlipX(false);
     this.state = 'victory';
     this.sprite.anims.timeScale = 1;
+    if (close && this.xr(POINT_CHEER) && !this.noRacketClips) {
+      const ck = this.xk(POINT_CHEER);
+      this.playClip(ck);
+      this.holdAt(ck, CHEER_HOLD);
+      return;
+    }
     // (18-11-2026, usuario) VICTORIA DE VERDAD (se tira al suelo, "¡VAMOS!"): clip `victory-big` (hoja extras-4, tools/build-hd.mjs) si el
     // personaje ya lo tiene; queda en su último frame. Sin él, la celebración de siempre
     const big = `${this.P.key}-x-victory-big`;
@@ -1279,16 +1329,19 @@ export class NxoActor {
     // NXO de espaldas: la celebración se CONGELA en el frame de la mano arriba (VICTORY_HOLD) y ahí se queda mientras el
     // mapa se aleja y salen los resultados (su último frame es casi un reposo y la celebración no se notaba)
     const hold = VICTORY_HOLD[this.id];
-    if (hold !== undefined) {
-      const onUpdate = (a: Phaser.Animations.Animation, f: Phaser.Animations.AnimationFrame) => {
-        if (this.state !== 'victory' || a.key !== key) return void this.sprite.off(Phaser.Animations.Events.ANIMATION_UPDATE, onUpdate);
-        if (Number(f.textureFrame) >= hold) {
-          this.sprite.anims.stop(); // se queda dibujado el frame actual
-          this.sprite.off(Phaser.Animations.Events.ANIMATION_UPDATE, onUpdate);
-        }
-      };
-      this.sprite.on(Phaser.Animations.Events.ANIMATION_UPDATE, onUpdate);
-    }
+    if (hold !== undefined) this.holdAt(key, hold);
+  }
+
+  /** Congela el clip `key` (en estado victoria) al llegar a su frame `hold`; ahí se queda. */
+  private holdAt(key: string, hold: number) {
+    const onUpdate = (a: Phaser.Animations.Animation, f: Phaser.Animations.AnimationFrame) => {
+      if (this.state !== 'victory' || a.key !== key) return void this.sprite.off(Phaser.Animations.Events.ANIMATION_UPDATE, onUpdate);
+      if (Number(f.textureFrame) >= hold) {
+        this.sprite.anims.stop(); // se queda dibujado el frame actual
+        this.sprite.off(Phaser.Animations.Events.ANIMATION_UPDATE, onUpdate);
+      }
+    };
+    this.sprite.on(Phaser.Animations.Events.ANIMATION_UPDATE, onUpdate);
   }
   /** Vuelve a la pose neutra (nuevo punto: el jugador se recoloca). */
   resetPose() {
@@ -1541,6 +1594,7 @@ export class NxoActor {
   private onFrame(f: Phaser.Animations.AnimationFrame) {
     const frame = Number(f.textureFrame);
     this.jumpAt(this.sprite.anims.currentAnim?.key, frame);
+    this.slideAt(this.sprite.anims.currentAnim?.key, frame);
     // frenada del DASH: en guardia ya se puede mover; el Ãºltimo frame Ãºtil termina la frenada (el siguiente
     // del clip ya sale corriendo al otro lado y no se muestra)
     if (this.state === 'land') {

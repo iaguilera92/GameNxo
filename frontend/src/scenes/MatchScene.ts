@@ -30,6 +30,7 @@ import { Ball, type BallState, type ShotKind, aimShot, isInCourt, stepBall } fro
 import { Character, PLAYER_LOOK, lookForSkin, playerLook, rivalLook } from '../objects/Character';
 import type { BotAI } from '../logic/BotAI';
 import { BotBrain } from '../ai/BotBrain';
+import { botNamesFor, hostServesGame } from '../net/doubles';
 import { profileForMatch, rivalLevelFor } from '../ai/BotProfile';
 import { type ServeKind, ServeController } from '../logic/ServeController';
 import { type BotServePlan, ServeAI } from '../logic/ServeAI';
@@ -90,6 +91,8 @@ const SMASH_PERFECT = { windowS: 0.12, afterBounceS: 0.45 };
 const BOT_REMATE_LEAD_S = 0.13;
 /** (18-11-2026, usuario) en ZONA se RESISTE el ESPECIAL: aturdido solo este tiempo (ms) */
 const RESIST_STUN_MS = 1000;
+/** (18-11-2026, usuario: "el bot con el DASH no alcanza mi ESPECIAL") alcance del rival (× HIT_RANGE) en la pelota para la que usó su DEFENSIVO */
+const BOT_DASH_REACH = 1.35;
 import { infernoGroundFx, powerImpactFx } from '../fx/ImpactFx';
 import { lightDashFlash, shadowDashFlash, lightningBodyFx, lightningDashFlash, lightningFloorTrail, ultiStunFx, windBlast } from '../fx/elementImpactFx';
 import { HURRICANE_COL, TORNADO_ART, TornadoFx, TornadoSprite, WindSphereFx, sphereBreakFx, wallKnockFx, windShotFx } from '../fx/hurricaneFx';
@@ -97,6 +100,8 @@ import { playMatchEnd } from '../fx/matchEnd';
 import { playMatchIntro } from '../fx/matchIntro';
 import { ServeTurnTag } from '../ui/ServeTurnTag';
 import { setupUiCamera } from '../view/uiCamera';
+import { createMissionTracker, missionDef, missionHit, missionPoint, missionPointStart, type MissionShot } from '../domain/matchMissions';
+import { showMissionAlert } from '../fx/missionAlert';
 import { queueGazeArt, showInfernoGaze } from '../fx/infernoGaze';
 import { ZONE, ZoneTracker, type Side as ZoneSide } from '../logic/Zone';
 import { ZoneFx, zoneEyes } from '../fx/ZoneFx';
@@ -127,6 +132,7 @@ import { SFX_SEEK, dashSfx, sfx } from '../fx/sfx';
 import { WALL, type WallGeom, wallFromArt, wallHit, wallOutcome } from '../logic/BackWall';
 import { type ZoneStatLevels, emptyZoneStats, zoneStatPercent } from '../domain/zoneProgress';
 import { WallFx } from '../fx/wallFx';
+import { addRiskBadge } from '../ui/riskBadge';
 import { NET_DUEL, NO_TAP, botTapMs, cleanPlan, defaultAimSide, diffLabel, duelHitSide, duelLungeHit, duelSchedule, duelWinner, lobFlightS, lobTarget, mirrorSide, rollPlan, roundFromWire, roundWinner, roundWire, isDecisive, msTier, shouldStartDuel, sideFromJoystick, tapDiffMs, tapInWindow, tapIsEarly, type RoundPlan, type RoundWho } from '../logic/NetDuel';
 import { DUEL_CINE, createDuelGaze, createDuelScore, createDuelPressure, createDuelVignette, showDuelDecisive, showDuelLag, type DuelGaze, type DuelPressure, type DuelScore, type DuelVignette } from '../fx/NetDuelFx';
 
@@ -307,6 +313,10 @@ const DASH_BACK_REACH = 150;
 /** joystick: con la cortita / el globo, |x| a partir de esto cuenta como DIAGONAL (bote hacia ese lado) */
 const DIAG_X = 0.35;
 const B_X = [NET_X + 45, COURT.right + 130];
+/** distancia mínima (en x de cancha) entre los pies del rival y la pared del fondo dibujada */
+const RIVAL_WALL_GAP = 30;
+/** 2v2: distancia a la red del jugador que sube a volear (aliado y rival) */
+const DOUBLES_NET_GAP = 120;
 
 const rand = Phaser.Math.FloatBetween;
 const clamp = Phaser.Math.Clamp;
@@ -336,8 +346,6 @@ const ENTRANCE_FROM = 0.6;
 const BOT_SERVE_MAX_APEX = 280;
 /** centro del marcador de 3 pelotas del Duelo Red (¡ÚLTIMA RONDA! sale justo encima) */
 const DUEL_SCORE_Y = 180;
-/** margen sobre la red del SAQUE PERFECTO al aplanarlo (el DIRECTO usa SERVE.direct.margin) */
-const PERFECT_SERVE_MARGIN = 10;
 /** joystick arriba / abajo mantenido más que esto (ms) sin cargar = venía corriendo: el golpe sale normal, no globo / cortita */
 const SHOT_HOLD_MS = 450;
 /** GLOBO DISPARADO (globo cargado al máximo): velocidad (× SHOT_SPEED), margen sobre la red (bajo = tenso) y cuánto se aleja la cámara */
@@ -423,6 +431,11 @@ export class MatchScene extends Phaser.Scene {
     // golpes del punto (saque = 1, resto = 2…): las habilidades se bloquean hasta que el resto ya salió (serveLock)
     this.shotsThisPoint = v === null ? 0 : this.shotsThisPoint + 1;
     this._lastHitter = v;
+    // MISIONES POR PARTIDA (domain/matchMissions.ts): cada golpe del punto; el del jugador lleva su etiqueta (ESPECIAL / GLOBO máximo)
+    if (v === null) missionPointStart(this.missions);
+    if (v === null) this.epicPoint = false;
+    else missionHit(this.missions, v === 'player' ? 'player' : 'rival', v === 'player' ? this.missionShot : null);
+    if (v === 'player') this.missionShot = null;
     if (v === 'player' && this.net && !this.netApplying) this.netHitPending = true;
     if (v === 'player' && this.doubles) this.pickRival(); // 2v2: la pelota va hacia el rival más cercano a donde cae
   }
@@ -440,6 +453,61 @@ export class MatchScene extends Phaser.Scene {
   private rivalBrains: BotBrain[] = [];
   private allyName = 'Aliado';
   private rival2Name = 'Rival 2';
+  /**
+   * (21-11-2026) 2v2 ONLINE: 2 humanos del MISMO equipo (host = quien simula a los 2 bots y juzga todos los puntos; invitado) contra 2 bots.
+   * `ally` = el otro humano (actor REMOTO mientras `allyRemote`; si se va, lo juega el bot de siempre y al volver recupera el control).
+   * En el invitado los 2 rivales también son remotos (`net2Bots`). Nada se espeja: los dos ven su campo abajo.
+   */
+  private get net2() {
+    return !!this.net && this.net.mode === '2v2';
+  }
+  private get net2host() {
+    return this.net2 && this.net!.role === 'host';
+  }
+  /** este teléfono simula a los bots rivales (contra bot, o host del 2v2 online) */
+  private get simBots() {
+    return !this.net || this.net2host;
+  }
+  /** el RIVAL HUMANO del 1v1 online (null en el 2v2: allí el compañero es del mismo equipo) */
+  private get vsOpp() {
+    return this.net && this.net.mode !== '2v2' ? this.net.opponent : null;
+  }
+  /** este teléfono saca con su personaje cuando le toca al equipo humano (en el 2v2 online, el humano que salga al azar en ese juego: net2IServe) */
+  private get meServes() {
+    return this.server === 'player' && (!this.net2 || this.net2IServe);
+  }
+  /** 2v2 online: resultado del azar de quién saca, por número de juego (los dos teléfonos lo calculan igual) */
+  private net2ServeCache = { game: -1, host: true };
+  /**
+   * 2v2 online: ¿saca el host cuando le toca al equipo humano? Al azar por juego (`hostServesGame`). Si el compañero está desconectado, saca siempre el
+   * host (el bot aliado no saca). Al volver, se rejuega el punto con el azar de siempre.
+   */
+  private net2ServerIsHost(): boolean {
+    if (this.net2host && !this.allyRemote) return true;
+    const g = this.score.gameIndex;
+    if (this.net2ServeCache.game !== g) this.net2ServeCache = { game: g, host: hostServesGame(this.net!.roomId, g) };
+    return this.net2ServeCache.host;
+  }
+  /** 2v2 online: ¿el humano que saca en este juego soy yo? */
+  private get net2IServe(): boolean {
+    return this.net2host === this.net2ServerIsHost();
+  }
+  private allyRemote = false;
+  /** estados remotos por actor: 0 = el otro humano, 1 y 2 = los bots del host (solo el invitado los recibe) */
+  private net2Rem: { interp: RemoteInterp; last: StateMsg | null }[] = [];
+  /** envío de los estados de los bots (host) */
+  private net2BotSend: { at: number; x: number; y: number; moving: boolean }[] = [];
+  /** a quién pertenece el golpe propio pendiente (0 = yo; 1 y 2 = un bot del host) */
+  private netHitA = 0;
+  /** host: hora (performance.now) de su último golpe enviado; si el compañero golpea a la vez, gana el del host */
+  private net2HostHitAt = 0;
+  /** cerebro del ALIADO (elige sus golpes con el mismo BotBrain, con las coordenadas espejadas) */
+  private allyBrain: BotBrain | null = null;
+  /** el equipo rival ya usó un ESPECIAL / ULTI en este punto: el compañero no lanza otro (coordinación) */
+  private rivalSpecialUsed = false;
+  /** MISIONES POR PARTIDA (1v1; docs/MISIONES.md): estado de la partida y etiqueta del golpe del jugador en curso */
+  private missions = createMissionTracker();
+  private missionShot: MissionShot = null;
 
   /** todos los personajes en cancha (1v1: tú y el rival; 2v2: los cuatro) */
   private everyone(): Actor[] {
@@ -491,37 +559,46 @@ export class MatchScene extends Phaser.Scene {
     return moving;
   }
 
-  /** 2v2: cada fotograma mueve al aliado y al rival que no recibe (el activo lo mueve su cerebro, como siempre). */
+  /**
+   * 2v2: cada fotograma mueve al aliado y al rival que no recibe (el activo lo mueve su cerebro, como siempre). FORMACIÓN "uno arriba, uno atrás":
+   * si el que recibe / el jugador está atrás, su compañero sube a la red (y cubre el lado contrario); si está en la red, el compañero cubre el fondo.
+   */
   private doublesTick(dt: number) {
     const ally = this.ally;
     if (!ally) return;
     const s = this.ball.s;
     const live = (this.phase === 'rally' || this.phase === 'serve' || this.phase === 'toss') && !this.entering;
-    // --- aliado: va a la pelota si él está más cerca que tú; si no, se queda cubriendo el lado contrario
-    let ax = COURT.left + 30;
+    const calm = live && this.phase !== 'pointover';
+    // --- aliado: va a la pelota si él está más cerca que tú; si no, cubre el lado contrario (en la red si tú estás atrás)
+    const allyNet = this.player.x < NET_X - 250;
+    let ax = allyNet ? NET_X - DOUBLES_NET_GAP : COURT.left + 60;
     let ay = clamp(2 * LAT_C - this.player.y, Y_MIN + 40, Y_MAX - 40);
     const incoming = this.phase === 'rally' && this.lastHitter !== 'player' && s.vx < 0 && s.x < NET_X + 60;
     if (incoming) {
       const land = this.landingMine();
-      if (land && Math.abs(land.y - ally.y) < Math.abs(land.y - this.player.y)) {
+      if (land && Math.abs(land.y - ally.y) < Math.abs(land.y - this.player.y) - 10) {
         ax = clamp(land.x - 12, P_X[0], P_X[1]);
         ay = clamp(land.y, Y_MIN, Y_MAX);
       }
     }
-    const aSpeed = PLAYER_SPEED * 0.8;
-    if (live && this.phase !== 'pointover') this.followTo(ally, ax, ay, dt, aSpeed, [P_X[0], P_X[1]]);
+    if (this.allyRemote) {
+      /* el compañero humano lo mueve su teléfono (net2Tick) */
+    } else if (calm) this.followTo(ally, ax, ay, dt, PLAYER_SPEED * 0.85, [P_X[0], P_X[1]]);
     else ally.ch.setMoving(false, 0);
     this.updateFacing(ally);
-    // --- el rival que NO recibe: se queda en el lado contrario del que recibe
+    // --- el rival que NO recibe: sube a la red si el que recibe está atrás; si no, cubre el fondo. Su cerebro lleva su sitio de espera (homeX) para volear
     const other = this.otherRival();
     if (other) {
+      const idx = this.rivalActors.indexOf(other);
+      const otherNet = this.bot.x > NET_X + 250;
       const oy = clamp(2 * LAT_C - this.bot.y, Y_MIN + 40, Y_MAX - 40);
-      if (live && this.phase !== 'pointover') this.followTo(other, COURT.right + 40, oy, dt, PLAYER_SPEED * 0.7, [B_X[0], B_X[1]]);
+      const ob = this.rivalBrains[idx];
+      ob.ai.homeX = otherNet ? NET_X + DOUBLES_NET_GAP : null;
+      if (calm) this.followTo(other, otherNet ? NET_X + DOUBLES_NET_GAP : COURT.right + 40, oy, dt, PLAYER_SPEED * 0.8, [B_X[0], B_X[1]]);
       else other.ch.setMoving(false, 0);
       this.updateFacing(other);
     }
   }
-
   /** dónde cae la pelota que viene hacia MI campo (primer bote antes de la red o su paso) */
   private landingMine(): { x: number; y: number } | null {
     const s = { ...this.ball.s };
@@ -537,25 +614,53 @@ export class MatchScene extends Phaser.Scene {
   /** ¿El aliado devuelve esta pelota? (tú tienes prioridad: si tú llegas, golpeas tú) */
   private allyCanHit(s: BallState) {
     const a = this.ally;
-    if (!this.doubles || !a || a.stun > 0 || a.vanished || a.racket) return false;
+    if (!this.doubles || !a || this.allyRemote || a.stun > 0 || a.vanished || a.racket) return false;
     return this.inReach(a, s) && !this.inReach(this.player, s);
   }
 
-  /** El aliado devuelve: golpe normal hacia el rival más lejos de la zona donde apunta. */
+  /**
+   * El aliado devuelve con el MISMO cerebro de los bots (BotBrain.planShot) pero en coordenadas espejadas: la pelota y los rivales se ven "como si el
+   * aliado fuera el rival de arriba". El plan (tx, ty) se desespeja. Elige profundo, cruzado, dejada…; sin ESPECIAL ni ULTI (por ahora).
+   */
   private allyHit() {
     const a = this.ally!;
     const s = this.ball.s;
+    const brain = this.allyBrain;
     a.ch.facing = s.y > a.y ? 1 : -1;
-    const fxDelay = a.ch.swing();
-    const depth = (lo: number, hi: number) => NET_X + (COURT.right - NET_X) * rand(lo, hi);
-    // apunta al lado donde NO está el rival que recibe (con algo de azar)
-    const away = this.bot.y > LAT_C ? -1 : 1;
-    const ty = LAT_C + clamp(away * rand(0.25, 0.85) + rand(-0.2, 0.2), -1, 1) * (HALF_W - 28);
+    const volley = this.bounces === 0 && a.x >= NET_ZONE_X;
+    const fxDelay = a.ch.swing(false, false, false, volley);
     s.z = Math.max(s.z, 22);
-    aimShot(s, depth(0.55, 0.9), ty, SHOT_SPEED * rand(0.85, 1.0), 18);
+    let tx: number;
+    let ty: number;
+    let speed = SHOT_SPEED * rand(0.88, 1.0);
+    let margin = 18;
+    let kind: ShotKind = 'normal';
+    if (brain) {
+      const m = { ...s, x: mirrorX(s.x), vx: -s.vx };
+      const shot = brain.planShot(m, { playerX: mirrorX(this.bot.x), playerY: this.bot.y, botX: mirrorX(a.x), botY: a.y }, false, true, false);
+      tx = mirrorX(shot.tx);
+      ty = shot.ty;
+      speed = shot.speed;
+      margin = shot.margin;
+      kind = shot.kind;
+    } else {
+      tx = NET_X + (COURT.right - NET_X) * rand(0.55, 0.9);
+      ty = LAT_C + clamp((this.bot.y > LAT_C ? -1 : 1) * rand(0.25, 0.85), -1, 1) * (HALF_W - 28);
+    }
+    aimShot(s, tx, ty, speed, margin, kind === 'lob' ? BOT_LOB_MAX_STRETCH : BOT_LOB_MAX_STRETCH);
+    if (kind !== 'lob') {
+      const apex = () => s.z + (s.vz > 0 ? (s.vz * s.vz) / (2 * (s.g ?? GRAVITY)) : 0);
+      for (let sp = speed; apex() > BOT_FLAT.apex && sp < speed * BOT_FLAT.maxSpeed; ) {
+        sp = Math.min(speed * BOT_FLAT.maxSpeed, sp * 1.06);
+        aimShot(s, tx, ty, sp, margin, BOT_LOB_MAX_STRETCH);
+      }
+    }
     this.ball.setPower(false);
-    this.ball.setKind('normal');
+    this.ball.setKind(kind);
+    const wasApplying = this.netApplying;
+    this.netApplying = true; // el golpe del BOT aliado no se envía como golpe mío
     this.lastHitter = 'player';
+    this.netApplying = wasApplying;
     this.bounces = 0;
     this.ai.onPlayerHit(false);
     this.hitFxAt(fxDelay, s.x, s.y, s.z, false, 0.15);
@@ -608,6 +713,11 @@ export class MatchScene extends Phaser.Scene {
   /** DUELO EN LA RED en curso (logic/NetDuel.ts) · ya hubo uno en este punto · quién defiende el globo final (el bot lo intenta con estirada) */
   private duel: DuelState | null = null;
   private duelUsed = false;
+  /**
+   * (18-11-2026, usuario) PUNTO ÉPICO del jugador: en este punto devolvió una ULTI o un ESPECIAL del rival o usó su DASH (defensivo).
+   * Si gana el punto celebra de rodillas (`point-cheer`, NxoActor.pointEnd).
+   */
+  private epicPoint = false;
   private duelDefend: Who | null = null;
   /** el bot decidió (una vez por globo) si se tira a por el globo del duelo */
   private duelLungeRoll: boolean | null = null;
@@ -863,15 +973,24 @@ export class MatchScene extends Phaser.Scene {
     // KIT del bot: variado en cada partida (ai/botKit.ts randomBotKit: croma, especial, ulti, defensivo y carga; sin épicos ni legendarios)
     this.botKit = this.net ? botKitFor(this.rivalSkin()) : randomBotKit(this.rivalSkin());
     this.botEmotes = { left: Math.random() < 0.5 ? 1 : 2, won: [0, 0], nextGap: 4 };
-    queueChargeFxArt(this.load, [getProfile().charge, this.net ? chargeFxOf(this.net.opponent.charge, this.net.opponent.skin) : this.botKit.charge]);
+    queueChargeFxArt(this.load, [getProfile().charge, this.vsOpp ? chargeFxOf(this.vsOpp.charge, this.vsOpp.skin) : this.botKit.charge]);
   }
 
   init(data: { botName?: string; rivalLevel?: number; net?: MatchNet; ambiente?: string; mode?: '2v2'; allyName?: string; rival2Name?: string }) {
     this.finaleBall = null; // (la escena se reutiliza entre partidos)
     // (21-11-2026) 2v2 contra bots (sin red): tú + aliado BOT contra dos rivales BOT
-    this.doubles = data?.mode === '2v2' && !data?.net;
+    const n2 = data?.net?.mode === '2v2';
+    this.doubles = data?.mode === '2v2' || n2;
     this.allyName = data?.allyName ?? 'Aliado';
     this.rival2Name = data?.rival2Name ?? 'Rival 2';
+    if (n2) {
+      // 2v2 online: el compañero es el otro humano; los 2 rivales son bots con nombres que salen de la sala (iguales en los dos teléfonos)
+      const [b1, b2] = botNamesFor(data!.net!.roomId);
+      this.allyName = data!.net!.opponent.name;
+      data!.botName = b1;
+      this.rival2Name = b2;
+      data!.rivalLevel = Math.round((getProfile().level + data!.net!.opponent.level) / 2);
+    }
     this.ally = null;
     this.rivalActors = [];
     this.rivalBrains = [];
@@ -888,6 +1007,8 @@ export class MatchScene extends Phaser.Scene {
   create() {
     // estado (la escena se reutiliza en revanchas)
     this.phase = 'intro';
+    this.missions = createMissionTracker(); // misiones de cero en cada partida
+    this.missionShot = null;
     this.lastHitter = null;
     this.bounces = 0;
     this.smashArmed = false;
@@ -937,10 +1058,10 @@ export class MatchScene extends Phaser.Scene {
     if (charColor !== 'classic') applyCharColor(this.player.ch, charColor, getProfile().skin);
     // en red, el rival con SU estilo de color (llega en opponent.color; uno desconocido se ignora)
     // contra el bot: su CROMA del kit de esta partida (ai/botKit.ts)
-    const rivalColor = this.net ? charColorOf(this.net.opponent.color) : (this.botKit.color ?? 'classic');
-    if (rivalColor !== 'classic') applyCharColor(this.bot.ch, rivalColor, this.net?.opponent.skin ?? this.rivalSkin());
+    const rivalColor = this.vsOpp ? charColorOf(this.vsOpp.color) : (this.botKit.color ?? 'classic');
+    if (rivalColor !== 'classic') applyCharColor(this.bot.ch, rivalColor, this.vsOpp?.skin ?? this.rivalSkin());
     // (la raqueta que sale volando con la ULTI usa el mismo estilo: loseRacket)
-    this.colorStyle = { player: { id: charColor, skin: getProfile().skin }, bot: { id: rivalColor, skin: this.net?.opponent.skin ?? this.rivalSkin() } };
+    this.colorStyle = { player: { id: charColor, skin: getProfile().skin }, bot: { id: rivalColor, skin: this.vsOpp?.skin ?? this.rivalSkin() } };
     // aura de la ZONA con los colores de tu ESTILO DE ZONA (domain/zoneSkins.ts); se crea ya con ellos (encenderla no rehace emisores)
     const myZone = zoneSkinOf(getPlayer() as PlayerState);
     this.aura = new HyperAura(this, this.player.ch, myZone.aura, myZone.auraPal);
@@ -969,7 +1090,7 @@ export class MatchScene extends Phaser.Scene {
     this.chargeSprite = new ChargeSpriteFx(this);
     if (isSpriteCharge(this.chargeKind)) this.chargeSprite.use(this.chargeKind);
     // (el kit del bot se eligió en preload: randomBotKit)
-    const rivalFx = this.net ? chargeFxOf(this.net.opponent.charge, this.net.opponent.skin) : this.botKit.charge;
+    const rivalFx = this.vsOpp ? chargeFxOf(this.vsOpp.charge, this.vsOpp.skin) : this.botKit.charge;
     this.rivalChargeKind = chargeFxReady(this, rivalFx) ? rivalFx : 'classic';
     this.rivalChargeSprite = new ChargeSpriteFx(this);
     if (isSpriteCharge(this.rivalChargeKind)) this.rivalChargeSprite.use(this.rivalChargeKind);
@@ -982,19 +1103,23 @@ export class MatchScene extends Phaser.Scene {
     // (21-11-2026) 2v2: el aliado (el otro personaje, de espaldas) y el 2.º rival (de frente), cada uno con su dibujo y su cerebro
     if (this.doubles) {
       const mySkin = getProfile().skin;
-      const otherSkin = this.rivalSkin();
+      const otherSkin = this.net2 ? this.net!.opponent.skin : this.rivalSkin();
       this.ally = mk(playerLook(otherSkin), 'back', COURT.left - 40, 1);
+      this.allyRemote = this.net2;
+      this.net2Rem = [0, 1, 2].map(() => ({ interp: new RemoteInterp(100), last: null }));
+      this.net2BotSend = [1, 2].map(() => ({ at: 0, x: 0, y: 0, moving: false }));
       const r2 = mk(lookForSkin(mySkin, 'front', mySkin), 'front', COURT.right + 40, -1);
       this.rivalActors = [this.bot, r2];
       this.rivalBrains = [this.brain, new BotBrain({ xMin: B_X[0], xMax: B_X[1], yMin: Y_MIN, yMax: Y_MAX }, profileForMatch(this.rivalLevel))];
       this.ally.y = LAT_C - 70;
       r2.y = LAT_C + 70;
+      this.allyBrain = new BotBrain({ xMin: P_X[0], xMax: P_X[1], yMin: Y_MIN, yMax: Y_MAX }, profileForMatch(Math.max(1, getProfile().level)));
     }
     this.score = new Score();
     this.zone = new ZoneTracker();
     this.zoneLevels = {
       player: { ...getProfile().zoneStats },
-      bot: { ...(this.net?.opponent.zoneStats ?? emptyZoneStats()) },
+      bot: { ...(this.vsOpp?.zoneStats ?? emptyZoneStats()) },
     };
     // PASIVA del personaje elegido (AGILIDAD de Nxo, PRECISIÓN de Mai): velocidad y alcance, o menos desvío en golpes y saque
     const passive = getProfile().passive;
@@ -1003,12 +1128,12 @@ export class MatchScene extends Phaser.Scene {
     this.zoneFx = { player: new ZoneFx(this), bot: new ZoneFx(this) };
     // ESTILO DE ZONA (Tienda, domain/zoneSkins.ts): el tuyo; el bot y el rival online, la Eléctrica de siempre
     // el rival online, con SU estilo de Zona (llega en opponent.zone; uno desconocido = Eléctrica)
-    const rz = this.net?.opponent.zone;
+    const rz = this.vsOpp?.zone;
     this.zoneLook = { player: zoneSkinOf(getPlayer() as PlayerState), bot: rz && isZoneSkin(rz) ? ZONE_SKINS[rz] : ZONE_SKINS.electric };
     this.zoneFx.bot!.setLook(this.zoneLook.bot);
     this.zoneFx.player!.setLook(this.zoneLook.player);
     // en red: el host saca los juegos pares; el invitado ve al host como 'bot' (saca los impares desde su lado)
-    if (this.net) this.score.serverOffset = this.net.servesFirst ? 0 : 1;
+    if (this.net && !this.net2) this.score.serverOffset = this.net.servesFirst ? 0 : 1; // 2v2 online: el equipo humano saca los juegos pares en los dos teléfonos
 
     this.createHud();
     this.joy = new Joystick(this);
@@ -1046,6 +1171,7 @@ export class MatchScene extends Phaser.Scene {
     this.duelTestBtn = this.makeDuelTestButton().setVisible(false); // PRUEBA: entrar al DUELO RED (solo contra el bot)
     // solo los emotes desbloqueados (premios del Pase de Batalla); sin ninguno no hay botón
     this.emotes = new Emotes(this, () => this.headPos(this.player), ownedEmotes(getPlayer().owned));
+    this.emotes.setSkins(getProfile().skin, this.vsOpp?.skin ?? this.rivalSkin()); // (18-11-2026) caritas de MAI si juega con ella
     // en red: tus emotes también los ve el rival; el aura del SMASH armado del rival; sin restos de una partida anterior
     this.netHit = {};
     this.netLastState = null;
@@ -1119,7 +1245,7 @@ export class MatchScene extends Phaser.Scene {
     if (this.unlocked('ulti')) this.smashBtn.setMeter(0, INFERNO.pointsToCharge);
     // ZONA bloqueada por nivel: tú nunca entras; en red, el rival según SU nivel (los dos teléfonos deciden igual)
     this.zone.locked.player = !this.unlocked('zone');
-    this.zone.locked.bot = !!this.net && !isUnlocked('zone', this.net.opponent.level);
+    this.zone.locked.bot = !!this.vsOpp && !isUnlocked('zone', this.vsOpp.level);
     this.serveTag = new ServeTurnTag(this, this.botName);
     this.superFlight = false;
     this.secondTag = this.add.text(0, 0, '2º SAQUE', textStyle(20, '#ffd23f')).setOrigin(0.5).setScrollFactor(0).setDepth(5500).setVisible(false);
@@ -1171,7 +1297,7 @@ export class MatchScene extends Phaser.Scene {
     this.placeForServe();
     this.renderActors();
     // botones correctos desde el principio: si saca el jugador, solo los de saque (no DASH/SMASH)
-    this.setServeUi(this.server === 'player');
+    this.setServeUi(this.meServes);
     // presentación (≤ 2 s): mapa de lejos que se acerca, oscurecido, "INICIO" (fx/matchIntro.ts)
     if (this.net) this.netSetup();
     else {
@@ -1476,7 +1602,7 @@ export class MatchScene extends Phaser.Scene {
     const b = this.ball.s;
     // al sacar se queda un momento quieto en su sitio (como una persona): si salía corriendo al instante, el otro teléfono
     // aún lo tenía en la posición de saque y se veía un salto
-    if (this.phase === 'serve' && this.server === 'player' && this.serveCtl.state === 'POSITIONING' && this.autoServeT < 0.6) return new Phaser.Math.Vector2();
+    if (this.phase === 'serve' && this.meServes && this.serveCtl.state === 'POSITIONING' && this.autoServeT < 0.6) return new Phaser.Math.Vector2();
     let tx = P_X[0] + (P_X[1] - P_X[0]) * 0.15;
     let ty = LAT_C;
     if (this.phase === 'rally' && this.lastHitter !== 'player' && b.vx < 0) {
@@ -1520,13 +1646,13 @@ export class MatchScene extends Phaser.Scene {
       this.autoAimAt = now + 900;
     }
     // saque: se coloca un instante, lanza y golpea en lo alto
-    if (this.server === 'player' && this.phase === 'serve' && this.serveCtl.state === 'POSITIONING') {
+    if (this.meServes && this.phase === 'serve' && this.serveCtl.state === 'POSITIONING') {
       this.autoServeT += dt;
       if (this.autoServeT > 0.8) {
         this.autoServeT = 0;
         this.onServeButton('normal', true);
       }
-    } else if (this.server === 'player' && this.phase === 'toss' && this.serveCtl.state === 'AIMING' && this.ball.s.vz <= 0) {
+    } else if (this.meServes && this.phase === 'toss' && this.serveCtl.state === 'AIMING' && this.ball.s.vz <= 0) {
       this.onServeButton(this.serveCtl.kind ?? 'normal');
     } else this.autoServeT = 0;
     // habilidades: una decisión por cada pelota del rival (ESPECIAL / ULTI a veces; DEFENSIVO si no llega)
@@ -1822,6 +1948,7 @@ export class MatchScene extends Phaser.Scene {
     // marcador nuevo (diseño en ui/ScoreBoard.ts); misma posición/profundidad que el anterior
     this.board = new ScoreBoard(this, { player: this.doubles ? 'TÚ + ' + this.allyName : 'TÚ', rival: this.doubles ? this.botName + ' + ' + this.rival2Name : this.botName, gamesToWin: GAMES_TO_WIN });
     this.hud = this.board.setDepth(5500);
+    addRiskBadge(this, this.board); // MODO RIESGO x2: marca "x2 RIESGO" si la partida Ranked en curso va con el evento
     // avisos breves junto al borde opuesto a Rendirse/Emojis, centrados entre ambos controles
     this.data.set('scoreInfo', (t: string, c: string, ms: number) => this.flashSideScoreMarker(t, c, ms));
   }
@@ -1937,7 +2064,15 @@ export class MatchScene extends Phaser.Scene {
     // RELÁMPAGO (épico): azul neón, rayo hasta la pelota con rastro de rayos en el suelo + revés
     if (getProfile().defensive === 'lightning') return this.startLightning();
     // TIEMPO LENTO (legendario): corres en cámara lenta y, al llegar, cinemática de 2 s con la cámara cerca y una estirada
-    if (getProfile().defensive === 'slowmo') return this.startSlowmo();
+    if (getProfile().defensive === 'slowmo') {
+      // 2v2 online: frenar el mundo en UN teléfono descuadraría a los bots del host y a tu compañero (el 1v1 lo tolera: el juez es quien lo usa)
+      if (this.net2) {
+        const hd = this.headPos(this.player);
+        this.popText(hd.x, hd.y, 'Pronto en 2v2 online', '#cfe0ff', 22);
+        return false;
+      }
+      return this.startSlowmo();
+    }
     // SOMBRA (clon que corre y cambio de lugar) y SUPERSALTO (salto hasta el punto)
     if (getProfile().defensive === 'shadow') return this.startShadow();
     if (getProfile().defensive === 'jump') return this.startJump();
@@ -2839,6 +2974,18 @@ export class MatchScene extends Phaser.Scene {
   }
 
   /** SMASH: la pelota se prende fuego; el siguiente golpe es una bola de fuego. */
+  /**
+   * 2v2 ONLINE: ESPECIAL y ULTIS normales congelan los 4 personajes en los dos teléfonos (net2ApplyAction, como el 1v1). La ULTI LEGENDARIA
+   * (BOLA DE ENERGÍA, HURACÁN) aún no: su peloteo automático tiene al rival como víctima y no está adaptado a 2 rivales.
+   */
+  private net2NoCine(): boolean {
+    // solo la ULTI LEGENDARIA (peloteo automático con semilla): el ESPECIAL y las ULTIS normales ya se sincronizan (net2ApplyAction)
+    if (!this.net2 || !isLegendaryInferno(getProfile().inferno)) return false;
+    const h = this.headPos(this.player);
+    this.popText(h.x, h.y, 'Pronto en 2v2 online', '#cfe0ff', 22);
+    return true;
+  }
+
   private activateSmash(): boolean {
     if (this.paused || this.cineLock || this.duel || this.phase === 'over' || this.phase === 'intro' || this.smashArmed || !this.unlocked('special')) return false;
     if (this.player.racket) return this.noRacketHint();
@@ -2884,6 +3031,7 @@ export class MatchScene extends Phaser.Scene {
 
   /** Botón en modo INFERNO: arma la técnica (no consume la carga). */
   private armInferno(): boolean {
+    if (this.net2NoCine()) return false;
     if (this.paused || this.cine.busy || this.legend || this.duel || this.phase !== 'rally' || this.smashArmed || this.player.vanished || !this.unlocked('ulti')) return false;
     if (this.player.racket) return this.noRacketHint();
     if (this.serveLock) return this.serveLockHint();
@@ -2940,7 +3088,7 @@ export class MatchScene extends Phaser.Scene {
     this.ghosts.setLook(INFERNO_LOOK[el].ghostTint, INFERNO_LOOK[el].ghostRamp);
     this.cine.start({
       profile: infernoCine(el),
-      freeze: [...sprites, ...spritesIn(this.bot.ch)],
+      freeze: this.doubles ? this.freezeSprites() : [...sprites, ...spritesIn(this.bot.ch)],
       executor: sprites,
       leadMs: 0, // la pose de espera no avanza: el golpe empieza al llegar
       focus: () => this.cineFocus(pl),
@@ -3022,7 +3170,7 @@ export class MatchScene extends Phaser.Scene {
    * contra el BOT el otro personaje del catálogo. Sprite y mirada del INFERNO salen de aquí para que coincidan siempre.
    */
   private rivalLk() {
-    return this.net ? lookForSkin(this.net.opponent.skin, 'front', getProfile().skin) : rivalLook(getProfile().skin);
+    return this.vsOpp ? lookForSkin(this.vsOpp.skin, 'front', getProfile().skin) : rivalLook(getProfile().skin);
   }
 
   /** id del personaje rival (nxo, mai…) según rivalLk */
@@ -3779,7 +3927,7 @@ export class MatchScene extends Phaser.Scene {
     const lead = pl.ch.swing(true, overhead, overhead, false, true);
     this.cine.start({
       profile: smashCine(this.smashEl), // fuego = el de siempre; hielo / viento / rayo = mismos tiempos con su aura, rayos y destello
-      freeze: [...spritesIn(pl.ch), ...spritesIn(this.bot.ch)],
+      freeze: this.doubles ? this.freezeSprites() : [...spritesIn(pl.ch), ...spritesIn(this.bot.ch)],
       executor: spritesIn(pl.ch),
       leadMs: Math.min(lead, 150),
       focus: () => this.cineFocus(pl),
@@ -3837,6 +3985,14 @@ export class MatchScene extends Phaser.Scene {
     }
     const h = this.headPos(b);
     this.popText(h.x, h.y - 10, resist ? '¡RESISTE!' : '¡ATURDIDO!', resist ? '#9ff0ff' : '#ffd23f', 30);
+    // 2v2 online (host): el compañero ve el aturdido del bot y su devolución floja llega como golpe del bot (sin animación de golpe)
+    const tag = this.net2host ? this.net2Tag(b) : null;
+    if (tag?.a) {
+      this.net?.sendAction('stunned', { ...tag, ms: stunMs, kind, ...(resist ? { resist: true } : {}) });
+      this.netHit = { charged: false, overhead: false, volley: false, impact: true };
+      this.netHitPending = true;
+      this.netHitA = tag.a;
+    }
     if (kind === 'inferno') {
       this.ultiStunOn(b, stunMs);
       this.loseRacket(b); // la ULTI le hace volar la raqueta
@@ -3856,7 +4012,8 @@ export class MatchScene extends Phaser.Scene {
     a.stun = 99;
     if (isPlayer) stopMotion(this.motion);
     this.tweens.killTweensOf(a);
-    if (this.net && isPlayer) this.net.sendAction('sky-launch');
+    const skyTag = this.net2Tag(a); // mi jugador, o (2v2 online, host) un bot: el otro teléfono lo ve salir volando
+    if (this.net && skyTag) this.net.sendAction('sky-launch', skyTag);
     // explosión del ESPECIAL en el cuerpo y golpe de cámara
     const feet = project(a.x, a.y);
     const head = this.headPos(a);
@@ -3883,7 +4040,7 @@ export class MatchScene extends Phaser.Scene {
     // sprite del pelotazo recibido (ULTI completa, fila 2, frames 3→5) congelado mientras vuela; sin esa hoja, el aturdido
     if (!a.ch.launchPose()) a.ch.impactStun('smash', 1500, false);
     // el que hizo el punto celebra (pose de victoria) y el marcador de arriba se oculta durante el vuelo
-    (isPlayer ? this.bot : this.player).ch.victory();
+    (isPlayer || a === this.ally ? this.bot : this.player).ch.victory(); // celebra el equipo contrario al que salió volando
     this.hud.setVisible(false);
     const ch = a.ch;
     const cam = this.cameras.main;
@@ -4081,6 +4238,7 @@ export class MatchScene extends Phaser.Scene {
 
   /** ¿Empieza un duelo en este fotograma? Con la pelota yendo hacia uno de los dos y el que la recibe en la red. */
   private duelCheck() {
+    if (this.doubles) return; // el DUELO RED es del 1v1
     if (this.duel || this.duelUsed || this.phase !== 'rally' || this.paused || devFlagOn('dev.netDuelOff')) return;
     const s = this.ball.s;
     let receiver: Who | null = null;
@@ -5048,6 +5206,13 @@ export class MatchScene extends Phaser.Scene {
       const other = this.otherRival();
       for (const a of [this.ally, other!]) {
         if (!a) continue;
+        if (a.launched) {
+          // volvió de las estrellas (¡A LAS ESTRELLAS! también alcanza al compañero y al otro rival)
+          a.launched = false;
+          this.tweens.killTweensOf(a.ch);
+          a.ch.setAngle(0).setAlpha(1);
+          a.ch.shadow.setVisible(true);
+        }
         this.clearRacket(a);
         a.stun = 0;
         a.warp = 1;
@@ -5057,21 +5222,52 @@ export class MatchScene extends Phaser.Scene {
         a.ch.releaseRemate();
         a.ch.resetPose();
       }
-      this.setActor(this.ally, COURT.left - 40, clamp(2 * LAT_C - this.player.y, Y_MIN + 40, Y_MAX - 40));
-      if (other) this.setActor(other, COURT.right + 40, clamp(2 * LAT_C - this.bot.y, Y_MIN + 40, Y_MAX - 40));
+      // el compañero del que saca espera en la red (en el lado contrario); el equipo que recibe, los dos al fondo
+      this.setActor(this.ally, this.server === 'player' ? NET_X - DOUBLES_NET_GAP : COURT.left - 40, clamp(2 * LAT_C - this.player.y, Y_MIN + 40, Y_MAX - 40));
+      if (other) this.setActor(other, this.server === 'bot' ? NET_X + DOUBLES_NET_GAP : COURT.right + 40, clamp(2 * LAT_C - this.bot.y, Y_MIN + 40, Y_MAX - 40));
       this.ally.ch.facing = 1;
       if (other) other.ch.facing = -1;
+      // 2v2 online: el plano del punto tiene dos sitios (A = el de `player` en el 2v2 contra bots: al fondo si saca el equipo, y B = el del aliado: en la red).
+      // Saca el humano al azar (net2ServerIsHost): ocupa A; si recibe el equipo, el host ocupa A y el invitado B. Cada teléfono se dibuja como `player`.
+      if (this.net2) {
+        const hostInA = this.server === 'bot' || this.net2ServerIsHost();
+        if (this.net2host ? !hostInA : hostInA) {
+          const px = this.player.x;
+          const py = this.player.y;
+          this.setActor(this.player, this.ally.x, this.ally.y);
+          this.setActor(this.ally, px, py);
+        }
+      }
+      if (this.net2) {
+        this.net2Anchor(0, this.ally.x, this.ally.y);
+        if (!this.net2host) {
+          this.net2Anchor(1, this.rivalActors[0].x, this.rivalActors[0].y);
+          this.net2Anchor(2, this.rivalActors[1].x, this.rivalActors[1].y);
+        }
+      }
     }
     // PRUEBAS del DUELO EN LA RED: en el PRIMER juego (0-0 en juegos) el bot, tras devolver, se queda pegado a la red.
     // Se apaga con localStorage 'dev.botNet' = '0' (y no existe en red: el rival es el otro teléfono). Quitar al terminar las pruebas.
-    const netTest = !this.net && this.score.games[0] + this.score.games[1] === 0 && !devFlagOff('dev.botNet');
+    const netTest = !this.net && !this.doubles && this.score.games[0] + this.score.games[1] === 0 && !devFlagOff('dev.botNet');
     this.netTestOn = netTest;
     this.ai.homeX = null; // pegado a la red solo después del saque y su resto (update lo pone: serveLock)
     this.brain.netPractice = netTest; // y en ese juego solo peloteo suave a la red (BotBrain.netPractice)
     this.ai.reset(this.bot.x, this.bot.y);
+    if (this.doubles) {
+      const o2 = this.otherRival();
+      const ob = o2 ? this.rivalBrains[this.rivalActors.indexOf(o2)] : null;
+      if (o2 && ob) ob.ai.reset(o2.x, o2.y);
+    }
     // en red: el suavizado del rival arranca desde su posición de saque (si no, volvía a sus últimas posiciones del
     // punto anterior y saltaba de vuelta al empezar el punto)
-    if (this.net) {
+    if (this.net2 && this.ally) {
+      // el invitado ve a su compañero (el host) como lly: sus posiciones de saque son las del host con los papeles cambiados
+      // (los papeles de player / aliado ya se colocaron arriba, una sola vez: antes se intercambiaban dos veces y se anulaban)
+      for (let k = 0; k < 3; k++) {
+        const a = this.net2Actor(k);
+        if (a) this.net2Anchor(k, a.x, a.y);
+      }
+    } else if (this.net) {
       this.netAnchor(this.bot.x, this.bot.y);
       this.diagCause = 'saque';
     }
@@ -5084,7 +5280,7 @@ export class MatchScene extends Phaser.Scene {
   }
 
   private holdBall() {
-    const srv = this.server === 'player' ? this.player : this.bot;
+    const srv = this.srvActor();
     const s = this.ball.s;
     s.x = srv.x + srv.dir * 10;
     s.y = srv.y + srv.ch.facing * 28;
@@ -5095,7 +5291,7 @@ export class MatchScene extends Phaser.Scene {
 
   /** Cuadro de saque diagonal que corresponde al sacador actual. */
   private computeServeBox() {
-    const srv = this.server === 'player' ? this.player : this.bot;
+    const srv = this.srvActor();
     const sl = (NET_X - COURT.left) * 0.538;
     const x0 = this.server === 'player' ? NET_X : NET_X - sl;
     const x1 = this.server === 'player' ? NET_X + sl : NET_X;
@@ -5137,10 +5333,13 @@ export class MatchScene extends Phaser.Scene {
     if (!secondServe) this.brain.onPointStart(this.score.points, this.score.games);
     // 2v2: el que saca y el que recibe primero es siempre el rival 1 (el activo vuelve a ser él); el 2.º rival también sortea su ánimo
     if (this.doubles && this.rivalActors.length === 2) {
-      this.bot = this.rivalActors[0];
-      this.brain = this.rivalBrains[0];
+      // saque alternado entre los dos rivales (cada juego que sacan, uno distinto); recibiendo, siempre el 1.º
+      const idx = this.score.server === 1 ? Math.floor(this.score.gameIndex / 2) % 2 : 0;
+      this.bot = this.rivalActors[idx];
+      this.brain = this.rivalBrains[idx];
       this.ai = this.brain.ai;
-      if (!secondServe) this.rivalBrains[1].onPointStart(this.score.points, this.score.games);
+      if (!secondServe) this.rivalBrains[1 - idx].onPointStart(this.score.points, this.score.games);
+      this.rivalSpecialUsed = false;
     }
     this.bot.ch.setSprint(false); // DASH del rival cortado por el fin del punto
     this.serving = false;
@@ -5161,7 +5360,7 @@ export class MatchScene extends Phaser.Scene {
     this.serveDirect = false;
     this.placeForServe();
     this.phase = 'serve';
-    this.serveClock = this.server === 'player' ? SERVE.timeLimit : 0; // 5 s para sacar (solo el jugador)
+    this.serveClock = this.meServes ? SERVE.timeLimit : 0; // 5 s para sacar (solo el jugador)
     this.serveClockText.setVisible(false);
     this.board?.setInfo(null);
     this.computeServeBox();
@@ -5169,19 +5368,19 @@ export class MatchScene extends Phaser.Scene {
     // zona de colocación: la mitad de la línea de fondo del lado desde el que se saca
     const srvA = this.srvActor();
     this.serveZone = srvA.y > LAT_C ? [LAT_C + 10, COURT.bottom] : [COURT.top, LAT_C - 10];
-    if (this.server === 'player') this.joy.release();
-    else if (!this.net) {
+    if (this.meServes) this.joy.release();
+    else if (this.simBots && this.server === 'bot') {
       // el rival decide ya su saque (tipo, destino y momento) y se coloca antes de lanzar
       this.botPlan = this.serveAI.plan(this.faults, this.ai.d);
       this.brain.serveWait = this.botPlan.wait;
       this.botServeY = clamp(LAT_C + Math.sign(srvA.y - LAT_C) * rand(40, 150), this.serveZone[0], this.serveZone[1]);
     }
-    this.setServeUi(this.server === 'player');
+    this.setServeUi(this.meServes);
     this.secondTag.setVisible(this.faults > 0);
     // menos textos: el turno lo indica la etiqueta SERVICIO sobre quien saca y el marcador ya mostró Iguales/Ventaja
     if (secondServe) showSideNotice(this, '2º servicio', 0xff9a1f, 1100); // aviso lateral (estilo único de avisos)
     // en red: lanzamiento del rival que llegó antes
-    if (this.net && this.netPendingToss && this.server === 'bot') {
+    if (this.net && this.netPendingToss && this.netRemoteServes()) {
       const k = this.netPendingToss as ServeKind;
       this.netPendingToss = null;
       this.beginToss(k);
@@ -5190,7 +5389,8 @@ export class MatchScene extends Phaser.Scene {
 
   // ---------------------------------------------------------------- saque manual
   private srvActor() {
-    return this.server === 'player' ? this.player : this.bot;
+    if (this.server === 'player') return this.net2 && !this.net2IServe && this.ally ? this.ally : this.player; // 2v2 online: saca el humano que salió al azar (el otro, visto como compañero)
+    return this.bot;
   }
 
   /** ¿Se muestran los botones de saque? (turno de saque del jugador, hasta que golpea) */
@@ -5242,8 +5442,8 @@ export class MatchScene extends Phaser.Scene {
     this.tossFromDy = this.ball.s.y - this.srvActor().y; // de dónde sale la pelota (la mano / posición de espera)
     this.ball.s.vz = SERVE.tossVz;
     this.srvActor().ch.serve(kind === 'normal' ? 'normal' : 'spin');
-    if (this.server === 'player') this.net?.sendAction('toss', { kind });
-    if (this.server === 'player') {
+    if (this.meServes) this.net?.sendAction('toss', { kind });
+    if (this.meServes) {
       const [mine, other] = kind === 'normal' ? [this.serveNormalBtn, this.serveSpinBtn] : [this.serveSpinBtn, this.serveNormalBtn];
       mine.setChosen(true);
       other.setLocked(true); // no se puede cambiar de tipo de saque a mitad del lanzamiento
@@ -5393,30 +5593,42 @@ export class MatchScene extends Phaser.Scene {
     const aimT = pAim ? pAim.aimT : this.botPlan.aimT;
     // saque DIRECTO: botón verde + golpe en el punto máximo
     const direct = who === 'player' && kind === 'normal' && this.serveDirect && quality === 'perfect';
+    // botón verde sin dar en el aro: algo de directo (menos que el DIRECTO)
+    const semiDirect = who === 'player' && kind === 'normal' && this.serveDirect && quality === 'normal';
+    // toque (sin botón) en el aro: fuerte, sin directo ni efecto, un poco alto
+    const tapPerfect = who === 'player' && kind === 'normal' && !this.serveDirect && quality === 'perfect';
+    const bigSpin = kind === 'spin' && quality === 'perfect';
     this.serveDirect = false;
     // el DIRECTO es más rápido y plano; el destino es el centro de la zona elegida (sin ir más al fondo)
     const extraDepth = direct && !pAim ? SERVE.direct.depth - SERVE.depth.normal : 0;
     const { tx, ty } = this.serveSpot(who, kind, aimT, g() * eLat, g() * eDep + extraDepth, pAim?.depthF);
-    let speed = SERVE_SPEED * SERVE.speed[quality][second] * (kind === 'spin' ? SERVE.spinSpeedMult : 1) * (direct ? SERVE.direct.speedMult : 1);
-    const margin = direct ? SERVE.direct.margin : quality === 'perfect' ? 22 : quality === 'normal' ? rand(8, 20) : rand(-4, 10);
+    let speed =
+      SERVE_SPEED * SERVE.speed[quality][second] * (kind === 'spin' ? SERVE.spinSpeedMult : 1) * (direct ? SERVE.direct.speedMult : semiDirect ? SERVE.directPartial.speedMult : 1);
+    const margin = direct
+      ? SERVE.direct.margin
+      : semiDirect
+        ? SERVE.directPartial.margin
+        : tapPerfect
+          ? SERVE.tapPerfect.margin
+          : kind === 'spin' && quality !== 'weak'
+            ? SERVE.spinMargin
+            : quality === 'perfect'
+              ? 22
+              : quality === 'normal'
+                ? rand(8, 20)
+                : rand(-4, 10);
     // (14-11-2026) el saque del RIVAL no sale en globo: los lentos (flojo / segundo saque) subían hasta ~340 de altura contra ~230 del perfecto. Se sube su velocidad hasta
     // que la altura máxima baje del tope. (El saque del jugador no cambia: un saque flojo suyo sigue siendo un castigo.)
     if (who === 'bot') speed = this.noLobServeSpeed(s, tx, ty, speed, margin);
 
     // el SAQUE nunca sale en globo: el vuelo solo puede alargarse un poco para pasar la red (si no, red / falta)
     aimShot(s, tx, ty, speed, margin, SERVE_MAX_STRETCH);
-    // (14-11-2026) SAQUE PERFECTO (no DIRECTO): sale DIRECTO hacia abajo, sin subir antes. Se acelera de a poco hasta que
-    // la pelota ya no sube (tope: la velocidad del DIRECTO); el margen sobre la red lo sigue asegurando aimShot.
-    if (who === 'player' && quality === 'perfect' && !direct && kind === 'normal') {
-      for (let sp = speed; s.vz > 0 && sp < speed * SERVE.direct.speedMult; ) {
-        sp = Math.min(speed * SERVE.direct.speedMult, sp * 1.06);
-        aimShot(s, tx, ty, sp, PERFECT_SERVE_MARGIN, SERVE_MAX_STRETCH);
-      }
-    }
+    // (18-11-2026) el saque por toque en el aro ya NO se aplana: sale fuerte y un poco alto (SERVE.tapPerfect); el aplanado es del botón verde
     if (kind === 'spin') {
       // curva hacia el lado al que se apunta: se apunta antes para que la pelota bote donde se eligió.
       // El tiempo de vuelo cambia al desplazar el punto de apuntado, así que se itera hasta que converge.
-      const ay = SERVE.spinAy * (aimT > 0.55 ? 1 : aimT < 0.45 ? -1 : Math.random() < 0.5 ? 1 : -1);
+      // en el aro: efecto GRANDE (más curva y más patada al botar)
+      const ay = (bigSpin ? SERVE.spinBigAy : SERVE.spinAy) * (aimT > 0.55 ? 1 : aimT < 0.45 ? -1 : Math.random() < 0.5 ? 1 : -1);
       let aimY = ty;
       for (let i = 0; i < 4; i++) {
         const T = (tx - s.x) / s.vx;
@@ -5429,6 +5641,10 @@ export class MatchScene extends Phaser.Scene {
     if (Math.random() < SERVE.flawChance[quality]) s.vz -= rand(SERVE.flawDrop[0], SERVE.flawDrop[1]);
     this.ball.setKind(kind === 'spin' ? 'side' : 'normal', quality === 'perfect', who === 'player' ? this.trailLook : undefined);
     this.lastHitter = who;
+    if (who === 'bot' && this.net2host) {
+      this.netHitPending = true; // el saque de un bot del host: el invitado lo ve (golpe  = el bot)
+      this.netHitA = this.rivalActors.indexOf(this.bot) + 1;
+    }
     this.bounces = 0;
     this.serving = true;
     this.serveLet = false;
@@ -5438,7 +5654,7 @@ export class MatchScene extends Phaser.Scene {
     // potencia real del saque (la velocidad que lleva) para el efecto de impacto
     const mult = SERVE.speed[quality][second] * (kind === 'spin' ? SERVE.spinSpeedMult : 1);
     this.hitFx(s.x, s.y, s.z, false, clamp((mult - 0.8) / 0.6, 0, 1), false, undefined, 'ball-saque-1');
-    if (quality === 'perfect') this.perfectFx(s.x, s.y, s.z, direct);
+    if (quality === 'perfect') this.perfectFx(s.x, s.y, s.z, direct, bigSpin);
     // Perfect Timing en el saque: el saque YA tiene su ventana perfecta y su bonus (SERVE.speed); aquí solo
     // se suma el feedback común (sonido + vibración), sin más potencia (evita acumular bonificaciones)
     if (quality === 'perfect' && who === 'player' && this.timingOn()) {
@@ -5466,7 +5682,7 @@ export class MatchScene extends Phaser.Scene {
   }
 
   /** Efecto del saque perfecto: anillo azul neón y texto (dorado y más fuerte si es DIRECTO). */
-  private perfectFx(bx: number, by: number, bz: number, direct = false) {
+  private perfectFx(bx: number, by: number, bz: number, direct = false, bigSpin = false) {
     if (direct) {
       const p = project(bx, by, bz);
       for (const [col, size, delay] of [[0xffd23f, 4.6, 0], [NEON, 5.6, 60]] as const) {
@@ -5484,7 +5700,7 @@ export class MatchScene extends Phaser.Scene {
     this.tweens.add({ targets: ring, scale: 4.2, alpha: 0, duration: 420, onComplete: () => ring.destroy() });
     if (this.server !== 'player') return; // el rival solo muestra el anillo
     this.cameras.main.flash(100, 120, 230, 255);
-    this.popText(p.sx, p.sy - 50, '¡SAQUE PERFECTO!', '#7ff0ff', 38);
+    this.popText(p.sx, p.sy - 50, bigSpin ? '¡SUPER EFECTO!' : '¡SAQUE PERFECTO!', '#7ff0ff', 38);
   }
 
   /** DASH y SMASH visibles pero bloqueados un momento tras sacar (evita pulsarlos sin querer). */
@@ -5503,7 +5719,7 @@ export class MatchScene extends Phaser.Scene {
     const st = this.serveCtl.state;
     // (18-11-2026, usuario) con la pelota ya lanzada ('toss') el reloj se PAUSA: lanzar en el último segundo ya no da falta por
     // tiempo con la pelota en el aire; si la atrapas (catchBall → 'serve') sigue contando desde donde iba
-    const counting = this.serveClock > 0 && this.server === 'player' && this.phase === 'serve' && st !== 'SWING' && st !== 'SERVE_RESULT';
+    const counting = this.serveClock > 0 && this.meServes && this.phase === 'serve' && st !== 'SWING' && st !== 'SERVE_RESULT';
     if (!counting) {
       this.serveClockText.setVisible(false);
       this.board?.setInfo(null);
@@ -5516,6 +5732,7 @@ export class MatchScene extends Phaser.Scene {
       this.serveClockText.setVisible(false);
       this.board?.setInfo(null);
       this.serveCountdown.final('TIEMPO'); // en el mismo aviso lateral de la cuenta atrás (antes, cartel al centro)
+      if (this.net2 && !this.net2host) this.net?.sendAction('serve-timeout'); // 2v2 online: el host juzga la falta (aquí no se lanzó nada que él vea)
       this.tossFault();
       return;
     }
@@ -5530,14 +5747,14 @@ export class MatchScene extends Phaser.Scene {
   /** La pelota lanzada baja sin que se golpee: el servidor la atrapa y puede lanzarla de nuevo (sin falta). */
   private catchBall() {
     // en red, el lanzamiento del rival lo resuelve su teléfono (llega 'catch')
-    if (this.net && this.server === 'bot' && !this.netApplying) return;
-    if (this.net && this.server === 'player') this.net.sendAction('catch');
+    if (this.net && this.netRemoteServes() && !this.netApplying) return;
+    if (this.net && this.meServes) this.net.sendAction('catch');
     this.serveCtl.reset();
     this.phase = 'serve';
     this.srvActor().ch.resetPose();
     this.serveAim.setVisible(false);
-    if (this.server === 'player') this.setServeUi(true);
-    else if (!this.net) {
+    if (this.meServes) this.setServeUi(true);
+    else if (this.simBots && this.server === 'bot') {
       this.botPlan = this.serveAI.plan(this.faults, this.ai.d);
       this.brain.serveWait = 0.5;
     }
@@ -5556,7 +5773,7 @@ export class MatchScene extends Phaser.Scene {
     // sola (netGate → 'fault' / 'point') desde serviceFault.
     this._lastHitter = this.server;
     this.phase = 'rally';
-    this.netForceAuthority = this.server === 'player';
+    this.netForceAuthority = this.meServes;
     this.serviceFault();
     this.netForceAuthority = false;
   }
@@ -5578,7 +5795,7 @@ export class MatchScene extends Phaser.Scene {
   private renderServeAim() {
     const g = this.serveAim;
     const ctl = this.serveCtl;
-    const on = this.server === 'player' && this.phase === 'toss' && (ctl.state === 'TOSS' || ctl.state === 'AIMING');
+    const on = this.meServes && this.phase === 'toss' && (ctl.state === 'TOSS' || ctl.state === 'AIMING');
     g.clear();
     g.setVisible(on);
     if (!on || !ctl.kind) return;
@@ -5708,7 +5925,7 @@ export class MatchScene extends Phaser.Scene {
     if (this.phase !== 'rally' || !this.serving) return;
     // en red: la doble falta se avisa solo como PUNTO (lo envía pointTo); la primera, como falta
     if (this.faults + 1 < 2 && this.netGate('fault')) return;
-    if (this.faults + 1 >= 2 && this.net && !this.netApplying && !(this.netForceAuthority || this.lastHitter === 'bot')) return;
+    if (this.faults + 1 >= 2 && this.net && !this.netApplying && !(this.net2host || this.netForceAuthority || this.lastHitter === 'bot')) return; // (2v2 online: el host juzga todo, también el saque del invitado)
     this.serving = false;
     this.faults++;
     const receiver: Who = this.lastHitter === 'player' ? 'bot' : 'player';
@@ -5719,7 +5936,7 @@ export class MatchScene extends Phaser.Scene {
     this.phase = 'pointover';
     this.netNextSecond = true;
     // FALTA sobre quien sacó (como el ¡PERFECTO!), no en un cartel al centro
-    const srv = this.lastHitter === 'player' ? this.player : this.bot;
+    const srv = this.srvActor(); // quien sacó (2v2 online: puede ser el compañero)
     const h = this.headPos(srv);
     this.popText(h.x, h.y - 10, 'FALTA', '#ffc42e', 36);
     this.time.delayedCall(1100, () => this.startPoint(true));
@@ -5742,6 +5959,11 @@ export class MatchScene extends Phaser.Scene {
     if (this.netGate('point', w, reason, color)) return;
     // (log) solo el punto que se aplica de verdad (antes se anotaba también el que decide el otro teléfono)
     this.diag?.log('point', { w, reason, score: `${this.score.points.join('-')} / ${this.score.games.join('-')}` });
+    // MISIONES POR PARTIDA (solo 1v1): antes de limpiar el estado del punto (duelo, rival volando, cadena ESPECIAL → GLOBO)
+    if (!this.doubles) {
+      const fresh = missionPoint(this.missions, { winner: w === 'player' ? 'player' : 'rival', reason, rivalLaunched: !!this.bot.launched, duel: this.duelUsed });
+      fresh.forEach((id, i) => this.time.delayedCall(350 + i * 120, () => this.sys.isActive() && this.phase !== 'over' && showMissionAlert(this, missionDef(id).title, missionDef(id).coins)));
+    }
     this.duelAbort('point'); // punto decidido (también el que llega por red): el duelo en curso se cancela
     this.phase = 'pointover';
     this.slowmoAbort(); // TIEMPO LENTO a medias: tiempo, cámara y personaje normales
@@ -5761,7 +5983,7 @@ export class MatchScene extends Phaser.Scene {
     for (const sd of zr.ended) this.zoneFx[sd]?.stop();
     if (zr.entered) this.zoneStart(zr.entered);
     if (w === 'player') this.onInfernoPoint();
-    else this.brain.onPointWon(); // la ULTI del rival se carga igual: 3 puntos ganados
+    else for (const b of this.doubles ? this.rivalBrains : [this.brain]) b.onPointWon(); // la ULTI del rival se carga igual: 3 puntos ganados (en 2v2 la carga es de los dos)
     // el motivo (FUERA, RED, DOBLE FALTA…) va dentro del marcador central, no flotando junto al jugador
     const why = reason === '¡PUNTO!' || reason === 'Punto rival' ? null : reason.replace(/[¡!]/g, '');
     void color;
@@ -5769,7 +5991,8 @@ export class MatchScene extends Phaser.Scene {
 
     if (res.matchWinner !== null) {
       const win = res.matchWinner === 0;
-      (win ? this.player : this.bot).ch.victory();
+      // (18-11-2026, usuario) victoria AJUSTADA (el perdedor ganó algún juego, p. ej. 2-1): celebra de rodillas, "¡VAMOS!"
+      (win ? this.player : this.bot).ch.victory(Math.min(this.score.games[0], this.score.games[1]) > 0);
       (win ? this.bot : this.player).ch.defeat();
       this.phase = 'over'; // ya terminó: el fin oficial del servidor (red) no vuelve a lanzar endMatch a mitad del final
       // FIN DEL PARTIDO con espectáculo (fx/matchFinale.ts): marcador final, sello, confeti / ceniza y sonido; luego la
@@ -5801,7 +6024,7 @@ export class MatchScene extends Phaser.Scene {
       a.ch.setReady(false);
     }
     stopMotion(this.motion);
-    this.player.ch.pointEnd(w === 'player');
+    this.player.ch.pointEnd(w === 'player', w === 'player' && this.epicPoint);
     this.bot.ch.pointEnd(w === 'bot');
     if (this.doubles && this.ally) {
       this.ally.ch.pointEnd(w === 'player');
@@ -5872,7 +6095,10 @@ export class MatchScene extends Phaser.Scene {
         rivalGames: this.score.games[1],
         botName: this.botName,
         rivalLevel: this.rivalLevel,
+        ...(this.doubles ? { doubles: { allyName: this.allyName, rival2Name: this.rival2Name } } : {}),
         lan: !!this.net,
+        // MISIONES POR PARTIDA cumplidas (MatchEndScene las paga en ADICIONALES); en 2v2 no hay
+        ...(this.doubles ? {} : { missions: [...this.missions.done] }),
       },
     });
   }
@@ -6413,10 +6639,11 @@ export class MatchScene extends Phaser.Scene {
         const c = this.lungeContact();
         if (c) this.playerLunge(c);
       }
-    } else if (!this.net && this.lastHitter !== 'bot' && s.x > NET_X && s.vx > 0 && this.bot.racket && this.ball.power && !this.infernoFlight && this.inReach(this.bot)) {
+    } else if (this.simBots && this.lastHitter !== 'bot' && s.x > NET_X && s.vx > 0 && this.bot.racket && this.ball.power && !this.infernoFlight && this.inReach(this.bot)) {
       this.skyLaunch(this.bot); // el bot sin raqueta recibe tu ESPECIAL: ¡A LAS ESTRELLAS!
-    } else if (!this.net && this.lastHitter !== 'bot' && s.x > NET_X && s.vx > 0 && this.bot.stun <= 0 && !this.bot.racket) {
-      const near = this.inReach(this.bot);
+    } else if (this.simBots && this.lastHitter !== 'bot' && s.x > NET_X && s.vx > 0 && this.bot.stun <= 0 && !this.bot.racket) {
+      // (18-11-2026, usuario) con su DEFENSIVO usado para esta pelota llega un poco más lejos (como tu DASH, devolución más segura)
+      const near = this.inReach(this.bot) || (this.brain.dashBall && this.inReach(this.bot, s, HIT_RANGE * BOT_DASH_REACH));
       // ESPECIAL del BOT: con él listo (y decidido para esta pelota) llega un poco más lejos, y ese golpe es su ESPECIAL
       const smashReach = !near && !this.ball.power && !this.serveLock && this.botSmashRoll() && this.inReach(this.bot, s, HIT_RANGE * SMASH_REACH);
       // GLOBO del duelo: el bot se tira a por él (estirada) si no llega con el alcance normal
@@ -6440,7 +6667,9 @@ export class MatchScene extends Phaser.Scene {
     if (this.cineLock || this.phase !== 'rally' || this.serveLock) return false; // sin ULTI en el resto del saque
     const bt = this.bot;
     const ctx = { playerX: this.player.x, playerY: this.player.y, botX: bt.x, botY: bt.y };
+    if (this.doubles && this.rivalSpecialUsed) return false; // 2v2: el compañero ya lanzó un especial en este punto
     if (!this.brain.wantsUlti(s, ctx)) return false;
+    if (this.doubles) this.rivalSpecialUsed = true;
     // su carga visible (botChargeTick) se apaga ya: la escena se congela durante la cinemática
     this.rivalChargeT = 0;
     this.rivalChargeFx(0);
@@ -6458,9 +6687,11 @@ export class MatchScene extends Phaser.Scene {
     infernoSound.charge(this);
     showInfernoGaze(this, INFERNO_CINE.hitAtMs - GAZE_END_BEFORE_HIT_MS, this.gazeY(), skin, el);
     this.ghosts.setLook(INFERNO_LOOK[el].ghostTint, INFERNO_LOOK[el].ghostRamp);
+    // 2v2 online (host): el compañero ve la misma cinemática del bot (mismo guion; la posición final va en `tx` / `ty`)
+    if (this.net2host) this.net?.sendAction('inferno-cine', { a: this.rivalActors.indexOf(bt) + 1, x: from.x, y: from.y, tx: to.x, ty: to.y, ms: INFERNO_CINE.hitAtMs, power: el });
     this.cine.start({
       profile: infernoCine(el),
-      freeze: [...sprites, ...spritesIn(this.player.ch)],
+      freeze: this.doubles ? this.freezeSprites() : [...sprites, ...spritesIn(this.player.ch)],
       executor: sprites,
       leadMs: 0,
       focus: () => this.cineFocus(bt),
@@ -6532,11 +6763,14 @@ export class MatchScene extends Phaser.Scene {
 
   /** `forced`: devolución garantizada del DASH (sin toque del jugador: no se evalúa el timing). */
   private playerHit(forced = false) {
+    this.missionShot = null; // (MISIONES) la etiqueta es solo de este golpe
     // golpe forzado del DASH (DEFENSIVO) contra el SMASH o la ULTI rival: también te revienta (la ULTI, aun en ZONA)
     if (this.ball.power && this.lastHitter === 'bot' && !this.infernoPending && (this.infernoFlight || !this.zone.active('player'))) {
       this.playerImpact();
       return;
     }
+    // PUNTO ÉPICO: devolución del DASH (defensivo) o de un ESPECIAL / ULTI del rival
+    if (forced || (this.ball.power && this.lastHitter === 'bot')) this.epicPoint = true;
     const s = this.ball.s;
     // el golpe que devuelvo venía cargado al máximo: empujón leve al final (más abajo)
     const pushed = this.maxPushOn === 'player';
@@ -6688,6 +6922,7 @@ export class MatchScene extends Phaser.Scene {
         this.maxLob = { hitter: 'player' };
         this.maxLobWide = false;
         this.lobCurve = true;
+        this.missionShot = 'maxLob'; // MISIONES: ESPECIAL + GLOBO MÁXIMO
         const h = this.headPos(this.player);
         this.popText(h.x, h.y - 10, '¡GLOBO!', '#ffe680', 30);
       } else if (shot === 'lob') {
@@ -6803,6 +7038,7 @@ export class MatchScene extends Phaser.Scene {
       // en red el rival ve tu nota (¡PERFECTO! / BIEN / PRONTO / TARDE) y tu racha sobre tu personaje
       if (timed.grade !== 'none' && timed.grade !== 'off' && !(charged && kind === 'drop')) this.net?.sendAction('timing', { grade: timed.grade, streak: n, ms: fxDelay });
     }
+    if (power && !inferno) this.missionShot = 'special'; // MISIONES: tu ESPECIAL (la ULTI no cuenta); el GLOBO máximo se marca en su rama
     this.lastHitter = 'player';
     this.bounces = 0;
     this.ai.onPlayerHit(power || remate);
@@ -6905,7 +7141,8 @@ export class MatchScene extends Phaser.Scene {
     const s = this.ball.s;
     // a dónde y cómo devuelve: lo decide el cerebro; la física del golpe se aplica aquí como siempre
     // sin ESPECIAL en el resto del saque (serveLock: este golpe sería el 2º del punto)
-    const shot = this.brain.planShot(s, { playerX: this.player.x, playerY: this.player.y, botX: this.bot.x, botY: this.bot.y }, ulti, this.serveLock, forcePower);
+    const shot = this.brain.planShot(s, { playerX: this.player.x, playerY: this.player.y, botX: this.bot.x, botY: this.bot.y }, ulti, this.serveLock || (this.doubles && this.rivalSpecialUsed && !ulti), forcePower);
+    if (this.doubles && shot.power) this.rivalSpecialUsed = true;
     // ESPECIAL del BOT: la misma cinemática que el tuyo (pantalla oscura y foco en él, partido congelado); el golpe sale
     // al terminar, una sola vez. Su clip arranca ya en la preparación (la segunda llamada a swing no lo reinicia).
     if (shot.power && !ulti && !this.net && smashCineEnabled() && !this.cineLock && this.phase === 'rally') {
@@ -6970,6 +7207,10 @@ export class MatchScene extends Phaser.Scene {
     this.ball.setKind(shot.kind);
     this.lastHitter = 'bot';
     this.bounces = 0;
+    if (this.net2host) {
+      this.netHitPending = true;
+      this.netHitA = this.rivalActors.indexOf(this.bot) + 1;
+    }
     this.brain.onShot(shot); // se recoloca según su golpe (recuperación táctica)
     this.hitFxAt(fxDelay, s.x, s.y, s.z, power, 0.15, ulti, ulti ? el : power ? this.botKit.smash : undefined);
     const h = this.headPos(this.bot);
@@ -7250,8 +7491,12 @@ export class MatchScene extends Phaser.Scene {
   }
 
   private renderActors() {
+    // (18-11-2026, usuario: "a veces el rival se sube a la pared") el fondo del rival (B_X) podía quedar DETRÁS de la pared dibujada del
+    // estadio: nadie pasa de la pared (menos un margen para los pies)
+    const wallX = this.backWall ? Math.min(B_X[1], this.backWall.x - RIVAL_WALL_GAP) : B_X[1];
     for (const a of this.everyone()) {
       if (a.launched) continue; // ¡A LAS ESTRELLAS!: su vuelo lo mueven sus tweens
+      if (a.x > wallX) a.x = wallX;
       const boost = (a === this.player ? this.aura.active : a === this.bot && !!this.botAura?.active) ? 1.1 + Math.sin(this.time.now / 70) * 0.015 : 1; // con hipercarga el jugador crece un poco (como en Brawl Stars)
       // posición, escala, giro, agachado y sombra: fx/actorPose.ts (la misma que usa la demostración de PERSONALIZAR)
       const p = placeActor(a.ch, a, boost);
@@ -7313,7 +7558,12 @@ export class MatchScene extends Phaser.Scene {
     if (this.netCineSeen) {
       // salió de una cinemática: el rival sigue desde donde quedó en ella (no salta al último estado que llegó)
       this.netCineSeen = false;
-      if (this.net && performance.now() >= this.netBotLockUntil) this.netAnchor(this.bot.x, this.bot.y);
+      if (this.net && !this.net2 && performance.now() >= this.netBotLockUntil) this.netAnchor(this.bot.x, this.bot.y);
+      // 2v2 online: los actores remotos siguen desde donde quedaron en la cinemática (no saltan al último estado que llegó)
+      else if (this.net2) for (let k = 0; k < 3; k++) {
+        const ra = this.net2Actor(k);
+        if (ra) this.net2Anchor(k, ra.x, ra.y);
+      }
     }
     this.netView.update(); // la red solo se redibuja mientras ondula / vibra
     this.syncAbilityLock(); // sin habilidades durante el saque y su resto
@@ -7335,10 +7585,10 @@ export class MatchScene extends Phaser.Scene {
       this.phase === 'over' ||
       this.phase === 'pointover' || // (18-11-2026) quieto: su reacción al punto (ganado / perdido) no se corta
       this.phase === 'intro' ||
-      (this.server === 'player' && this.phase === 'toss') ||
-      (this.server === 'player' && this.phase === 'serve' && this.serveCtl.state !== 'POSITIONING');
+      (this.meServes && this.phase === 'toss') ||
+      (this.meServes && this.phase === 'serve' && this.serveCtl.state !== 'POSITIONING');
     // al sacar (antes de lanzar) solo hay desplazamiento lateral dentro de la mitad de la línea de fondo
-    const positioning = this.server === 'player' && this.phase === 'serve' && this.serveCtl.state === 'POSITIONING';
+    const positioning = this.meServes && this.phase === 'serve' && this.serveCtl.state === 'POSITIONING';
     if (pl.stun > 0) pl.stun -= dt;
     // (18-11-2026) aturdido: habilidades apagadas hasta que termine (solo al entrar / salir del aturdimiento: no pisa otros bloqueos)
     if (pl.stun > 0 !== this.stunLockOn) {
@@ -7406,11 +7656,19 @@ export class MatchScene extends Phaser.Scene {
     // --- bot
     const bt = this.bot;
     // en red el rival es el otro jugador: se mueve con su estado (sin IA)
-    if (this.net) {
+    if (this.net2) {
+      this.net2Tick(dt); // el compañero (y, en el invitado, los 2 bots) llegan por red
+      this.netPingTick();
+      if (this.net2host) this.net2SendBots();
+    }
+    if (this.net && !this.net2) {
       this.netBotTick(dt);
       this.netSignalTick();
       this.netPingTick();
       this.diagTick(dt);
+    }
+    else if (this.net2 && !this.net2host) {
+      // invitado del 2v2: los bots los simula el host
     }
     else if (this.netBotFly && this.netBotFlyTick(dt)) {
       // SOMBRA / SUPERSALTO / VOLTERETA / PATINAJE del BOT en curso (botFly): su recorrido manda sobre la posición
@@ -7479,7 +7737,7 @@ export class MatchScene extends Phaser.Scene {
     this.botChargeTick(dt, mv.moving);
     }
 
-    if (this.doubles) this.doublesTick(dt); // 2v2: aliado y rival que no recibe
+    if (this.doubles && this.simBots) this.doublesTick(dt); // 2v2: aliado y rival que no recibe
     this.racketPickup();
 
     // --- tiempo para sacar (solo el jugador): si se agota, falta
@@ -7526,9 +7784,9 @@ export class MatchScene extends Phaser.Scene {
       else if (ctl.state === 'AIMING' && s.vz < 0 && s.z <= SERVE.catchZ) this.catchBall(); // no la golpeó: la atrapa y reintenta
       else {
         const tev = ctl.tick(dt);
-        if (!this.net && this.server === 'bot' && ctl.state === 'AIMING' && ctl.t >= this.botPlan.pressAt) this.beginSwing();
+        if (this.simBots && this.server === 'bot' && ctl.state === 'AIMING' && ctl.t >= this.botPlan.pressAt) this.beginSwing();
         // el botón elegido se ilumina en azul neón mientras dura la ventana de saque perfecto
-        if (this.server === 'player' && ctl.kind) (ctl.kind === 'normal' ? this.serveNormalBtn : this.serveSpinBtn).setCue(ctl.windowOpen());
+        if (this.meServes && ctl.kind) (ctl.kind === 'normal' ? this.serveNormalBtn : this.serveSpinBtn).setCue(ctl.windowOpen());
         if (tev === 'contact') this.executeServe();
       }
     } else if (this.phase === 'over' && this.finaleBall) {
@@ -7583,7 +7841,7 @@ export class MatchScene extends Phaser.Scene {
       this.updateDashHit(dt);
     }
 
-    this.ai.homeX = this.netTestOn && !this.serveLock ? NET_X + 70 : null; // (prueba) el bot sube a la red solo tras el saque y su resto
+    this.ai.homeX = this.doubles ? (this.bot.x < NET_X + 220 ? NET_X + DOUBLES_NET_GAP : null) : this.netTestOn && !this.serveLock ? NET_X + 70 : null; // (prueba) el bot sube a la red solo tras el saque y su resto
     this.duelCheck(); // DUELO EN LA RED: los dos pegados a la red y la pelota a punto de llegar
     if (this.duel) { this.renderActors(); return; }
     // globo: caída prevista, círculo en el suelo y aviso del SMASH potenciado (solo presentación + reglas)
@@ -8184,7 +8442,8 @@ export class MatchScene extends Phaser.Scene {
         });
       },
     });
-    if (a === this.player) this.net?.sendAction('racket', { lost: true, x: to.x, y: to.y });
+    const tag = this.net2Tag(a); // mi jugador, o (2v2 online, host) un bot
+    if (tag) this.net?.sendAction('racket', { lost: true, x: to.x, y: to.y, ...tag });
   }
 
   /** Quita la raqueta del suelo (sin aviso). */
@@ -8239,7 +8498,7 @@ export class MatchScene extends Phaser.Scene {
         vanish();
         a.ch.setNoRacket(false); // recogida cortada: ya la tiene (MatchScene le devolvió los golpes); sin pose "sin raqueta"
       });
-      if (!(a === this.bot && this.net)) a.stun = Math.max(a.stun, pickMs / 1000);
+      if (!(a === this.bot && this.net && !this.net2host)) a.stun = Math.max(a.stun, pickMs / 1000);
       if (a === this.player) stopMotion(this.motion);
     }
     // mano de la raqueta: a la derecha de la pantalla de espaldas (jugador), a la izquierda de frente (rival)
@@ -8256,10 +8515,9 @@ export class MatchScene extends Phaser.Scene {
       onComplete: () => img.destroy(),
     });
     this.popText(h.x, h.y - 10, '¡RAQUETA!', a === this.player ? '#7ff0ff' : '#ff9aa3', 26);
-    if (a === this.player) {
-      navigator.vibrate?.(30);
-      this.net?.sendAction('racket', { lost: false });
-    }
+    if (a === this.player) navigator.vibrate?.(30);
+    const tag = this.net2Tag(a);
+    if (tag) this.net?.sendAction('racket', { lost: false, ...tag });
   }
 
   /** flecha a los pies del jugador que apunta a su raqueta en el suelo */
@@ -8269,7 +8527,7 @@ export class MatchScene extends Phaser.Scene {
   private racketPickup() {
     for (const a of [this.player, this.bot]) {
       const r = a.racket;
-      if (!r || a.stun > 0 || a.vanished || (a === this.bot && this.net)) continue;
+      if (!r || a.stun > 0 || a.vanished || (a === this.bot && this.net && !this.net2host)) continue; // (el rival online recoge la suya y lo avisa; en el 2v2 los bots del host los simula el host)
       if (Math.hypot(a.x - r.x, a.y - r.y) <= RACKET_LOSS.pickR) this.recoverRacket(a);
     }
     this.drawRacketArrow();
@@ -8380,7 +8638,7 @@ export class MatchScene extends Phaser.Scene {
   /** Conecta la sesión: callbacks del rival y empieza la presentación cuando los dos están listos. */
   private netSetup() {
     const net = this.net!;
-    this.botName = net.opponent.name;
+    if (!this.net2) this.botName = net.opponent.name;
     let introStarted = false;
     let aborted = false;
     const intro = () => {
@@ -8411,6 +8669,7 @@ export class MatchScene extends Phaser.Scene {
     net.attach({
       onStart: intro,
       onState: (st) => {
+        if (this.net2) return this.net2OnState(st);
         this.netLastMsgAt = performance.now();
         const nowIn = performance.now();
         // estado de un punto ANTERIOR (el rival aún no termina el suyo y sigue corriendo por la cancha): ya lo colocamos en
@@ -8429,6 +8688,7 @@ export class MatchScene extends Phaser.Scene {
       },
       onHit: (h) => {
         this.netLastMsgAt = performance.now();
+        if (this.net2) return this.net2ApplyHit(h, performance.now());
         this.netApplyHit(h, performance.now());
       },
       onAction: (a) => {
@@ -8449,13 +8709,21 @@ export class MatchScene extends Phaser.Scene {
         this.netHoldEnd();
         if (!introStarted) return abortPreStart('EL RIVAL ABANDONÓ');
         if (this.phase === 'over') return;
+        if (this.net2) {
+          // 2v2: se fue el ANFITRIÓN (él simula a los bots): el partido no puede seguir
+          this.banner('EL ANFITRIÓN SE FUE', '#ffd23f', 52, 1200);
+          this.time.delayedCall(1500, () => this.phase !== 'over' && this.endMatch(false, true));
+          return;
+        }
         this.banner(o.reason === 'abandon' ? 'EL RIVAL SE RINDIÓ' : 'RIVAL DESCONECTADO', '#ffd23f', 52, 1200);
         this.time.delayedCall(1500, () => this.phase !== 'over' && this.endMatch(true));
       },
       // RECONEXIÓN: pausa con aviso mientras uno de los dos vuelve; al volver se rejuega el punto en curso
       onReconnecting: () => this.netHold('RECONECTANDO…'),
       onReconnected: (sc) => this.netResume(sc),
-      onOpponentAway: () => this.netHold('RIVAL RECONECTANDO…'),
+      onOpponentAway: () => this.netHold(this.net2 ? 'ANFITRIÓN RECONECTANDO…' : 'RIVAL RECONECTANDO…'),
+      onMateAway: (gone) => this.net2MateAway(gone),
+      onMateBack: (sc) => this.net2MateBack(sc),
       onOpponentBack: (sc) => this.netResume(sc),
       onDisconnect: () => {
         this.netHoldEnd();
@@ -8486,6 +8754,12 @@ export class MatchScene extends Phaser.Scene {
    */
   private netGate(kind: PointMsg['kind'], w?: Who, reason = '', color = ''): boolean {
     if (!this.net || this.netApplying) return false;
+    // 2v2 online: el HOST es el juez único de todos los puntos (simula a los bots); el invitado solo los recibe
+    if (this.net2) {
+      if (!this.net2host) return true;
+      this.net.sendPoint(kind, w === 'player', reason, color, [this.score.games[0], this.score.games[1]]);
+      return false;
+    }
     const authority = this.netForceAuthority || this.lastHitter === 'bot';
     if (!authority) return true;
     this.net.sendPoint(kind, w === 'player', reason, color, [this.score.games[0], this.score.games[1]]);
@@ -8500,12 +8774,19 @@ export class MatchScene extends Phaser.Scene {
     // datos reales que guardó el golpe (playerHit / executeServe / playerLunge / playerImpact); sin ellos, los de siempre
     const i = this.netHit;
     this.netHit = {};
+    const hA = this.netHitA;
+    this.netHitA = 0;
+    if (this.net2host) this.net2HostHitAt = performance.now();
+    const hActor = hA > 0 ? (this.rivalActors[hA - 1] ?? this.player) : this.player;
     this.net.sendHit({
+      ...(hA > 0 ? { a: hA } : {}),
+      // 2v2: el poder de la bola de un ESPECIAL / ULTI viaja con el golpe (el otro teléfono no sabe el de los bots ni el del compañero)
+      ...(this.net2 && this.ball.power ? { el: this.infernoFlight ? this.infernoEl : this.smashFlightEl } : {}),
       t: performance.now(), // hora del golpe en su reloj real (el mismo de game:state): el rival mide cuánto tardó
       kind: this.serving ? 'serve' : 'hit',
       ball: { x: s.x, y: s.y, z: s.z, vx: s.vx, vy: s.vy, vz: s.vz, damp: s.damp, fric: s.fric, ay: s.ay, g: s.g, ...(s.back ? { back: s.back } : {}) },
-      x: this.player.x,
-      y: this.player.y,
+      x: hActor.x,
+      y: hActor.y,
       shotKind: this.ball.shotKind,
       power: this.ball.power,
       inferno: this.infernoFlight,
@@ -8714,11 +8995,12 @@ export class MatchScene extends Phaser.Scene {
   private netResume(sc: ScoreMsg) {
     this.netHoldEnd();
     if (this.phase === 'over' || !this.net) return;
-    const host = this.net.role === 'host';
+    const host = this.net.role === 'host' || this.net2; // 2v2: el marcador oficial es del equipo humano (host)
     this.score.points = host ? [sc.points.host, sc.points.guest] : [sc.points.guest, sc.points.host];
     this.score.games = host ? [sc.games.host, sc.games.guest] : [sc.games.guest, sc.games.host];
     this.updateHud();
     this.netInterp.clear();
+    for (const r of this.net2Rem) r.interp.clear();
     this.netPtOff = true; // el marcador oficial puede no cuadrar con los puntos jugados de cada teléfono: sin filtro por punto
     this.netLastMsgAt = performance.now();
     this.netPendingToss = null;
@@ -9036,6 +9318,265 @@ export class MatchScene extends Phaser.Scene {
     d.tick(now);
   }
 
+  // ---------------------------------------------------------------- 2v2 ONLINE (2 humanos del mismo equipo vs 2 bots del host)
+  /** el actor de la pareja remota: 0 = el otro humano; 1 y 2 = los bots rivales (el host los simula) */
+  private net2Actor(k: number): Actor | null {
+    return k === 0 ? this.ally : (this.rivalActors[k - 1] ?? null);
+  }
+
+  /** índice de un actor para los avisos del 2v2: 0 = el otro humano, 1 y 2 = los bots del host; -1 si no es de la pareja */
+  private net2Index(a: Actor): number {
+    if (a === this.ally) return 0;
+    const i = this.rivalActors.indexOf(a);
+    return i >= 0 ? i + 1 : -1;
+  }
+
+  /**
+   * ¿Este teléfono avisa de lo que le pasa a `a` (aturdido, raqueta, estrellas)? Devuelve el dato `a` que lleva el aviso
+   * (vacío = es mi jugador) o null si no lo anuncia este teléfono (1v1 contra bot, el aliado remoto, los bots vistos desde el invitado).
+   */
+  private net2Tag(a: Actor): { a?: number } | null {
+    if (!this.net) return null;
+    if (a === this.player) return {};
+    if (this.net2host) {
+      const i = this.rivalActors.indexOf(a);
+      if (i >= 0) return { a: i + 1 };
+    }
+    return null;
+  }
+
+  /** ejecuta `fn` con `a` como el rival activo (las funciones remotas del 1v1 trabajan sobre `this.bot`) */
+  private asBot<T>(a: Actor, fn: () => T): T {
+    const prev = this.bot;
+    this.bot = a;
+    try {
+      return fn();
+    } finally {
+      this.bot = prev;
+    }
+  }
+
+  /** sprites de todos los personajes en cancha (los que se congelan en una cinemática) */
+  private freezeSprites() {
+    return this.everyone().flatMap((a) => spritesIn(a.ch));
+  }
+
+  /**
+   * 2v2 ONLINE: avisos de habilidades del compañero (data.a = 0) o de un bot del host (data.a = 1 / 2). Las cinemáticas
+   * congelan este teléfono el mismo tiempo (como en el 1v1); aturdido, raqueta y estrellas se ven igual que allí.
+   */
+  private net2ApplyAction(m: ActionMsg) {
+    // el compañero (que saca) se quedó sin tiempo para sacar: falta, y la juzgo yo (host) como si fuera mía
+    if (m.kind === 'serve-timeout') {
+      if (this.net2host && this.server === 'player' && !this.net2IServe && (this.phase === 'serve' || this.phase === 'toss')) this.tossFault();
+      return;
+    }
+    const k = Number(m.data?.a) || 0;
+    const actor = this.net2Actor(k);
+    if (!actor || this.phase === 'over') return;
+    if (m.kind === 'smash-armed') {
+      if (isSmashPower(m.data?.element)) this.netRivalSmashEl = m.data.element;
+    } else if (m.kind === 'smash-cine') {
+      this.asBot(actor, () => this.netRemoteSmashCine(m.data));
+    } else if (m.kind === 'inferno-cine') {
+      const power = m.data?.power;
+      if (isInfernoPower(power)) {
+        if (isLegendaryInferno(power)) return; // la ULTI LEGENDARIA aún no está en el 2v2 online
+        this.netRivalInferno = power;
+      }
+      this.asBot(actor, () => this.netRemoteInfernoCine(m.data));
+    } else if (m.kind === 'stunned') {
+      this.asBot(actor, () => this.netBotStunned(Number(m.data?.ms), m.data?.kind, m.data?.resist === true));
+    } else if (m.kind === 'racket') {
+      this.asBot(actor, () => this.netRemoteRacket(m.data));
+    } else if (m.kind === 'sky-launch') {
+      this.skyLaunch(actor, true);
+      // el compañero salió volando: el punto es del rival y lo decide el host (el invitado no juzga)
+      if (this.net2host && actor === this.ally) this.pointTo('bot', '¡BUEN PUNTO!', '#ffd23f');
+    }
+  }
+
+  /** estado remoto (del otro humano o de un bot) → su cola de suavizado */
+  private net2OnState(st: StateMsg) {
+    const k = st.a ?? 0;
+    const r = this.net2Rem[k];
+    if (!r || this.entering) return;
+    this.netLastMsgAt = performance.now();
+    r.last = st;
+    r.interp.push(st.t, performance.now(), st);
+  }
+
+  /** pone a un actor remoto exactamente en (x, y) (sin suavizado desde donde estaba) */
+  private net2Anchor(k: number, x: number, y: number) {
+    const r = this.net2Rem[k];
+    if (r) r.interp.reset(performance.now(), { x, y, moving: false, dirX: 0, facing: r.last?.facing ?? (k === 0 ? 1 : -1), charging: false, stunned: false });
+  }
+
+  /** cada fotograma: mueve y anima a los actores remotos (el compañero; en el invitado, también los 2 bots) con la posición suavizada */
+  private net2Tick(dt: number) {
+    const keys = this.net2host ? (this.allyRemote ? [0] : []) : [0, 1, 2];
+    for (const k of keys) {
+      const a = this.net2Actor(k);
+      const r = this.net2Rem[k];
+      if (!a || !r || this.entering) continue;
+      if (a.stun > 0) a.stun -= dt;
+      if (this.phase === 'over' || this.phase === 'pointover' || this.paused) {
+        a.ch.setMoving(false, 0);
+        a.ch.setCharging(false);
+        continue;
+      }
+      const smp = r.interp.sample(performance.now());
+      if (smp) {
+        a.x = smp.x;
+        a.y = smp.y;
+      }
+      const st = smp?.snap ?? r.last;
+      if (!st) continue;
+      const moving = smp ? !smp.stale && (st.moving || smp.speed > PLAYER_SPEED * MOTION.moveMin) : st.moving;
+      const speedK = smp ? smp.speed / PLAYER_SPEED : undefined;
+      a.ch.setMoving(moving, st.dirX, moving && speedK !== undefined ? Math.max(speedK, MOTION.moveMin) : speedK);
+      a.ch.setCharging(st.charging && !moving);
+      a.ch.facing = st.facing;
+    }
+  }
+
+  /** host: manda a su compañero el estado de los 2 bots (~20 Hz; quietos, un latido cada 250 ms) */
+  private net2SendBots() {
+    if (!this.net || !this.net2host || this.rivalActors.length < 2) return;
+    const now = this.time.now;
+    for (let i = 0; i < 2; i++) {
+      const a = this.rivalActors[i];
+      const s = this.net2BotSend[i];
+      const dist = Math.hypot(a.x - s.x, a.y - s.y);
+      const moving = dist > 0.6;
+      if (now - s.at < (moving ? 50 : 250)) continue;
+      const dx = a.y - s.y;
+      s.at = now;
+      s.x = a.x;
+      s.y = a.y;
+      s.moving = moving;
+      this.net.sendState({ t: performance.now(), x: a.x, y: a.y, moving, dirX: Math.abs(dx) > 0.3 ? Math.sign(dx) : 0, facing: a.ch.facing, charging: false, stunned: a.stun > 0, a: i + 1 });
+    }
+  }
+
+  /** golpe remoto del 2v2: del otro humano (sin `a`) o de un bot del host (`a` = 1 / 2). La pelota llega ya sin espejar. */
+  private net2ApplyHit(h: HitMsg, recvAt?: number, heldSec = 0) {
+    if (this.phase === 'over' || !this.ally) return;
+    const isBot = h.a === 1 || h.a === 2;
+    const actor = isBot ? this.rivalActors[(h.a as number) - 1] : this.ally;
+    if (!actor) return;
+    // golpes simultáneos: el host manda. Si ya golpeó hace poco, el golpe del invitado se descarta (él recibirá el del host)
+    if (this.net2host && !isBot && performance.now() - this.net2HostHitAt < 250) return;
+    // el que golpea está en su cinemática (aquí congelada el mismo tiempo): su golpe se aplica al terminar, una sola vez
+    if (this.netRemoteCine) {
+      // al aplicarlo, la pelota avanza lo que estuvo retenido (la del que golpeó ya va por delante) más lo que tardó en llegar
+      const got = performance.now();
+      const at = recvAt ?? got;
+      this.netDeferred.push(() => this.net2ApplyHit(h, at, heldSec + (performance.now() - got) / 1000));
+      return;
+    }
+    this.netEarlyStart();
+    this.netApplying = true;
+    actor.x = h.x;
+    actor.y = h.y;
+    this.net2Anchor(isBot ? (h.a as number) : 0, h.x, h.y);
+    if (isBot) {
+      this.bot = actor;
+      const idx = (h.a as number) - 1;
+      this.brain = this.rivalBrains[idx];
+      this.ai = this.brain.ai;
+    }
+    const s = this.ball.s;
+    s.x = h.ball.x;
+    s.y = h.ball.y;
+    s.z = h.ball.z;
+    s.vx = h.ball.vx;
+    s.vy = h.ball.vy;
+    s.vz = h.ball.vz;
+    s.damp = h.ball.damp;
+    s.fric = h.ball.fric;
+    s.g = h.ball.g;
+    s.back = h.ball.back;
+    s.backBounced = undefined;
+    s.ay = h.ball.ay;
+    if (recvAt !== undefined) this.netAdvanceBall(Math.min(0.6, this.netHitDelay(h, recvAt) + heldSec));
+    // ESPECIAL / ULTI: la bola con el poder de quien la lanzó (viene en el golpe; sin él, el último que armó el compañero / el kit del bot)
+    const elSmash = isSmashPower(h.el) ? h.el : isBot ? this.botKit.smash : this.netRivalSmashEl;
+    const elUlti: InfernoElement = isInfernoPower(h.el) ? h.el : isBot ? this.botKit.inferno : infernoElementFor(this.net!.opponent.skin, this.netRivalInferno);
+    if (h.power && !h.inferno) this.setSmashFlight(elSmash);
+    this.ball.setPower(h.power || h.inferno);
+    this.ball.setKind(h.shotKind as ShotKind, h.charged);
+    this.ball.setMaxCharge(!!h.shock && !h.power && !h.inferno);
+    this.lastHitter = isBot ? 'bot' : 'player';
+    this.bounces = 0;
+    this.phase = 'rally';
+    let fx: number;
+    if (h.kind === 'serve') {
+      this.serving = true;
+      this.serveLet = false;
+      this.serveNetLoss = false;
+      this.serveCtl.state = 'SERVE_RESULT';
+      this.hideServeHint();
+      this.serveAim.setVisible(false);
+      fx = actor.ch.swing();
+    } else if (h.impact) {
+      this.serving = false;
+      fx = -1;
+    } else {
+      this.serving = false;
+      if (h.lunge) {
+        const side = Math.sign(h.lunge);
+        actor.ch.facing = side;
+        fx = actor.ch.lunge(side) ? 0 : actor.ch.swing();
+      } else fx = actor.ch.swing(h.power || h.charged, h.overhead, h.special ?? (h.power && h.overhead), h.volley);
+    }
+    const fxEl = h.inferno ? elUlti : h.power ? elSmash : undefined;
+    if (fx >= 0) this.hitFxAt(fx, s.x, s.y, s.z, h.power || h.inferno, 0.15, !!h.inferno, fxEl, h.kind === 'serve' ? 'ball-saque-1' : undefined);
+    if (h.inferno) {
+      // ULTI: esfera de fuego en vuelo, explosión, sacudida y sonido (los mismos que ve quien la lanza)
+      this.infernoFlight = true;
+      this.infernoBounced = false;
+      this.ball.quietFx = true;
+      this.infernoEl = elUlti;
+      this.fire.setElement(elUlti);
+      const b = project(s.x, s.y, s.z);
+      infernoImpactFx(this, b.sx, b.sy, b.s, elUlti);
+      infernoShake(this);
+      infernoSound.impact(this, elUlti);
+    }
+    this.netApplying = false;
+  }
+
+  /** el compañero se cortó o se rindió: un BOT juega por él; si fue un corte, al volver recupera su personaje */
+  private net2MateAway(gone: boolean) {
+    if (!this.net2host) return;
+    const mateWasServing = this.server === 'player' && !this.net2IServe; // (antes de cambiar allyRemote: net2ServerIsHost lo mira)
+    this.allyRemote = false;
+    if (this.ally) {
+      this.ally.ch.setMoving(false, 0);
+      this.ally.ch.setCharging(false);
+    }
+    showSideNotice(this, gone ? 'Tu compañero se rindió · juega un BOT' : 'Compañero desconectado · juega un BOT', 0xff9a1f, 1800);
+    // si le tocaba sacar a él y aún no sacó, saca el host (el bot aliado no saca): se vuelve a colocar el punto
+    if (mateWasServing && (this.phase === 'serve' || this.phase === 'toss')) {
+      this.serveCtl.reset();
+      this.phase = 'pointover';
+      this.startPoint(this.faults > 0);
+    }
+  }
+
+  private net2MateBack(sc?: ScoreMsg) {
+    if (!this.net2host || !this.ally) return;
+    this.allyRemote = true;
+    this.net2Anchor(0, this.ally.x, this.ally.y);
+    showSideNotice(this, 'Tu compañero volvió', 0x5dff8a, 1500);
+    if (sc) this.netResume(sc); // los dos rejuegan el punto desde el marcador oficial, como en el 1v1
+  }
+  /** ¿El que saca ahora lo hace desde OTRO teléfono? (1v1: el rival; 2v2 online: el compañero humano cuando le toca; los bots los simula el host) */
+  private netRemoteServes() {
+    return this.net2 ? this.server === 'player' && !this.net2IServe : this.server === 'bot';
+  }
+
   /** El rival está AHORA en (x, y): la interpolación se muestra desde ahí (golpe, teletransporte, cinemática). */
   private netAnchor(x: number, y: number) {
     this.diagCause = 'anchor';
@@ -9196,7 +9737,7 @@ export class MatchScene extends Phaser.Scene {
     }
     // sonido propio: saque y remate del globo; el resto, golpe-fuerte
     const netSnd = h.kind === 'serve' ? 'ball-saque-1' : h.special && h.overhead && !h.power && !h.inferno ? 'ball-saque-2' : undefined;
-    if (fx >= 0) this.hitFxAt(fx, s.x, s.y, s.z, h.power || h.inferno, 0.15, !!h.inferno, h.inferno ? infernoElementFor(this.net?.opponent.skin, this.netRivalInferno) : h.power ? this.netRivalSmashEl : undefined, netSnd);
+    if (fx >= 0) this.hitFxAt(fx, s.x, s.y, s.z, h.power || h.inferno, 0.15, !!h.inferno, h.inferno ? infernoElementFor(this.vsOpp?.skin, this.netRivalInferno) : h.power ? this.netRivalSmashEl : undefined, netSnd);
     // REMATE del globo del rival: la misma onda, sacudida y, si fue justo al cierre del aro, SMASH! dorado
     const rg = this.netRemateGrade;
     this.netRemateGrade = null;
@@ -9238,7 +9779,7 @@ export class MatchScene extends Phaser.Scene {
       this.infernoBounced = false;
       this.ball.quietFx = true;
       // la bola del rival es la de SU poder (llega con 'inferno-cine'); si no llegó, la de su personaje (Mai = hielo)
-      this.infernoEl = infernoElementFor(this.net?.opponent.skin, this.netRivalInferno);
+      this.infernoEl = infernoElementFor(this.vsOpp?.skin, this.netRivalInferno);
       this.fire.setElement(this.infernoEl);
       const b = project(s.x, s.y, s.z);
       infernoImpactFx(this, b.sx, b.sy, b.s, this.infernoEl);
@@ -9257,10 +9798,16 @@ export class MatchScene extends Phaser.Scene {
       this.legendTodo.push(() => this.netApplyAction(a));
       return;
     }
+    // 2v2 online: el ritmo de la red y el saque del host siguen su camino de siempre; las habilidades del compañero y de los bots, por net2ApplyAction
+    // (las demás acciones del compañero —defensivos, estirada, remate…— aún no se muestran)
+    if (this.net2 && a.kind !== 'toss' && a.kind !== 'ping' && a.kind !== 'pong' && a.kind !== 'catch' && a.kind !== 'serve-swing') {
+      this.net2ApplyAction(a);
+      return;
+    }
     if (a.kind === 'toss') {
       const kind = (a.data?.kind as ServeKind) ?? 'normal';
       this.netEarlyStart();
-      if (this.server !== 'bot') return;
+      if (!this.netRemoteServes()) return;
       if (this.phase === 'serve') this.beginToss(kind);
       else this.netPendingToss = kind;
     } else if (a.kind === 'lunge') this.netRemoteLunge(a.data);
@@ -9269,12 +9816,13 @@ export class MatchScene extends Phaser.Scene {
     else if (a.kind === 'pong') this.netOnPong(Number(a.data?.t));
     else if (a.kind === 'serve-swing') {
       // golpe del saque del rival: del lanzamiento al clip del golpe y su salto (como en su teléfono)
-      if (this.server === 'bot' && this.phase === 'toss') {
-        this.bot.ch.serveRelease();
-        this.serveJump(this.bot, this.bot.ch.serveContactDelay());
+      if (this.netRemoteServes() && this.phase === 'toss') {
+        const sa = this.srvActor();
+        sa.ch.serveRelease();
+        this.serveJump(sa, sa.ch.serveContactDelay());
       }
     } else if (a.kind === 'catch') {
-      if (this.server === 'bot' && this.phase === 'toss') {
+      if (this.netRemoteServes() && this.phase === 'toss') {
         this.netApplying = true;
         this.catchBall();
         this.netApplying = false;
@@ -9609,6 +10157,8 @@ export class MatchScene extends Phaser.Scene {
     const nx = Number(x);
     const ny = Number(y);
     if (!Number.isFinite(nx) || !Number.isFinite(ny)) return null;
+    // 2v2 online: nada se espeja (el compañero y los bots del host usan las coordenadas de la cancha tal cual)
+    if (this.net2) return { x: clamp(nx, Math.min(P_X[0], B_X[0]), Math.max(P_X[1], B_X[1])), y: clamp(ny, Y_MIN, Y_MAX) };
     return { x: clamp(mirrorX(nx), B_X[0], B_X[1]), y: clamp(mirrorY(ny), Y_MIN, Y_MAX) };
   }
 
@@ -9623,13 +10173,26 @@ export class MatchScene extends Phaser.Scene {
     if (!drop) for (const f of todo) f();
   }
 
+  /**
+   * Fija la posición remota de `a` (el rival del 1v1 o, en el 2v2 online, el compañero o un bot del host) en (x, y): la interpolación
+   * sigue desde ahí. `still` = además lo deja sin movimiento ni carga (antes de una cinemática).
+   */
+  private netPlaceRemote(a: Actor, x: number, y: number, still = false) {
+    if (this.net2) {
+      const k = this.net2Index(a);
+      if (k >= 0) this.net2Anchor(k, x, y);
+      return;
+    }
+    if (this.netRemote) this.netRemote = { ...this.netRemote, x, y, moving: false, ...(still ? { charging: false } : {}) };
+    this.netAnchor(x, y);
+  }
+
   /** Deja al rival parado en `pos` (sin movimiento ni carga viejos) antes de su cinemática. */
   private netBotSnap(pos: { x: number; y: number }) {
     const bt = this.bot;
     bt.x = pos.x;
     bt.y = pos.y;
-    if (this.netRemote) this.netRemote = { ...this.netRemote, x: pos.x, y: pos.y, moving: false, charging: false };
-    this.netAnchor(pos.x, pos.y);
+    this.netPlaceRemote(bt, pos.x, pos.y, true);
     bt.ch.setMoving(false, 0);
     bt.ch.setCharging(false);
     this.rivalChargeT = 0; // la escena se congela: su brillo de carga se apaga ya (netBotTick no corre durante la cinemática)
@@ -9657,7 +10220,7 @@ export class MatchScene extends Phaser.Scene {
     this.cine.start({
       profile: smashCine(this.netRivalSmashEl),
       onCancel: () => this.netEndRemoteCine(true),
-      freeze: [...spritesIn(this.player.ch), ...spritesIn(bt.ch)],
+      freeze: this.net2 ? this.freezeSprites() : [...spritesIn(this.player.ch), ...spritesIn(bt.ch)],
       executor: spritesIn(bt.ch),
       leadMs: Math.min(lead, 150),
       focus: () => this.cineFocus(bt),
@@ -9685,13 +10248,14 @@ export class MatchScene extends Phaser.Scene {
     const dashSt = { sound: false };
     infernoSound.charge(this);
     // aspecto de SU poder (llega con 'inferno-cine'; si no, el de su personaje): mirada, energía de la carga y sombras
-    const el = infernoElementFor(this.net?.opponent.skin, this.netRivalInferno);
+    const el = infernoElementFor(this.vsOpp?.skin, this.netRivalInferno);
     // la franja con SUS ojos, igual que la ve él (necesita su imagen cargada: preload)
-    showInfernoGaze(this, INFERNO_CINE.hitAtMs - GAZE_END_BEFORE_HIT_MS, this.gazeY(), this.rivalSkin(), el);
+    const gazeSkin = this.net2 && bt === this.ally ? this.net!.opponent.skin : this.rivalSkin(); // 2v2: el compañero con SUS ojos
+    showInfernoGaze(this, INFERNO_CINE.hitAtMs - GAZE_END_BEFORE_HIT_MS, this.gazeY(), gazeSkin, el);
     this.ghosts.setLook(INFERNO_LOOK[el].ghostTint, INFERNO_LOOK[el].ghostRamp);
     this.cine.start({
       profile: infernoCine(el),
-      freeze: [...sprites, ...spritesIn(this.player.ch)],
+      freeze: this.net2 ? this.freezeSprites() : [...sprites, ...spritesIn(this.player.ch)],
       executor: sprites,
       leadMs: 0,
       focus: () => this.cineFocus(bt),
@@ -9709,8 +10273,11 @@ export class MatchScene extends Phaser.Scene {
       onHit: () => {
         bt.x = to.x;
         bt.y = to.y;
-        if (this.netRemote) this.netRemote = { ...this.netRemote, x: to.x, y: to.y };
-        this.netAnchor(to.x, to.y);
+        if (this.net2) this.netPlaceRemote(bt, to.x, to.y);
+        else {
+          if (this.netRemote) this.netRemote = { ...this.netRemote, x: to.x, y: to.y };
+          this.netAnchor(to.x, to.y);
+        }
         bt.ch.setCharging(false); // suelta la pose de espera: su golpe sigue desde la raqueta atrás
         this.ghosts.end();
         this.netEndRemoteCine();

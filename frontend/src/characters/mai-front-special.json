@@ -2,12 +2,12 @@
   "source": "personajes/Mai/rival/hd/mai-rival-*.png (tools/build-hd.mjs mai-front; JSON base copiado de nxo-front-special.json el 17-11-2026)",
   "view": "front",
   "cell": {
-    "w": 114,
-    "h": 163
+    "w": 116,
+    "h": 165
   },
   "origin": {
     "x": 0.5,
-    "y": 0.97546
+    "y": 0.97576
   },
   "standHeight": 150,
   "start": 2,
@@ -20,12 +20,12 @@
       "impact": 4,
       "scale": 1,
       "cell": {
-        "w": 148,
-        "h": 195
+        "w": 150,
+        "h": 198
       },
       "origin": {
         "x": 0.5,
-        "y": 0.97949
+        "y": 0.9798
       }
     }
   }

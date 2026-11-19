@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { DISC, GLOW, ensureDisc, ensureEnergyGlow, previewTicker } from './energyBallFx';
 
 /**
  * (17-11-2026) ULTI LEGENDARIA HURACÁN (`hurricane`, sin hoja de sprites: todo por código). Guion en logic/EnergyRally.ts
@@ -14,20 +15,94 @@ const pick = <T>(a: readonly T[]): T => a[Math.floor(Math.random() * a.length)];
 const kill = (o: Phaser.GameObjects.GameObject) => () => o.destroy();
 
 // ---------------------------------------------------------------- la bola (vuelo del smash final)
-/** La bola del HURACÁN: núcleo blanco, esfera amarilla que late y un remolino de viento que gira a su alrededor. */
+/**
+ * La bola del HURACÁN (vuelo del smash final y vista previa).
+ * (18-11-2026, usuario) GIRA COMO UN HURACÁN: núcleo BLANCO, halo AMARILLO alrededor, 4 brazos en espiral que giran rápido (las bandas del
+ * huracán) y RAYOS BLANCOS en zigzag que salen del borde del círculo y van GIRANDO a su alrededor.
+ * (18-11-2026, rendimiento: "se pega") el halo y el núcleo son IMÁGENES teñidas (un cuadro en la GPU cada una) en vez de 5 círculos de Graphics
+ * que se volvían a teselar en cada fotograma; en el Graphics solo quedan las espirales y los rayos, sin crear arreglos por fotograma.
+ */
 export class HurricaneBallFx {
-  private g: Phaser.GameObjects.Graphics;
+  private readonly g: Phaser.GameObjects.Graphics;
+  /** rayos (encima del núcleo) */
+  private readonly g2: Phaser.GameObjects.Graphics;
+  private readonly halo: Phaser.GameObjects.Image;
+  private readonly glow: Phaser.GameObjects.Image;
+  private readonly core: Phaser.GameObjects.Image;
   private t = 0;
-  constructor(scene: Phaser.Scene) {
-    this.g = scene.add.graphics().setBlendMode(Phaser.BlendModes.ADD).setVisible(false);
+  private readonly px = new Float32Array(5);
+  private readonly py = new Float32Array(5);
+  constructor(scene: Phaser.Scene, parent?: Phaser.GameObjects.Container) {
+    ensureEnergyGlow(scene);
+    ensureDisc(scene);
+    const ADD = Phaser.BlendModes.ADD;
+    this.halo = scene.add.image(0, 0, GLOW).setTint(HURRICANE_COL.deep).setBlendMode(ADD).setVisible(false);
+    this.glow = scene.add.image(0, 0, GLOW).setTint(HURRICANE_COL.gold).setBlendMode(ADD).setVisible(false);
+    this.g = scene.add.graphics().setBlendMode(ADD).setVisible(false);
+    this.core = scene.add.image(0, 0, DISC).setTint(HURRICANE_COL.core).setVisible(false);
+    this.g2 = scene.add.graphics().setBlendMode(ADD).setVisible(false);
+    if (parent) parent.add([this.halo, this.glow, this.g, this.core, this.g2]);
   }
   draw(dt: number, x: number, y: number, r: number, depth: number) {
     this.t += dt;
+    const t = this.t;
+    const C = HURRICANE_COL;
+    const pulse = 1 + 0.07 * Math.sin(t * 22);
+    // halo amarillo (antes 3 círculos: ahora 2 brillos suaves)
+    this.halo.setPosition(x, y).setDisplaySize(r * 5 * pulse, r * 5 * pulse).setAlpha(0.7).setDepth(depth - 0.02).setVisible(true);
+    this.glow.setPosition(x, y).setDisplaySize(r * 3.2 * pulse, r * 3.2 * pulse).setAlpha(0.95).setDepth(depth - 0.01).setVisible(true);
     const g = this.g.clear().setDepth(depth).setVisible(true);
-    drawHurricaneBall(g, x, y, r, this.t);
+    // brazos en espiral del huracán (amarillo claro / dorado), girando rápido
+    const spin = t * 9;
+    for (let i = 0; i < 4; i++) {
+      const a0 = spin + (i * Math.PI) / 2;
+      g.lineStyle(Math.max(1.5, r * 0.2), i % 2 ? C.light : C.gold, 0.85).beginPath();
+      for (let j = 0; j <= 8; j++) {
+        const q = j / 8;
+        const rr = r * (0.55 + 1.35 * q);
+        const th = a0 + q * 2.4;
+        if (j === 0) g.moveTo(x + Math.cos(th) * rr, y + Math.sin(th) * rr);
+        else g.lineTo(x + Math.cos(th) * rr, y + Math.sin(th) * rr);
+      }
+      g.strokePath();
+    }
+    // la pelota: BLANCA (disco macizo, encima de las espirales)
+    this.core.setPosition(x, y).setDisplaySize(r * 1.9, r * 1.9).setAlpha(0.95).setDepth(depth + 0.01).setVisible(true);
+    // RAYOS blancos que salen del borde y GIRAN alrededor del círculo (cambian de forma a saltos)
+    const n = 6;
+    const slot = Math.floor(t * 18);
+    const rot = t * 5;
+    const px = this.px;
+    const py = this.py;
+    const g2 = this.g2.clear().setDepth(depth + 0.02).setVisible(true);
+    for (let i = 0; i < n; i++) {
+      const a = rot + (i * Math.PI * 2) / n;
+      const len = r * (1.3 + 0.5 * (hash(slot * 7 + i) * 0.5 + 0.5));
+      for (let j = 0; j <= 4; j++) {
+        const q = j / 4;
+        const d = r * 0.9 + len * q;
+        const off = j === 0 ? 0 : hash(slot * 31 + i * 5 + j) * r * 0.32;
+        const bend = q * q * 0.45; // se curva en el sentido del giro (arrastrados por el huracán)
+        const cb = Math.cos(a + bend);
+        const sb = Math.sin(a + bend);
+        px[j] = x + cb * d - sb * off;
+        py[j] = y + sb * d + cb * off;
+      }
+      for (let layer = 0; layer < 2; layer++) {
+        if (layer === 0) g2.lineStyle(Math.max(1, r * 0.22), C.gold, 0.45);
+        else g2.lineStyle(Math.max(1, r * 0.09), C.core, 1);
+        g2.beginPath().moveTo(px[0], py[0]);
+        for (let j = 1; j <= 4; j++) g2.lineTo(px[j], py[j]);
+        g2.strokePath();
+      }
+    }
   }
   hide() {
     this.g.clear().setVisible(false);
+    this.g2.clear().setVisible(false);
+    this.halo.setVisible(false);
+    this.glow.setVisible(false);
+    this.core.setVisible(false);
   }
 }
 
@@ -37,92 +112,15 @@ const hash = (n: number) => {
   return (s - Math.floor(s)) * 2 - 1;
 };
 
-/**
- * Dibujo de la bola en (x, y) de radio `r` (también lo usa la vista previa).
- * (18-11-2026, usuario) La pelota del SMASH final GIRA COMO UN HURACÁN: núcleo BLANCO, halo AMARILLO alrededor, 4 brazos en espiral que
- * giran rápido (las bandas del huracán) y RAYOS BLANCOS en zigzag que salen del borde del círculo de energía y van GIRANDO a su alrededor.
- */
-function drawHurricaneBall(g: Phaser.GameObjects.Graphics, x: number, y: number, r: number, t: number) {
-  const C = HURRICANE_COL;
-  const pulse = 1 + 0.07 * Math.sin(t * 22);
-  // halo amarillo alrededor
-  g.fillStyle(C.deep, 0.25).fillCircle(x, y, r * 2.3 * pulse);
-  g.fillStyle(C.gold, 0.45).fillCircle(x, y, r * 1.65 * pulse);
-  g.fillStyle(C.gold, 0.6).fillCircle(x, y, r * 1.25 * pulse);
-  // brazos en espiral del huracán (amarillo claro → blanco hacia el centro), girando rápido
-  const spin = t * 9;
-  for (let i = 0; i < 4; i++) {
-    const a0 = spin + (i * Math.PI) / 2;
-    g.lineStyle(Math.max(1.5, r * 0.2), i % 2 ? C.light : C.gold, 0.85).beginPath();
-    for (let j = 0; j <= 12; j++) {
-      const q = j / 12;
-      const rr = r * (0.55 + 1.35 * q);
-      const th = a0 + q * 2.4;
-      const px = x + Math.cos(th) * rr;
-      const py = y + Math.sin(th) * rr;
-      if (j === 0) g.moveTo(px, py);
-      else g.lineTo(px, py);
-    }
-    g.strokePath();
-  }
-  // la pelota: BLANCA
-  g.fillStyle(C.core, 0.9).fillCircle(x, y, r * 0.95);
-  g.fillStyle(C.core, 1).fillCircle(x, y, r * 0.7);
-  // RAYOS blancos que salen del borde y GIRAN alrededor del círculo (cambian de forma a saltos)
-  const n = 6;
-  const slot = Math.floor(t * 18);
-  const rot = t * 5;
-  for (let i = 0; i < n; i++) {
-    const a = rot + (i * Math.PI * 2) / n;
-    const len = r * (1.3 + 0.5 * (hash(slot * 7 + i) * 0.5 + 0.5));
-    const pts: { x: number; y: number }[] = [];
-    for (let j = 0; j <= 4; j++) {
-      const q = j / 4;
-      const d = r * 0.9 + len * q;
-      const off = j === 0 ? 0 : hash(slot * 31 + i * 5 + j) * r * 0.32;
-      // se curva un poco en el sentido del giro (arrastrados por el huracán)
-      const bend = q * q * 0.45;
-      const cb = Math.cos(a + bend);
-      const sb = Math.sin(a + bend);
-      pts.push({ x: x + cb * d - sb * off, y: y + sb * d + cb * off });
-    }
-    for (const [w, col, al] of [
-      [r * 0.22, C.gold, 0.45],
-      [r * 0.09, C.core, 1],
-    ] as const) {
-      g.lineStyle(Math.max(1, w), col, al).beginPath().moveTo(pts[0].x, pts[0].y);
-      for (let j = 1; j < pts.length; j++) g.lineTo(pts[j].x, pts[j].y);
-      g.strokePath();
-    }
-    // chispa en la punta
-    g.fillStyle(C.core, 0.95).fillCircle(pts[4].x, pts[4].y, Math.max(1, r * 0.1));
-  }
+/** Vista previa (Tienda, PERSONALIZAR): la bola con su remolino. Con `animate`, se redibuja solo si se ve y a ~30 fps (previewTicker). */
+export function addHurricanePreview(scene: Phaser.Scene, c: Phaser.GameObjects.Container, maxW: number, maxH: number, animate: boolean) {
+  const fx = new HurricaneBallFx(scene, c);
+  const r = Math.min(maxW, maxH) * 0.2;
+  fx.draw(0.3, 0, 0, r, 0);
+  if (!animate) return;
+  previewTicker(scene, c, (dt) => fx.draw(dt, 0, 0, r, 0));
 }
 
-/** Vista previa (Tienda, PERSONALIZAR): la bola con su remolino. Con `animate`, se mueve con el update de la escena. */
-export function addHurricanePreview(scene: Phaser.Scene, c: Phaser.GameObjects.Container, maxW: number, maxH: number, animate: boolean) {
-  const g = scene.add.graphics().setBlendMode(Phaser.BlendModes.ADD);
-  c.add(g);
-  const r = Math.min(maxW, maxH) * 0.2;
-  let t = 0.3;
-  const draw = () => drawHurricaneBall(g.clear(), 0, 0, r, t);
-  draw();
-  if (!animate) return;
-  const tick = (_t: number, delta: number) => {
-    if (!c.active) return;
-    let o: Phaser.GameObjects.Container | null = c;
-    while (o) {
-      if (!o.visible) return; // fuera de pantalla o tienda congelada: no se redibuja
-      o = o.parentContainer;
-    }
-    t += Math.min(0.05, delta / 1000);
-    draw();
-  };
-  scene.events.on(Phaser.Scenes.Events.UPDATE, tick);
-  const off = () => scene.events.off(Phaser.Scenes.Events.UPDATE, tick);
-  c.once(Phaser.GameObjects.Events.DESTROY, off);
-  scene.events.once(Phaser.Scenes.Events.SHUTDOWN, off);
-}
 
 // ---------------------------------------------------------------- golpes
 /** Golpe del HURACÁN en la raqueta: aros amarillos y ráfagas de viento curvas que salen. */
@@ -304,33 +302,58 @@ export function sphereBreakFx(scene: Phaser.Scene, x: number, y: number, r: numb
   gusts(scene, x, y, Math.max(0.6, r / 60), depth + 1, 6, 40, 90);
 }
 
-/** ESFERA AMARILLA que envuelve al personaje en el aire (tras el tornado), con viento que gira por su borde. `a` = opacidad. */
+/**
+ * ESFERA AMARILLA que envuelve al personaje en el aire (tras el tornado), con viento que gira por su borde. `a` = opacidad.
+ * (18-11-2026, rendimiento) los rellenos son IMÁGENES teñidas (brillo suave y discos macizos) en vez de círculos de Graphics redibujados en cada
+ * fotograma; el Graphics solo lleva los bordes y el viento.
+ */
 export class WindSphereFx {
-  private g: Phaser.GameObjects.Graphics;
+  private readonly g: Phaser.GameObjects.Graphics;
+  private readonly glow: Phaser.GameObjects.Image;
+  private readonly d1: Phaser.GameObjects.Image;
+  private readonly d2: Phaser.GameObjects.Image;
+  private readonly d3: Phaser.GameObjects.Image;
+  private readonly core: Phaser.GameObjects.Image;
   private t = 0;
   constructor(scene: Phaser.Scene) {
-    this.g = scene.add.graphics().setBlendMode(Phaser.BlendModes.ADD).setVisible(false);
+    ensureEnergyGlow(scene);
+    ensureDisc(scene);
+    const ADD = Phaser.BlendModes.ADD;
+    this.glow = scene.add.image(0, 0, GLOW).setTint(HURRICANE_COL.gold).setBlendMode(ADD).setVisible(false);
+    this.d1 = scene.add.image(0, 0, DISC).setTint(HURRICANE_COL.deep).setVisible(false);
+    this.d2 = scene.add.image(0, 0, DISC).setTint(HURRICANE_COL.gold).setVisible(false);
+    this.d3 = scene.add.image(0, 0, DISC).setTint(HURRICANE_COL.light).setVisible(false);
+    this.core = scene.add.image(0, 0, GLOW).setTint(HURRICANE_COL.core).setBlendMode(ADD).setVisible(false);
+    this.g = scene.add.graphics().setBlendMode(ADD).setVisible(false);
+  }
+  private put(o: Phaser.GameObjects.Image, x: number, y: number, size: number, alpha: number, depth: number) {
+    o.setPosition(x, y).setDisplaySize(size, size).setAlpha(alpha).setDepth(depth).setVisible(alpha > 0.01);
   }
   /** `solid` (18-11-2026) = 0..1: la esfera se vuelve un CÍRCULO amarillo brillante y macizo (el personaje "se convierte" en ella). */
   draw(dt: number, x: number, y: number, r: number, depth: number, a: number, solid = 0) {
     this.t += dt;
     const C = HURRICANE_COL;
-    const g = this.g.clear().setDepth(depth + 0.5).setVisible(a > 0.01);
-    if (a <= 0.01) return;
-    const pulse = 1 + 0.05 * Math.sin(this.t * 14);
+    const D = depth + 0.5;
+    const g = this.g.clear().setDepth(D + 0.05).setVisible(a > 0.01);
+    if (a <= 0.01) return this.hideFills();
     if (solid > 0) {
-      // (18-11-2026, usuario) círculo amarillo LIMPIO (sin tantos efectos): relleno que tapa al personaje, borde dorado y brillo suave
+      // (18-11-2026, usuario) círculo amarillo LIMPIO: relleno que tapa al personaje, borde dorado y brillo suave
       const p2 = 1 + 0.025 * Math.sin(this.t * 10);
-      g.fillStyle(C.gold, 0.18 * a * solid).fillCircle(x, y, r * 1.12 * p2);
-      g.fillStyle(C.deep, 0.75 * a * solid).fillCircle(x, y, r * p2);
-      g.fillStyle(C.gold, 0.9 * a * solid).fillCircle(x, y, r * 0.9 * p2);
-      g.fillStyle(C.light, 0.9 * a * solid).fillCircle(x, y, r * 0.66 * p2);
-      g.fillStyle(C.core, 0.85 * a * solid).fillCircle(x, y, r * 0.38 * p2);
-      g.lineStyle(Math.max(2, r * 0.05), C.light, 0.9 * a * solid).strokeCircle(x, y, r * p2);
+      const k = a * solid;
+      this.put(this.glow, x, y, r * 2.9 * p2, 0.5 * k, D - 0.01);
+      this.put(this.d1, x, y, r * 2 * p2, 0.85 * k, D);
+      this.put(this.d2, x, y, r * 1.8 * p2, 0.95 * k, D + 0.01);
+      this.put(this.d3, x, y, r * 1.32 * p2, 0.95 * k, D + 0.02);
+      this.put(this.core, x, y, r * 1.2 * p2, 0.9 * k, D + 0.03);
+      g.lineStyle(Math.max(2, r * 0.05), C.light, 0.9 * k).strokeCircle(x, y, r * p2);
       return;
     }
-    g.fillStyle(C.gold, 0.16 * a).fillCircle(x, y, r * 1.25 * pulse);
-    g.fillStyle(C.light, 0.18 * a).fillCircle(x, y, r * pulse);
+    const pulse = 1 + 0.05 * Math.sin(this.t * 14);
+    this.put(this.glow, x, y, r * 3 * pulse, 0.45 * a, D - 0.01);
+    this.d1.setVisible(false);
+    this.d2.setVisible(false);
+    this.put(this.d3, x, y, r * 2 * pulse, 0.16 * a, D);
+    this.core.setVisible(false);
     g.lineStyle(Math.max(2, r * 0.06), C.gold, 0.9 * a).strokeCircle(x, y, r * pulse);
     g.lineStyle(Math.max(1, r * 0.025), C.core, 0.8 * a).strokeCircle(x, y, r * 0.93 * pulse);
     // viento que corre por el borde
@@ -339,7 +362,11 @@ export class WindSphereFx {
       g.lineStyle(Math.max(1.5, r * 0.05), i === 1 ? C.wind : C.light, 0.85 * a).beginPath().arc(x, y, r * (1.05 + 0.07 * i), a0, a0 + 1.4).strokePath();
     }
   }
+  private hideFills() {
+    for (const o of [this.glow, this.d1, this.d2, this.d3, this.core]) o.setVisible(false);
+  }
   hide() {
     this.g.clear().setVisible(false);
+    this.hideFills();
   }
 }

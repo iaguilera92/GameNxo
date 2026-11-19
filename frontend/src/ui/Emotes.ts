@@ -12,21 +12,86 @@ export const EMOTE_COOLDOWN_MS = 10000;
 const BUBBLE_MS = 2200;
 /** (17-11-2026, usuario) el globo del RIVAL va más arriba de su cabeza (antes 14 px: chocaba con ella; el rival está al fondo, más chico) */
 const REMOTE_LIFT = 40;
+/** (18-11-2026, usuario) el globo PROPIO va bien arriba de la cabeza (con 14 px quedaba encima del personaje, tapándolo) */
+const SELF_LIFT = 80;
 const PANEL_AUTOCLOSE_MS = 4000;
 
 export type { EmoteKind } from '../domain/emotes';
 export { EMOTES } from '../domain/emotes';
 
-/** Textura de cada emote: miniaturas de 160 px (tools/build-emote-thumbs.mjs; fuentes en personajes/Nxo/emojis/). */
+/** Textura de cada emote: miniaturas de 160 px (tools/build-emote-thumbs.mjs; fuentes en personajes/Nxo/emojis/). NXO = emote-nxo-<nombre>. */
 export const EMOTE_TEXTURE: Record<EmoteKind, string> = {
-  happy: 'emote-risa',
-  cool: 'emote-pensando',
-  wow: 'emote-enojado',
+  // (18-11-2026, usuario) nombres con el personaje (emote-nxo-…, emote-mai-…): habrá más personajes
+  happy: 'emote-nxo-risa',
+  cool: 'emote-nxo-pensando',
+  wow: 'emote-nxo-enojado',
+  cry: 'emote-nxo-llorando',
+  shades: 'emote-nxo-legendario-lentes', // LEGENDARIOS animados (EMOTE_ANIM)
+  treasure: 'emote-nxo-legendario-tesoro',
 };
+
+/**
+ * (18-11-2026, usuario) Emotes LEGENDARIOS ANIMADOS: hoja de 8 frames (tools/build-anim-sheet.mjs; fuente en personajes/Nxo/emojis/animados/).
+ * `intro` se ve una vez al salir el globo y `loop` se repite hasta que se va; el panel muestra `still`. El globo dura más y lleva borde dorado.
+ */
+export const EMOTE_ANIM: Partial<Record<EmoteKind, { cell: number; intro: number[]; loop: number[]; fps: number; still: number }>> = {
+  shades: { cell: 192, intro: [0, 1, 2, 3, 3], loop: [4, 5, 6, 7], fps: 8, still: 3 },
+  treasure: { cell: 192, intro: [0, 1, 2, 3, 3], loop: [4, 5, 6, 7], fps: 8, still: 3 },
+};
+const LEGEND_BUBBLE_MS = 3600;
+const isAnim = (k: EmoteKind) => !!EMOTE_ANIM[k];
+
+/** Crea (una vez) las animaciones de los emotes animados. */
+export function ensureEmoteAnims(scene: Phaser.Scene) {
+  for (const [kind, a] of Object.entries(EMOTE_ANIM)) {
+    // la hoja de NXO y la de MAI (misma distribución de frames)
+    for (const key of [EMOTE_TEXTURE[kind as EmoteKind], MAI_EMOTE_TEXTURE[kind as EmoteKind]]) {
+      if (!a || !key || !scene.textures.exists(key)) continue;
+      if (!scene.anims.exists(`${key}-intro`)) scene.anims.create({ key: `${key}-intro`, frames: scene.anims.generateFrameNumbers(key, { frames: a.intro }), frameRate: a.fps });
+      if (!scene.anims.exists(`${key}-loop`)) scene.anims.create({ key: `${key}-loop`, frames: scene.anims.generateFrameNumbers(key, { frames: a.loop }), frameRate: a.fps, repeat: -1 });
+    }
+  }
+}
+
+/**
+ * (18-11-2026, usuario) Caritas de MAI (tools/build-emote-thumbs.mjs; fuentes en personajes/Mai/emotes/): si juega con Mai, el globo lleva SU
+ * cara; las que aún no existen usan la de NXO. Agregar aquí cada una cuando llegue.
+ */
+export const MAI_EMOTE_TEXTURE: Partial<Record<EmoteKind, string>> = {
+  happy: 'emote-mai-risa',
+  cool: 'emote-mai-pensando',
+  wow: 'emote-mai-enojada',
+  cry: 'emote-mai-llorando',
+  // (18-11-2026, usuario) LEGENDARIO TESORO de MAI (levanta la moneda); LENTES aún no tiene versión de Mai (usa la de NXO)
+  treasure: 'emote-mai-legendario-tesoro',
+};
+
+/** Textura del emote para un personaje (Mai: la suya si existe; si no, la de NXO). */
+export function emoteTexture(scene: Phaser.Scene, kind: EmoteKind, skin = 'nxo'): string {
+  const mai = skin.startsWith('mai') ? MAI_EMOTE_TEXTURE[kind] : undefined;
+  return mai && scene.textures.exists(mai) ? mai : EMOTE_TEXTURE[kind];
+}
 
 /** Encola las miniaturas de los emotes que falten (partido, Pase de Batalla). */
 export function queueEmoteArt(load: Phaser.Loader.LoaderPlugin) {
-  for (const key of Object.values(EMOTE_TEXTURE)) if (!load.scene.textures.exists(key)) load.image(key, `assets/emotes/${key}.png`);
+  for (const [kind, key] of Object.entries(EMOTE_TEXTURE)) {
+    if (load.scene.textures.exists(key)) continue;
+    const a = EMOTE_ANIM[kind as EmoteKind];
+    if (a) load.spritesheet(key, `assets/emotes/${key}.webp`, { frameWidth: a.cell, frameHeight: a.cell });
+    else load.image(key, `assets/emotes/${key}.png`);
+  }
+  for (const [kind, key] of Object.entries(MAI_EMOTE_TEXTURE)) {
+    if (!key || load.scene.textures.exists(key)) continue;
+    const a = EMOTE_ANIM[kind as EmoteKind];
+    if (a) load.spritesheet(key, `assets/emotes/${key}.webp`, { frameWidth: a.cell, frameHeight: a.cell });
+    else load.image(key, `assets/emotes/${key}.png`);
+  }
+}
+
+/** Imagen fija de un emote (los animados, en su frame `still`): panel, Pase de Batalla. */
+export function emoteStill(scene: Phaser.Scene, x: number, y: number, kind: EmoteKind, skin = 'nxo') {
+  const a = EMOTE_ANIM[kind];
+  return scene.add.image(x, y, emoteTexture(scene, kind, skin), a ? a.still : undefined);
 }
 
 export class Emotes {
@@ -46,6 +111,9 @@ export class Emotes {
   private open = false;
   private closeTimer?: Phaser.Time.TimerEvent;
   private static readonly R = 30;
+  /** personaje del jugador y del rival: el globo lleva la cara de cada uno (Mai / NXO); el panel, la del jugador */
+  mySkin = 'nxo';
+  rivalSkin = 'nxo';
 
   /** sin ningún emote desbloqueado no hay botón (los del rival se ven igual) */
   private readonly none: boolean;
@@ -83,7 +151,9 @@ export class Emotes {
       const o = scene.add.container(-(i + 1) * 76, 0);
       const bg = scene.add.graphics();
       bg.fillStyle(C.outline, 0.85).fillCircle(0, 3, 33);
-      const face = scene.add.image(0, 0, EMOTE_TEXTURE[kind]).setDisplaySize(54, 54);
+      const face = emoteStill(scene, 0, 0, kind).setDisplaySize(54, 54);
+      if (isAnim(kind)) bg.lineStyle(3, 0xffd23f, 1).strokeCircle(0, 3, 33); // LEGENDARIO: aro dorado
+      o.setData('face', face).setData('kind', kind);
       o.add([bg, face]);
       o.setSize(66, 66);
       o.setInteractive({ useHandCursor: true });
@@ -97,6 +167,16 @@ export class Emotes {
 
     scene.events.on(Phaser.Scenes.Events.UPDATE, this.update, this);
     scene.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.destroy());
+  }
+
+  /** Personajes del jugador y del rival (18-11-2026): las caritas del panel y de los globos usan la cara de cada uno. */
+  setSkins(me: string, rival: string) {
+    this.mySkin = me;
+    this.rivalSkin = rival;
+    for (const o of this.options) {
+      const face = o.getData('face') as Phaser.GameObjects.Image | undefined;
+      if (face) face.setTexture(emoteTexture(this.scene, o.getData('kind') as EmoteKind, me), EMOTE_ANIM[o.getData('kind') as EmoteKind]?.still).setDisplaySize(54, 54);
+    }
   }
 
   setPosition(x: number, y: number) {
@@ -150,10 +230,10 @@ export class Emotes {
    * Un solo globo remoto a la vez: uno nuevo sustituye al anterior (no se acumulan aunque lleguen muchos).
    */
   showRemote(kind: string, head: () => { x: number; y: number }) {
-    if (!(EMOTES as string[]).includes(kind)) return; // llega por red: solo las 3 caritas conocidas
+    if (!(EMOTES as string[]).includes(kind)) return; // llega por red: solo las caritas conocidas
     this.remote?.c.destroy();
-    const c = this.makeBubble(kind as EmoteKind);
-    this.remote = { c, until: performance.now() + BUBBLE_MS, head };
+    const c = this.makeBubble(kind as EmoteKind, this.rivalSkin);
+    this.remote = { c, until: performance.now() + (isAnim(kind as EmoteKind) ? LEGEND_BUBBLE_MS : BUBBLE_MS), head };
     const h = head();
     c.setPosition(h.x, h.y - REMOTE_LIFT).setScale(0.2);
     this.scene.tweens.add({ targets: c, scale: 1, duration: 260, ease: 'Back.easeOut' });
@@ -161,33 +241,54 @@ export class Emotes {
 
   private showBubble(kind: EmoteKind) {
     this.bubble?.destroy();
-    const c = this.makeBubble(kind);
+    const c = this.makeBubble(kind, this.mySkin);
     this.bubble = c;
-    this.bubbleUntil = performance.now() + BUBBLE_MS;
+    this.bubbleUntil = performance.now() + (isAnim(kind) ? LEGEND_BUBBLE_MS : BUBBLE_MS);
     this.place();
     c.setScale(0.2);
     this.scene.tweens.add({ targets: c, scale: 1, duration: 260, ease: 'Back.easeOut' });
   }
 
   /** Globo con la carita (sin posicionar). */
-  private makeBubble(kind: EmoteKind) {
+  private makeBubble(kind: EmoteKind, skin: string) {
     const c = this.scene.add.container(0, 0).setDepth(4100);
     const g = this.scene.add.graphics();
     // (11-11-2026) 1,5× más grande: en el partido apenas se veía
-    const W = 116, H = 104;
-    g.fillStyle(C.outline).fillRoundedRect(-W / 2 - 5, -H - 5, W + 10, H + 10, 28);
-    g.fillStyle(C.outline).fillTriangle(-20, -2, 20, -2, 0, 26);
+    const anim = isAnim(kind);
+    // LEGENDARIO: globo algo más grande con borde DORADO
+    const W = anim ? 132 : 116, H = anim ? 120 : 104;
+    g.fillStyle(anim ? 0xffd23f : C.outline).fillRoundedRect(-W / 2 - 5, -H - 5, W + 10, H + 10, 28);
+    g.fillStyle(anim ? 0xffd23f : C.outline).fillTriangle(-20, -2, 20, -2, 0, 26);
     g.fillStyle(0xffffff).fillRoundedRect(-W / 2, -H, W, H, 24);
     g.fillStyle(0xffffff).fillTriangle(-14, -5, 14, -5, 0, 18);
-    const face = this.scene.add.image(0, -H / 2, EMOTE_TEXTURE[kind]).setDisplaySize(88, 88);
-    c.add([g, face]);
+    if (!anim) {
+      const face = this.scene.add.image(0, -H / 2, emoteTexture(this.scene, kind, skin)).setDisplaySize(88, 88);
+      c.add([g, face]);
+      return c;
+    }
+    // ANIMADO: la entrada una vez y luego la risa en bucle
+    ensureEmoteAnims(this.scene);
+    const key = emoteTexture(this.scene, kind, skin); // la hoja del personaje (MAI: la suya si existe)
+    const spr = this.scene.add.sprite(0, -H / 2, key, 0).setDisplaySize(108, 108);
+    c.add([g, spr]);
+    if (this.scene.anims.exists(`${key}-intro`)) {
+      spr.play(`${key}-intro`);
+      spr.once(Phaser.Animations.Events.ANIMATION_COMPLETE, () => spr.active && spr.play(`${key}-loop`));
+    }
+    // destellos dorados alrededor del globo (sus tweens en bucle se quitan al irse el globo)
+    c.once(Phaser.GameObjects.Events.DESTROY, () => c.list.forEach((o) => this.scene.tweens.killTweensOf(o)));
+    for (let i = 0; i < 4; i++) {
+      const st = this.scene.add.star(Phaser.Math.Between(-W / 2, W / 2), -H + Phaser.Math.Between(0, H), 4, 3, 9, 0xffd23f).setBlendMode(Phaser.BlendModes.ADD).setScale(0);
+      c.add(st);
+      this.scene.tweens.add({ targets: st, scale: { from: 0, to: 1.1 }, alpha: { from: 1, to: 0 }, angle: 90, delay: 200 + i * 260, duration: 600, repeat: -1, repeatDelay: 500 });
+    }
     return c;
   }
 
   private place() {
     if (!this.bubble) return;
     const h = this.head();
-    this.bubble.setPosition(h.x, h.y - 14);
+    this.bubble.setPosition(h.x, h.y - SELF_LIFT);
   }
 
   private update() {

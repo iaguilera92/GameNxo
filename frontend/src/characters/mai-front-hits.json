@@ -2,12 +2,12 @@
   "source": "personajes/Mai/rival/hd/mai-rival-*.png (tools/build-hd.mjs mai-front; JSON base copiado de nxo-front-hits.json el 17-11-2026)",
   "view": "front",
   "cell": {
-    "w": 114,
-    "h": 163
+    "w": 116,
+    "h": 165
   },
   "origin": {
     "x": 0.5,
-    "y": 0.97546
+    "y": 0.97576
   },
   "standHeight": 150,
   "hold": 1,
@@ -34,12 +34,12 @@
       "loop": false,
       "impact": 6,
       "cell": {
-        "w": 124,
-        "h": 161
+        "w": 126,
+        "h": 163
       },
       "origin": {
         "x": 0.5,
-        "y": 0.97516
+        "y": 0.97546
       }
     },
     "backhand": {
@@ -49,12 +49,12 @@
       "loop": false,
       "impact": 5,
       "cell": {
-        "w": 130,
-        "h": 162
+        "w": 132,
+        "h": 165
       },
       "origin": {
         "x": 0.5,
-        "y": 0.97531
+        "y": 0.97576
       }
     },
     "forehand-power": {
@@ -64,12 +64,12 @@
       "loop": false,
       "impact": 5,
       "cell": {
-        "w": 138,
-        "h": 161
+        "w": 140,
+        "h": 163
       },
       "origin": {
         "x": 0.5,
-        "y": 0.97516
+        "y": 0.97546
       }
     },
     "backhand-power": {
@@ -79,12 +79,12 @@
       "loop": false,
       "impact": 5,
       "cell": {
-        "w": 140,
-        "h": 160
+        "w": 142,
+        "h": 162
       },
       "origin": {
         "x": 0.5,
-        "y": 0.975
+        "y": 0.97531
       }
     },
     "serve": {
@@ -94,12 +94,12 @@
       "loop": false,
       "impact": 4,
       "cell": {
-        "w": 134,
-        "h": 166
+        "w": 136,
+        "h": 168
       },
       "origin": {
         "x": 0.5,
-        "y": 0.9759
+        "y": 0.97619
       }
     },
     "smash": {

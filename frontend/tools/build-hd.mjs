@@ -56,13 +56,22 @@ mkdirSync(TMP, { recursive: true });
  * su imagen HD. `walk-intro` = caminata lenta de la ENTRADA al partido (NxoActor.runKey, walkFor).
  */
 // (18-11-2026, usuario) `victory-big` = VICTORIA de verdad al ganar el PARTIDO (se tira al suelo de rodillas, "¡VAMOS!"): `<pack>-extras-4`
-const NEW_CLIPS = { 'walk-intro': { json: 'extra', fps: 8, loop: true }, 'victory-big': { json: 'extra', fps: 10, loop: false } };
+// (18-11-2026, usuario) `point-sad` = reacción TRISTE al perder un punto (se alterna con point-lost, el enojado): `<pack>-extras-5`
+const NEW_CLIPS = {
+  'walk-intro': { json: 'extra', fps: 8, loop: true },
+  'victory-big': { json: 'extra', fps: 10, loop: false },
+  'point-sad': { json: 'extra', fps: 8, loop: false },
+  // (18-11-2026, usuario) 3.ª reacción al perder punto: incrédulo (manos a la cadera, mira al cielo): `<pack>-reacciones-4`
+  'point-doubt': { json: 'extra', fps: 8, loop: false },
+  // (18-11-2026, usuario) 2.ª celebración de punto: se tira de rodillas, se desliza y grita "¡VAMOS!": `<pack>-reacciones-5`
+  'point-cheer': { json: 'extra', fps: 10, loop: false },
+};
 const CLIPS = ULTI ? ULTI_CLIPS : [...Object.values(ROWS_NXO).flatMap((r) => Object.values(r)), ...Object.keys(NEW_CLIPS)];
 /** clips que NO empiezan de pie: se miden con la carrera (frame 1) o con su último frame (recuperaciones) */
 const RUN_LIKE = new Set(['runstop', 'brake-turn', 'run-left', 'dash']);
 const LAST_STAND = new Set(['recover-right', 'recover-left']);
 /** clips cuyo frame 1 tampoco es "de pie" normal: copian la escala de otro clip */
-const SCALE_AS = { 'victory-big': 'idle', 'inferno-hit': 'idle', stunned: 'idle', defeat: 'idle', 'dive-right': 'idle', 'dive-left': 'idle' };
+const SCALE_AS = { 'point-cheer': 'idle', 'point-doubt': 'idle', 'point-sad': 'idle', 'victory-big': 'idle', 'inferno-hit': 'idle', stunned: 'idle', defeat: 'idle', 'dive-right': 'idle', 'dive-left': 'idle' };
 
 // ------------------------------------------------------------------ croma (igual que build-moves.mjs)
 function chroma(px, i) {
@@ -290,7 +299,7 @@ const SHEET_NAME = { 1: 'movimientos', 2: 'golpes', 3: 'reacciones', 4: 'extras'
 /** filas que NO se hacen (el juego no las reproduce): docs/COMO-TRABAJAR-SPRITES-MOVIMIENTOS.md ★ */
 const SKIP = new Set(['run-left', 'wait', 'dropshot', 'intro', 'greet', 'serve-bounce']); // serve-bounce: descartado (14-11-2026)
 /** clips de OTRA hoja que el usuario pidió numerar al final de una hoja (walk = hoja 4 fila 3, se ve al moverse): `nxo-movimientos-8` */
-const APPEND = { 1: ['walk', 'dive-right', 'dive-left', 'recover-right', 'recover-left'], 2: ['serve-toss'], 4: ['victory-big'] }; // estiradas = movimiento (usuario, 14-11-2026)
+const APPEND = { 1: ['walk', 'dive-right', 'dive-left', 'recover-right', 'recover-left'], 2: ['serve-toss'], 3: ['point-doubt', 'point-cheer'], 4: ['victory-big', 'point-sad'] }; // estiradas = movimiento (usuario, 14-11-2026)
 /** clips que van AL PRINCIPIO de una hoja: `nxo-extras-1` = caminata de entrada (reemplaza al bote, descartado) */
 const PREPEND = { 4: ['walk-intro'] };
 const MOVED = new Set(Object.values(APPEND).flat());

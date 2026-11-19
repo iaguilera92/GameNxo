@@ -47,6 +47,10 @@ export const EV = {
   OPPONENT_AWAY: 'game:opponent-away',
   /** el rival volvió (data: ScoreMsg oficial): se rejuega el punto en curso */
   OPPONENT_BACK: 'game:opponent-back',
+  /** 2v2: el compañero se cortó o se fue (data: { gone: boolean }): un BOT juega por él; gone = ya no vuelve */
+  MATE_AWAY: 'game:mate-away',
+  /** 2v2: el compañero volvió y recupera su personaje */
+  MATE_BACK: 'game:mate-back',
   /** reconexión aceptada (data: ResumedMsg) */
   RESUMED: 'game:resumed',
   SCORE: 'game:score',
@@ -75,8 +79,13 @@ export interface PlayerProfile {
   zone?: string;
 }
 
+/** modo de la partida: 1v1 (de siempre) o 2v2 (2 humanos del MISMO equipo contra 2 bots que simula el host; 21-11-2026) */
+export type GameMode = '1v1' | '2v2';
+
 export interface FindRequest {
   profile: PlayerProfile;
+  /** sin él, '1v1' */
+  mode?: GameMode;
 }
 
 export interface SearchingMsg {
@@ -90,6 +99,8 @@ export interface MatchedMsg {
   roomId: string;
   role: Role;
   opponent: PlayerProfile;
+  /** modo de la sala (sin él, '1v1'). En '2v2' opponent es el COMPAÑERO (no hay rival humano: los rivales son bots que simula el host) */
+  mode?: GameMode;
   /** reglas del partido (las mismas que el modo BOT) */
   gamesToWin: number;
   /** clave para reconectar a esta sala si se corta la conexión (game:resume) */
@@ -146,6 +157,8 @@ export interface StateMsg {
    * El receptor descarta los estados de un punto anterior (el rival "volvía corriendo" al empezar cada punto).
    */
   pt?: number;
+  /** 2v2: de quién es el estado (0 = el emisor; 1 y 2 = los bots que simula el host). Sin él, 0 */
+  a?: number;
 }
 
 export type HitKind = 'hit' | 'serve';
@@ -177,6 +190,10 @@ export interface HitMsg {
   lunge?: number;
   /** devolución del impacto de una bola de fuego: el emisor está aturdido, el receptor NO anima un golpe */
   impact?: boolean;
+  /** 2v2: quién golpea (0 = el emisor; 1 y 2 = los bots que simula el host). Sin él, 0 */
+  a?: number;
+  /** 2v2: poder de la bola de un ESPECIAL / ULTI (fire, ice, wind, lightning…): cada teléfono la dibuja con el mismo aspecto */
+  el?: string;
 }
 
 /**
@@ -188,9 +205,10 @@ export interface HitMsg {
  *  bump                         el emisor recibió un golpe cargado al máximo y retrocede un poco (data: ms): el receptor solo pone el polvo y la sacudida
  *  emote                        carita del chat (data: kind = happy | cool | wow)
  *  smash-armed / smash-disarmed el emisor arma / consume su SMASH (aura en el rival; data de smash-armed: element = su poder)
+ *  serve-timeout                2v2: el invitado se quedó sin tiempo para sacar (le tocaba): el host aplica la falta
  *  smash-cine                   empieza la cinemática del SMASH del emisor (data: x, y, overhead, ms, element = su poder)
  *  inferno-cine                 empieza la cinemática del INFERNO del emisor (data: x, y, tx, ty, ms, power; con la ULTI LEGENDARIA power = energy además bx, by = el rival visto por el emisor y seed = semilla del peloteo automático, 17-11-2026)
- *  defensive                    SOMBRA / SUPERSALTO / VOLTERETA / PATINAJE / DESTELLO / teletransporte del emisor (data: kind = shadow | jump | flip | skate | blink | warp | lightning, x, y, tx, ty, ms | out, in, delay | chg para lightning)
+ *  defensive                    SOMBRA / SUPERSALTO / VOLTERETA / PATINAJE / DESTELLO / teletransporte del emisor (data: kind = shadow | jump | flip | skate | blink | warp | lightning | slowmo, x, y, tx, ty, ms | out, in, delay | chg para lightning | side para slowmo)
  *  racket                       raqueta del emisor tras recibir la ULTI (data: lost = true + x, y donde cae · lost = false: la recogió)
  *  timing                       nota del golpe del emisor (data: grade = perfect | good | early | late, streak, ms)
  *  lunge                        el emisor empieza su ESTIRADA (data: side, x, y, tx, ty, ms)
@@ -223,7 +241,8 @@ export type ActionKind =
   | 'smash-armed'
   | 'smash-disarmed'
   | 'smash-cine'
-  | 'inferno-cine';
+  | 'inferno-cine'
+  | 'serve-timeout';
 
 export interface ActionMsg {
   kind: ActionKind;

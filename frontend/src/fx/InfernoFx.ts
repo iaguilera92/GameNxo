@@ -4,7 +4,7 @@ import { project } from '../view/projection';
 import { INFERNO, INFERNO_CINE, shakeLevel } from '../logic/InfernoDrive';
 import { type InfernoPower, infernoPowerOf } from '../domain/infernoPowers';
 import type { CineProfile } from './SmashCinematic';
-import { DropZeroFx } from './smashElementFx';
+import { DRAGON_BALL, DropZeroFx } from './smashElementFx';
 import { BarrageTrail, addBarragePreview, barrageFan, isShown } from './barrageFx';
 import { EnergyBallFx, addEnergyPreview, energyBurst } from './energyBallFx';
 import { HurricaneBallFx, addHurricanePreview, hurricaneBurst } from './hurricaneFx';
@@ -449,6 +449,8 @@ export function queueInfernoArt(load: Phaser.Loader.LoaderPlugin) {
     if (!load.scene.textures.exists(art.key)) load.spritesheet(art.key, art.file, size);
     if (art.trail && !load.scene.textures.exists(art.trail.key)) load.spritesheet(art.trail.key, art.trail.file, size);
   }
+  // (18-11-2026) PELOTA DRAGÓN del ESPECIAL LEGENDARIO (fx/smashElementFx.ts): partido y vistas previas
+  if (!load.scene.textures.exists(DRAGON_BALL.key)) load.spritesheet(DRAGON_BALL.key, DRAGON_BALL.file, { frameWidth: DRAGON_BALL.cell, frameHeight: DRAGON_BALL.cell });
 }
 
 // ---------------------------------------------------------------- sombras

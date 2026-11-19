@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { BOT_DIFFICULTY, COURT, NET_X, PLAYER_SPEED } from '../config';
+import { BOT_DIFFICULTY, COURT, HIT_MAX_Z, NET_X, PLAYER_SPEED } from '../config';
 import { BallState, stepBall } from '../objects/Ball';
 
 /**
@@ -100,6 +100,30 @@ export class BotAI {
     const h = this.home;
     const y = recoverY ?? h.y;
     this.target.set(h.x + Phaser.Math.Between(-20, 20), y + Phaser.Math.Between(-40, 40));
+  }
+
+  /**
+   * (18-11-2026, usuario: "el bot con el DASH no alcanza mi ESPECIAL") al lanzar su DEFENSIVO el rival lee BIEN la pelota: sin el error
+   * de percepción de este golpe (contra el ESPECIAL era ×1,6) y replanifica ya, para que el sprint vaya a donde pasa de verdad.
+   */
+  sharpen(live?: BallState, atX?: number) {
+    this.noise = { vx: 0, vy: 0, vz: 0, ox: 0, oy: 0 };
+    this.extraError = 1;
+    this.errScale = this.errorFloor;
+    this.replanIn = 0;
+    if (!live || atX === undefined) return;
+    // INTERCEPCIÓN: el punto donde la pelota (de verdad) cruza su profundidad actual a altura de golpe. Antes iba al punto
+    // "cómodo" ~0,3 s tras el bote, a menudo detrás de su límite de cancha: el sprint se iba hacia atrás y no llegaba de lado
+    const s = { ...live };
+    const reachX = atX - 15; // el alcance está delante del cuerpo (mira hacia la red)
+    for (let t = 0; t < 2; t += 1 / 120) {
+      if (stepBall(s, 1 / 120) === 'net') return;
+      if (s.vx > 0 && s.x >= reachX && s.z < HIT_MAX_Z) {
+        this.target.set(Math.max(atX, s.x + 15), s.y);
+        this.tracking = false; // se queda con este punto (no replanifica hacia el de "después del bote")
+        return;
+      }
+    }
   }
 
   reset(x: number, y: number) {

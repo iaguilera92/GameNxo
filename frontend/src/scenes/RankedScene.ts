@@ -16,7 +16,17 @@ import type { BoardEntry } from '../domain/rankedBots';
 import type { RankedView } from '../domain/ranked';
 import type { WeeklyReward } from '../domain/rankedState';
 import { onPlayerChange } from '../domain/playerStore';
-import { claimWeekly, markRankedSeen, pendingWeekly, rankedState, rankedView, syncRanked } from '../logic/Ranked';
+import { type RiskActivateError, activateRiskMode, claimWeekly, markRankedSeen, pendingWeekly, rankedState, rankedView, riskModeStatus, syncRanked, syncRiskMode } from '../logic/Ranked';
+import { formatRiskLeft } from '../domain/riskMode';
+import { showConfirm } from '../ui/ConfirmDialog';
+
+const RISK_ERRORS: Record<RiskActivateError, string> = {
+  offline: 'Necesitas conexión para activar el MODO RIESGO',
+  not_monday: 'El MODO RIESGO solo se activa los lunes',
+  already_used: 'Ya usaste el MODO RIESGO esta semana',
+  active: 'El MODO RIESGO ya está activo',
+  unknown: 'No se pudo activar el MODO RIESGO',
+};
 
 const NAVY = 0x0b1733;
 const NEON = 0x3a7bff;
@@ -61,6 +71,7 @@ export class RankedScene extends Phaser.Scene {
     if (!this.textures.exists('menu-bg')) this.load.image('menu-bg', 'assets/menu-bg.webp');
     if (!this.textures.exists(NAV.key)) this.load.image(NAV.key, NAV.file);
     preloadRankBadges(this.load); // todas: tabla de líderes y lista de ligas
+    if (!this.textures.exists('liga-title')) this.load.image('liga-title', 'assets/liga-titulo.webp'); // (18-11-2026) título LIGA en imagen
   }
 
   create() {
@@ -68,6 +79,7 @@ export class RankedScene extends Phaser.Scene {
     installTapSound(this); // clic de interfaz en cada botón / diálogo
     this.cameras.main.fadeIn(200, 0, 0, 0);
     syncRanked();
+    void syncRiskMode(); // MODO RIESGO x2: el servidor manda (hora y activación); si cambia algo, onPlayerChange redibuja
     this.overlay = [];
     this.build();
     this.setupScroll();
@@ -103,7 +115,11 @@ export class RankedScene extends Phaser.Scene {
     const headerStart = this.children.list.length;
     this.backButton(50, headY);
     // título LIGA (antes la imagen "RANKED"; 16-11-2026: los títulos de Ranked pasan a LIGA)
-    this.add.text(W / 2, headY + 2, 'LIGA', { fontFamily: FONT, fontSize: '54px', color: '#ffd23f', stroke: '#0a1638', strokeThickness: 10 }).setOrigin(0.5).setLetterSpacing(6).setShadow(0, 5, '#000000', 6, true, true);
+    // (18-11-2026) título en imagen (mismo estilo que TIENDA: liga-titulo.webp, 3:1); sin ella, el texto de antes
+    if (this.textures.exists('liga-title')) {
+      const titleW = Math.min(250, Math.max(150, W - 250));
+      this.add.image(W / 2, headY - 1, 'liga-title').setDisplaySize(titleW, titleW / 3);
+    } else this.add.text(W / 2, headY + 2, 'LIGA', { fontFamily: FONT, fontSize: '54px', color: '#ffd23f', stroke: '#0a1638', strokeThickness: 10 }).setOrigin(0.5).setLetterSpacing(6).setShadow(0, 5, '#000000', 6, true, true);
     this.coinPill(W - 24, headY, v.coins); // monedas de la cuenta (arriba a la derecha)
     const headerObjects = this.children.list.slice(headerStart);
     this.add.container(0, 0, headerObjects).setScrollFactor(0);
@@ -374,7 +390,9 @@ export class RankedScene extends Phaser.Scene {
     // ---- líderes de la liga: podio, puestos siguientes y tabla completa
     // panel: la etiqueta del título va montada sobre su borde de arriba (centro en `panelTop`)
     const TAG_H = 34;
-    const panelTop = ry + rh / 2 + GAP + TAG_H / 2;
+    // ---- MODO RIESGO x2 (evento de los lunes, domain/riskMode.ts): tarjeta entre la recompensa semanal y los líderes
+    const riskH = this.riskCard(W / 2, ry + rh / 2 + GAP, rw);
+    const panelTop = ry + rh / 2 + GAP + riskH + GAP + TAG_H / 2;
     const podiumW = Math.min(660, W - 40);
     const podiumPanel = this.add.graphics();
     // LÍDERES (13-11-2026, estilo de la referencia): top 3 en cards pegadas (el 1.º al centro y más alto), insignia
@@ -510,6 +528,99 @@ export class RankedScene extends Phaser.Scene {
     this.cameras.main.setBounds(0, 0, W, H + this.maxScrollY);
     this.cameras.main.setScroll(0, this.scrollY);
     this.navImage(W, H);
+  }
+
+  /**
+   * MODO RIESGO x2: nombre, estado (disponible · cuenta regresiva · terminado · solo lunes) y botón ACTIVAR.
+   * El tiempo se calcula con la hora de activación del servidor: cerrar la pantalla o el juego no lo pausa.
+   * Devuelve el alto de la tarjeta.
+   */
+  private riskCard(cx: number, top: number, w: number): number {
+    const rs = riskModeStatus();
+    const h = 92;
+    const x0 = cx - w / 2;
+    const cy = top + h / 2;
+    const active = rs.phase === 'active';
+    const avail = rs.phase === 'available';
+    const line = active ? 0xff5a2e : avail ? 0xffa42e : 0x5a3a2a;
+    const g = this.add.graphics();
+    g.fillStyle(0x000000, 0.35).fillRoundedRect(x0 + 3, top + 6, w, h, 20);
+    g.fillStyle(active ? 0x3a0d06 : 0x1f0f0a, 0.97).fillRoundedRect(x0, top, w, h, 20);
+    g.fillStyle(0xff7a2e, active ? 0.22 : 0.08).fillRoundedRect(x0 + 4, top + 4, w - 8, h * 0.4, 16);
+    g.lineStyle(3, line, 1).strokeRoundedRect(x0, top, w, h, 20);
+    if (active) {
+      const halo = this.add.graphics();
+      halo.lineStyle(8, 0xff5a2e, 0.35).strokeRoundedRect(x0 - 2, top - 2, w + 4, h + 4, 22);
+      this.tweens.add({ targets: halo, alpha: { from: 1, to: 0.3 }, duration: 700, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
+    }
+    // medallón x2
+    const mx = x0 + 48;
+    const med = this.add.graphics({ x: mx, y: cy });
+    med.fillStyle(0x07152f, 1).fillCircle(0, 0, 32);
+    med.fillStyle(active || avail ? 0xd8361e : 0x4a2a20, 1).fillCircle(0, 0, 29);
+    med.fillStyle(0xffffff, 0.22).fillCircle(-8, -9, 10);
+    med.lineStyle(2.5, active || avail ? 0xffd23f : 0x8a6a50, 1).strokeCircle(0, 0, 29);
+    const x2 = this.add.text(mx, cy + 1, 'x2', { fontFamily: FONT, fontSize: '30px', color: active || avail ? '#ffffff' : '#b7a090', stroke: '#4a0d00', strokeThickness: 5 }).setOrigin(0.5);
+    if (active) this.tweens.add({ targets: [med, x2], scale: { from: 1, to: 1.08 }, duration: 450, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
+    // textos
+    const tx = mx + 46;
+    const btnW = 150;
+    const textW = w - (tx - x0) - (avail ? btnW + 26 : 18);
+    const title = this.add.text(tx, cy - 20, 'MODO RIESGO x2', { fontFamily: FONT, fontSize: '22px', color: active ? '#ffb347' : '#ffd23f', stroke: '#2a0a00', strokeThickness: 5 }).setOrigin(0, 0.5).setLetterSpacing(1);
+    fitText(title, textW);
+    const sub =
+      active ? 'APUESTAS RANKED x2 · QUEDAN' : avail ? '¡DISPONIBLE HOY! Apuestas Ranked x2 por 10 min' : rs.phase === 'used' ? 'TERMINADO · vuelve el próximo lunes' : 'Solo los LUNES · una vez por semana';
+    const st = this.add.text(tx, cy + 14, sub, { fontFamily: FONT, fontSize: '15px', color: active ? '#ffffff' : avail ? '#ffe0b0' : '#b7a090' }).setOrigin(0, 0.5);
+    fitText(st, active ? textW - 90 : textW);
+    if (active) {
+      // cuenta regresiva (cada segundo, con la hora real: al volver muestra lo que de verdad queda)
+      const clock = this.add.text(tx + st.displayWidth + 10, cy + 14, formatRiskLeft(rs.msLeft), { fontFamily: FONT, fontSize: '24px', color: '#ffd23f', stroke: '#2a0a00', strokeThickness: 5 }).setOrigin(0, 0.5);
+      const ev = this.time.addEvent({
+        delay: 1000,
+        loop: true,
+        callback: () => {
+          if (!clock.active) return void ev.remove();
+          const now = riskModeStatus();
+          if (now.phase !== 'active') {
+            ev.remove();
+            if (this.overlay.length === 0) this.rebuild(); // se apagó solo
+            return;
+          }
+          clock.setText(formatRiskLeft(now.msLeft));
+        },
+      });
+    }
+    if (avail) {
+      arcadeButton(this, x0 + w - 14 - btnW / 2, cy, btnW, 52, 'ACTIVAR', () => this.confirmRisk(), { palette: 'red', pulse: true });
+    }
+    return h;
+  }
+
+  /** Confirmación (una sola vez por semana) y activación en el servidor. */
+  private confirmRisk() {
+    if (this.overlay.length) return;
+    const objs = showConfirm(this, {
+      title: 'MODO RIESGO x2',
+      message: 'Durante 10 minutos tus apuestas Ranked descuentan y pagan el DOBLE.',
+      detail: 'El tiempo corre aunque salgas del juego. Solo una vez por semana.',
+      confirmLabel: 'ACTIVAR',
+      cancelLabel: 'AHORA NO',
+      onConfirm: () => {
+        close();
+        void activateRiskMode().then((r) => {
+          if (!this.scene.isActive()) return;
+          this.rebuild();
+          if (r.ok) this.toast('¡MODO RIESGO x2 ACTIVO!');
+          else this.toast(RISK_ERRORS[r.error]);
+        });
+      },
+      onCancel: () => close(),
+    });
+    const close = () => {
+      objs.forEach((o) => o.destroy());
+      this.overlay = [];
+    };
+    this.overlay = objs;
   }
 
   private setupScroll() {

@@ -2,12 +2,12 @@
   "source": "pj-nxo-rival-1.png..4 (tools/build-moves.mjs): animaciones nuevas",
   "view": "front",
   "cell": {
-    "w": 118,
-    "h": 190
+    "w": 120,
+    "h": 192
   },
   "origin": {
     "x": 0.5,
-    "y": 0.97895
+    "y": 0.97917
   },
   "standHeight": 150,
   "animations": {
@@ -32,11 +32,11 @@
       "loop": true,
       "cell": {
         "w": 158,
-        "h": 185
+        "h": 187
       },
       "origin": {
         "x": 0.5,
-        "y": 0.97838
+        "y": 0.97861
       }
     },
     "defeat": {
@@ -45,12 +45,12 @@
       "fps": 10,
       "loop": false,
       "cell": {
-        "w": 136,
-        "h": 179
+        "w": 138,
+        "h": 181
       },
       "origin": {
         "x": 0.5,
-        "y": 0.97765
+        "y": 0.9779
       }
     },
     "serve-spin": {
@@ -60,12 +60,12 @@
       "loop": false,
       "impact": 4,
       "cell": {
-        "w": 142,
-        "h": 192
+        "w": 144,
+        "h": 194
       },
       "origin": {
         "x": 0.5,
-        "y": 0.97917
+        "y": 0.97938
       }
     },
     "dive-right": {
@@ -102,12 +102,12 @@
       "fps": 14,
       "loop": false,
       "cell": {
-        "w": 186,
-        "h": 201
+        "w": 188,
+        "h": 203
       },
       "origin": {
         "x": 0.5,
-        "y": 0.9801
+        "y": 0.9803
       }
     },
     "recover-left": {
@@ -130,12 +130,12 @@
       "fps": 12,
       "loop": true,
       "cell": {
-        "w": 120,
-        "h": 170
+        "w": 122,
+        "h": 172
       },
       "origin": {
         "x": 0.5,
-        "y": 0.97647
+        "y": 0.97674
       },
       "scale": 1.07
     },
@@ -146,11 +146,11 @@
       "loop": false,
       "cell": {
         "w": 136,
-        "h": 183
+        "h": 186
       },
       "origin": {
         "x": 0.5,
-        "y": 0.97814
+        "y": 0.97849
       }
     },
     "point-lost": {
@@ -159,12 +159,12 @@
       "fps": 10,
       "loop": false,
       "cell": {
-        "w": 116,
-        "h": 173
+        "w": 118,
+        "h": 175
       },
       "origin": {
         "x": 0.5,
-        "y": 0.97688
+        "y": 0.97714
       }
     },
     "wait": {
@@ -215,12 +215,12 @@
       "fps": 40,
       "loop": false,
       "cell": {
-        "w": 146,
-        "h": 201
+        "w": 148,
+        "h": 203
       },
       "origin": {
         "x": 0.5,
-        "y": 0.9801
+        "y": 0.9803
       }
     },
     "inferno-hit": {
@@ -229,12 +229,12 @@
       "fps": 14,
       "loop": false,
       "cell": {
-        "w": 160,
-        "h": 171
+        "w": 162,
+        "h": 173
       },
       "origin": {
         "x": 0.5,
-        "y": 0.97661
+        "y": 0.97688
       }
     },
     "volley": {
@@ -245,11 +245,11 @@
       "impact": 4,
       "cell": {
         "w": 136,
-        "h": 162
+        "h": 164
       },
       "origin": {
         "x": 0.5,
-        "y": 0.97531
+        "y": 0.97561
       }
     },
     "dropshot": {
@@ -301,12 +301,40 @@
       "fps": 8,
       "loop": true,
       "cell": {
-        "w": 94,
-        "h": 160
+        "w": 96,
+        "h": 162
       },
       "origin": {
         "x": 0.5,
-        "y": 0.975
+        "y": 0.97531
+      }
+    },
+    "point-doubt": {
+      "file": "point-doubt.webp",
+      "frames": 8,
+      "fps": 8,
+      "loop": false,
+      "cell": {
+        "w": 122,
+        "h": 193
+      },
+      "origin": {
+        "x": 0.5,
+        "y": 0.97927
+      }
+    },
+    "point-cheer": {
+      "file": "point-cheer.webp",
+      "frames": 8,
+      "fps": 10,
+      "loop": false,
+      "cell": {
+        "w": 162,
+        "h": 193
+      },
+      "origin": {
+        "x": 0.5,
+        "y": 0.97927
       }
     }
   }

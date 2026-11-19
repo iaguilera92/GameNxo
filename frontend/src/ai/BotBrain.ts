@@ -188,6 +188,11 @@ export class BotBrain {
   private dashAnim = false;
   /** ya decidió si usar el DASH para la pelota que viene */
   private dashDecided = false;
+  /**
+   * usó el DEFENSIVO para la pelota que viene: como el tuyo, la devolución es más segura (MatchScene le da DASH_REACH de
+   * alcance extra al pasar la pelota). Se apaga con la pelota siguiente y en cada punto.
+   */
+  dashBall = false;
   private wasReading = false;
   private get abil() {
     return ABIL[this.profile?.tier ?? 'normal'];
@@ -279,6 +284,7 @@ export class BotBrain {
     this.ai.setBoost(MOOD.boost[mode]);
     this.dashT = 0;
     this.dashDecided = false;
+    this.dashBall = false;
     if (devFlag('dev.botDebug') === '1') console.info(`[rival] punto ${points.join('-')}${key ? ' (clave)' : ''}: modo ${mode}, dificultad ${this.ai.d.toFixed(2)}`);
   }
 
@@ -300,7 +306,10 @@ export class BotBrain {
     // DASH: al empezar a leer cada golpe tuyo decide UNA vez si sprinta (no llegaría a tiempo)
     let sprint: SprintEvt = null;
     const reading = phase === 'rally' && this.ai.reading;
-    if (reading && !this.wasReading) this.dashDecided = false;
+    if (reading && !this.wasReading) {
+      this.dashDecided = false;
+      this.dashBall = false; // pelota nueva: el DEFENSIVO de la anterior ya no cuenta
+    }
     this.wasReading = reading;
     if (reading && !this.dashDecided && !frozen) {
       this.dashDecided = true;
@@ -309,6 +318,10 @@ export class BotBrain {
         this.dashT = DASH_AI.time;
         this.dashCd = DASH_COOLDOWN * this.abil.cd;
         this.dashAnim = true;
+        this.dashBall = true;
+        // con el DEFENSIVO lee bien la pelota y sprinta a donde cruza su profundidad (si no, iba a un punto errado o detrás
+        // de su límite de cancha y no llegaba)
+        this.ai.sharpen(inp.ball, body.x);
         sprint = 'start';
       }
     }

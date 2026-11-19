@@ -388,3 +388,12 @@ todas las semanas. Con el backend se pone en `false`, como decidió D7.
 
 Durante todo el plan **no se toca** el motor del partido (MatchScene, físicas, controles, animaciones). La única dependencia
 posible es la D2 (b), que habría que justificar aparte.
+
+## MODO RIESGO x2 (evento semanal, 18-11-2026)
+
+- Solo los **lunes** (ciclo diario de Chile, corte 23:59, el mismo de la semana Ranked). Se activa a mano, **una vez por semana**.
+- Dura **10 minutos** desde la hora de activación del servidor: es una resta de horas, no un contador (cerrar el juego o perder la conexión no lo pausa). Al terminar se apaga solo hasta el lunes siguiente.
+- Mientras está activo, la apuesta Ranked que **empieza** (x1 o x2) vale el doble: entrada y premio. El multiplicador queda fijado en `ranked.pending.risk` al pagar la entrada; la liquidación usa la entrada y el premio guardados (se aplica una sola vez). Una partida empezada antes del evento sigue x1; una empezada durante el evento cobra x2 aunque termine después.
+- Saldo global y neto semanal se mueven el doble; el neto sigue sin bajar de 0 (regla de la liga, sin cambios). Ruletas, premios diarios, recompensa semanal y ascensos: sin cambios.
+- Código: `frontend/src/domain/riskMode.ts` (reglas), `domain/ranked.ts` (`enterRanked`), `logic/Ranked.ts` (`syncRiskMode`, `activateRiskMode`), `net/riskApi.ts`, tarjeta en `RankedScene` y marca `ui/riskBadge.ts` en el marcador. Servidor: `backend/src/risk/riskMode.ts` y `api/riskRoutes.ts` (`GET /api/risk-mode/:id`, `POST …/activate`, `POST …/stake`), guardado en `backend/data/risk-mode.json` (`RISK_DATA_FILE`). Pruebas: `frontend/tools/test-risk-mode.mjs` y `backend/test/riskMode.test.ts`.
+- Límite actual: sin cuentas, el id es del dispositivo y las monedas Ranked se siguen moviendo en el teléfono. El servidor decide la activación y la hora; `stake`/`settle` del servidor quedan listos para la etapa 4 (endpoints Ranked).

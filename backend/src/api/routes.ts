@@ -7,6 +7,8 @@ import type { RoomManager } from '../socket/rooms/RoomManager.js';
 import { matchLog } from '../socket/handlers/index.js';
 import { LOG_PARTIDO } from '../socket/matchLog.js';
 import { CONFIG } from '../config/env.js';
+import { riskRouter } from './riskRoutes.js';
+import { RiskStore } from '../risk/riskMode.js';
 
 export function apiRouter(getRooms: () => RoomManager | null) {
   const r = Router();
@@ -35,5 +37,7 @@ export function apiRouter(getRooms: () => RoomManager | null) {
     res.type('application/x-ndjson');
     createReadStream(f).pipe(res);
   });
+  // MODO RIESGO x2 (evento semanal de Ranked): el servidor registra la activación y fija el multiplicador
+  r.use('/risk-mode', riskRouter(new RiskStore(process.env.RISK_DATA_FILE ?? 'data/risk-mode.json')));
   return r;
 }

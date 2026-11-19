@@ -1,21 +1,25 @@
 // Miniaturas de los EMOTES (las caritas del partido, que también son premios del Pase de Batalla).
 //   node tools/build-emote-thumbs.mjs
-// Fuentes: public/personajes/Nxo/emojis/nxo-<nombre>.png (~1300 px, ~1,1 MB cada una)
-// Salida:  public/assets/emotes/emote-<nombre>.png, cuadradas de SIZE px con el dibujo centrado (fondo transparente).
+// Fuentes: public/personajes/Nxo/emojis/nxo-<nombre>.png y (18-11-2026) public/personajes/Mai/emotes/mai-<nombre>.png (~1300 px, ~1,1 MB)
+// Salida:  public/assets/emotes/emote-<pj>-<nombre>.png: emote-nxo-… (NXO) y emote-mai-… (MAI), cuadradas de SIZE px con el dibujo centrado.
 // El juego las muestra a 54-58 px: con 160 sobra nitidez y cada una pesa decenas de KB en vez de más de 1 MB.
-import { mkdirSync, readdirSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { decode, save } from './png-lite.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
-const SRC_DIR = join(ROOT, 'public', 'personajes', 'Nxo', 'emojis');
+const SOURCES = [
+  { dir: join(ROOT, 'public', 'personajes', 'Nxo', 'emojis'), re: /^nxo-.+\.png$/, out: (f) => f.replace(/^nxo-/, 'emote-nxo-') },
+  { dir: join(ROOT, 'public', 'personajes', 'Mai', 'emotes'), re: /^mai-.+\.png$/, out: (f) => f.replace(/^mai-/, 'emote-mai-') },
+];
 const OUT_DIR = join(ROOT, 'public', 'assets', 'emotes');
 const SIZE = 160;
 const PAD = 4;
 
 mkdirSync(OUT_DIR, { recursive: true });
-for (const f of readdirSync(SRC_DIR).filter((n) => /^nxo-.+\.png$/.test(n))) {
+for (const { dir: SRC_DIR, re, out: outName } of SOURCES)
+for (const f of (existsSync(SRC_DIR) ? readdirSync(SRC_DIR) : []).filter((n) => re.test(n))) {
   const { w, h, px } = decode(join(SRC_DIR, f));
   // caja del dibujo (alfa > 8)
   let x0 = w, y0 = h, x1 = -1, y1 = -1;
@@ -51,7 +55,7 @@ for (const f of readdirSync(SRC_DIR).filter((n) => /^nxo-.+\.png$/.test(n))) {
       out[di] = Math.round(r / a); out[di + 1] = Math.round(g / a); out[di + 2] = Math.round(b / a);
       out[di + 3] = Math.min(255, Math.round((a / n) * 255));
     }
-  const name = f.replace(/^nxo-/, 'emote-');
+  const name = outName(f);
   save(join(OUT_DIR, name), SIZE, SIZE, out);
   console.log(`${f} (${w}x${h}) -> assets/emotes/${name} ${SIZE}x${SIZE}`);
 }

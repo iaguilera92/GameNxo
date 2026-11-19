@@ -7,7 +7,7 @@
  * todavía se esté viendo la pantalla VS. Si algo llega antes de que la escena del partido se conecte (attach),
  * queda guardado y se le entrega al conectarse: no se pierde ningún aviso entre escenas.
  */
-import { EV, type ActionMsg, type HitMsg, type OverMsg, type OpponentLeftMsg, type PlayerProfile, type PointMsg, type ResumedMsg, type Role, type ScoreMsg, type StateMsg } from './protocol';
+import { EV, type ActionMsg, type GameMode, type HitMsg, type OverMsg, type OpponentLeftMsg, type PlayerProfile, type PointMsg, type ResumedMsg, type Role, type ScoreMsg, type StateMsg } from './protocol';
 import { connect, type NetTransport } from './NetClient';
 
 /** RECONEXIÓN: tiempo máximo intentando volver al partido (el servidor guarda el sitio RECONNECT_GRACE_MS = 15 s) */
@@ -33,6 +33,9 @@ export interface MatchNetHandlers {
   /** el rival se cortó y está reconectando (partido en pausa) / volvió */
   onOpponentAway?(): void;
   onOpponentBack?(score: ScoreMsg): void;
+  /** 2v2: el compañero se cortó o se rindió (gone): un bot juega por él / volvió y recupera su personaje */
+  onMateAway?(gone: boolean): void;
+  onMateBack?(score: ScoreMsg): void;
   /** se perdió la conexión con el servidor */
   onDisconnect(): void;
 }
@@ -73,6 +76,8 @@ export class MatchNet {
     readonly gamesToWin: number,
     /** clave del emparejamiento para volver a la sala tras un corte (sin ella no se reconecta) */
     private readonly token?: string,
+    /** (21-11-2026) '2v2': 2 humanos del MISMO equipo contra 2 bots que simula el host; opponent es el COMPAÑERO y nada se espeja entre compañeros */
+    readonly mode: GameMode = '1v1',
   ) {
     // escucha de ciclo de vida desde el emparejamiento (pantalla VS incluida)
     const on = <T>(ev: string, cb: (d: T) => void) => {
@@ -89,6 +94,8 @@ export class MatchNet {
     on<OverMsg>(EV.OVER, (m) => this.end({ kind: 'over', msg: m }));
     on('disconnect', () => this.onDrop());
     on(EV.OPPONENT_AWAY, () => this.handlers?.onOpponentAway?.());
+    on<{ gone?: boolean }>(EV.MATE_AWAY, (m) => this.handlers?.onMateAway?.(!!m?.gone));
+    on<ScoreMsg>(EV.MATE_BACK, (s) => this.handlers?.onMateBack?.(s));
     on<ScoreMsg>(EV.OPPONENT_BACK, (s) => this.handlers?.onOpponentBack?.(s));
   }
 
@@ -163,7 +170,7 @@ export class MatchNet {
     const h = this.handlers;
     if (!h) return;
     if (e.kind === 'left') h.onOpponentLeft(e.msg);
-    else if (e.kind === 'over') h.onOver(e.msg, e.msg.winner === this.role);
+    else if (e.kind === 'over') h.onOver(e.msg, e.msg.winner === (this.mode === '2v2' ? 'host' : this.role)); // 2v2: el equipo humano es el 'host' del marcador
     else h.onDisconnect();
     this.endDelivered = true;
   }
@@ -183,14 +190,16 @@ export class MatchNet {
       this.transport.on(ev, f);
       this.bound.push([ev, f]);
     };
-    on<StateMsg>(EV.STATE, (s) => h.onState({ ...s, x: mirrorX(s.x), y: mirrorY(s.y), dirX: -s.dirX, facing: -s.facing }));
+    // 2v2 (mismo equipo): todos ven la cancha con la misma orientación, así que NADA se espeja; en 1v1 el rival está al otro lado y se espeja todo
+    const mir = this.mode !== '2v2';
+    on<StateMsg>(EV.STATE, (s) => h.onState(mir ? { ...s, x: mirrorX(s.x), y: mirrorY(s.y), dirX: -s.dirX, facing: -s.facing } : s));
     on<HitMsg>(EV.HIT, (m) => {
       if (typeof m.seq === 'number') {
         if (m.seq <= this.lastHitIn) return; // repetido
         this.lastHitIn = m.seq;
       }
       this.trace?.('recv', 'hit', m.kind, { seq: m.seq, shot: m.shotKind, power: m.power, inferno: m.inferno, special: m.special, lunge: m.lunge, impact: m.impact });
-      h.onHit({ ...m, x: mirrorX(m.x), y: mirrorY(m.y), ball: mirrorBall(m.ball) });
+      h.onHit(mir ? { ...m, x: mirrorX(m.x), y: mirrorY(m.y), ball: mirrorBall(m.ball) } : m);
     });
     on<ActionMsg>(EV.ACTION, (a) => {
       if (a.kind !== 'ping' && a.kind !== 'pong') this.trace?.('recv', 'action', a.kind, { sub: typeof a.data?.kind === 'string' ? a.data.kind : undefined, grade: typeof a.data?.grade === 'string' ? a.data.grade : undefined });
@@ -202,7 +211,7 @@ export class MatchNet {
         this.lastPointIn = p.seq;
       }
       this.trace?.('recv', 'point', p.kind, { to: p.to, reason: p.reason });
-      h.onPoint(p, p.to === 'opponent');
+      h.onPoint(p, mir ? p.to === 'opponent' : p.to === 'me'); // 2v2: el juez es el host; 'me' = el equipo humano (también el mío)
     });
     on<ScoreMsg>(EV.SCORE, (s) => h.onScore(s));
     if (!this.ended) this.transport.emit(EV.READY);
@@ -224,6 +233,11 @@ export class MatchNet {
     for (const [ev, f] of this.early) this.transport.off(ev, f);
     this.early = [];
     this.endListeners.clear();
+  }
+
+  /** 2v2: soy el host (simulo a los bots y juzgo todos los puntos) */
+  get isHost2v2() {
+    return this.mode === '2v2' && this.role === 'host';
   }
 
   /** El host saca el primer juego (y los pares); el invitado, los impares. */

@@ -106,3 +106,10 @@ test('sanitizeHit: DROP SHOT 0 (ball.back) pasa solo si es positivo y razonable'
   assert.equal(sanitizeHit({ ...hit, ball: { ...ball, back: 99 } })?.ball.back, undefined);
   assert.equal(sanitizeHit({ ...hit, ball: { ...ball, back: 'x' } })?.ball.back, undefined);
 });
+
+test('sanitizeHit: el poder de la bola (el, 2v2) pasa solo como texto corto de letras', () => {
+  assert.equal(sanitizeHit({ ...hit, el: 'ice' })?.el, 'ice');
+  assert.equal(sanitizeHit({ ...hit, el: 'FIRE; drop' })?.el, undefined);
+  assert.equal(sanitizeHit({ ...hit, el: 5 })?.el, undefined);
+  assert.equal(sanitizeHit(hit)?.el, undefined);
+});

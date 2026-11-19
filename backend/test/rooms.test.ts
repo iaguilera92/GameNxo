@@ -192,3 +192,52 @@ test('RECONEXIÓN: si no vuelve, su salida da la victoria al rival', () => {
   assert.equal(r.room.result?.winner, 'guest');
   assert.equal(rm.rejoin(r.room.id, r.room.players[0].token, 'a2'), null);
 });
+
+// ---- 2v2 (21-11-2026): dos humanos del mismo equipo contra 2 bots que simula el host
+test('2v2: solo empareja con otro 2v2 (no mezcla con 1v1)', () => {
+  const { rm } = setup();
+  assert.equal(rm.find('A', P('A'), '2v2').type, 'waiting');
+  assert.equal(rm.find('B', P('B'), '1v1').type, 'waiting'); // otra sala distinta
+  const c = rm.find('C', P('C'), '2v2');
+  assert.equal(c.type, 'matched');
+  if (c.type !== 'matched') return;
+  assert.equal(c.room.mode, '2v2');
+  assert.deepEqual(c.room.players.map((p) => p.id), ['A', 'C']);
+});
+
+test('2v2: el host es el juez único (el punto del compañero se ignora)', () => {
+  const { rm } = setup();
+  rm.find('A', P('A'), '2v2');
+  rm.find('B', P('B'), '2v2');
+  assert.equal(rm.point('B', 0, true), null); // el guest no juzga
+  const r = rm.point('A', 0, true);
+  assert.ok(r);
+  assert.deepEqual(r!.room.score.points, [1, 0]);
+});
+
+test('2v2: si el compañero se va o se corta, el partido sigue (un bot juega por él) y puede volver', () => {
+  const { rm } = setup();
+  rm.find('A', P('A'), '2v2');
+  const m = rm.find('B', P('B'), '2v2');
+  if (m.type !== 'matched') return assert.fail('no emparejó');
+  const token = m.room.players[1].token;
+  const out = rm.leave('B', 'disconnect');
+  assert.equal(out?.continues, true);
+  assert.equal(m.room.status, 'PLAYING');
+  const back = rm.rejoin(m.room.id, token, 'B2');
+  assert.ok(back);
+  assert.equal(back!.player.id, 'B2');
+});
+
+test('2v2: si el compañero se RINDE ya no vuelve; si se va el host, termina', () => {
+  const { rm } = setup();
+  rm.find('A', P('A'), '2v2');
+  const m = rm.find('B', P('B'), '2v2');
+  if (m.type !== 'matched') return assert.fail('no emparejó');
+  const token = m.room.players[1].token;
+  assert.equal(rm.leave('B', 'abandon')?.continues, true);
+  assert.equal(rm.rejoin(m.room.id, token, 'B2'), null);
+  const end = rm.leave('A', 'disconnect');
+  assert.equal(end?.continues, undefined);
+  assert.equal(m.room.status, 'FINISHED');
+});

@@ -1,0 +1,16 @@
+{
+  "file": "assets/ambientes/paseantes-parque.webp",
+  "cell": {
+    "w": 108,
+    "h": 132
+  },
+  "rows": 4,
+  "frames": 6,
+  "feetPad": 2,
+  "heights": [
+    125,
+    121,
+    128,
+    127
+  ]
+}

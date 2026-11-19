@@ -725,7 +725,9 @@ export class BattlePassScene extends Phaser.Scene {
    * sube con cada tanda; el PERSONAJE final tiene su celebración a pantalla completa; el resto, el aviso de siempre.
    */
   private rewardFx(r: BpReward, x: number, y: number) {
-    if (r.kind === 'cash' || r.kind === 'rays') this.flyToWallet(r, x, y);
+    // (21-11-2026, usuario) DINERO, RAYOS y EMOTES: celebración a pantalla completa como la del personaje, con menos impacto (rewardUnlock); al cerrarla,
+    // el dinero / los rayos vuelan a la billetera como antes
+    if (r.kind === 'cash' || r.kind === 'rays' || (r.kind === 'item' && r.item.startsWith('emote:'))) this.rewardUnlock(r, x, y);
     else if (r.kind === 'character') this.characterUnlock(r);
     else if (r.kind === 'chest') {
       // (19-11-2026) cofre nuevo, cofre que evolucionó o (ya era épico) monedas
@@ -741,14 +743,9 @@ export class BattlePassScene extends Phaser.Scene {
    */
   private legendEmoteArt(c: Phaser.GameObjects.Container, cx: number, iy: number, w: number, h: number, kind: EmoteKind) {
     const ADD = Phaser.BlendModes.ADD;
-    // fondo de la celda: marco dorado y degradado naranja
-    const bw = w - 24;
+    // (21-11-2026, usuario) sin el marco dorado ni el fondo degradado naranja de la celda: quedan los rayos, el halo, el emote y la cinta
     const bh = h - 20;
     const top = h / 2 - bh / 2;
-    const bg = this.add.graphics();
-    bg.fillGradientStyle(0xffb13b, 0xffb13b, 0xb3360e, 0xb3360e, 0.55).fillRoundedRect(cx - bw / 2, top, bw, bh, 16);
-    bg.lineStyle(4, 0xffd23f, 1).strokeRoundedRect(cx - bw / 2, top, bw, bh, 16);
-    c.add(bg);
     // rayos de luz que giran detrás del emote
     const rays = this.add.graphics({ x: cx, y: iy }).setBlendMode(ADD);
     for (let i = 0; i < 12; i++) {
@@ -861,7 +858,7 @@ export class BattlePassScene extends Phaser.Scene {
     const W = this.scale.width;
     const H = this.scale.height;
     const cx = W / 2;
-    const cy = H * 0.44;
+    const cy = H * 0.45;
     const all: Phaser.GameObjects.GameObject[] = [];
     const add = <T extends Phaser.GameObjects.GameObject>(o: T) => {
       all.push(o);
@@ -871,8 +868,9 @@ export class BattlePassScene extends Phaser.Scene {
     uiSound(this, 'duel-win');
     this.cameras.main.flash(350, 255, 240, 190);
     this.cameras.main.shake(260, 0.008);
-    const dim = add(this.add.rectangle(cx, H / 2, W, H, 0x02060f, 0.85).setAlpha(0).setInteractive());
-    this.tweens.add({ targets: dim, alpha: 1, duration: 250 });
+    // (21-11-2026, usuario) PANTALLA COMPLETA, como el premio de la ruleta: fondo azul del juego OPACO (el Pase no se ve detrás)
+    const dim = add(this.add.image(0, 0, this.unlockBgKey(W, H)).setOrigin(0).setAlpha(0).setInteractive());
+    this.tweens.add({ targets: dim, alpha: 1, duration: 180 });
     // rayos de luz dorados que giran detrás
     const rays = add(this.add.graphics({ x: cx, y: cy }).setBlendMode(Phaser.BlendModes.ADD).setAlpha(0));
     const R = Math.max(W, H);
@@ -882,13 +880,11 @@ export class BattlePassScene extends Phaser.Scene {
     }
     this.tweens.add({ targets: rays, alpha: 1, duration: 400 });
     this.tweens.add({ targets: rays, angle: 360, duration: 14000, repeat: -1 });
-    const glow = add(this.add.circle(cx, cy, 190, GOLD, 0.35).setBlendMode(Phaser.BlendModes.ADD).setScale(0));
-    this.tweens.add({ targets: glow, scale: 1, duration: 500, ease: 'Back.easeOut' });
-    this.tweens.add({ targets: glow, alpha: { from: 0.35, to: 0.15 }, scale: { from: 1, to: 1.12 }, delay: 500, duration: 900, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
-    // el personaje entra creciendo con rebote y luego flota
+    // (sin el círculo dorado detrás del personaje: usuario 21-11-2026)
+    // el personaje entra creciendo con rebote y luego flota (más grande: 0,46 → 0,56 del alto)
     const key = passPortrait(r.skin)?.key ?? 'portrait-mai';
     if (this.textures.exists(key)) {
-      const ph = Math.min(H * 0.46, 420);
+      const ph = Math.min(H * 0.56, 520);
       const img = add(this.add.image(cx, cy, key));
       if (r.color) applyCharColor(img, r.color, r.skin); // JUN premium: en dorado
       const k = ph / img.height;
@@ -903,22 +899,24 @@ export class BattlePassScene extends Phaser.Scene {
       });
     }
     // textos
-    const t1 = add(this.add.text(cx, H * 0.1, r.soon ? '¡PERSONAJE GANADO!' : '¡PERSONAJE DESBLOQUEADO!', { fontFamily: FONT, fontSize: '34px', color: '#ffe36b', stroke: '#5a3200', strokeThickness: 8, align: 'center' }).setOrigin(0.5).setAlpha(0));
+    // (21-11-2026, usuario) siempre "PERSONAJE DESBLOQUEADO" (antes "GANADO" si aún no es jugable), más grande y más cerca del personaje
+    const t1 = add(this.add.text(cx, H * 0.15, '¡PERSONAJE DESBLOQUEADO!', { fontFamily: FONT, fontSize: '44px', color: '#ffe36b', stroke: '#5a3200', strokeThickness: 9, align: 'center' }).setOrigin(0.5).setAlpha(0));
     fitText(t1, W - 40);
     const s1 = t1.scale;
     t1.setScale(s1 * 3);
     this.tweens.add({ targets: t1, scale: s1, alpha: 1, delay: 150, duration: 380, ease: 'Back.easeOut' });
-    const name = add(this.add.text(cx, H * 0.75, r.name.toUpperCase(), { fontFamily: FONT, fontSize: '56px', color: '#ffffff', stroke: '#5a3200', strokeThickness: 10 }).setOrigin(0.5).setAlpha(0));
-    this.tweens.add({ targets: name, alpha: 1, y: { from: H * 0.75 + 40, to: H * 0.75 }, delay: 700, duration: 400, ease: 'Back.easeOut' });
-    const sub = add(this.add.text(cx, H * 0.75 + 48, rewardLabel(r).sub, { fontFamily: FONT, fontSize: '20px', color: '#ffd86a', stroke: '#061431', strokeThickness: 5 }).setOrigin(0.5).setLetterSpacing(2).setAlpha(0));
+    const name = add(this.add.text(cx, H * 0.77, r.name.toUpperCase(), { fontFamily: FONT, fontSize: '64px', color: '#ffffff', stroke: '#5a3200', strokeThickness: 11 }).setOrigin(0.5).setAlpha(0));
+    fitText(name, W - 40);
+    this.tweens.add({ targets: name, alpha: 1, y: { from: H * 0.77 + 40, to: H * 0.77 }, delay: 700, duration: 400, ease: 'Back.easeOut' });
+    const sub = add(this.add.text(cx, H * 0.77 + 54, rewardLabel(r).sub, { fontFamily: FONT, fontSize: '24px', color: '#ffd86a', stroke: '#061431', strokeThickness: 6 }).setOrigin(0.5).setLetterSpacing(2).setAlpha(0));
     this.tweens.add({ targets: sub, alpha: 1, delay: 950, duration: 300 });
     if (r.soon) {
       // aún no se puede jugar: se avisa para que no se espere poder elegirlo ya
-      const soon = add(this.add.text(cx, H * 0.75 + 84, 'DISPONIBLE MUY PRONTO PARA JUGAR', { fontFamily: FONT, fontSize: '17px', color: '#ffffff', stroke: '#061431', strokeThickness: 5 }).setOrigin(0.5).setLetterSpacing(1).setAlpha(0));
+      const soon = add(this.add.text(cx, H * 0.77 + 94, 'DISPONIBLE MUY PRONTO PARA JUGAR', { fontFamily: FONT, fontSize: '20px', color: '#ffffff', stroke: '#061431', strokeThickness: 5 }).setOrigin(0.5).setLetterSpacing(1).setAlpha(0));
       fitText(soon, W - 40);
       this.tweens.add({ targets: soon, alpha: 1, delay: 1150, duration: 300 });
     }
-    const tap = add(this.add.text(cx, H * 0.9, 'Toca para continuar', { fontFamily: FONT, fontSize: '18px', color: '#d1e3ff' }).setOrigin(0.5).setAlpha(0));
+    const tap = add(this.add.text(cx, H * 0.92, 'Toca para continuar', { fontFamily: FONT, fontSize: '20px', color: '#d1e3ff' }).setOrigin(0.5).setAlpha(0));
     this.tweens.add({ targets: tap, alpha: { from: 0, to: 1 }, delay: 1600, duration: 600, yoyo: true, repeat: -1 });
     // confeti y estrellas
     const cols = [GOLD, 0xffffff, 0xff5f7e, 0x5fe8ff, 0x9fe8a0];
@@ -930,11 +928,141 @@ export class BattlePassScene extends Phaser.Scene {
     this.time.delayedCall(550, () => this.burst(cx, cy, 0xffffff));
     // cerrar (tras un instante, para no saltarla sin querer)
     this.time.delayedCall(900, () =>
-      (dim as Phaser.GameObjects.Rectangle).once('pointerup', () => {
+      (dim as Phaser.GameObjects.Image).once('pointerup', () => {
         this.tweens.killTweensOf(all);
         this.tweens.add({ targets: all, alpha: 0, duration: 220, onComplete: () => all.forEach((o) => o.destroy()) });
       }),
     );
+  }
+
+  /**
+   * (21-11-2026, usuario) Celebración de DINERO / RAYOS / EMOTE: el mismo estilo que la del personaje nuevo (pantalla completa, fondo azul opaco, rayos de
+   * luz, icono con rebote, confeti) pero con MENOS IMPACTO: sin sacudida ni destello de cámara, icono y textos más chicos, rayos más suaves y menos
+   * confeti. Tocar cierra; entonces el dinero / los rayos vuelan a la billetera (flyToWallet, desde (x, y)).
+   */
+  private rewardUnlock(r: Extract<BpReward, { kind: 'cash' | 'rays' | 'item' }>, x: number, y: number) {
+    const W = this.scale.width;
+    const H = this.scale.height;
+    const cx = W / 2;
+    const cy = H * 0.4;
+    const all: Phaser.GameObjects.GameObject[] = [];
+    const add = <T extends Phaser.GameObjects.GameObject>(o: T) => {
+      all.push(o);
+      (o as unknown as Phaser.GameObjects.Components.Depth).setDepth?.(9600 + all.length * 0.01);
+      return o;
+    };
+    const label = rewardLabel(r);
+    const emoteKind = r.kind === 'item' && r.item.startsWith('emote:') ? (r.item.split(':')[1] as EmoteKind) : null;
+    const legend = !!(emoteKind && EMOTE_ANIM[emoteKind]);
+    const title = r.kind === 'cash' ? '¡DINERO!' : r.kind === 'rays' ? '¡RAYOS!' : legend ? '¡EMOTE LEGENDARIO!' : '¡EMOTE NUEVO!';
+    const main = r.kind === 'item' ? label.top : `+${r.amount}`;
+    uiSound(this, 'duel-win');
+    const dim = add(this.add.image(0, 0, this.unlockBgKey(W, H)).setOrigin(0).setAlpha(0).setInteractive());
+    this.tweens.add({ targets: dim, alpha: 1, duration: 180 });
+    // rayos de luz (más suaves que los del personaje)
+    const rays = add(this.add.graphics({ x: cx, y: cy }).setBlendMode(Phaser.BlendModes.ADD).setAlpha(0));
+    const R = Math.max(W, H);
+    for (let i = 0; i < 12; i++) {
+      const a = (i / 12) * Math.PI * 2;
+      rays.fillStyle(i % 2 ? GOLD : 0xfff1b8, 0.12).fillTriangle(0, 0, Math.cos(a - 0.08) * R, Math.sin(a - 0.08) * R, Math.cos(a + 0.08) * R, Math.sin(a + 0.08) * R);
+    }
+    this.tweens.add({ targets: rays, alpha: 1, duration: 400 });
+    this.tweens.add({ targets: rays, angle: 360, duration: 18000, repeat: -1 });
+    // el icono del premio (entra con rebote y flota)
+    const SZ = 210;
+    let icon: Phaser.GameObjects.GameObject & Phaser.GameObjects.Components.Transform;
+    if (emoteKind) {
+      ensureEmoteAnims(this);
+      const mai = MAI_EMOTE_TEXTURE[emoteKind];
+      const key = legend && mai && this.textures.exists(mai) ? mai : EMOTE_TEXTURE[emoteKind];
+      if (key && this.textures.exists(key)) {
+        const spr = this.add.sprite(cx, cy, key, EMOTE_ANIM[emoteKind]?.still ?? 0).setDisplaySize(SZ, SZ);
+        if (this.anims.exists(`${key}-loop`)) spr.play(`${key}-loop`);
+        icon = spr;
+      } else icon = this.add.graphics({ x: cx, y: cy });
+    } else {
+      const cashKey = r.kind === 'cash' ? (r.amount === 1 ? 'bp-cash-1' : r.amount < 10 ? 'bp-cash-pack' : null) : null;
+      if (cashKey && this.textures.exists(cashKey)) icon = this.add.image(cx, cy, cashKey).setDisplaySize(SZ, SZ);
+      else {
+        const g = this.add.graphics({ x: cx, y: cy }).setScale(4.2);
+        this.drawReward(g, r);
+        icon = g;
+      }
+    }
+    add(icon);
+    const k = (icon as unknown as { scaleX: number }).scaleX;
+    icon.setScale(0);
+    this.tweens.add({
+      targets: icon,
+      scale: k,
+      delay: 200,
+      duration: 520,
+      ease: 'Back.easeOut',
+      onComplete: () => this.tweens.add({ targets: icon, y: cy - 8, duration: 1200, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' }),
+    });
+    // textos
+    const t1 = add(this.add.text(cx, H * 0.17, title, { fontFamily: FONT, fontSize: '38px', color: '#ffe36b', stroke: '#5a3200', strokeThickness: 8, align: 'center' }).setOrigin(0.5).setAlpha(0));
+    fitText(t1, W - 40);
+    const s1 = t1.scale;
+    t1.setScale(s1 * 2);
+    this.tweens.add({ targets: t1, scale: s1, alpha: 1, delay: 120, duration: 340, ease: 'Back.easeOut' });
+    const num = add(this.add.text(cx, H * 0.66, main, { fontFamily: FONT, fontSize: '56px', color: '#ffffff', stroke: '#5a3200', strokeThickness: 10 }).setOrigin(0.5).setAlpha(0));
+    fitText(num, W - 40);
+    this.tweens.add({ targets: num, alpha: 1, y: { from: H * 0.66 + 30, to: H * 0.66 }, delay: 500, duration: 360, ease: 'Back.easeOut' });
+    const sub = add(this.add.text(cx, H * 0.66 + 50, label.sub, { fontFamily: FONT, fontSize: '22px', color: '#ffd86a', stroke: '#061431', strokeThickness: 5 }).setOrigin(0.5).setLetterSpacing(2).setAlpha(0));
+    this.tweens.add({ targets: sub, alpha: 1, delay: 750, duration: 300 });
+    const tap = add(this.add.text(cx, H * 0.9, 'Toca para continuar', { fontFamily: FONT, fontSize: '18px', color: '#d1e3ff' }).setOrigin(0.5).setAlpha(0));
+    this.tweens.add({ targets: tap, alpha: { from: 0, to: 1 }, delay: 1100, duration: 600, yoyo: true, repeat: -1 });
+    // confeti suave
+    const cols = [GOLD, 0xffffff, 0x5fe8ff, 0x9fe8a0];
+    for (let i = 0; i < 28; i++) {
+      const c = add(this.add.rectangle(Phaser.Math.Between(0, W), -20 - Math.random() * H * 0.4, Phaser.Math.Between(5, 10), Phaser.Math.Between(8, 15), Phaser.Utils.Array.GetRandom(cols)));
+      this.tweens.add({ targets: c, y: H + 40, x: (c as Phaser.GameObjects.Rectangle).x + Phaser.Math.Between(-60, 60), angle: Phaser.Math.Between(-420, 420), delay: 150 + Math.random() * 700, duration: Phaser.Math.Between(1800, 2800), ease: 'Sine.easeIn' });
+    }
+    this.time.delayedCall(220, () => this.burst(cx, cy, GOLD));
+    // cerrar (tras un instante, para no saltarla sin querer); el dinero / los rayos vuelan entonces a la billetera
+    this.time.delayedCall(700, () =>
+      (dim as Phaser.GameObjects.Image).once('pointerup', () => {
+        this.tweens.killTweensOf(all);
+        this.tweens.add({ targets: all, alpha: 0, duration: 200, onComplete: () => all.forEach((o) => o.destroy()) });
+        if (r.kind === 'cash' || r.kind === 'rays') this.flyToWallet(r, x, y);
+      }),
+    );
+  }
+
+  /**
+   * Fondo OPACO a pantalla completa de la celebración del personaje (el mismo azul marino → azul eléctrico con viñeta y franjas suaves que el fondo del
+   * premio de la ruleta, scenes/WheelScene.ts `background`). Devuelve la clave de su textura (se vuelve a crear si cambia el tamaño de la pantalla).
+   */
+  private unlockBgKey(W: number, H: number): string {
+    const KEY = 'bp-unlock-bg';
+    const old = this.textures.exists(KEY) ? this.textures.get(KEY).getSourceImage() : null;
+    if (old && old.width === W && old.height === H) return KEY;
+    if (this.textures.exists(KEY)) this.textures.remove(KEY);
+    const tex = this.textures.createCanvas(KEY, W, H);
+    if (!tex) return KEY;
+    const ctx = tex.getContext();
+    const rad = ctx.createRadialGradient(W / 2, H * 0.43, 10, W / 2, H * 0.43, Math.max(W, H) * 0.78);
+    rad.addColorStop(0, '#2f5fd6');
+    rad.addColorStop(0.32, '#16398f');
+    rad.addColorStop(0.68, '#0b1733');
+    rad.addColorStop(1, '#03070f');
+    ctx.fillStyle = rad;
+    ctx.fillRect(0, 0, W, H);
+    ctx.globalAlpha = 0.05;
+    ctx.fillStyle = '#7fb0ff';
+    for (let x = -H; x < W + H; x += 90) {
+      ctx.beginPath();
+      ctx.moveTo(x, 0);
+      ctx.lineTo(x + 38, 0);
+      ctx.lineTo(x + 38 - H * 0.6, H);
+      ctx.lineTo(x - H * 0.6, H);
+      ctx.closePath();
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+    tex.refresh();
+    return KEY;
   }
 
   private claimWelcome(track: BpTrack, x: number, y: number) {

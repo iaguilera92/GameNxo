@@ -20,7 +20,10 @@ import { formatRiskLeft } from '../domain/riskMode';
 import { dailyLoginButton } from '../ui/DailyLoginButton';
 import { friendsButton } from '../ui/FriendsButton';
 import { globalRankingButton } from '../ui/GlobalRanking';
-import { openLeagueRanking } from '../ui/LeagueRanking';
+import { rank2v2 } from '../domain/league2v2';
+import { doublesPlayButton, openDoublesDialog } from '../ui/PlayEntry2v2';
+import { openFriendsDialog } from '../ui/FriendsDialog';
+import { COINS_2V2 } from '../domain/coins2v2';
 import { navLigaLabel } from '../ui/navLabel';
 import { drawProfileFrame, openProfileDialog } from '../ui/ProfileDialog';
 import { equippedFrame } from '../domain/profileFrames';
@@ -117,6 +120,7 @@ export class MenuScene extends Phaser.Scene {
     if (!this.textures.exists(NAV.key)) this.load.image(NAV.key, NAV.file);
     if (!this.textures.exists('battle-pass-insignia')) this.load.image('battle-pass-insignia', 'assets/insignia-pase-batalla.webp'); // escudo del nivel del PASE (el mismo de su pantalla)
     if (!this.textures.exists('menu-liga')) this.load.image('menu-liga', 'assets/liga.webp'); // trofeo de la card de LIGA
+    if (!this.textures.exists('coin-2v2')) this.load.image('coin-2v2', 'assets/moneda-2v2.webp'); // MONEDA 2V2 (morada); si el archivo no está, se dibuja una
     preloadRankBadges(this.load, [myLeague()]);
   }
 
@@ -147,6 +151,10 @@ export class MenuScene extends Phaser.Scene {
   private coinSet: ((v: number) => void) | null = null;
   /** monedas de la LIGA (apuesta Ranked ganada) que la card de la liga aún no muestra: bajan al llegar cada moneda */
   private leagueHold = 0;
+  /** qué liga muestra la card de la fila del PASE: la de siempre ('1v1') o la LIGA 2V2 (se alterna al tocarla) */
+  private leagueMode: '1v1' | '2v2' = '1v1';
+  /** pasa el contador de MONEDAS del menú a las MONEDAS 2V2 (true) o a las de la cuenta (false); lo crea coinCounter */
+  private coinModeFn: ((m2: boolean) => void) | null = null;
   private leagueObj: Phaser.GameObjects.Container | null = null;
   private leagueRect: { x: number; y: number; w: number; h: number } | null = null;
   private leagueRepaint: (() => void) | null = null;
@@ -181,6 +189,7 @@ export class MenuScene extends Phaser.Scene {
     this.leagueHold = this.matchCoins > 0 ? Math.max(0, (this.registry.get('menu.leagueGain') as number | undefined) ?? 0) : 0;
     this.registry.remove('menu.leagueGain');
     this.leagueObj = this.leagueRect = this.leagueRepaint = null;
+    this.leagueMode = '1v1'; // la card vuelve a tu LIGA al entrar al menú (las monedas de la liga que bajan al terminar un partido van a ella)
     this.coinRect = this.coinRefresh = this.profileRefresh = this.passRefresh = null;
     // la ruleta se cierra con el menú ya abierto: el premio (monedas, EXP) se ve pasar a las cards
     const onWheelClosed = () => this.time.delayedCall(120, () => this.wheelClosed());
@@ -235,7 +244,7 @@ export class MenuScene extends Phaser.Scene {
     const globalRow = 84 + 12;
     const dailyMaxY = playY - 124 - 52 - 30 - 84 / 2 - globalRow;
     const sideY = Math.max(PASS_BOTTOM + 16 + 68, Math.min(H * 0.4, feetY - 300, dailyMaxY - 84 / 2 - 30 - 136 / 2 - 166));
-    this.sideButton(128, sideY, 'PERSONAJE', 'user', false, () => go('Customize'));
+    this.sideButton(128, sideY + 2, 'PERSONAJE', 'user', false, () => go('Customize')); // (21-11-2026, usuario) 2 px más abajo, más cerca de TIENDA
     this.sideButton(128, sideY + 166, 'TIENDA', 'shop', false, () => go('Shop'));
     // premio diario: bajo TIENDA, mitad de su ancho (214/2); se marca en dorado pero NUNCA se abre solo
     // (sin pisar el panel de ruletas en pantallas bajas)
@@ -532,7 +541,43 @@ export class MenuScene extends Phaser.Scene {
    * recorre y la marca "x2" en la esquina. Devuelve la función que la enciende / apaga.
    */
   private riskGlow(): (on: boolean) => void {
-    const parts = this.modeRects.map((r) => {
+    this.riskGlowOn = false;
+    this.buildRiskGlow();
+    return (on: boolean) => {
+      if (on === this.riskGlowOn) return;
+      this.riskGlowOn = on;
+      this.applyRiskGlow();
+    };
+  }
+
+  /** (19-11-2026) capas del brillo del MODO RIESGO (una por botón de modeRects) y si está encendido; se rearman con la fila JUGAR / 2v2 */
+  private riskGlowParts: { c: Phaser.GameObjects.Container; tws: Phaser.Tweens.Tween[] }[] = [];
+  private riskGlowOn = false;
+  private riskGlowBuilt = false;
+
+  private rebuildRiskGlow() {
+    if (!this.riskGlowBuilt) return; // aún no existe (la crea la card del MODO RIESGO)
+    this.buildRiskGlow();
+    this.applyRiskGlow();
+  }
+
+  private applyRiskGlow() {
+    for (const p of this.riskGlowParts) {
+      p.c.setVisible(this.riskGlowOn);
+      for (const t of p.tws) {
+        if (this.riskGlowOn) t.resume();
+        else t.pause();
+      }
+    }
+  }
+
+  private buildRiskGlow() {
+    for (const p of this.riskGlowParts) {
+      for (const t of p.tws) t.remove();
+      if (p.c.active) p.c.destroy();
+    }
+    this.riskGlowBuilt = true;
+    this.riskGlowParts = this.modeRects.map((r) => {
       // (18-11-2026, usuario) encima de la card de RULETAS (profundidad 50): la marca "x2" de la esquina asoma sobre ella
       const c = this.add.container(r.x, r.y).setDepth(55).setVisible(false);
       const g = this.add.graphics();
@@ -556,18 +601,6 @@ export class MenuScene extends Phaser.Scene {
       const bBeat = this.tweens.add({ targets: badge, scale: { from: 1, to: 1.15 }, duration: 520, yoyo: true, repeat: -1, ease: 'Sine.easeInOut', paused: true });
       return { c, tws: [sweep, beat, bBeat] };
     });
-    let cur = false;
-    return (on: boolean) => {
-      if (on === cur) return;
-      cur = on;
-      for (const p of parts) {
-        p.c.setVisible(on);
-        for (const t of p.tws) {
-          if (on) t.resume();
-          else t.pause();
-        }
-      }
-    };
   }
 
   /**
@@ -1426,21 +1459,82 @@ export class MenuScene extends Phaser.Scene {
    * Ambos comparten la misma forma inclinada del botón JUGAR original, dibujada por código.
    */
   private playRow(W: number, y: number, onPlay: (bet: number | null) => void, onDoubles: () => void) {
+    this.playRowArgs = { W, y, onPlay, onDoubles };
+    this.layoutPlayRow();
+  }
+
+  /** datos de la fila JUGAR / 2v2 (para rearmarla al cambiar la liga elegida en la card) y sus objetos */
+  private playRowArgs: { W: number; y: number; onPlay: (bet: number | null) => void; onDoubles: () => void } | null = null;
+  private playRowObjs: Phaser.GameObjects.GameObject[] = [];
+
+  /**
+   * (19-11-2026, usuario) La fila depende de la LIGA elegida en la card de la derecha del PASE (`leagueMode`):
+   *  - LIGA (1v1, al entrar al menú): JUGAR GRANDE a la izquierda con la apuesta (moneda, x1) y la (i), como siempre; "2v2" chico a la derecha, solo el texto.
+   *  - LIGA 2V2: "1v1" chico a la izquierda, solo el texto (sin moneda ni x1); 2v2 GRANDE a la derecha con su apuesta en monedas 2v2.
+   * Tocar el botón chico elige esa liga (como tocar la card): el botón crece con su apuesta y desde ahí se juega.
+   */
+  private layoutPlayRow() {
+    const a = this.playRowArgs;
+    if (!a) return;
+    for (const o of this.playRowObjs) if (o.active) o.destroy();
+    const before = new Set(this.children.list);
+    const { W, y, onPlay } = a;
     const margin = 26;
     const gap = 14;
     const h = 108;
     const avail = W - margin * 2 - gap;
-    const jw = Math.round(avail * 0.7);
-    const vw = avail - jw;
+    const two = this.leagueMode === '2v2';
+    const lw = Math.round(avail * (two ? 0.3 : 0.7)); // izquierda: 1v1 (grande en LIGA, chico en LIGA 2V2)
+    const rw = avail - lw; // derecha: 2v2
+    const lx = margin + lw / 2;
+    const rx = margin + lw + gap + rw / 2;
     this.modeRects = [
-      { x: margin + jw / 2, y, w: jw, h },
-      { x: margin + jw + gap + vw / 2, y, w: vw, h },
+      { x: lx, y, w: lw, h },
+      { x: rx, y, w: rw, h },
     ];
-    // MODO DESARROLLO apagado: solo JUGAR, sin entrada (partida amistosa, no cuesta monedas)
-    if (isDevMode()) rankedPlayButton(this, margin + jw / 2, y, jw, h, onPlay);
-    else arcadeButton(this, margin + jw / 2, y, jw, h, 'JUGAR', () => onPlay(null), { palette: 'yellow' });
-    // (21-11-2026) 2v2: tú + un aliado BOT contra dos rivales BOT (primera versión, sin Ranked ni red)
-    arcadeButton(this, margin + jw + gap + vw / 2, y, vw, h, '2v2', () => onDoubles(), { palette: 'green' });
+    const dev = isDevMode();
+    if (two) {
+      // 1v1 chico: solo el texto; elige la LIGA de siempre
+      arcadeButton(this, lx, y, lw, h, '1v1', () => this.setLeagueMode('1v1'), { palette: 'yellow' });
+      // 2v2 grande: con la apuesta en MONEDAS 2V2 (x1 / x2); tocarlo abre el diálogo INVITAR AMIGO / JUGAR
+      this.doublesBtn = doublesPlayButton(this, rx, y, rw, h, () => this.openDoublesMenu(), !dev);
+    } else {
+      // JUGAR grande: la partida de Liga con su apuesta (monto tocable + info). Modo desarrollo apagado: sin entrada
+      if (dev) rankedPlayButton(this, lx, y, lw, h, onPlay);
+      else arcadeButton(this, lx, y, lw, h, 'JUGAR', () => onPlay(null), { palette: 'yellow' });
+      // 2v2 chico: solo el texto; elige la LIGA 2V2
+      // (21-11-2026, usuario) un solo toque: cambia a la LIGA 2V2 (el botón se agranda) Y abre ya el diálogo (antes hacían falta dos toques)
+      arcadeButton(this, rx, y, rw, h, '2v2', () => {
+        this.setLeagueMode('2v2');
+        this.openDoublesMenu();
+      }, { palette: 'purple' });
+    }
+    this.playRowObjs = this.children.list.filter((o) => !before.has(o));
+    this.rebuildRiskGlow(); // el brillo del MODO RIESGO sigue a los botones nuevos
+  }
+
+  /** el botón 2v2 grande de la fila (en LIGA 2V2): su píldora de apuesta se repinta cuando la apuesta cambia desde el diálogo */
+  private doublesBtn: Phaser.GameObjects.Container | null = null;
+
+  /** Diálogo del 2v2 (INVITAR AMIGO / JUGAR 2V2 con la apuesta en monedas 2v2). Lo abren el botón 2v2 grande y, de un solo toque, el 2v2 chico. */
+  private openDoublesMenu() {
+    const a = this.playRowArgs;
+    if (!a) return;
+    openDoublesDialog(this, {
+      plain: !isDevMode(),
+      onPlay: a.onDoubles,
+      onInvite: () => openFriendsDialog(this, (m) => this.toast(m)),
+      onChange: () => (this.doublesBtn?.getData('redraw') as (() => void) | undefined)?.(),
+    });
+  }
+
+  /** (19-11-2026) Elige la liga de la card (LIGA / LIGA 2V2): repinta la card, el contador de monedas de arriba y la fila JUGAR / 2v2. */
+  private setLeagueMode(m: '1v1' | '2v2') {
+    if (this.leagueMode === m) return;
+    this.leagueMode = m;
+    this.leagueRepaint?.();
+    this.coinModeFn?.(m === '2v2'); // el contador de monedas de arriba pasa a las MONEDAS 2V2 (y vuelve)
+    this.layoutPlayRow();
   }
 
   // ---------------------------------------------------------------- fondo
@@ -1870,9 +1964,26 @@ export class MenuScene extends Phaser.Scene {
     this.coinObj = c;
     const txt = c.getData('text') as Phaser.GameObjects.Text;
     const shown = { v: prev ?? now };
+    // (21-11-2026, usuario) con la LIGA 2V2 a la vista el contador muestra las MONEDAS 2V2 (otra moneda, otro color): el saldo de la cuenta sigue su
+    // curso por debajo (shown.v) y se vuelve a ver al volver a tu liga
+    const nrm = c.getData('coinNormal') as Phaser.GameObjects.Image | undefined;
+    this.coinModeFn = (m2: boolean) => {
+      (c.getData('frame2') as Phaser.GameObjects.Graphics | undefined)?.setVisible(m2);
+      nrm?.setVisible(!m2);
+      (c.getData('coin2v2') as Phaser.GameObjects.Components.Visible | undefined)?.setVisible(m2);
+      (c.getData('coin2Text') as Phaser.GameObjects.Text | undefined)?.setVisible(m2);
+      this.tweens.killTweensOf(shown);
+      txt.setText(fmt(m2 ? Math.max(0, Math.floor(getPlayer().coins2v2 ?? 0)) : shown.v)).setColor(m2 ? '#e6d2ff' : '#ffe28a');
+      fitText(txt, COUNTER_TEXT_W);
+      this.tweens.add({ targets: txt, scale: { from: txt.scale * 1.2, to: txt.scale }, duration: 240, ease: 'Back.easeOut' });
+    };
     const animateTo = (to: number) => {
       this.registry.set(KEY, to);
       this.tweens.killTweensOf(shown);
+      if (this.leagueMode === '2v2') {
+        shown.v = to;
+        return;
+      }
       if (to === shown.v) return;
       const up = to > shown.v;
       this.tweens.add({
@@ -1890,7 +2001,7 @@ export class MenuScene extends Phaser.Scene {
         },
       });
       if (up) txt.setColor('#ffe27a');
-      this.time.delayedCall(1500, () => txt.setColor('#ffffff'));
+      this.time.delayedCall(1500, () => txt.setColor(this.leagueMode === '2v2' ? '#e6d2ff' : '#ffffff'));
     };
     if (holdC <= 0) animateTo(now);
     this.coinRect = { x: right - COUNTER_W, y, w: COUNTER_W, h: COUNTER_H };
@@ -1899,6 +2010,7 @@ export class MenuScene extends Phaser.Scene {
       this.tweens.killTweensOf(shown);
       shown.v = v;
       this.registry.set(KEY, v);
+      if (this.leagueMode === '2v2') return; // viendo las monedas 2v2: el saldo de la cuenta no se dibuja
       txt.setText(fmt(v)).setColor('#ffe27a');
       fitText(txt, COUNTER_TEXT_W);
     };
@@ -1921,15 +2033,22 @@ export class MenuScene extends Phaser.Scene {
     const paint = () => {
       c.removeAll(true);
       const r = rankedView(); // al día (cierre de semana incluido)
+      // (21-11-2026, usuario) tocar la card ALTERNA entre la LIGA de siempre y la LIGA 2V2 (monedas 2v2 y rango 2v2); antes abría el TOP 100
+      const m2 = this.leagueMode === '2v2';
+      const accent = m2 ? 0xb06bff : 0x3a7bff;
+      const total2 = Math.max(0, Math.floor(getPlayer().coins2v2 ?? 0));
+      const rk2 = rank2v2(total2);
       // (21-11-2026, 3.er diseño, referencia del usuario) card azul del menú con trofeo dorado a la izquierda, "LIGA <NOMBRE> · SEMANAL" en
       // dorado y UNA barra con las monedas que llevas esta semana en la liga. La barra se llena hacia la meta de ascenso (15.000 de 30.000 =
       // mitad) SIN escribir la meta, para no llenar la card de datos. Liga máxima o meta cumplida: llena.
       const g = this.add.graphics();
       g.fillStyle(0x000000, 0.35).fillRoundedRect(3, 6, w, h, R);
-      g.lineStyle(8, 0x3a7bff, 0.2).strokeRoundedRect(0, 0, w, h, R);
+      g.lineStyle(8, accent, 0.2).strokeRoundedRect(0, 0, w, h, R);
       g.fillStyle(0x0b1733, 0.96).fillRoundedRect(0, 0, w, h, R);
-      g.fillStyle(0x1b2d5c, 0.55).fillRoundedRect(3, 3, w - 6, h * 0.45, { tl: R - 3, tr: R - 3, bl: 0, br: 0 });
-      g.lineStyle(3, 0x3a7bff, 1).strokeRoundedRect(0, 0, w, h, R);
+      g.fillStyle(m2 ? 0x2a1d5c : 0x1b2d5c, 0.55).fillRoundedRect(3, 3, w - 6, h * 0.45, { tl: R - 3, tr: R - 3, bl: 0, br: 0 });
+      g.lineStyle(3, accent, 1).strokeRoundedRect(0, 0, w, h, R);
+      // dos puntos arriba a la derecha: indican que la card cambia al tocarla (el encendido es la liga que se ve)
+      for (let i = 0; i < 2; i++) g.fillStyle(i === (m2 ? 1 : 0) ? 0xffc24a : 0x4a5f93, 1).fillCircle(w - 30 + i * 13, 17, 4);
       c.add(g);
       // trofeo (assets/liga.webp); si no cargó, solo el hueco
       const tcx = 14 + 26;
@@ -1940,26 +2059,29 @@ export class MenuScene extends Phaser.Scene {
       }
       const tx = tcx + 26 + 12;
       const tw = w - tx - 14;
-      const lbl = this.add.text(tx, 11, `LIGA ${rankDef(r.league).name.toUpperCase()} · SEMANAL`, { fontFamily: FONT, fontSize: '15px', color: '#ffc24a', stroke: '#2a1600', strokeThickness: 3 }).setOrigin(0, 0).setLetterSpacing(1);
-      fitText(lbl, tw, 0.6);
+      const lbl = this.add.text(tx, 11, m2 ? 'LIGA 2V2 · SEMANAL' : `LIGA ${rankDef(r.league).name.toUpperCase()} · SEMANAL`, { fontFamily: FONT, fontSize: '15px', color: '#ffc24a', stroke: '#2a1600', strokeThickness: 3 }).setOrigin(0, 0).setLetterSpacing(1);
+      fitText(lbl, tw - 30, 0.6); // (deja sitio a los dos puntos de la derecha)
       c.add(lbl);
       // la barra: lo que llevas, hacia la meta (sin mostrarla)
       const bh = 24;
       const by = h - 14 - bh;
       const net = Math.max(0, r.weekNet - this.leagueHold); // (monedas de la liga aún en vuelo: playMatchCoins)
-      const prog = r.target == null || r.promoting ? 1 : Math.max(0, Math.min(1, net / r.target));
+      // LIGA 2V2: la barra va del rango 2v2 actual al siguiente (monedas 2v2 acumuladas); rango máximo: llena
+      const prog = m2 ? (rk2.next ? Math.max(0, Math.min(1, (total2 - rk2.from) / (rk2.next.from - rk2.from))) : 1) : r.target == null || r.promoting ? 1 : Math.max(0, Math.min(1, net / r.target));
+      const full = m2 ? !rk2.next : r.promoting;
       const bar = this.add.graphics();
       bar.fillStyle(0x05112c, 1).fillRoundedRect(tx, by, tw, bh, bh / 2);
       if (prog > 0) {
         const fw = Math.max(bh, tw * prog);
-        bar.fillStyle(r.promoting ? 0x2fbf6a : 0x1f6bff, 1).fillRoundedRect(tx, by, fw, bh, bh / 2);
-        bar.fillStyle(r.promoting ? 0x7ff0a8 : 0x5fa8ff, 1).fillRoundedRect(tx, by, fw, bh * 0.5, { tl: bh / 2, tr: bh / 2, bl: 0, br: 0 });
+        bar.fillStyle(full ? 0x2fbf6a : m2 ? 0x7a3dff : 0x1f6bff, 1).fillRoundedRect(tx, by, fw, bh, bh / 2);
+        bar.fillStyle(full ? 0x7ff0a8 : m2 ? 0xb98aff : 0x5fa8ff, 1).fillRoundedRect(tx, by, fw, bh * 0.5, { tl: bh / 2, tr: bh / 2, bl: 0, br: 0 });
         bar.fillStyle(0xffffff, 0.35).fillRoundedRect(tx + 6, by + 3, Math.max(0, fw - 12), 3, 1.5);
       }
-      bar.lineStyle(2, 0x2a4a8a, 1).strokeRoundedRect(tx, by, tw, bh, bh / 2);
+      bar.lineStyle(2, m2 ? 0x4a2a8a : 0x2a4a8a, 1).strokeRoundedRect(tx, by, tw, bh, bh / 2);
       c.add(bar);
-      // las monedas que llevas, dentro de la barra
-      const val = this.add.text(tx + tw / 2, by + bh / 2 + 1, net.toLocaleString('es-CL'), { ...textStyle(17), color: net < 0 ? '#ffb0a8' : '#ffffff' }).setOrigin(0.5);
+      // las monedas que llevas, dentro de la barra (2v2: tus monedas 2v2)
+      const shown = m2 ? total2 : net;
+      const val = this.add.text(tx + tw / 2, by + bh / 2 + 1, shown.toLocaleString('es-CL'), { ...textStyle(17), color: shown < 0 ? '#ffb0a8' : '#ffffff' }).setOrigin(0.5);
       fitText(val, tw - 16);
       c.add(val);
     };
@@ -1967,15 +2089,15 @@ export class MenuScene extends Phaser.Scene {
     this.leagueObj = c;
     this.leagueRect = { x: left, y, w, h };
     this.leagueRepaint = () => c.active && paint();
-    c.setSize(w, h).setInteractive(new Phaser.Geom.Rectangle(0, 0, w, h), Phaser.Geom.Rectangle.Contains);
-    // (21-11-2026) tocarla abre el TOP 100 de tu liga (la misma ventana de LIGA › VER TOP 100: ui/LeagueRanking.ts), sin salir del menú
-    c.on('pointerup', () => {
-      this.tweens.add({ targets: c, scale: { from: 0.97, to: 1 }, duration: 160 });
-      // el menú solo trae el emblema de tu liga: los de las demás (fila de "mejor jugador de cada liga") se cargan al abrirla
-      preloadRankBadges(this.load);
-      if (this.load.list.size === 0) return void openLeagueRanking(this);
-      this.load.once(Phaser.Loader.Events.COMPLETE, () => this.sys.isActive() && openLeagueRanking(this));
-      this.load.start();
+    // (21-11-2026) zona táctil sobre TODA la card: el contenedor tiene su centro en la esquina de arriba-izquierda de la card, así que su zona táctil
+    // (Rectangle(0, 0, w, h) en coordenadas de su caja centrada) solo cubría el cuarto de arriba-izquierda: tocarla en el resto no hacía nada
+    const hit = this.add.zone(left + w / 2, y + h / 2, w, h).setInteractive({ useHandCursor: true });
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => hit.destroy());
+    // (21-11-2026, usuario) tocarla ya NO abre el TOP 100: la card cambia entre tu LIGA y la LIGA 2V2 (cómo vas en el 2v2). El TOP 100 sigue en LIGA
+    hit.on('pointerup', () => {
+      this.setLeagueMode(this.leagueMode === '1v1' ? '2v2' : '1v1'); // (19-11-2026) también cambia los botones JUGAR / 2v2
+      this.tweens.killTweensOf(c);
+      this.tweens.add({ targets: c, scale: { from: 0.96, to: 1 }, duration: 200, ease: 'Back.easeOut' });
     });
     const off = onPlayerChange(() => c.active && paint());
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => off());
@@ -2008,7 +2130,33 @@ export class MenuScene extends Phaser.Scene {
     }
     c.add(g);
     // (17-11-2026) moneda: imagen moneda-1.webp
-    if (kind === 'coin' && this.textures.exists('coin-1')) c.add(this.add.image(h / 2, h / 2, 'coin-1').setDisplaySize(32 * k, 32 * k));
+    if (kind === 'coin' && this.textures.exists('coin-1')) {
+      const ci = this.add.image(h / 2, h / 2, 'coin-1').setDisplaySize(32 * k, 32 * k);
+      c.add(ci);
+      c.setData('coinNormal', ci);
+    }
+    // (21-11-2026, usuario) MONEDAS 2V2: otra moneda (morada) y borde morado, ocultos hasta que la card de la LIGA muestre la LIGA 2V2 (ver leagueCoins / coinMode)
+    if (kind === 'coin') {
+      const frame2 = this.add.graphics().setVisible(false);
+      frame2.lineStyle(2.5, 0xb06bff, 1).strokeRoundedRect(0, 0, w, h, h / 2);
+      c.add(frame2);
+      let coin2: Phaser.GameObjects.GameObject;
+      if (this.textures.exists('coin-2v2')) coin2 = this.add.image(h / 2, h / 2, 'coin-2v2').setDisplaySize(32 * k, 32 * k);
+      else {
+        // sin su imagen (public/assets/moneda-2v2.webp): moneda morada dibujada con un 2 en el centro
+        const dg = this.add.graphics({ x: h / 2, y: h / 2 });
+        dg.fillStyle(0x1d0a3d, 1).fillCircle(0, 0, 15 * k).fillStyle(0x6b2fe0, 1).fillCircle(0, 0, 12.5 * k).fillStyle(0xa77bff, 1).fillCircle(-1.5 * k, -2 * k, 8 * k).fillStyle(0x6b2fe0, 1).fillCircle(0, 0, 7 * k);
+        coin2 = dg;
+        c.add(dg);
+        const two = this.add.text(h / 2, h / 2 + 1, '2', { fontFamily: FONT, fontSize: `${Math.round(13 * k)}px`, color: '#ffffff' }).setOrigin(0.5).setVisible(false);
+        c.add(two);
+        c.setData('coin2Text', two);
+      }
+      (coin2 as unknown as Phaser.GameObjects.Components.Visible).setVisible(false);
+      if (!c.list.includes(coin2)) c.add(coin2);
+      c.setData('frame2', frame2);
+      c.setData('coin2v2', coin2);
+    }
     // (16-11-2026, usuario) el DINERO con el fardo chico; algo más chico y corrido a la derecha para no tocar el borde redondeado
     if (kind === 'cash' && this.textures.exists('cash-pack')) c.add(this.add.image(h / 2 + 3 * k, h / 2, 'cash-pack').setDisplaySize(32 * k, 32 * k));
     // (16-11-2026, usuario) cantidad alineada a la DERECHA, pegada al botón (i) / (+)
@@ -2027,14 +2175,15 @@ export class MenuScene extends Phaser.Scene {
     info.add([ig, this.add.text(0, kind === 'cash' ? 0 : 1, kind === 'cash' ? '+' : 'i', { fontFamily: FONT, fontSize: kind === 'cash' ? '24px' : '18px', color: kind === 'cash' ? '#ffffff' : '#0a1638' }).setOrigin(0.5)]);
     info.setSize(40, 42).setInteractive({ useHandCursor: true }); // zona táctil generosa aunque el contador sea bajo
     // el + del DINERO lleva a la Tienda y esta baja sola hasta la sección DINERO; la (i) de las monedas abre su información
-    info.on('pointerup', () => (kind === 'cash' ? this.scene.start('Shop', { scrollTo: 'cash' }) : this.currencyInfo(kind)));
+    info.on('pointerup', () => (kind === 'cash' ? this.scene.start('Shop', { scrollTo: 'cash' }) : this.currencyInfo(kind === 'coin' && this.leagueMode === '2v2' ? 'coin2v2' : kind)));
     c.add(info);
     return c;
   }
 
   /** Ventana de información de la moneda: para qué sirve y cómo se consigue. */
-  private currencyInfo(kind: 'coin' | 'cash') {
-    const coin = kind === 'coin';
+  private currencyInfo(kind: 'coin' | 'cash' | 'coin2v2') {
+    const two = kind === 'coin2v2'; // (21-11-2026) las MONEDAS 2V2 (moneda morada del ranking 2v2)
+    const coin = kind === 'coin' || two;
     const W = this.scale.width;
     const H = this.scale.height;
     const objs: Phaser.GameObjects.GameObject[] = [];
@@ -2044,7 +2193,7 @@ export class MenuScene extends Phaser.Scene {
     objs.push(shade);
     const pw = Math.min(600, W - 40);
     const ph = 470;
-    const accent = coin ? 0xffc42e : 0x3fae5a;
+    const accent = two ? 0xb06bff : coin ? 0xffc42e : 0x3fae5a;
     const p = this.add.container(W / 2, H / 2).setDepth(8001);
     objs.push(p);
     p.add(this.add.rectangle(0, 0, pw, ph, 0, 0.001).setInteractive());
@@ -2056,12 +2205,13 @@ export class MenuScene extends Phaser.Scene {
     g.fillStyle(0x0a1638, 1).fillCircle(0, -ph / 2 + 64, 36);
     g.fillStyle(accent, 1).fillCircle(0, -ph / 2 + 64, 32);
     // (17-11-2026) moneda: imagen moneda-1.webp (la dibujada solo si falta la textura)
-    const coinImg = coin && this.textures.exists('coin-1');
+    const coinKey = two ? 'coin-2v2' : 'coin-1';
+    const coinImg = coin && this.textures.exists(coinKey);
     if (coin) {
       // con la imagen, se agrega justo después del fondo (abajo)
       if (!coinImg) {
-        g.fillStyle(0xd99400, 1).fillCircle(0, -ph / 2 + 64, 22);
-        g.fillStyle(0xffd23f, 1).fillCircle(0, -ph / 2 + 62, 20);
+        g.fillStyle(two ? 0x4b1fa8 : 0xd99400, 1).fillCircle(0, -ph / 2 + 64, 22);
+        g.fillStyle(two ? 0x8a4bff : 0xffd23f, 1).fillCircle(0, -ph / 2 + 62, 20);
       }
     } else {
       g.fillStyle(0x0a1638, 1).fillRoundedRect(-22, -ph / 2 + 50, 44, 28, 5);
@@ -2069,13 +2219,16 @@ export class MenuScene extends Phaser.Scene {
       g.fillStyle(0xcdeccf, 1).fillCircle(0, -ph / 2 + 64, 6);
     }
     p.add(g);
-    if (coinImg) p.add(this.add.image(0, -ph / 2 + 64, 'coin-1').setDisplaySize(44, 44));
-    p.add(this.add.text(0, -ph / 2 + 126, coin ? 'MONEDAS' : 'DINERO', { fontFamily: FONT, fontSize: '34px', color: '#ffffff', stroke: '#0a1638', strokeThickness: 6 }).setOrigin(0.5).setLetterSpacing(3));
+    if (coinImg) p.add(this.add.image(0, -ph / 2 + 64, coinKey).setDisplaySize(44, 44));
+    p.add(this.add.text(0, -ph / 2 + 126, two ? 'MONEDAS 2V2' : coin ? 'MONEDAS' : 'DINERO', { fontFamily: FONT, fontSize: '34px', color: '#ffffff', stroke: '#0a1638', strokeThickness: 6 }).setOrigin(0.5).setLetterSpacing(3));
     const section = (y: number, title: string, body: string) => {
       p.add(this.add.text(-pw / 2 + 34, y, title, { fontFamily: FONT, fontSize: '18px', color: coin ? '#ffd23f' : '#9fe8a0' }).setOrigin(0, 0.5).setLetterSpacing(1));
       p.add(this.add.text(-pw / 2 + 34, y + 16, body, { fontFamily: FONT, fontSize: '17px', color: '#dbe5ff', wordWrap: { width: pw - 68 }, lineSpacing: 2 }).setOrigin(0, 0));
     };
-    if (coin) {
+    if (two) {
+      section(-ph / 2 + 172, 'PARA QUÉ SIRVEN', 'Son tu contador del RANKING 2V2: deciden tu rango en la LIGA 2V2 (de Bronce a Challenger). No se usan en la Tienda ni en la Liga normal.');
+      section(-ph / 2 + 290, 'CÓMO CONSEGUIRLAS', `Ganando partidas 2v2: +${COINS_2V2.win}. Perder resta ${COINS_2V2.loss} y rendirte ${COINS_2V2.surrender}. Nunca bajan de 0.`);
+    } else if (coin) {
       section(-ph / 2 + 172, 'PARA QUÉ SIRVEN', 'Son tu oro competitivo: pagan la entrada de las partidas de Liga y deciden tu puesto en el RANKING GLOBAL. No se usan en la Tienda.');
       section(-ph / 2 + 290, 'CÓMO CONSEGUIRLAS', 'Ganando partidas de Liga, en las ruletas diarias, el premio diario, el pase de batalla y la recompensa semanal de tu liga.');
     } else {

@@ -36,14 +36,17 @@ function saveBet(b: number) {
  * - Sin monedas ni para x1: muestra "AMISTOSO" (sin monto ni info) y juega sin apostar (`onPlay(null)`):
  *   rival de Ranked igual, gana EXP y ruleta, pero no monedas de apuesta.
  */
-export function rankedPlayButton(scene: Phaser.Scene, x: number, y: number, w: number, h: number, onPlay: (bet: number | null) => void) {
+export function rankedPlayButton(scene: Phaser.Scene, x: number, y: number, w: number, h: number, onPlay: (bet: number | null) => void, opts: { label?: string; compact?: boolean } = {}) {
+  // (21-11-2026, usuario) `compact` = botón CHICO "1v1": el rótulo arriba y la píldora de apuesta debajo, sin la (i) (la apuesta se cambia tocando el monto)
+  const compact = !!opts.compact;
+  const pillDy = compact ? h * 0.2 : 0;
   syncRanked();
   let bet = loadBet();
   const stakeFor = (b: number) => rankedView().stakes.find((s) => s.bet === b) ?? rankedView().stakes[0];
   // si la apuesta guardada no alcanza, se vuelve a x1
   if (!stakeFor(bet).affordable) bet = 1;
 
-  const btn = arcadeButton(scene, x, y, w, h, 'JUGAR', () => {
+  const btn = arcadeButton(scene, x, y, w, h, opts.label ?? 'JUGAR', () => {
     const st = stakeFor(bet);
     if (st.affordable) onPlay(bet);
     else if (bet > 1 && stakeFor(1).affordable) onPlay(1);
@@ -54,9 +57,9 @@ export function rankedPlayButton(scene: Phaser.Scene, x: number, y: number, w: n
   // zona derecha: monto (tocable) + información, por encima del botón (reciben el toque ellos)
   const infoR = h * 0.15; // (i) compacto
   const infoX = x + w / 2 - 18 - infoR - h * 0.04; // margen por la forma inclinada
-  const pillH = h * 0.56;
+  const pillH = compact ? h * 0.34 : h * 0.56;
   // contenedor exterior = sigue al botón (posición/escala al aplastarse); interior = animaciones propias
-  const pill = scene.add.container(0, y).setDepth(btn.depth + 1);
+  const pill = scene.add.container(0, y + pillDy).setDepth(btn.depth + 1);
   const info = scene.add.container(infoX, y).setDepth(btn.depth + 1);
   const pillBody = scene.add.container(0, 0);
   const infoBody = scene.add.container(0, 0);
@@ -71,8 +74,17 @@ export function rankedPlayButton(scene: Phaser.Scene, x: number, y: number, w: n
     const st = stakeFor(bet);
     const ur = unranked();
     const pw = ur ? drawUnrankedChip(scene, pillBody, pillH) : drawStakePill(scene, pillBody, st.entry, bet, pillH);
-    info.setVisible(!ur);
+    info.setVisible(!ur && !compact);
     pill.setSize(pw, pillH + 16);
+    if (compact) {
+      // botón chico: el rótulo arriba y la píldora (o AMISTOSO) debajo, los dos centrados
+      pillBaseX = x;
+      pill.setX(x);
+      label.setScale(1);
+      label.setScale(Math.min(1, (w * 0.62) / Math.max(1, label.width), (h * 0.5) / Math.max(1, label.height)));
+      label.setPosition(0, -h * 0.17);
+      return;
+    }
     pillBaseX = ur ? x + w / 2 - 18 - h * 0.04 - pw / 2 : infoX - infoR - 6 - pw / 2;
     pill.setX(pillBaseX);
     const leftEdge = x - w / 2 + h * 0.2;
@@ -121,10 +133,11 @@ export function rankedPlayButton(scene: Phaser.Scene, x: number, y: number, w: n
   const follow = () => {
     if (!btn.active || !pill.active) return;
     const k = inner.scaleX;
-    pill.setScale(k).setPosition(x + (pillBaseX - x) * k, y + inner.y * k);
+    pill.setScale(k).setPosition(x + (pillBaseX - x) * k, y + (pillDy + inner.y) * k);
     info.setScale(k).setPosition(x + (infoX - x) * k, y + inner.y * k);
   };
   scene.events.on(Phaser.Scenes.Events.UPDATE, follow);
+  btn.once(Phaser.GameObjects.Events.DESTROY, () => scene.events.off(Phaser.Scenes.Events.UPDATE, follow)); // (19-11-2026) el menú rearma la fila al cambiar de liga
   scene.events.once(Phaser.Scenes.Events.SHUTDOWN, () => scene.events.off(Phaser.Scenes.Events.UPDATE, follow));
 
   // el botón reajusta su texto al cargar la fuente: se vuelve a colocar después
@@ -133,7 +146,7 @@ export function rankedPlayButton(scene: Phaser.Scene, x: number, y: number, w: n
 }
 
 /** Píldora de apuesta "🪙 500 x1" (centrada en 0,0 del contenedor). Devuelve su ancho. */
-export function drawStakePill(scene: Phaser.Scene, into: Phaser.GameObjects.Container, entry: number, bet: number, pillH: number) {
+export function drawStakePill(scene: Phaser.Scene, into: Phaser.GameObjects.Container, entry: number, bet: number, pillH: number, opts: { icon?: (scene: Phaser.Scene, x: number, y: number, r: number) => Phaser.GameObjects.GameObject; accent?: number } = {}) {
   const x2 = bet > 1;
   const amount = scene.add.text(0, 0, fmtCoins(entry), { fontFamily: FONT, fontSize: `${Math.round(pillH * 0.56)}px`, color: '#ffffff', stroke: '#0a1638', strokeThickness: 5 }).setOrigin(0, 0.5);
   const chip = scene.add.text(0, 0, x2 ? 'x2' : 'x1', { fontFamily: FONT, fontSize: `${Math.round(pillH * 0.36)}px`, color: '#ffffff' }).setOrigin(0.5);
@@ -144,9 +157,9 @@ export function drawStakePill(scene: Phaser.Scene, into: Phaser.GameObjects.Cont
   // sombra, cuerpo navy y borde dorado (rojo con x2)
   g.fillStyle(0x000000, 0.25).fillRoundedRect(-pw / 2 + 2, -pillH / 2 + 4, pw, pillH, pillH / 2);
   g.fillStyle(NAVY, 0.92).fillRoundedRect(-pw / 2, -pillH / 2, pw, pillH, pillH / 2);
-  g.lineStyle(3, x2 ? RED : GOLD, 1).strokeRoundedRect(-pw / 2, -pillH / 2, pw, pillH, pillH / 2);
+  g.lineStyle(3, x2 ? RED : opts.accent ?? GOLD, 1).strokeRoundedRect(-pw / 2, -pillH / 2, pw, pillH, pillH / 2);
   g.fillStyle(0xffffff, 0.12).fillRoundedRect(-pw / 2 + 6, -pillH / 2 + 4, pw - 12, pillH * 0.3, pillH * 0.15);
-  const ic = coinIcon(scene, -pw / 2 + 10 + coinR, 0, coinR); // (17-11-2026) moneda: imagen moneda-1.webp
+  const ic = (opts.icon ?? coinIcon)(scene, -pw / 2 + 10 + coinR, 0, coinR); // (17-11-2026) moneda: imagen moneda-1.webp (el 2v2 pasa la suya)
   amount.setX(-pw / 2 + 10 + coinR * 2 + 8);
   const chipX = pw / 2 - 8 - chipW / 2;
   const cg = scene.add.graphics();
@@ -206,7 +219,7 @@ export function infoIcon(scene: Phaser.Scene, x: number, y: number, r: number, o
 }
 
 /** Ventana pequeña común. Devuelve el contenedor del panel y la función para cerrar. */
-function modal(scene: Phaser.Scene, pw: number, ph: number, line: number, onClose?: () => void) {
+export function modal(scene: Phaser.Scene, pw: number, ph: number, line: number, onClose?: () => void) {
   const W = scene.scale.width;
   const H = scene.scale.height;
   const shade = scene.add.rectangle(0, 0, W, H, 0x02060f, 0.72).setOrigin(0).setDepth(8000).setInteractive();

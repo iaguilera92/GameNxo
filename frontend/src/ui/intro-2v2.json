@@ -1,0 +1,21 @@
+{
+  "mai": {
+    "file": "assets/characters/intro-2v2/mai.webp",
+    "cell": {
+      "w": 196,
+      "h": 446
+    },
+    "frames": 8,
+    "feetPad": 3
+  },
+  "nxo": {
+    "file": "assets/characters/intro-2v2/nxo.webp",
+    "cell": {
+      "w": 213,
+      "h": 446
+    },
+    "frames": 8,
+    "feetPad": 3,
+    "gesture": "right"
+  }
+}

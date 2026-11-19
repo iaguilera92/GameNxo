@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import { FONT } from '../ui/theme';
 import { COINS_LOSS, COINS_SURRENDER, COINS_WIN, XP_LOSS, XP_SURRENDER, XP_WIN, xpToNext, MAX_LEVEL } from '../config';
 import { addCoins, addCoins2v2, addXp, getProfile } from '../logic/Profile';
+import { loadBet2v2 } from '../ui/PlayEntry2v2';
 import { applyCharColor } from '../fx/CharColorFx';
 import { sfx } from '../fx/sfx';
 import { arcadeButton } from '../ui/modeButtons';
@@ -88,7 +89,7 @@ const CARD_H = 196;
 /** alto extra del panel con el duelo de apuestas Ranked */
 const RANKED_H = 286;
 /** alto de la sección ADICIONALES (misiones por partida): cabecera + 4 cards */
-const ADD_H = 176;
+const ADD_H = 200; // (19-11-2026, usuario) fila de la cabecera más alta (176 → 200): el total de monedas tiene aire arriba y abajo
 const ADD_CARD_H = 126;
 /** alto de los cuadros de los personajes del duelo */
 const DUEL_BOX_H = 214;
@@ -439,7 +440,7 @@ export class MatchEndScene extends Phaser.Scene {
     if (!store._coins) store._coins = addCoins(d.surrendered ? COINS_SURRENDER : d.win ? COINS_WIN : COINS_LOSS);
     // MONEDAS 2v2 (domain/coins2v2.ts): contador propio del 2v2 (online y contra bots), una vez por partido
     const c2 = d as MatchEndData & { _c2?: ReturnType<typeof addCoins2v2> };
-    if (d.doubles && !c2._c2) c2._c2 = addCoins2v2(d.surrendered ? 'surrender' : d.win ? 'win' : 'loss');
+    if (d.doubles && !c2._c2) c2._c2 = addCoins2v2(d.surrendered ? 'surrender' : d.win ? 'win' : 'loss', loadBet2v2()); // (21-11-2026) con la apuesta x1 / x2 del menú
     // MISIONES POR PARTIDA: sus monedas se suman UNA vez, aparte de la partida y de la apuesta Ranked (también si pierdes)
     const mst = d as MatchEndData & { _missionCoins?: number };
     if (d.missions && mst._missionCoins === undefined) {
@@ -696,7 +697,7 @@ export class MatchEndScene extends Phaser.Scene {
    * (19-11-2026) MONEDAS 2v2 del partido: franja con la moneda 2v2, el cambio (+30 verde / −15 rojo) que cuenta hasta su valor y el total.
    * (y = arriba de la franja, dentro del panel)
    */
-  private coins2v2Row(c: Phaser.GameObjects.Container, w: number, y: number, r: { before: number; after: number; delta: number }) {
+  private coins2v2Row(c: Phaser.GameObjects.Container, w: number, y: number, r: { before: number; after: number; delta: number; bet?: number }) {
     const h = 64;
     const bw = w - 48;
     const row = this.add.container(0, y + h / 2).setAlpha(0);
@@ -712,9 +713,16 @@ export class MatchEndScene extends Phaser.Scene {
     coin.fillStyle(0x7f4bff, 1).fillCircle(cx, 0, 19);
     coin.fillStyle(0xffffff, 0.25).fillEllipse(cx, -8, 26, 10);
     coin.lineStyle(3, 0xffd23f, 1).strokeCircle(cx, 0, 19);
-    row.add(coin);
-    row.add(this.add.text(cx, 1, '2v2', { fontFamily: FONT, fontSize: '15px', color: '#ffffff', stroke: '#2a1458', strokeThickness: 3 }).setOrigin(0.5));
-    row.add(this.add.text(cx + 34, -11, 'MONEDAS 2v2', { fontFamily: FONT, fontSize: '19px', color: '#ffffff' }).setOrigin(0, 0.5).setLetterSpacing(1));
+    // (21-11-2026) con su imagen (assets/moneda-2v2.webp, la carga el menú) se usa la moneda 2v2 de verdad; si no, el disco dibujado con "2v2"
+    if (this.textures.exists('coin-2v2')) {
+      coin.destroy(); // (el disco dibujado ya no hace falta)
+      row.add(this.add.image(cx, 0, 'coin-2v2').setDisplaySize(52, 52));
+    }
+    else {
+      row.add(coin);
+      row.add(this.add.text(cx, 1, '2v2', { fontFamily: FONT, fontSize: '15px', color: '#ffffff', stroke: '#2a1458', strokeThickness: 3 }).setOrigin(0.5));
+    }
+    row.add(this.add.text(cx + 34, -11, (r.bet ?? 1) > 1 ? 'MONEDAS 2v2 · APUESTA x2' : 'MONEDAS 2v2', { fontFamily: FONT, fontSize: '19px', color: (r.bet ?? 1) > 1 ? '#ff9aa3' : '#ffffff' }).setOrigin(0, 0.5).setLetterSpacing(1));
     const total = this.add.text(cx + 34, 13, `TOTAL ${r.before}`, { fontFamily: FONT, fontSize: '15px', color: '#b9a8ff' }).setOrigin(0, 0.5).setLetterSpacing(1);
     row.add(total);
     const up = r.delta >= 0;
@@ -996,7 +1004,9 @@ export class MatchEndScene extends Phaser.Scene {
     const sep = this.add.graphics();
     sep.lineStyle(2, 0x2c4a8a, 0.9).lineBetween(-w / 2 + 24, y0, w / 2 - 24, y0);
     sec.add(sep);
-    const hy = y0 + 22;
+    // (19-11-2026, usuario) fila del título más alta (el "+N" con la moneda, a la derecha, no tenía aire arriba ni abajo): la cabecera
+    // baja 12 y las cards 24 (ADD_H crece igual)
+    const hy = y0 + 34;
     const head = this.add.text(-w / 2 + 26, hy, 'ADICIONALES', { fontFamily: FONT, fontSize: '22px', color: '#ffd23f', stroke: '#0a1638', strokeThickness: 5 }).setOrigin(0, 0.5).setLetterSpacing(2);
     const sub = this.add.text(head.x + head.width + 12, hy + 1, `${done.length}/${MISSIONS.length} MISIONES`, { fontFamily: FONT, fontSize: '14px', color: '#9fb3d9' }).setOrigin(0, 0.5).setLetterSpacing(1);
     const total = this.add.text(w / 2 - 26, hy, '+0', { fontFamily: FONT, fontSize: '30px', color: gained > 0 ? '#ffd23f' : '#7f93bf', stroke: '#0a1638', strokeThickness: 6 }).setOrigin(1, 0.5);
@@ -1007,7 +1017,7 @@ export class MatchEndScene extends Phaser.Scene {
     const gap = 10;
     const cw = (w - 40 - gap * 3) / 4;
     const ch = ADD_CARD_H;
-    const cy = y0 + 44;
+    const cy = y0 + 68;
     const cards = MISSIONS.map((m, i) => {
       const ok = done.includes(m.id);
       const x = -w / 2 + 20 + cw / 2 + i * (cw + gap);

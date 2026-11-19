@@ -11,7 +11,7 @@ import { getProfile } from '../logic/Profile';
 import type { SkinId } from '../characters/skins';
 import { totalWins } from '../logic/Stats';
 import { playMatchMusic, prepareMatchMusic, stopMatchMusic } from '../fx/matchMusic';
-import { showVersus as showVersusScreen } from '../ui/VersusScreen';
+import { queueVersusDuoArt, showVersus as showVersusScreen } from '../ui/VersusScreen';
 import { enterRanked, newMatchId, rankedView } from '../logic/Ranked';
 import { LEAGUE_ORDER } from '../domain/rankedConfig';
 import { preloadRankBadges } from '../ui/RankBadge';
@@ -71,6 +71,7 @@ export class MatchmakingScene extends Phaser.Scene {
   preload() {
     if (!this.textures.exists('menu-bg')) this.load.image('menu-bg', 'assets/menu-bg.webp');
     if (this.rankedBet || this.unranked) preloadRankBadges(this.load, [rankedView().league]);
+    if (this.doubles) queueVersusDuoArt(this.load); // (19-11-2026) entrada del equipo en la VS del 2v2
   }
 
   create() {
@@ -82,7 +83,7 @@ export class MatchmakingScene extends Phaser.Scene {
     stadiumBg(this, 0.55);
     // ambiente del próximo partido elegido ya: su música se carga mientras se busca y suena desde el VS
     this.toMatch = false;
-    this.ambiente = prepareMatchMusic(this);
+    this.ambiente = prepareMatchMusic(this, this.doubles);
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       if (!this.toMatch) stopMatchMusic(this); // vuelta atrás / sin monedas: la música no sigue sonando
     });
@@ -140,7 +141,7 @@ export class MatchmakingScene extends Phaser.Scene {
     const rivalLevel = Math.min(MAX_LEVEL, rivalLevelFor(p.level) + tier * 2);
     showVersusScreen(
       this,
-      { name: p.name, level: p.level, look: playerLook(p.skin), portraitSkin: p.skin as SkinId, wins: totalWins(), color: p.color, frame: equippedFrame(getPlayer() as PlayerState) }, // tu color y tu MARCO; el rival, el suyo de siempre
+      { name: this.doubles ? `${p.name} + ${this.allyName}` : p.name, level: p.level, look: playerLook(p.skin), portraitSkin: p.skin as SkinId, wins: totalWins(), color: p.color, frame: equippedFrame(getPlayer() as PlayerState) }, // tu color y tu MARCO; el rival, el suyo de siempre
       {
         name: botName,
         level: rivalLevel,
@@ -151,12 +152,28 @@ export class MatchmakingScene extends Phaser.Scene {
         // en la Liga el rival simulado también luce un marco (de su liga o de una anterior; a veces ninguno), como un jugador real
         frame: tier >= 0 && (this.rankedBet || this.unranked) && Math.random() < 0.75 ? LEAGUE_ORDER[Phaser.Math.Between(0, tier)] : null,
       },
+      // (19-11-2026) 2v2: abajo, tú y tu aliado (el otro personaje, como en el partido: rivalFor) en su entrada
+      // arriba, los 2 rivales con los mismos personajes que en el partido (el 1.º: rivalFor; el 2.º: el tuyo)
+      this.doubles
+        ? {
+            mySkin: p.skin,
+            mateSkin: rivalFor(p.skin),
+            rivals: [rivalFor(p.skin), p.skin],
+            // (19-11-2026, usuario) una card por persona: tú, tu aliado y los 2 rivales (bots)
+            cards: {
+              me: { name: p.name, level: p.level, look: playerLook(p.skin) },
+              mate: { name: this.allyName, level: p.level, look: rivalLook(p.skin) },
+              rival1: { name: botName, level: rivalLevel, look: rivalLook(p.skin) },
+              rival2: { name: this.rival2Name, level: rivalLevel, look: rivalLook(p.skin) },
+            },
+          }
+        : undefined,
     );
     // 1 s después del sonido del VS entra la música de la cancha (sigue sonando en el partido)
     this.time.delayedCall(1000, () => playMatchMusic(this, this.ambiente));
 
     // transición al partido
-    this.time.delayedCall(2700, () => {
+    this.time.delayedCall(2700 + (this.doubles ? 200 : 0), () => {
       this.cameras.main.fadeOut(250, 0, 0, 0);
       this.cameras.main.once('camerafadeoutcomplete', () => {
         // Ranked: la entrada se paga justo al empezar (cancelar la búsqueda no cobra nada)

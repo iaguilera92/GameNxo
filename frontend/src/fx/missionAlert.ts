@@ -12,8 +12,8 @@ import { sfx } from './sfx';
 const ALERT = {
   /** centro: px sobre el borde de abajo (ESPECIAL en H-225 con radio ~64 → su borde de arriba en H-289) */
   lift: 350,
-  /** ancho en pantalla; el alto sale de la proporción de la imagen (MARKER_ART.w × MARKER_ART.h) */
-  w: 330,
+  /** ancho en pantalla; el alto sale de la proporción de la imagen (MARKER_ART.w × MARKER_ART.h). (19-11-2026, usuario) más grande: 330 → 420 */
+  w: 420,
   holdMs: 2100,
   gapMs: 250,
 };
@@ -30,7 +30,9 @@ export const MARKER_ART = {
   h: 524,
   midY: 262,
   text: { x0: 468, x1: 1658 },
-  prize: { cx: 1869, cy: 319.5, w: 392, h: 175 },
+  // (19-11-2026, usuario) "+N" en medio del casillero: medido sobre la imagen (casillero x 517..633, y 72..127 a 660 × 163; la moneda
+  // tapa su parte de arriba hasta y ≈ 95), así que el texto va al centro de la parte LIBRE (y ≈ 111) y no al del casillero entero
+  prize: { cx: 1854, cy: 358, w: 360, h: 100 },
 } as const;
 
 /** Llamar desde un `preload()` del partido: encola la imagen de la placa. */
@@ -98,14 +100,19 @@ function draw(scene: Phaser.Scene, title: string, coins: number) {
   // textos en la zona libre: ¡LOGRO! (dorado, chico) y la misión (blanca), centrados; los nombres largos se achican
   const tx = lx((A.text.x0 + A.text.x1) / 2);
   const maxName = (A.text.x1 - A.text.x0) * k;
-  const head = scene.add.text(tx, -14, '¡LOGRO!', { fontFamily: FONT, fontSize: '16px', color: '#ffd23f', stroke: '#0a1638', strokeThickness: 4 }).setOrigin(0.5).setLetterSpacing(2);
-  const name = scene.add.text(tx, 11, title.toUpperCase(), { fontFamily: FONT, fontSize: '17px', color: '#ffffff', stroke: '#0a1638', strokeThickness: 4 }).setOrigin(0.5);
+  const S = w / 330; // los textos crecen con la placa (medidas pensadas para 330 de ancho)
+  const head = scene.add.text(tx, -14 * S, '¡LOGRO!', { fontFamily: FONT, fontSize: `${Math.round(16 * S)}px`, color: '#ffd23f', stroke: '#0a1638', strokeThickness: 4 }).setOrigin(0.5).setLetterSpacing(2);
+  const name = scene.add.text(tx, 11 * S, title.toUpperCase(), { fontFamily: FONT, fontSize: `${Math.round(17 * S)}px`, color: '#ffffff', stroke: '#0a1638', strokeThickness: 4 }).setOrigin(0.5);
   if (name.width > maxName) name.setScale(maxName / name.width);
   // premio: "+N" dorado y grande, centrado en el casillero
   const P = A.prize;
-  const val = scene.add.text(lx(P.cx), ly(P.cy), `+${coins}`, { fontFamily: FONT, fontSize: '20px', color: '#ffd23f', stroke: '#0a1638', strokeThickness: 3 }).setOrigin(0.5);
-  const maxVal = P.w * k - 10;
-  if (val.width > maxVal) val.setScale(maxVal / val.width);
+  const val = scene.add.text(lx(P.cx), ly(P.cy), `+${coins}`, { fontFamily: FONT, fontSize: `${Math.round(19 * S)}px`, color: '#ffd23f', stroke: '#0a1638', strokeThickness: 4 }).setOrigin(0.5);
+  // cabe en el casillero (ancho y alto libres); centrado por su caja real (no por la línea base de la fuente)
+  const fit = () => {
+    val.setScale(1);
+    val.setScale(Math.min(1, (P.w * k) / Math.max(1, val.width), (P.h * k * 1.25) / Math.max(1, val.height)));
+  };
+  fit();
 
   // destello del borde al entrar (como las cards del resultado; sin máscaras: la placa va en la cámara de interfaz)
   const flash = scene.add.graphics().setBlendMode(Phaser.BlendModes.ADD).setAlpha(0);

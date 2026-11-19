@@ -32,6 +32,10 @@ export interface Ambiente {
   surface: Surface;
   /** color medio de la fila de arriba de la imagen (cielo que la continúa al alejar la cámara) */
   sky?: number;
+  /** (19-11-2026, usuario) mapa EXCLUSIVO de un modo: '2v2' = solo sale en los partidos 2v2 (y el 2v2 solo usa los suyos) */
+  only?: '2v2';
+  /** (19-11-2026, usuario) colores de la cancha dura: azul (por defecto) o VERDE (a juego con un piso verde, como el del parque) */
+  court?: keyof typeof HARD_COLORS;
 }
 
 /** Ambientes panorámicos optimizados en WebP, cargados aleatoriamente al iniciar cada partido. */
@@ -39,7 +43,19 @@ export const AMBIENTES: Ambiente[] = [
   { key: 'ambiente-1', file: 'ambiente-1.webp', w: 1536, h: 1024, wallBottomY: 318, wallTopY: 265, fenceTopY: 205, surface: 'hard', sky: 0x031d6b },
   { key: 'ambiente-2', file: 'ambiente-2.webp', w: 1536, h: 1024, wallBottomY: 345, wallTopY: 268, fenceTopY: 196, surface: 'clay', sky: 0x0c2e35 },
   { key: 'ambiente-3', file: 'ambiente-3.webp', w: 1536, h: 1024, wallBottomY: 418, wallTopY: 359, fenceTopY: 222, perchTopY: 325, surface: 'hard', sky: 0x143d7e },
+  // (19-11-2026, usuario) PARQUE con varias canchas: SOLO para el 2v2. Imagen con un PASEO de lado a lado detrás del muro (los paseantes
+  // cruzan toda la pantalla). Muro del fondo medido sobre la imagen (borde de arriba en y 313, pie en y 397); no tiene valla encima:
+  // fenceTopY = el alto de las vallas verdes del fondo (~236). Piso verde de la imagen y cancha azul (hard)
+  { key: 'ambiente-1-2v2', file: 'ambiente-1-2v2.webp', w: 1536, h: 1024, wallBottomY: 397, wallTopY: 313, fenceTopY: 236, surface: 'hard', court: 'green', sky: 0x2a7ba4, only: '2v2' },
 ];
+
+/** (19-11-2026) Ambientes cargados para este modo: el 2v2 usa los suyos (`only: '2v2'`) si hay alguno cargado; el 1v1 nunca los usa. */
+function ambientesFor(scene: Phaser.Scene, doubles: boolean): Ambiente[] {
+  const loaded = AMBIENTES.filter((a) => scene.textures.exists(a.key));
+  const own = loaded.filter((a) => a.only === '2v2');
+  if (doubles && own.length) return own;
+  return loaded.filter((a) => !a.only);
+}
 
 /** y en pantalla donde debe quedar el muro del fondo (un poco por detrás de la cancha) */
 const WALL_AT_Y = 302;
@@ -63,14 +79,16 @@ export interface DrawnWall {
   perchPx: number;
   /** ambiente elegido (para elegir la música del partido) */
   key: string;
+  /** (19-11-2026) dónde se dibujó la imagen del ambiente: esquina de arriba a la izquierda y escala (para poner cosas sobre ella: paseantes) */
+  img: { left: number; top: number; s: number };
 }
 
 /**
  * Ambiente (cancha + música) de un partido ONLINE: sale del id de la sala, así que los dos teléfonos eligen el mismo sin enviarse nada
  * (en 1v1 y en 2v2). null = no hay imagen de ambiente cargada. Contra el bot sigue el sorteo de siempre (pickAmbiente).
  */
-export function ambienteForRoom(scene: Phaser.Scene, roomId: string): string | null {
-  const available = AMBIENTES.filter((a) => scene.textures.exists(a.key));
+export function ambienteForRoom(scene: Phaser.Scene, roomId: string, doubles = false): string | null {
+  const available = ambientesFor(scene, doubles);
   if (!available.length) return null;
   let h = 2166136261;
   for (const c of roomId) {
@@ -84,8 +102,8 @@ export function ambienteForRoom(scene: Phaser.Scene, roomId: string): string | n
 }
 
 /** Sortea el ambiente del partido (respeta 'dev.ambiente'). null = no hay imagen de ambiente cargada. */
-export function pickAmbiente(scene: Phaser.Scene): string | null {
-  const available = AMBIENTES.filter((a) => scene.textures.exists(a.key));
+export function pickAmbiente(scene: Phaser.Scene, doubles = false): string | null {
+  const available = ambientesFor(scene, doubles);
   if (!available.length) return null;
   let forced: string | null = null;
   try {
@@ -100,9 +118,11 @@ export function pickAmbiente(scene: Phaser.Scene): string | null {
  * Dibuja ambiente + cancha. Devuelve la pared dibujada, o null si falta la imagen (la escena dibuja la suya).
  * preferred: ambiente ya elegido (en la búsqueda, para que su música empiece en el VS); si no, se sortea.
  */
-export function drawCourtView(scene: Phaser.Scene, preferred?: string | null): DrawnWall | null {
-  const available = AMBIENTES.filter((a) => scene.textures.exists(a.key));
-  if (!available.length) return null;
+export function drawCourtView(scene: Phaser.Scene, preferred?: string | null, doubles = false): DrawnWall | null {
+  // 'dev.ambiente' puede forzar cualquiera (también el del 2v2 en un 1v1, para probarlo); si no, solo los de este modo
+  const loaded = AMBIENTES.filter((a) => scene.textures.exists(a.key));
+  if (!loaded.length) return null;
+  const available = ambientesFor(scene, doubles);
   // pruebas: localStorage 'dev.ambiente' = 'ambiente-2' fuerza uno concreto
   let forced: string | null = null;
   try {
@@ -110,7 +130,7 @@ export function drawCourtView(scene: Phaser.Scene, preferred?: string | null): D
   } catch {
     /* sin almacenamiento */
   }
-  const amb = available.find((a) => a.key === forced) ?? available.find((a) => a.key === preferred) ?? (Phaser.Utils.Array.GetRandom(available) as Ambiente);
+  const amb = loaded.find((a) => a.key === forced) ?? available.find((a) => a.key === preferred) ?? (Phaser.Utils.Array.GetRandom(available.length ? available : loaded) as Ambiente);
   const H = Math.max(scene.scale.height, VIEW.H);
 
   // ---------------------------------------------------------------- ambiente (imagen)
@@ -130,7 +150,7 @@ export function drawCourtView(scene: Phaser.Scene, preferred?: string | null): D
   // ---------------------------------------------------------------- cancha (código)
   const g = scene.make.graphics({}, false);
   if (amb.surface === 'clay') drawClay(g);
-  else drawHard(g);
+  else drawHard(g, HARD_COLORS[amb.court ?? 'blue']);
 
   // hornear en una textura (1 sola vez; rápido en el móvil)
   const BX = -1000;
@@ -138,7 +158,7 @@ export function drawCourtView(scene: Phaser.Scene, preferred?: string | null): D
   const rt = scene.add.renderTexture(BX, BY, VIEW.W + 2000, Math.ceil(H) + 40).setOrigin(0).setDepth(-10);
   rt.draw(g, -BX, -BY);
   g.destroy();
-  return { wallAtY: WALL_AT_Y, padPx: (amb.wallBottomY - amb.wallTopY) * s, fencePx: (amb.wallBottomY - amb.fenceTopY) * s, perchPx: (amb.wallBottomY - (amb.perchTopY ?? amb.wallTopY)) * s, key: amb.key };
+  return { wallAtY: WALL_AT_Y, padPx: (amb.wallBottomY - amb.wallTopY) * s, fencePx: (amb.wallBottomY - amb.fenceTopY) * s, perchPx: (amb.wallBottomY - (amb.perchTopY ?? amb.wallTopY)) * s, key: amb.key, img: { left: VIEW.W / 2 - (amb.w * s) / 2, top, s } };
 }
 
 /**
@@ -222,14 +242,23 @@ function glow(g: Phaser.GameObjects.Graphics, x: number, y: number, rx: number, 
 
 // ================================================================ pista dura (azul)
 
-function drawHard(g: Phaser.GameObjects.Graphics) {
+/**
+ * Colores de la cancha dura: pasillos (alley), degradado de la de individuales (near → far) y luz de los focos.
+ * (19-11-2026, usuario) VERDE para el PARQUE del 2v2: tonos de cancha dura verde, algo más claros que el piso de la imagen (0x289646).
+ */
+const HARD_COLORS = {
+  blue: { alley: 0x1d4aa0, near: 0x4a97f0, far: 0x2459b8, light: 0xbfe0ff },
+  green: { alley: 0x1f7a3c, near: 0x4cbf6a, far: 0x2f9452, light: 0xe0ffd8 },
+};
+
+function drawHard(g: Phaser.GameObjects.Graphics, C = HARD_COLORS.blue) {
   // sin sombra ni borde oscuro alrededor (hacían que la cancha pareciera flotar): el borde es la línea blanca
-  // pasillos de dobles: azul profundo; individuales: degradado (más claro cerca)
-  g.fillStyle(0x1d4aa0, 1);
+  // pasillos de dobles: el tono profundo; individuales: degradado (más claro cerca)
+  g.fillStyle(C.alley, 1);
   quad(g, COURT.left, dT, COURT.right, dB);
   const bands = 14;
-  const near = Phaser.Display.Color.ValueToColor(0x4a97f0);
-  const far = Phaser.Display.Color.ValueToColor(0x2459b8);
+  const near = Phaser.Display.Color.ValueToColor(C.near);
+  const far = Phaser.Display.Color.ValueToColor(C.far);
   for (let b = 0; b < bands; b++) {
     const x0 = COURT.left + ((COURT.right - COURT.left) * b) / bands;
     const x1 = COURT.left + ((COURT.right - COURT.left) * (b + 1)) / bands;
@@ -243,8 +272,8 @@ function drawHard(g: Phaser.GameObjects.Graphics) {
   quad(g, NET_X - SL, COURT.top, NET_X + SL, COURT.bottom);
 
   // luz de focos
-  glow(g, COURT.left + 240, LAT_C, 520, 150, 0.12, 0xbfe0ff);
-  glow(g, COURT.right - 220, LAT_C, 300, 70, 0.1, 0xbfe0ff);
+  glow(g, COURT.left + 240, LAT_C, 520, 150, 0.12, C.light);
+  glow(g, COURT.right - 220, LAT_C, 300, 70, 0.1, C.light);
 
   // sombra del muro del fondo
   for (let i = 0; i < 6; i++) {

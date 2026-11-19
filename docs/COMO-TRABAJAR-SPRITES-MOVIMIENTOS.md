@@ -47,6 +47,9 @@ personaje mide ~110-120 px y el teléfono lo agranda 3-4 veces, así que se ve b
   `-3` forehand-power · `-4` backhand-power · `-5` serve · `-6` serve-spin · `-7` smash · `-8` smash-power. Hoja 3 =
   `reacciones`: `-1` stunned · `-2` point-won · `-3` point-lost. Hoja 4 = `extras`: `-1` **walk-intro** (caminata lenta de la ENTRADA al partido, clip nuevo;
   `build-hd` lo crea en `nxo-extra.json`; `NxoActor.runKey` lo usa durante `walkFor`) · `-2` inferno-hit · `-3` volley.
+  (19-11-2026, usuario) `nxo-extras-1` rehecha: ciclo de caminata de 8 poses DISTINTAS (antes la fila 2 repetía la 1), paso corto y
+  suelto, raqueta relajada hacia abajo en la mano derecha. Su celda creció a 170 × 208 (la raqueta sale hacia la derecha). Anterior en
+  `_temp/respaldo_oficial/Nxo/nxo-extras-1-antes-19-11-2026.png`.
   **`serve-toss` (lanzamiento) = `golpes-9`** (usuario: es parte del saque; `APPEND` en `build-hd`).
   **Pero NXO espaldas ya NO lo usa (14-11-2026):** `ownToss: false` en `PACKS.nxo` (NxoActor): el lanzamiento es el principio
   del propio saque (frames 1-3 de `serve`/`serve-spin`, se detiene en el trofeo hasta golpear). `golpes-9` no hace falta.
@@ -62,6 +65,12 @@ personaje mide ~110-120 px y el teléfono lo agranda 3-4 veces, así que se ve b
   en `personajes/Nxo/rival/hd/` con prefijo `nxo-rival-` (`nxo-rival-movimientos-1`, `nxo-rival-golpes-1`, `nxo-rival-ulti-1`…),
   misma numeración que el de espaldas. Alto final por defecto 150 (el rival se ve más chico al fondo). Raqueta en su mano derecha
   = a la IZQUIERDA de la imagen.
+  - (19-11-2026, usuario) `nxo-rival-golpes-1` (derecha) rehecha: cara SERIA y dientes apretados al pegar (cuadros 4-7), cuadro 4 = máximo
+    de la preparación con la raqueta a la izquierda de la imagen (como espejo del revés `golpes-2`). El cuadro 8 se pegó de otra imagen
+    (escalado ×1,9: algo menos nítido). Anterior en `_temp/respaldo_oficial/Nxo/nxo-rival-golpes-1-antes-19-11-2026.png`.
+  - (19-11-2026, usuario) `nxo-rival-golpes-8` (SMASH potenciado) rehecha: DE FRENTE y derecho (antes muy ladeado), salto con las piernas
+    recogidas (cuadro 4: rodillas juntas y pies atrás), cara seria con dientes apretados en el golpe y, tras el impacto (cuadros 6-7), la
+    raqueta cruza al lado DERECHO de la imagen. Anterior en `_temp/respaldo_oficial/Nxo/nxo-rival-golpes-8-antes-19-11-2026.png`.
 - **⛔ FILAS QUE NO SE HACEN (no se piden a ChatGPT ni se dibujan; decisión del usuario 14-11-2026):**
 
   | Hoja | Fila | Animación | Motivo |

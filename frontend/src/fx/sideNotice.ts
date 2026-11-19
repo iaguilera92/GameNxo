@@ -90,6 +90,43 @@ export function showSideNotice(scene: Phaser.Scene, text: string, color = 0xffd2
 }
 
 /**
+ * (21-11-2026, usuario) Aviso de la VELOCIDAD DEL SAQUE: "SAQUE 182 KM/H" con el número (grande) y el borde del color de la fuerza (amarillo leve ·
+ * verde bueno · rojo fuerte; config.ts SERVE_KMH). Mismo sitio y forma que los demás avisos laterales.
+ */
+export function showServeSpeedNotice(scene: Phaser.Scene, kmh: number, color: number, ms = 1900) {
+  const h = NOTICE.h;
+  const s = NOTICE.slant;
+  const slot = takeSlot(scene);
+  const y = slotY(slot);
+  const hex = '#' + color.toString(16).padStart(6, '0');
+  const style = (size: number, col: string, stroke = 4) => ({ fontFamily: FONT, fontSize: `${size}px`, color: col, stroke: '#0a1638', strokeThickness: stroke });
+  const t1 = scene.add.text(NOTICE.textX, 0, 'SAQUE', style(20, '#ffffff')).setOrigin(0, 0.5).setLetterSpacing(2);
+  const t2 = scene.add.text(t1.x + t1.width + 12, 1, String(kmh), style(34, hex, 5)).setOrigin(0, 0.5);
+  const t3 = scene.add.text(t2.x + t2.width + 8, 7, 'KM/H', style(15, '#ffffff')).setOrigin(0, 0.5).setLetterSpacing(1);
+  const w = Math.round(t3.x + t3.width + 30);
+  const g = scene.add.graphics();
+  g.fillStyle(0x000000, 0.35).fillPoints([{ x: 0, y: -h / 2 + 4 }, { x: w + 4, y: -h / 2 + 4 }, { x: w - s + 4, y: h / 2 + 4 }, { x: 0, y: h / 2 + 4 }], true);
+  g.fillStyle(0x000000, 0.95).fillPoints([{ x: 0, y: -h / 2 }, { x: w, y: -h / 2 }, { x: w - s, y: h / 2 }, { x: 0, y: h / 2 }], true);
+  g.fillStyle(color, 1).fillRect(0, -h / 2, NOTICE.bar, h);
+  g.lineStyle(3, color, 1).lineBetween(0, -h / 2, w, -h / 2).lineBetween(w, -h / 2, w - s, h / 2).lineBetween(w - s, h / 2, 0, h / 2);
+  const c = scene.add.container(-w - 20, y, [g, t1, t2, t3]).setScrollFactor(0).setDepth(6060);
+  scene.tweens.add({ targets: c, x: 0, duration: 260, ease: 'Cubic.easeOut' });
+  scene.tweens.add({ targets: t2, scale: { from: 1.5, to: 1 }, duration: 380, delay: 200, ease: 'Back.easeOut' }); // el número "golpea" al entrar
+  scene.tweens.add({
+    targets: c,
+    x: -w - 20,
+    delay: ms,
+    duration: 240,
+    ease: 'Cubic.easeIn',
+    onComplete: () => {
+      c.destroy();
+      used.delete(slot);
+    },
+  });
+  return c;
+}
+
+/**
  * Cuenta atrás del saque en el aviso lateral (mismo sitio y forma que DOBLE FALTA…): "SACA EN 5" con fondo negro y
  * borde naranja; en el 3 el borde pasa a rojo y en el 1 todo rojo (fondo y borde). Se queda mientras dura la cuenta.
  */

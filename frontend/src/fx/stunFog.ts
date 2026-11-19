@@ -52,8 +52,33 @@ export class StunFog {
 
   /** (14-11-2026) `o` se ve nítido y por encima del velo (sin desenfoque) hasta que se destruya. */
   keepSharp(o: Phaser.GameObjects.GameObject) {
+    if (this.keep.has(o)) return;
     this.keep.add(o);
     o.once(Phaser.GameObjects.Events.DESTROY, () => this.keep.delete(o));
+  }
+
+  /** objetos que ya existían al recibir el golpe (`keepNew`) y hasta cuándo lo NUEVO se ve nítido */
+  private base: Set<Phaser.GameObjects.GameObject> | null = null;
+  private newUntil = 0;
+
+  /**
+   * (19-11-2026, usuario) Lo que aparece en los próximos `ms` (el IMPACTO del golpe recibido, sus chispas y destellos aunque salgan con
+   * retraso) se ve NÍTIDO, sin el velo ni el desenfoque. `base` = los objetos que había ANTES del impacto (foto de children.list).
+   */
+  keepNew(base: Set<Phaser.GameObjects.GameObject>, ms: number) {
+    this.base = base;
+    this.newUntil = this.scene.time.now + ms;
+  }
+
+  /** marca como nítidos los objetos creados desde la foto (mientras dura la ventana de keepNew) */
+  private grabNew() {
+    const base = this.base;
+    if (!base) return;
+    if (this.scene.time.now > this.newUntil) {
+      this.base = null;
+      return;
+    }
+    for (const o of this.scene.children.list) if (!base.has(o) && o !== this.img) this.keepSharp(o);
   }
 
   constructor(private scene: Phaser.Scene, private target: () => Phaser.GameObjects.GameObject) {
@@ -66,6 +91,7 @@ export class StunFog {
 
   /** Reparto de objetos entre cámaras mientras dura: el personaje solo en la nítida; el resto, nunca en la nítida. */
   private filter() {
+    this.grabNew();
     const sh = this.sharp;
     if (!sh) return;
     const main = this.scene.cameras.main;
@@ -103,6 +129,7 @@ export class StunFog {
   /** Quita la niebla ya (punto nuevo). */
   clear() {
     this.until = 0;
+    this.base = null;
   }
   // (el desenfoque se quita solo cuando la niebla termina de apagarse: update)
 

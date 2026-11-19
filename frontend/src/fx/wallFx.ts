@@ -61,6 +61,8 @@ export class WallFx {
         const p = sc.add.circle(x, y, (power ? 4 : 3) * k, i % 2 ? ring : hot, 1).setDepth(depth + 1).setBlendMode(Phaser.BlendModes.ADD);
         this.fade(p, { x: x + Math.cos(a) * d, y: y + Math.sin(a) * d * 0.7, scale: 0.2, alpha: 0 }, 240 + Math.random() * 120);
       }
+      // (21-11-2026, usuario) el ESPECIAL (y la ULTI) dejan en el muro una MARCA DE IMPACTO con los colores de su poder (no destructiva: sin grietas ni escombros)
+      if (power) this.impactMark(x, y, k, hot, ring);
       sc.cameras.main.shake(power ? 140 : 90, power ? 0.009 : 0.004);
     } else {
       // valla: la malla vibra (ondas finas) y unas chispas pequeñas
@@ -78,6 +80,42 @@ export class WallFx {
     if (power) this.elementHit(el, x, y, k, depth);
     wallSound(sc, kind, power);
     if (power) elementSound(sc, el);
+  }
+
+  /**
+   * MARCA DE IMPACTO del ESPECIAL en el muro: una mancha de pintura / sello en forma de salpicadura (borde del color del poder, centro más claro y unas
+   * gotitas alrededor) sobre un halo oscuro suave. Aparece con un golpe (entra más grande y se asienta), se queda ~2,5 s y se desvanece. Va pegada a la
+   * pared (por detrás de personajes y pelota); es solo una marca: nada de grietas ni trozos que saltan. `clear()` la quita al acabar el punto.
+   */
+  private impactMark(x: number, y: number, k: number, hot: number, ring: number) {
+    const sc = this.scene;
+    const R = (a: number, b: number) => a + Math.random() * (b - a);
+    const g = sc.add.graphics({ x, y }).setDepth(1.55);
+    // halo oscuro suave (la pared "se ensucia" un poco)
+    g.fillStyle(0x000000, 0.2).fillEllipse(0, 2 * k, 62 * k, 44 * k);
+    // salpicadura: 14 puntas irregulares (largas y cortas alternadas), algo achatada
+    const splat = (scale: number) => {
+      const pts: { x: number; y: number }[] = [];
+      for (let i = 0; i < 14; i++) {
+        const a = (i / 14) * Math.PI * 2;
+        const r = (i % 2 ? R(9, 13) : R(17, 25)) * k * scale;
+        pts.push({ x: Math.cos(a) * r, y: Math.sin(a) * r * 0.78 });
+      }
+      return pts;
+    };
+    g.fillStyle(ring, 0.55).fillPoints(splat(1), true);
+    g.lineStyle(2 * k, ring, 0.7).strokePoints(splat(1), true, true);
+    g.fillStyle(hot, 0.75).fillPoints(splat(0.55), true);
+    // gotitas alrededor
+    for (let i = 0; i < 6; i++) {
+      const a = R(0, Math.PI * 2);
+      const d = R(26, 38) * k;
+      g.fillStyle(i % 2 ? ring : hot, 0.65).fillCircle(Math.cos(a) * d, Math.sin(a) * d * 0.78, R(1.8, 3.2) * k);
+    }
+    this.live.add(g);
+    g.setAlpha(0).setScale(1.6);
+    sc.tweens.add({ targets: g, alpha: 1, scale: 1, duration: 130, ease: 'Back.easeOut' });
+    this.fade(g, { alpha: 0 }, 1400, 2500);
   }
 
   /**

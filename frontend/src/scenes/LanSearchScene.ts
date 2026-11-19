@@ -8,7 +8,7 @@ import { UI, flatButton, stadiumBg } from '../ui/ui';
 import { showConfirm } from '../ui/ConfirmDialog';
 import { totalWins } from '../logic/Stats';
 import { playMatchMusic, prepareMatchMusic, setRoomMatchMusic, stopMatchMusic } from '../fx/matchMusic';
-import { showVersus as showVersusScreen } from '../ui/VersusScreen';
+import { queueVersusDuoArt, showVersus as showVersusScreen } from '../ui/VersusScreen';
 import { lookForSkin, playerLook } from '../objects/Character';
 import type { SkinId } from '../characters/skins';
 import { getProfile } from '../logic/Profile';
@@ -58,6 +58,7 @@ export class LanSearchScene extends Phaser.Scene {
   preload() {
     // liga de la apuesta (la misma pantalla que la búsqueda contra el BOT)
     if (this.rk) preloadRankBadges(this.load, [rankedView().league]);
+    if (this.mode === '2v2') queueVersusDuoArt(this.load); // (19-11-2026) entrada del equipo en la VS del 2v2
   }
 
   private get bet(): number | null {
@@ -79,7 +80,7 @@ export class LanSearchScene extends Phaser.Scene {
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.cleanup.forEach((f) => f()));
     // ambiente del próximo partido elegido ya: su música se carga mientras se busca y suena desde el VS
     this.toMatch = false;
-    this.ambiente = prepareMatchMusic(this);
+    this.ambiente = prepareMatchMusic(this, this.mode === '2v2');
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       if (!this.toMatch) stopMatchMusic(this); // búsqueda cancelada / sin rival: la música no sigue sonando
     });
@@ -179,9 +180,24 @@ export class LanSearchScene extends Phaser.Scene {
       duo
         ? { name: b1 + ' + ' + b2, level: Math.round((p.level + opp.level) / 2), look: lookForSkin(p.skin, 'front', p.skin), portraitSkin: rivalFor(p.skin), wins: 0, frame: null }
         : { name: opp.name, level: opp.level, look: lookForSkin(opp.skin, 'front', p.skin), portraitSkin: opp.skin as SkinId, color: charColorOf(opp.color), wins: opp.wins, frame: isFrameId(opp.frame) ? opp.frame : null }, // sus victorias y su marco, si los mandó
+      // (19-11-2026) 2v2: abajo, tú y tu compañero en su entrada; arriba, los 2 bots del host (los mismos personajes que en el partido)
+      duo
+        ? {
+            mySkin: p.skin,
+            mateSkin: opp.skin,
+            rivals: [rivalFor(p.skin), p.skin],
+            // (19-11-2026, usuario) una card por persona: tú, tu compañero y los 2 bots del host
+            cards: {
+              me: { name: p.name, level: p.level, look: playerLook(p.skin) },
+              mate: { name: opp.name, level: opp.level, look: playerLook(opp.skin) },
+              rival1: { name: b1, level: Math.round((p.level + opp.level) / 2), look: lookForSkin(p.skin, 'front', p.skin) },
+              rival2: { name: b2, level: Math.round((p.level + opp.level) / 2), look: lookForSkin(p.skin, 'front', p.skin) },
+            },
+          }
+        : undefined,
     );
     // misma cancha y misma música en los dos teléfonos: el ambiente sale del id de la sala (el sorteo de la búsqueda era de cada teléfono)
-    this.ambiente = setRoomMatchMusic(this, net.roomId);
+    this.ambiente = setRoomMatchMusic(this, net.roomId, net.mode === '2v2');
     // 1 s después del sonido del VS entra la música de la cancha (sigue sonando en el partido)
     const musicIn = this.time.delayedCall(1000, () => playMatchMusic(this, this.ambiente));
     // durante la pantalla VS el rival puede irse (o caerse la conexión): se avisa y NO se entra al partido
@@ -208,14 +224,15 @@ export class LanSearchScene extends Phaser.Scene {
     this.cleanup.push(() => {
       offEnd();
     });
-    toMatch = this.time.delayedCall(2700, () => {
+    toMatch = this.time.delayedCall(2700 + (net.mode === '2v2' ? 200 : 0), () => {
       goingToMatch = true;
       offEnd();
-      this.cameras.main.fadeOut(250, 0, 0, 0);
-      this.cameras.main.once('camerafadeoutcomplete', () => {
-        this.toMatch = true;
-        this.scene.start('Match', { botName: opp.name, rivalLevel: opp.level, net, ambiente: this.ambiente, ...(net.mode === '2v2' ? { mode: '2v2' as const } : {}) });
-      });
+      this.toMatch = true;
+      // (19-11-2026, usuario) el partido se abre DEBAJO y esta pantalla VS se queda ENCIMA hasta que el servidor da la salida (los dos
+      // teléfonos listos): antes se entraba al partido y se veía la cancha con los personajes quietos ~2 s antes de empezar.
+      // MatchScene (netSetup) cierra esta escena con un fundido al empezar la presentación (o si el partido no llega a empezar).
+      this.scene.launch('Match', { botName: opp.name, rivalLevel: opp.level, net, ambiente: this.ambiente, cover: this.scene.key, ...(net.mode === '2v2' ? { mode: '2v2' as const } : {}) });
+      this.scene.bringToTop();
     });
   }
 }

@@ -136,4 +136,26 @@ test('migración: el formato nuevo (por personaje) se conserva y se valida', () 
   assert.equal(Z.zoneStatsOf(s.zone, 'mai').precision, 5);
   assert.equal(Object.keys(s.zone.stats).length, 2);
 });
+// (21-11-2026) APUESTA del 2v2 (domain/coins2v2.ts): x1 / x2 multiplican lo que ganas y lo que arriesgas; el x2 solo si se puede cubrir; nunca bajo 0
+const C2 = await import('../src/domain/coins2v2.ts');
+test('MONEDAS 2v2: x1 = +30 / -15 / -30 y x2 lo duplica', () => {
+  const s = newPlayer();
+  s.coins2v2 = 100;
+  assert.equal(C2.apply2v2Result(s, 'win', 1).delta, 30);
+  assert.equal(C2.apply2v2Result(s, 'loss', 1).delta, -15);
+  assert.equal(C2.apply2v2Result(s, 'surrender', 1).delta, -30);
+  assert.equal(C2.apply2v2Result(s, 'win', 2).delta, 60);
+  assert.equal(C2.apply2v2Result(s, 'loss', 2).delta, -30);
+  assert.equal(C2.apply2v2Result(s, 'surrender', 2).delta, -60);
+});
+test('MONEDAS 2v2: el x2 solo vale con monedas para cubrirlo y nunca baja de 0', () => {
+  const poor = newPlayer();
+  poor.coins2v2 = 20; // menos de los 30 que arriesga el x2
+  assert.equal(C2.effectiveBet2v2(20, 2), 1);
+  assert.equal(C2.apply2v2Result(poor, 'win', 2).delta, 30); // se aplica como x1
+  assert.equal(C2.apply2v2Result(poor, 'surrender', 1).after, 0); // -30 con 20 → 0, no negativo
+  assert.equal(C2.stakes2v2(0)[0].affordable, true); // el x1 siempre se puede elegir (si no, sin monedas 2v2 no se podría empezar)
+  assert.equal(C2.stakes2v2(29)[1].affordable, false);
+  assert.equal(C2.stakes2v2(30)[1].affordable, true);
+});
 console.log(`${ok} pruebas OK`);

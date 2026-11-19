@@ -23,7 +23,8 @@ Cada una cuenta **una sola vez** por partida. Lógica: `frontend/src/domain/matc
   pastilla navy con borde dorado, medalla con estrella a la izquierda, moneda-pelota arriba a la derecha y un casillero para el
   premio; la original en PNG está en `_temp/respaldo_oficial/ui-png-originales/`). Sobre ella, en una sola pieza: "¡LOGRO!" (dorado) y
   el nombre (blanco, se achica si es largo) centrados en la zona libre, y "+N" (dorado) centrado en el casillero. Ya no se dibuja
-  placa, estrella ni moneda por código. Se muestra a 330 px de ancho × ~81 de alto (el alto sale de la proporción de la imagen), centrada
+  placa, estrella ni moneda por código. (19-11-2026, usuario) Más grande: 420 px de ancho (textos ×1,27) y el "+N" centrado en la parte
+  LIBRE del casillero (la moneda tapa su parte de arriba; `MARKER_ART.prize` medido sobre la imagen). Antes se mostraba a 330 px de ancho × ~81 de alto (el alto sale de la proporción de la imagen), centrada
   entre el joystick y los botones de habilidades, ~350 px sobre el borde de abajo (más arriba que el botón ESPECIAL). Animaciones:
   entrada con rebote, destello del borde, halo dorado que late y salida. La textura `ui-marcador-misiones` se precarga en
   `MatchScene.preload` (`queueMissionAlertArt`); si falta, dibuja una pastilla simple. Las zonas del texto y del casillero están en

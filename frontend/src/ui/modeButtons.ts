@@ -66,6 +66,8 @@ const PALETTES = {
   blue: { body: { top: 0x6fb2ff, mid: 0x2f7bff, bottom: 0x153f9e, shadow: 0x0a1638, shadowA: 0.9, glossA: 0.3 }, text: '#ffffff', stroke: 6 },
   grey: { body: { top: 0x3c465e, mid: 0x2e374c, bottom: 0x232a3b, shadow: 0x1f6bff, shadowA: 0.35, glossA: 0.08 }, text: '#8d99b5', stroke: 0 },
   green: { body: { top: 0x7dffa8, mid: 0x2fd46a, bottom: 0x168a40, shadow: 0x0a1638, shadowA: 0.9, glossA: 0.3 }, text: '#ffffff', stroke: 6 },
+  // (21-11-2026, usuario) el 2v2: morado, el del borde de la card de la LIGA 2V2 (0xb06bff)
+  purple: { body: { top: 0xd9b4ff, mid: 0xb06bff, bottom: 0x6b2fe0, shadow: 0x0a1638, shadowA: 0.9, glossA: 0.32 }, text: '#ffffff', stroke: 6 },
 };
 export type ArcadePalette = keyof typeof PALETTES;
 

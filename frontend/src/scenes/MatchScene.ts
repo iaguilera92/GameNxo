@@ -19,6 +19,7 @@ import {
   GRAVITY,
   PLAYER_SPEED,
   SERVE,
+  SERVE_KMH,
   SERVE_SPEED,
   SHOT_SPEED,
   SIDE_MARGIN,
@@ -100,6 +101,7 @@ import { playMatchEnd } from '../fx/matchEnd';
 import { playMatchIntro } from '../fx/matchIntro';
 import { ServeTurnTag } from '../ui/ServeTurnTag';
 import { setupUiCamera } from '../view/uiCamera';
+import { queueParkWalkers, startParkWalkers } from '../fx/parkWalkers';
 import { createMissionTracker, missionDef, missionHit, missionPoint, missionPointStart, type MissionShot } from '../domain/matchMissions';
 import { queueMissionAlertArt, showMissionAlert } from '../fx/missionAlert';
 import { queueGazeArt, showInfernoGaze } from '../fx/infernoGaze';
@@ -114,7 +116,7 @@ import { RemoteInterp } from '../net/interp';
 import { MatchDiag, netLogOn } from '../net/matchDiag';
 import { skyTwinkleSound, uiSound } from '../fx/uiSound';
 import { POINT_SPLASH_MS, isMatchPoint, showPointSplash } from '../fx/pointSplash';
-import { createServeCountdown, showSideNotice, type ServeCountdown } from '../fx/sideNotice';
+import { createServeCountdown, showServeSpeedNotice, showSideNotice, type ServeCountdown } from '../fx/sideNotice';
 import { TIMING, TimingTracker, type ShotClass, type TimingResult, applyError, evaluateCharge, nextStreak, timedSpeed, timingMods } from '../logic/PerfectTiming';
 import { TimingRing, perfectSound, playStreakFx, playTimingFx, vibrate } from '../fx/timingFx';
 import { playMatchFinale } from '../fx/matchFinale';
@@ -615,8 +617,15 @@ export class MatchScene extends Phaser.Scene {
         ay = clamp(land.y, Y_MIN, Y_MAX);
       }
     }
+    // (19-11-2026, usuario) el ALIADO bot que SACA no se mueve de su sitio de saque mientras se prepara / lanza (antes seguía en espejo al
+    // jugador y se le veía subir o bajar de su fila)
+    const allyServing = this.allyServes && (this.phase === 'serve' || this.phase === 'toss');
     if (this.allyRemote) {
       /* el compañero humano lo mueve su teléfono (net2Tick) */
+    } else if (allyServing) {
+      ally.ch.setMoving(false, 0);
+    } else if (this.entering) {
+      /* (19-11-2026, usuario) ENTRADA: la caminata la lleva entranceWalk (antes aquí se le paraba en cada fotograma y no caminaba) */
     } else if (calm) this.followTo(ally, ax, ay, dt, PLAYER_SPEED * 0.85, [P_X[0], P_X[1]]);
     else ally.ch.setMoving(false, 0);
     this.updateFacing(ally);
@@ -628,7 +637,12 @@ export class MatchScene extends Phaser.Scene {
       const oy = clamp(2 * LAT_C - this.bot.y, Y_MIN + 40, Y_MAX - 40);
       const ob = this.rivalBrains[idx];
       ob.ai.homeX = otherNet ? NET_X + DOUBLES_NET_GAP : null;
-      if (calm) this.followTo(other, otherNet ? NET_X + DOUBLES_NET_GAP : COURT.right + 40, oy, dt, PLAYER_SPEED * 0.8, [B_X[0], B_X[1]]);
+      if (this.entering) {
+        /* ENTRADA: camina con entranceWalk (no se le para) */
+      } else if (this.netBotFly?.actor === other) {
+        /* (19-11-2026) en pleno DEFENSIVO (SOMBRA / SUPERSALTO…): su recorrido manda (netBotFlyTick) */
+        this.netBotFlyTick(dt);
+      } else if (calm) this.followTo(other, otherNet ? NET_X + DOUBLES_NET_GAP : COURT.right + 40, oy, dt, PLAYER_SPEED * 0.8, [B_X[0], B_X[1]]);
       else other.ch.setMoving(false, 0);
       this.updateFacing(other);
     }
@@ -750,7 +764,8 @@ export class MatchScene extends Phaser.Scene {
   /** DASH del BOT en curso: sus 3 sombras mientras corre (los mismos efectos que el tuyo) */
   private botDashFx: { t: number; ghosts: number } | null = null;
   /** SOMBRA / SUPERSALTO del rival en curso (aviso 'defensive'): manda sobre su posición hasta terminar */
-  private netBotFly: { kind: 'shadow' | 'jump' | 'flip' | 'skate'; from: { x: number; y: number }; to: { x: number; y: number }; t: number; dur: number; ghosts: number; puff: { t: number }; clone?: Character; mid?: boolean; trail?: IceTrail } | null = null;
+  /** (19-11-2026) `actor` = el que lo lanzó: en el 2v2 el rival activo (`this.bot`) cambia durante el punto y el recorrido movía al OTRO rival */
+  private netBotFly: { kind: 'shadow' | 'jump' | 'flip' | 'skate'; from: { x: number; y: number }; to: { x: number; y: number }; t: number; dur: number; ghosts: number; puff: { t: number }; clone?: Character; mid?: boolean; trail?: IceTrail; actor?: Actor } | null = null;
   /** lanzamiento del rival que llegó antes de que aquí empezara el punto */
   private netPendingToss: string | null = null;
   /** datos REALES del golpe propio que se enviarán en game:hit (los rellenan playerHit / executeServe / playerLunge / playerImpact) */
@@ -1015,6 +1030,7 @@ export class MatchScene extends Phaser.Scene {
 
   preload() {
     queueEmoteArt(this.load); // miniaturas de 160 px (antes las fuentes de ~1,1 MB cada una)
+    if (this.doubles) queueParkWalkers(this.load); // (19-11-2026) paseantes del mapa del 2v2 (PARQUE)
     this.load.audio('marcador', 'mp3/marcador.mp3'); // suena completo cada vez que sale el marcador
     // los soundtracks NO se cargan aquí: se pide solo el del ambiente elegido (create) y se libera al salir
     this.load.audio('cargando', 'mp3/cargando.mp3'); // sonido de carga (tiro cargado e INFERNO)
@@ -1027,6 +1043,7 @@ export class MatchScene extends Phaser.Scene {
     queueGazeArt(this.load, getProfile().skin); // INFERNO: franja con los ojos del personaje durante la concentración
     // en red también la del rival: su INFERNO se ve aquí con SUS ojos
     queueGazeArt(this.load, this.rivalSkin()); // en red o contra el bot: la del personaje que se ve al frente
+    if (this.net) queueGazeArt(this.load, this.net.opponent.skin); // (19-11-2026) el otro humano (rival del 1v1 / compañero del 2v2)
     // efecto de CARGA (aro del suelo): el mío y, en red, el del rival
     // KIT del bot: variado en cada partida (ai/botKit.ts randomBotKit: croma, especial, ulti, defensivo y carga; sin épicos ni legendarios)
     this.botKit = this.net ? botKitFor(this.rivalSkin()) : randomBotKit(this.rivalSkin());
@@ -1034,8 +1051,9 @@ export class MatchScene extends Phaser.Scene {
     queueChargeFxArt(this.load, [getProfile().charge, this.vsOpp ? chargeFxOf(this.vsOpp.charge, this.vsOpp.skin) : this.botKit.charge]);
   }
 
-  init(data: { botName?: string; rivalLevel?: number; net?: MatchNet; ambiente?: string; mode?: '2v2'; allyName?: string; rival2Name?: string }) {
+  init(data: { botName?: string; rivalLevel?: number; net?: MatchNet; ambiente?: string; mode?: '2v2'; allyName?: string; rival2Name?: string; cover?: string }) {
     this.finaleBall = null; // (la escena se reutiliza entre partidos)
+    this.coverKey = data?.cover ?? null; // (19-11-2026) pantalla VS que tapa el partido hasta la salida (red)
     // (21-11-2026) 2v2 contra bots (sin red): tú + aliado BOT contra dos rivales BOT
     const n2 = data?.net?.mode === '2v2';
     this.doubles = data?.mode === '2v2' || n2;
@@ -1403,13 +1421,14 @@ export class MatchScene extends Phaser.Scene {
       const edge = dir > 0 ? Y_MIN : Y_MAX; // dir +1 = entra hacia la derecha (viene de la izquierda)
       a.y = ty + (edge - ty) * ENTRANCE_FROM;
       a.ch.walkFor(delay + ms + 200);
+      // (19-11-2026, usuario) parten CAMINANDO desde el primer fotograma (antes esperaban `delay` quietos con otro sprite y luego caminaban):
+      // la caminata dura lo mismo en total (delay + ms), a ritmo constante
+      a.ch.setMoving(true, dir, 0.5);
       this.tweens.add({
         targets: a,
         y: ty,
-        delay,
-        duration: ms,
+        duration: delay + ms,
         ease: 'Linear',
-        onStart: () => a.ch.setMoving(true, dir, 0.5),
         // al llegar: directo al reposo (con ritmo explícito no hace la frenada de carrera)
         onComplete: () => a.ch.setMoving(false, 0, 0),
       });
@@ -1418,10 +1437,12 @@ export class MatchScene extends Phaser.Scene {
     // en red también se camina AQUÍ: los dos teléfonos empiezan la entrada en momentos algo distintos y sus estados
     // hacían saltar al rival entre el borde y su saque. Durante la entrada no se usan sus estados (onState / netBotTick)
     walk(this.bot, 1);
+    // (19-11-2026, usuario) 2v2: cada pareja entra por los DOS lados: tu compañero desde la IZQUIERDA (tú desde la derecha) y el 2.º rival
+    // desde la DERECHA (el 1.º desde la izquierda). En el 2v2 online cada teléfono se ve a sí mismo entrando por la derecha
     if (this.doubles && this.ally) {
-      walk(this.ally, -1);
+      walk(this.ally, 1);
       const o2 = this.otherRival();
-      if (o2) walk(o2, 1);
+      if (o2) walk(o2, -1);
     }
   }
 
@@ -1965,9 +1986,10 @@ export class MatchScene extends Phaser.Scene {
     line(COURT.right - 14, LAT_C, COURT.right, LAT_C);
 
     // ambiente-1 + cancha nueva (view/CourtView.ts); si falta la imagen, se usa este dibujo de siempre
-    const drawn = drawCourtView(this, this.ambienteHint);
+    const drawn = drawCourtView(this, this.ambienteHint, this.doubles); // (19-11-2026) el 2v2 usa su mapa propio (PARQUE)
     // pared del fondo donde se ve: la del estadio (muro + valla) o, en el dibujo de siempre, la valla de x = ax1 (z 70)
     this.ambienteKey = drawn?.key ?? '';
+    if (drawn?.key === 'ambiente-1-2v2') startParkWalkers(this, drawn.img); // (19-11-2026, usuario) gente paseando por el camino del fondo
     this.backWall = drawn ? wallFromArt(project, LAT_C, drawn.wallAtY, drawn.padPx, drawn.fencePx, VIEW.Z_K) : { x: ax1, padZ: WALL_Z, fenceZ: WALL_Z };
     if (!drawn) {
       const BX = -1000;
@@ -3306,6 +3328,18 @@ export class MatchScene extends Phaser.Scene {
     return id && id !== 'rival' ? id : 'nxo';
   }
 
+  /**
+   * (19-11-2026, usuario) PERSONAJE de cada actor, para su MIRADA (ULTI), sus OJOS (ZONA) y sus EMOTES. En el 2v2 los rivales no son el
+   * mismo personaje: el 1.º es rivalSkin() y el 2.º es TU personaje de frente (MatchScene.create), y el aliado es el otro humano (online) o
+   * rivalSkin() (contra bots). Antes todo "rival" usaba rivalSkin() y el 2.º salía con los ojos y las caritas del 1.º.
+   */
+  private skinOf(a: Actor): string {
+    if (a === this.player) return getProfile().skin;
+    if (this.doubles && a === this.ally) return this.net2 ? this.net!.opponent.skin : this.rivalSkin();
+    if (this.doubles && this.rivalActors.indexOf(a) === 1) return getProfile().skin;
+    return this.rivalSkin();
+  }
+
   /** y de pantalla (cámara de interfaz) donde queda la franja de la mirada del INFERNO: a la altura de la red */
   private gazeY(): number {
     const cam = this.cameras.main;
@@ -3466,7 +3500,7 @@ export class MatchScene extends Phaser.Scene {
     const dashSt = { sound: false };
     infernoSound.charge(this);
     // (17-11-2026, usuario) la mirada dura LO MISMO que en las otras ULTIS (antes, casi toda la carga de 6 s)
-    showInfernoGaze(this, INFERNO_CINE.hitAtMs - GAZE_END_BEFORE_HIT_MS, this.gazeY(), att === 'player' ? getProfile().skin : this.rivalSkin(), power);
+    showInfernoGaze(this, INFERNO_CINE.hitAtMs - GAZE_END_BEFORE_HIT_MS, this.gazeY(), this.skinOf(att === 'player' ? this.player : this.bot), power);
     this.ghosts.setLook(INFERNO_LOOK[power].ghostTint, INFERNO_LOOK[power].ghostRamp);
     this.legendZoneOn(run);
     this.energyCine.setPalette(power === 'hurricane' ? HURRICANE_COL_CHARGE : undefined); // HURACÁN: la misma carga en oro y viento
@@ -3535,7 +3569,7 @@ export class MatchScene extends Phaser.Scene {
     const p = project(a.x, a.y);
     const look = side === 'player' ? a.ch.facing : -a.ch.facing;
     const k = p.s * VIEW.CHAR_K;
-    const eyes = side === 'player' ? zoneEyes(getProfile().skin, 'back') : zoneEyes(this.rivalSkin(), 'front');
+    const eyes = side === 'player' ? zoneEyes(getProfile().skin, 'back') : zoneEyes(this.skinOf(this.bot), 'front');
     fx.update(dt, this.headPos(a), { x: p.sx, y: p.sy }, k, a.ch.depth, look >= 0 ? 1 : -1, side === 'player', eyes, k * 1.1);
   }
 
@@ -3905,6 +3939,10 @@ export class MatchScene extends Phaser.Scene {
         bt.ch.swing(true, true, true, false);
         bt.ch.holdFollowThrough(HURRICANE.finishFrame);
       } else {
+        // (19-11-2026, usuario) el golpe final usa el SWING DE LA ULTI (hoja ulti-1, clip inferno-swing), como en su teléfono: swing() solo lo
+        // elige si viene de la pose de espera de la ULTI, así que se asegura aquí (si algo la soltó durante la carga, salía el golpe cargado)
+        bt.ch.infernoHold();
+        bt.ch.infernoPre();
         bt.ch.swing(true, false, false, false);
         bt.ch.holdFollowThrough(ENERGY_RALLY.finishFrame, ENERGY_RALLY.finishHoldMs); // el rival online: la misma pose 1 s
       }
@@ -4111,7 +4149,15 @@ export class MatchScene extends Phaser.Scene {
     const feet = project(b.x, b.y);
     const head = this.headPos(b);
     const at = kind === 'inferno' ? project(s.x, s.y, s.z) : { sx: feet.sx, sy: (feet.sy + head.y) / 2 };
+    // (19-11-2026, usuario) el IMPACTO del golpe recibido se ve NÍTIDO sobre la niebla del aturdido (antes quedaba difuminado):
+    // todo lo que se cree en los próximos 0,9 s (explosión, chispas, destellos con retraso) va a la cámara nítida
+    this.stunFog.keepNew(new Set(this.children.list), 900);
     powerImpactFx(this, kind, at.sx, at.sy, feet.s, kind === 'inferno' ? this.infernoEl : this.smashFlightEl, kind === 'inferno' ? feet.sy : undefined); // ULTI: el suelo real bajo sus pies (la huella del impacto)
+    // (19-11-2026, usuario) la bola de la ULTI se acaba en el impacto (como en fireImpact): si no, la devolución floja salía hacia el otro
+    // teléfono marcada como ULTI (`inferno` en el golpe) y quien devolvía ese globo quedaba TAMBIÉN aturdido y sin raqueta
+    this.infernoFlight = false;
+    this.ball.quietFx = false;
+    this.fire.clear();
     b.ch.swing();
     // devolución débil: GLOBO de verdad al centro (genera el círculo del SMASH para quien lanzó el poder)
     const tx = NET_X - (NET_X - COURT.left) * rand(0.45, 0.7);
@@ -5841,6 +5887,21 @@ export class MatchScene extends Phaser.Scene {
       if (TIMING.fx.sound) perfectSound(this);
     }
     if (who === 'player' && devFlagOn('dev.timingDebug')) console.info(`[timing] saque ${kind} calidad=${quality} vel=${speed.toFixed(0)} z=${s.z.toFixed(0)}`);
+    this.announceServeSpeed(); // el que saca (tú, el aliado o el bot) y el que recibe ven la velocidad
+  }
+
+  /**
+   * (21-11-2026, usuario) Aviso lateral con la VELOCIDAD DEL SAQUE ("SAQUE 182 KM/H", número y borde amarillo / verde / rojo según sea leve / bueno /
+   * fuerte; config.ts SERVE_KMH). Sale al golpear el saque, en los tres casos: el tuyo y el del bot (executeServe) y el del rival online (se mide la
+   * pelota que llega en su golpe, igual en los dos teléfonos). No sale en los saques que no pasan (al aire, a la red).
+   */
+  private announceServeSpeed() {
+    const s = this.ball.s;
+    const kmh = Math.round(Math.hypot(s.vx, s.vy) * SERVE_KMH.perUnit);
+    const C = SERVE_KMH.colors;
+    const color = kmh >= SERVE_KMH.strong ? C.strong : kmh >= SERVE_KMH.good ? C.good : C.light;
+    // un momento después del golpe: la cuenta atrás del saque se está yendo del mismo sitio
+    this.time.delayedCall(SERVE_KMH.delayMs, () => this.sys.isActive() && this.phase !== 'over' && showServeSpeedNotice(this, kmh, color, SERVE_KMH.holdMs));
   }
 
   /** Velocidad mínima del saque del rival para que su vuelo no suba más que BOT_SERVE_MAX_APEX (sin globos). */
@@ -6129,7 +6190,7 @@ export class MatchScene extends Phaser.Scene {
     e.nextGap += 3;
     // un instante después del punto, como una reacción
     this.time.delayedCall(Phaser.Math.Between(500, 1100), () => {
-      if (this.sys.isActive()) this.emotes.showRemote('wow', () => this.headPos(this.bot)); // 'wow' = carita enojada
+      if (this.sys.isActive()) this.emotes.showRemote('wow', () => this.headPos(this.bot), this.skinOf(this.bot)); // 'wow' = carita enojada (con SU cara)
     });
   }
 
@@ -6172,8 +6233,11 @@ export class MatchScene extends Phaser.Scene {
     if (res.matchWinner !== null) {
       const win = res.matchWinner === 0;
       // (18-11-2026, usuario) victoria AJUSTADA (el perdedor ganó algún juego, p. ej. 2-1): celebra de rodillas, "¡VAMOS!"
-      (win ? this.player : this.bot).ch.victory(Math.min(this.score.games[0], this.score.games[1]) > 0);
-      (win ? this.bot : this.player).ch.defeat();
+      // (19-11-2026, usuario) en el 2v2, los CUATRO: celebra la pareja ganadora y la otra hace su derrota
+      const close = Math.min(this.score.games[0], this.score.games[1]) > 0;
+      const tm = this.teams();
+      for (const a of win ? tm.mine : tm.rivals) a.ch.victory(close);
+      for (const a of win ? tm.rivals : tm.mine) a.ch.defeat();
       this.phase = 'over'; // ya terminó: el fin oficial del servidor (red) no vuelve a lanzar endMatch a mitad del final
       // FIN DEL PARTIDO con espectáculo (fx/matchFinale.ts): marcador final, sello, confeti / ceniza y sonido; luego la
       // pantalla de resultados de siempre
@@ -6248,6 +6312,13 @@ export class MatchScene extends Phaser.Scene {
     }
   }
 
+/** (19-11-2026) las dos parejas (1v1: tú y el rival; 2v2: tú + tu compañero y los 2 rivales) para las poses del final */
+  private teams(): { mine: Actor[]; rivals: Actor[] } {
+    const mine = this.doubles && this.ally ? [this.player, this.ally] : [this.player];
+    const rivals = this.doubles && this.rivalActors.length ? [...this.rivalActors] : [this.bot];
+    return { mine, rivals };
+  }
+
   /** `rivalLeft` (19-11-2026): el RIVAL humano se rindió o se fue (1v1 online): EXP 95 si ganaste al menos un juego, si no 0 */
   private endMatch(win: boolean, surrendered = false, rivalLeft = false) {
     this.duelAbort('end');
@@ -6255,11 +6326,11 @@ export class MatchScene extends Phaser.Scene {
     playResultMusic(this, win); // (rendición / fin del servidor: aquí; tras el final con espectáculo ya suena y no se reinicia)
     // poses finales aseguradas: si algo cortó la celebración / derrota (p. ej. un estado del rival en red), se vuelven a
     // poner antes de la pantalla de resultados (que usa esas mismas poses en sus cuadros)
-    const winA = win ? this.player : this.bot;
-    const loseA = win ? this.bot : this.player;
+    // (19-11-2026, usuario) en el 2v2, los CUATRO (cada pareja con su pose)
+    const tm = this.teams();
     if (!surrendered) {
-      if (winA.ch.debugInfo()?.state !== 'victory') winA.ch.victory();
-      if (loseA.ch.debugInfo()?.state !== 'victory') loseA.ch.defeat(); // (defeat usa el mismo estado 'victory')
+      for (const a of win ? tm.mine : tm.rivals) if (a.ch.debugInfo()?.state !== 'victory') a.ch.victory();
+      for (const a of win ? tm.rivals : tm.mine) if (a.ch.debugInfo()?.state !== 'victory') a.ch.defeat(); // (defeat usa el mismo estado 'victory')
     }
     this.diag?.log('end-pose', { at: 'result', win, me: this.diagActor(this.player), rival: this.diagActor(this.bot) });
     this.diag?.flush();
@@ -6869,7 +6940,7 @@ export class MatchScene extends Phaser.Scene {
     this.rivalChargeT = 0;
     this.rivalChargeFx(0);
     this.rivalChargeSprite.hide();
-    const skin = this.rivalSkin(); // el personaje que se ve al frente
+    const skin = this.skinOf(bt); // (19-11-2026) el personaje de ESTE rival (en el 2v2 los dos rivales son distintos)
     const el: InfernoElement = this.botKit.inferno; // su kit (ai/botKit.ts): Mai = hielo, Nxo = fuego
     const from = { x: bt.x, y: bt.y };
     // se acerca a la pelota durante el desplazamiento (como el jugador), sin salir de su zona
@@ -7610,7 +7681,7 @@ export class MatchScene extends Phaser.Scene {
     this.netEndBotFly(false);
     bt.ch.setMoving(false, 0);
     bt.ch.setCharging(false);
-    const fly: NonNullable<MatchScene['netBotFly']> = { kind, from, to, t: 0, dur, ghosts: 0, puff: { t: 0 } };
+    const fly: NonNullable<MatchScene['netBotFly']> = { kind, from, to, t: 0, dur, ghosts: 0, puff: { t: 0 }, actor: bt };
     const h = this.headPos(bt);
     const p = project(bt.x, bt.y);
     if (kind === 'shadow') {
@@ -7875,7 +7946,7 @@ export class MatchScene extends Phaser.Scene {
     else if (this.net2 && !this.net2host) {
       // invitado del 2v2: los bots los simula el host
     }
-    else if (this.netBotFly && this.netBotFlyTick(dt)) {
+    else if (this.netBotFly && (this.netBotFly.actor ?? bt) === bt && this.netBotFlyTick(dt)) {
       // SOMBRA / SUPERSALTO / VOLTERETA / PATINAJE del BOT en curso (botFly): su recorrido manda sobre la posición
       this.rivalChargeT = 0;
       bt.ch.setCharging(false);
@@ -8604,6 +8675,11 @@ export class MatchScene extends Phaser.Scene {
     const shadow = this.add.ellipse(feet.sx, feet.sy, hPx * 0.8, hPx * 0.22, 0x000000, 0.3).setDepth(Math.min(feet.sy, p.sy) - 0.6).setAlpha(0);
     const rec = { x: to.x, y: to.y, img, mark, shadow, landed: false };
     a.racket = rec;
+    // (19-11-2026, usuario) la raqueta del JUGADOR aturdido se ve NÍTIDA sobre la niebla: se ve dónde cayó
+    const sharp = a === this.player ? (o: Phaser.GameObjects.GameObject) => this.stunFog.keepSharp(o) : null;
+    sharp?.(img);
+    sharp?.(mark);
+    sharp?.(shadow);
     const alive = () => a.racket === rec;
     // 2 vueltas girando hacia su lado y queda tumbada
     const a0 = -dir * 30;
@@ -8632,6 +8708,7 @@ export class MatchScene extends Phaser.Scene {
         if (this.time.now - trailAt > 35 && k < 0.95) {
           trailAt = this.time.now;
           const g = tint(this.add.image(img.x, img.y, LOOSE_RACKET).setScale(img.scaleX).setAngle(img.angle).setAlpha(0.35).setDepth(img.depth - 0.1));
+          sharp?.(g);
           this.tweens.add({ targets: g, alpha: 0, scale: img.scaleX * 0.8, duration: 220, onComplete: () => g.destroy() });
         }
       },
@@ -8834,7 +8911,7 @@ export class MatchScene extends Phaser.Scene {
       // con el mismo crecimiento que le da renderActors con el aura encendida
       const k = p.s * VIEW.CHAR_K;
       const boost = aura?.active ? 1.1 + Math.sin(this.time.now / 70) * 0.015 : 1;
-      const eyes = side === 'player' ? zoneEyes(getProfile().skin, 'back') : zoneEyes(this.rivalSkin(), 'front');
+      const eyes = side === 'player' ? zoneEyes(getProfile().skin, 'back') : zoneEyes(this.skinOf(this.bot), 'front');
       fx.update(dt, this.headPos(a), { x: p.sx, y: p.sy }, k, a.ch.depth, look >= 0 ? 1 : -1, side === 'player', eyes, k * boost);
     }
   }
@@ -8844,15 +8921,34 @@ export class MatchScene extends Phaser.Scene {
   // abajo; el rival es el "bot" sin IA. Los golpes propios se envían (la pelota resultante) y los del rival
   // se aplican como un golpe del bot. La pelota tiene UN juez: quien la recibe decide punto / falta / let.
 
+  /**
+   * (19-11-2026, usuario) Escena que TAPA el partido mientras se espera la salida del servidor (la pantalla VS de LanSearchScene, abierta
+   * encima): se quita con un fundido al empezar la presentación, o si el partido no llega a empezar. null = nada que quitar.
+   */
+  private coverKey: string | null = null;
+  private releaseCover(fadeMs = 280) {
+    const key = this.coverKey;
+    if (!key) return;
+    this.coverKey = null;
+    const sc = this.scene.get(key);
+    if (!sc || !sc.sys.isActive()) return;
+    if (fadeMs <= 0) return void this.scene.stop(key);
+    sc.cameras.main.fadeOut(fadeMs, 0, 0, 0);
+    sc.cameras.main.once('camerafadeoutcomplete', () => this.scene.stop(key));
+  }
+
   /** Conecta la sesión: callbacks del rival y empieza la presentación cuando los dos están listos. */
   private netSetup() {
     const net = this.net!;
     if (!this.net2) this.botName = net.opponent.name;
     let introStarted = false;
     let aborted = false;
+    // si el partido se cierra antes de la salida, la pantalla VS de encima se va con él
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.releaseCover(0));
     const intro = () => {
       if (introStarted || aborted || !this.scene.isActive()) return;
       introStarted = true;
+      this.releaseCover(); // (19-11-2026, usuario) la pantalla VS se queda hasta AQUÍ: los dos listos, empieza la presentación
       this.entranceWalk(); // entrada: los dos llegan caminando a su sitio mientras la cámara se acerca
       playMatchIntro(this, () => {
         this.startPoint();
@@ -8863,6 +8959,7 @@ export class MatchScene extends Phaser.Scene {
     const abortPreStart = (msg: string) => {
       if (introStarted || aborted) return;
       aborted = true;
+      this.releaseCover(); // se ve el aviso del partido (y luego el menú)
       this.phase = 'over';
       this.banner(msg, '#ffd23f', 50, 1400);
       this.time.delayedCall(1800, () => this.scene.start('Menu'));
@@ -9773,7 +9870,7 @@ export class MatchScene extends Phaser.Scene {
       if (actor === this.ally) this.net2MateArmed = false;
     } else if (m.kind === 'emote') {
       // emote del compañero: su globo, con SU cara
-      this.emotes.showRemote(String(m.data?.kind ?? ''), () => this.headPos(actor), actor === this.ally ? (this.net?.opponent.skin ?? 'nxo') : this.rivalSkin());
+      this.emotes.showRemote(String(m.data?.kind ?? ''), () => this.headPos(actor), this.skinOf(actor)); // con SU cara
     } else if (m.kind === 'lunge') {
       this.net2Lunge(actor, m.data);
     } else if (m.kind === 'sprint-start' || m.kind === 'sprint-end') {
@@ -9991,6 +10088,7 @@ export class MatchScene extends Phaser.Scene {
   /** golpe remoto del 2v2: del otro humano (sin `a`) o de un bot del host (`a` = 1 / 2). La pelota llega ya sin espejar. */
   private net2ApplyHit(h: HitMsg, recvAt?: number, heldSec = 0) {
     if (this.phase === 'over' || !this.ally) return;
+    if (h.impact) h = { ...h, power: false, inferno: false }; // (19-11-2026) la devolución floja de un impacto nunca es bola de poder
     const isBot = h.a === 1 || h.a === 2;
     const actor = isBot ? this.rivalActors[(h.a as number) - 1] : this.ally;
     if (!actor) return;
@@ -10051,6 +10149,7 @@ export class MatchScene extends Phaser.Scene {
       this.hideServeHint();
       this.serveAim.setVisible(false);
       fx = actor.ch.swing();
+      this.announceServeSpeed(); // 2v2 online: el saque de un bot del host o del compañero, visto aquí
     } else if (h.impact) {
       this.serving = false;
       fx = -1;
@@ -10248,6 +10347,10 @@ export class MatchScene extends Phaser.Scene {
     }
     this.diagCause = 'hit';
     // bola de fuego (SMASH / INFERNO del rival): al alcanzarla, el impacto de siempre (aturdido + devolución floja)
+    // (19-11-2026) la devolución floja de un impacto (`impact`) nunca es una bola de poder, aunque llegue marcada
+    if (h.impact) {
+      h = { ...h, power: false, inferno: false };
+    }
     if (h.power && !h.inferno) this.setSmashFlight(this.netRivalSmashEl); // su SMASH, con el poder que armó
     this.ball.setPower(h.power || h.inferno);
     if (h.power) this.netRivalArmed = false; // su ESPECIAL ya salió
@@ -10273,6 +10376,7 @@ export class MatchScene extends Phaser.Scene {
       this.hideServeHint();
       this.serveAim.setVisible(false);
       fx = bt.ch.swing();
+      this.announceServeSpeed(); // 1v1 online: el saque del rival, visto aquí (la pelota ya trae su velocidad)
     } else if (h.impact) {
       // devolución floja del impacto de fuego: el aturdido ('stunned') ya se está viendo; sin animación ni destello de golpe
       this.serving = false;
@@ -10531,7 +10635,7 @@ export class MatchScene extends Phaser.Scene {
     bt.y = from.y;
     bt.ch.setMoving(false, 0);
     bt.ch.setCharging(false);
-    const fly: NonNullable<MatchScene['netBotFly']> = { kind, from, to, t: 0, dur, ghosts: 0, puff: { t: 0 } };
+    const fly: NonNullable<MatchScene['netBotFly']> = { kind, from, to, t: 0, dur, ghosts: 0, puff: { t: 0 }, actor: bt };
     const h = this.headPos(bt);
     if (kind === 'shadow') {
       const clone = new Character(this, 0, 0, this.rivalLk(), 'front');
@@ -10629,7 +10733,7 @@ export class MatchScene extends Phaser.Scene {
   private netBotFlyTick(dt: number): boolean {
     const f = this.netBotFly;
     if (!f) return false;
-    const bt = this.bot;
+    const bt = f.actor ?? this.bot; // el que lanzó el defensivo (no el rival activo de ahora)
     f.t += dt;
     const k = Math.min(1, f.t / f.dur);
     const x = f.from.x + (f.to.x - f.from.x) * k;
@@ -10684,7 +10788,7 @@ export class MatchScene extends Phaser.Scene {
     const f = this.netBotFly;
     if (!f) return;
     this.netBotFly = null;
-    const bt = this.bot;
+    const bt = f.actor ?? this.bot; // el que lanzó el defensivo
     bt.lift = 0;
     bt.spin = undefined;
     f.trail?.finish(); // el camino de hielo se derrite aunque el vuelo se corte
@@ -10807,7 +10911,7 @@ export class MatchScene extends Phaser.Scene {
     // aspecto de SU poder (llega con 'inferno-cine'; si no, el de su personaje): mirada, energía de la carga y sombras
     const el = infernoElementFor(this.vsOpp?.skin, this.netRivalInferno);
     // la franja con SUS ojos, igual que la ve él (necesita su imagen cargada: preload)
-    const gazeSkin = this.net2 && bt === this.ally ? this.net!.opponent.skin : this.rivalSkin(); // 2v2: el compañero con SUS ojos
+    const gazeSkin = this.skinOf(bt); // 2v2: el compañero y cada bot con SUS ojos
     showInfernoGaze(this, INFERNO_CINE.hitAtMs - GAZE_END_BEFORE_HIT_MS, this.gazeY(), gazeSkin, el);
     this.ghosts.setLook(INFERNO_LOOK[el].ghostTint, INFERNO_LOOK[el].ghostRamp);
     this.cine.start({

@@ -14,8 +14,9 @@ import { ambienteForRoom, pickAmbiente } from '../view/CourtView';
  */
 const VOLUME = 0.22;
 
-/** soundtrack de cada ambiente: 2 → soundtrack-3, 3 → soundtrack-2, el resto → soundtrack-1 */
-export const trackFor = (ambiente: string) => (ambiente === 'ambiente-3' ? 'soundtrack-2' : ambiente === 'ambiente-2' ? 'soundtrack-3' : 'soundtrack-1');
+/** soundtrack de cada ambiente: 2 → soundtrack-3, 3 y el parque del 2v2 → soundtrack-2, el resto → soundtrack-1 */
+// (19-11-2026, usuario) el PARQUE del 2v2 (ambiente-1-2v2) también suena con soundtrack-2
+export const trackFor = (ambiente: string) => (ambiente === 'ambiente-3' || ambiente === 'ambiente-1-2v2' ? 'soundtrack-2' : ambiente === 'ambiente-2' ? 'soundtrack-3' : 'soundtrack-1');
 
 let picked: string | null = null;
 let music: Phaser.Sound.BaseSound | null = null;
@@ -39,8 +40,8 @@ function ensureLoaded(scene: Phaser.Scene, key: string, onReady?: () => void) {
 }
 
 /** Elige (una vez) el ambiente del próximo partido y empieza a cargar su música. Devuelve su clave ('' = sin imagen). */
-export function prepareMatchMusic(scene: Phaser.Scene): string {
-  if (picked === null) picked = pickAmbiente(scene) ?? '';
+export function prepareMatchMusic(scene: Phaser.Scene, doubles = false): string {
+  if (picked === null) picked = pickAmbiente(scene, doubles) ?? ''; // (19-11-2026) el 2v2 tiene su propio mapa (CourtView, `only: '2v2'`)
   ensureLoaded(scene, trackFor(picked));
   return picked;
 }
@@ -49,8 +50,8 @@ export function prepareMatchMusic(scene: Phaser.Scene): string {
  * Partido ONLINE emparejado: el ambiente y su música salen del id de la sala (`ambienteForRoom`), iguales en los dos teléfonos. Sustituye al
  * sorteado al empezar la búsqueda (que cada teléfono hacía por su cuenta): se suelta su soundtrack si era otro y se carga el nuevo.
  */
-export function setRoomMatchMusic(scene: Phaser.Scene, roomId: string): string {
-  const next = ambienteForRoom(scene, roomId) ?? '';
+export function setRoomMatchMusic(scene: Phaser.Scene, roomId: string, doubles = false): string {
+  const next = ambienteForRoom(scene, roomId, doubles) ?? '';
   const old = picked !== null ? trackFor(picked) : '';
   picked = next;
   if (old && old !== trackFor(next) && old !== musicKey && scene.cache.audio.exists(old)) scene.cache.audio.remove(old);

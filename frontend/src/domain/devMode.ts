@@ -17,6 +17,8 @@ import { type ItemId, type PlayerState, clonePlayer } from './player';
 import { SHOP_ITEMS } from './shopCatalog';
 import { EMOTES } from './emotes';
 import { CHAR_COLOR_LIST, COLOR_SKINS, charColorItem } from './charColors';
+import { BP_SEASON } from './battlePassConfig';
+import { newBattlePass } from './battlePassState';
 
 /** Con qué modo arranca la app cuando el jugador aún no ha elegido. true mientras se prueba; ponlo en false para publicar. */
 export const DEV_MODE_DEFAULT = true;
@@ -69,5 +71,24 @@ export function devProfile(s: PlayerState): PlayerState {
   n.owned = [...new Set<ItemId>([...n.owned, ...allItems()])];
   n.gems = Math.max(n.gems, DEV_CASH);
   n.coins = Math.max(n.coins, DEV_COINS);
+  devSoonCharacterTiers(n);
   return n;
+}
+
+/**
+ * (21-11-2026, usuario) PASE DE BATALLA: para probar cómo se ve al DESBLOQUEAR el personaje nuevo (JUN, aún no jugable: `soon`), el perfil de pruebas lo
+ * deja DISPONIBLE para reclamar en el camino GRATIS y en el PREMIUM en cada arranque: el pase llega al nivel de ese premio, se activa el Premium y el
+ * premio de personaje vuelve a quedar sin reclamar (así se puede reclamar una y otra vez, reiniciando la app). Solo en MODO DESARROLLO.
+ */
+function devSoonCharacterTiers(n: PlayerState) {
+  const tiers = BP_SEASON.tiers
+    .map((t, i) => ({ tier: i + 1, soon: (t.free.kind === 'character' && t.free.soon) || (t.prem.kind === 'character' && t.prem.soon) }))
+    .filter((t) => t.soon)
+    .map((t) => t.tier);
+  if (!tiers.length) return;
+  if (n.bp.season !== BP_SEASON.id) n.bp = newBattlePass(BP_SEASON.id);
+  n.bp.xp = Math.max(n.bp.xp, Math.max(...tiers) * BP_SEASON.xpPerTier);
+  n.bp.premium = true;
+  n.bp.free = n.bp.free.filter((t) => !tiers.includes(t));
+  n.bp.prem = n.bp.prem.filter((t) => !tiers.includes(t));
 }

@@ -157,6 +157,29 @@ export const SERVE = {
   positionSpeed: 0.8,
 };
 
+/**
+ * (21-11-2026, usuario) AVISO DE VELOCIDAD DEL SAQUE: al sacar sale en el aviso lateral ("SAQUE 182 KM/H") para el que saca y para el que recibe.
+ * La velocidad es la horizontal de la pelota al salir (px/s de la cancha) × `perUnit` (solo para mostrarla en km/h; no cambia la física). Escala
+ * calibrada con el tenis profesional: el saque más rápido del juego (DIRECTO perfecto) = 263 km/h, el récord.
+ * Color del número y del borde: LEVE (amarillo, < 135) · BUENO (verde, 135-199) · FUERTE (rojo, desde 200). Con los valores de SERVE.speed: un saque
+ * flojo (~130) y los segundos saques normales salen amarillos; un saque normal, uno perfecto (~188) o uno con efecto, verdes; solo el DIRECTO (~263)
+ * y los saques más rápidos del bot salen rojos.
+ */
+export const SERVE_KMH = {
+  /** récord de velocidad de saque del tenis profesional (km/h): 263,4 de Sam Groth (2012; el oficial de la ATP, 253 de John Isner). El saque más rápido del juego (DIRECTO perfecto) marca esto */
+  proMaxKmh: 263,
+  /** km/h por unidad de velocidad: el saque DIRECTO perfecto (SERVE.speed.perfect[0] × SERVE.direct.speedMult × SERVE_SPEED) = proMaxKmh */
+  perUnit: 263 / (SERVE.speed.perfect[0] * SERVE.direct.speedMult * SERVE_SPEED),
+  /** desde cuántos km/h es BUENO (verde) y FUERTE (rojo: solo por encima de 200 km/h); por debajo del primero, LEVE (amarillo) */
+  good: 135,
+  strong: 200,
+  colors: { light: 0xffd23f, good: 0x2fe06a, strong: 0xff3b4e },
+  /** espera tras el golpe para no pisar la cuenta atrás del saque, que se está yendo (ms) */
+  delayMs: 230,
+  /** cuánto dura el aviso (ms) */
+  holdMs: 1900,
+};
+
 /** Saque del rival (IA): probabilidades y tiempos. Las decisiones están en src/logic/ServeAI.ts. */
 export const BOT_SERVE = {
   /** Espera antes de lanzar (s). */

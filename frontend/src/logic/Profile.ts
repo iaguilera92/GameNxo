@@ -90,11 +90,11 @@ export function addCoins(amount: number): { gained: number; before: number; afte
 }
 
 /** MONEDAS 2v2: aplica el resultado de un partido 2v2 y guarda (domain/coins2v2.ts). */
-export function addCoins2v2(r: Result2v2): { before: number; after: number; delta: number } {
-  let out = { before: 0, after: 0, delta: 0 };
+export function addCoins2v2(r: Result2v2, bet = 1): { before: number; after: number; delta: number; bet: number } {
+  let out = { before: 0, after: 0, delta: 0, bet: 1 };
   commit((s) => {
-    const a = apply2v2Result(s, r);
-    out = { before: a.before, after: a.after, delta: a.delta };
+    const a = apply2v2Result(s, r, bet);
+    out = { before: a.before, after: a.after, delta: a.delta, bet: a.bet };
     return { ok: true as const, state: a.state };
   });
   return out;

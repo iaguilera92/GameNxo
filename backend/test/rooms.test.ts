@@ -241,3 +241,36 @@ test('2v2: si el compañero se RINDE ya no vuelve; si se va el host, termina', (
   assert.equal(end?.continues, undefined);
   assert.equal(m.room.status, 'FINISHED');
 });
+
+test('2v2 (19-11-2026): si se va el HOST con el compañero conectado, el compañero pasa a host y el partido sigue', () => {
+  const { rm } = setup();
+  rm.find('A', P('A'), '2v2');
+  const m = rm.find('B', P('B'), '2v2');
+  if (m.type !== 'matched') return assert.fail('no emparejó');
+  rm.point('A', 0, true); // 1-0 para el equipo humano
+  const hostToken = m.room.players[0].token;
+  const out = rm.leave('A', 'abandon');
+  assert.equal(out?.promoted, true);
+  assert.equal(out?.continues, true);
+  assert.equal(out?.opponent?.id, 'B');
+  assert.equal(m.room.status, 'PLAYING');
+  assert.equal(rm.roleOf(m.room, 'B'), 'host');
+  assert.deepEqual(m.room.score.points, [1, 0]); // el marcador sigue igual
+  const r = rm.point('B', 0, true); // ahora el juez es B
+  assert.ok(r);
+  assert.deepEqual(r!.room.score.points, [2, 0]);
+  assert.equal(rm.point('A', 1, true), null); // el que se fue ya no juzga
+  assert.equal(rm.rejoin(m.room.id, hostToken, 'A2'), null); // ni puede volver
+  assert.equal(rm.roomOf('A'), undefined); // y queda libre
+});
+
+test('2v2 (19-11-2026): si se va el host con el compañero también fuera, el partido termina', () => {
+  const { rm } = setup();
+  rm.find('A', P('A'), '2v2');
+  const m = rm.find('B', P('B'), '2v2');
+  if (m.type !== 'matched') return assert.fail('no emparejó');
+  rm.leave('B', 'disconnect'); // compañero cortado (away)
+  const end = rm.leave('A', 'disconnect');
+  assert.equal(end?.promoted, undefined);
+  assert.equal(m.room.status, 'FINISHED');
+});

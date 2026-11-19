@@ -9,10 +9,14 @@
  * Configuración (temporada, niveles, premios, precio) en BP_SEASON.
  */
 import { grantItem } from './operations';
-import { type PlayerState, clonePlayer, itemId, owns } from './player';
+import { type ItemId, type PlayerState, clonePlayer, itemId, owns } from './player';
+import { gainChest } from './chest';
+import { charColorItem } from './charColors';
+import { gameClock } from './timeSource';
 import { newBattlePass } from './battlePassState';
 import { grantBonusSpin } from './dailyWheel';
 import { BP_SEASON, type BpReward, type BpTrack } from './battlePassConfig';
+import type { SkinId } from '../characters/skins';
 
 export { BP_SEASON } from './battlePassConfig';
 export type { BpReward, BpTrack, BpTier } from './battlePassConfig';
@@ -86,8 +90,25 @@ function grantBpReward(player: PlayerState, reward: BpReward): { state: PlayerSt
     n.zone.rays += reward.amount;
     return { state: n, given: reward };
   }
+  if (reward.kind === 'chest') {
+    // (19-11-2026, usuario) COFRE NORMAL, como el de la ruleta: si ya hay uno sin abrir, evoluciona; si ya era épico, monedas
+    const r = gainChest(n, gameClock.now());
+    const given: BpReward = r.gain.kind === 'chest' ? { kind: 'chest', level: r.gain.level, upgraded: r.gain.upgraded } : { kind: 'chest', coins: r.gain.amount };
+    return { state: r.state, given };
+  }
+  if (reward.kind === 'character' && reward.soon) {
+    // personaje que aún no se puede jugar (JUN): no se entrega `skin:<id>` ni su color (los colores son por personaje: se entregan al publicarlo);
+    // solo su estilo de pelota si no se tiene. Nunca compensa en dinero: el nivel queda reclamado y el personaje se entregará
+    // (bpGrantClaimedItemsInPlace) cuando se publique sin `soon`
+    for (const id of reward.style ? [itemId.style(reward.style)] : []) {
+      if (owns(n, id)) continue;
+      const result = grantItem(n, id);
+      if (result.ok) Object.assign(n, result.state);
+    }
+    return { state: n, given: reward };
+  }
   const ids = reward.kind === 'character'
-    ? [itemId.skin(reward.skin), ...(reward.style ? [itemId.style(reward.style)] : [])]
+    ? [itemId.skin(reward.skin as SkinId), ...(reward.style ? [itemId.style(reward.style)] : []), ...(reward.color ? [charColorItem(reward.color, reward.skin) as ItemId] : [])]
     : [reward.item];
   const newItems = ids.filter((id) => !owns(n, id));
   if (!newItems.length) {
@@ -156,7 +177,13 @@ export function bpGrantClaimedItemsInPlace(s: PlayerState) {
   if (s.bp.welcomePremClaimed) rewards.push(BP_SEASON.welcome.prem);
   for (const t of s.bp.free) if (BP_SEASON.tiers[t - 1]) rewards.push(BP_SEASON.tiers[t - 1].free);
   for (const t of s.bp.prem) if (BP_SEASON.tiers[t - 1]) rewards.push(BP_SEASON.tiers[t - 1].prem);
-  for (const r of rewards) if (r.kind === 'item' && !s.owned.includes(r.item)) s.owned.push(r.item);
+  for (const r of rewards) {
+    if (r.kind === 'item' && !s.owned.includes(r.item)) s.owned.push(r.item);
+    // personaje del final ya reclamado y que por fin se puede jugar (sin `soon`): se entrega con su estilo / color
+    if (r.kind === 'character' && !r.soon) {
+      for (const id of [itemId.skin(r.skin as SkinId), ...(r.style ? [itemId.style(r.style)] : []), ...(r.color ? [charColorItem(r.color, r.skin) as ItemId] : [])]) if (!s.owned.includes(id)) s.owned.push(id);
+    }
+  }
 }
 
 /** Valida datos guardados (migración). */

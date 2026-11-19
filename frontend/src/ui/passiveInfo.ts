@@ -11,16 +11,24 @@ import { MASTERY, type PassiveId, masteryLevel, passiveOf } from '../domain/char
 
 /** Nombre visible de un personaje (el id si no está en el catálogo). */
 export function skinName(skin: string): string {
-  return CATALOG.find((c) => c.id === skin)?.name ?? skin;
+  return CATALOG.find((c) => c.id === skin)?.name ?? skin.charAt(0).toUpperCase() + skin.slice(1); // (Jun aún no está en el catálogo)
 }
 
-/** Icono de la pasiva centrado en (0, 0) del Graphics, de radio `r`: AGILIDAD = flechas de velocidad, PRECISIÓN = mira. */
+/** Icono de la pasiva centrado en (0, 0) del Graphics, de radio `r`: AGILIDAD = flechas de velocidad, PRECISIÓN = mira, FUERZA = pesa. */
 export function drawPassiveIcon(g: Phaser.GameObjects.Graphics, id: PassiveId, r: number, color: number) {
   if (id === 'agility') {
     g.lineStyle(Math.max(2.5, r * 0.28), color, 1);
     for (const dx of [-r * 0.5, r * 0.05, r * 0.6]) {
       g.beginPath().moveTo(dx - r * 0.3, -r * 0.55).lineTo(dx + r * 0.25, 0).lineTo(dx - r * 0.3, r * 0.55).strokePath();
     }
+  } else if (id === 'strength') {
+    // FUERZA: una pesa (barra con dos discos a cada lado)
+    g.lineStyle(Math.max(2.5, r * 0.26), color, 1).lineBetween(-r * 0.7, 0, r * 0.7, 0);
+    g.fillStyle(color, 1)
+      .fillRoundedRect(-r * 1.02, -r * 0.62, r * 0.36, r * 1.24, r * 0.1)
+      .fillRoundedRect(r * 0.66, -r * 0.62, r * 0.36, r * 1.24, r * 0.1)
+      .fillRoundedRect(-r * 0.68, -r * 0.4, r * 0.22, r * 0.8, r * 0.08)
+      .fillRoundedRect(r * 0.46, -r * 0.4, r * 0.22, r * 0.8, r * 0.08);
   } else {
     g.lineStyle(Math.max(2, r * 0.2), color, 1).strokeCircle(0, 0, r * 0.82);
     g.lineStyle(Math.max(2, r * 0.2), color, 1).strokeCircle(0, 0, r * 0.4);

@@ -15,16 +15,17 @@ import { sanitizeZoneProgress } from './zoneProgress';
 import { sanitizeMastery } from './characterPassives';
 import { isInfernoPower } from './infernoPowers';
 import { chargeFxOwned, isChargeFx } from './chargeFx';
-import { CHAR_COLOR_LIST, charColorOwned, isCharColor } from './charColors';
+import { CHAR_COLOR_LIST, COLOR_SKINS, type CharColorId, charColorItem, charColorOwned, isCharColor } from './charColors';
 import { isSmashPower, smashOwned } from './smashPowers';
 import { defensiveOwned, isDefensivePower } from './defensivePowers';
 import { isTutorialId } from './tutorial';
 import { sanitizeChest } from './chest';
 import { sanitizeRisk } from './riskMode';
+import { sanitizeCoins2v2 } from './coins2v2';
 import { isFrameId } from './profileFrames';
 
 /** Todos los ítems que existen (los demás ids guardados se descartan). */
-// Mai deja de ser inicial para quedar como gran premio del nivel 30; se conserva en perfiles antiguos.
+// Mai deja de ser inicial (fue el premio del nivel 30 hasta el 21-11-2026, cuando lo reemplazó Jun); se conserva en perfiles antiguos.
 // Los emotes solo se ganan en el Pase de Batalla.
 const KNOWN_ITEMS = new Set<string>([
   ...STARTER_ITEMS,
@@ -33,6 +34,8 @@ const KNOWN_ITEMS = new Set<string>([
   ...EMOTES.map((k) => itemId.emote(k)),
   // estilos de color del personaje (premios del Pase; domain/charColors.ts)
   ...CHAR_COLOR_LIST.filter((c) => c.id !== 'classic').map((c) => itemId.color(c.id)),
+  // (19-11-2026) y los de cada personaje: `color:<id>:<skin>`
+  ...CHAR_COLOR_LIST.filter((c) => c.id !== 'classic').flatMap((c) => COLOR_SKINS.map((sk) => charColorItem(c.id, sk))),
 ]);
 
 const V1_STYLE: Record<string, StyleId> = { Clásico: 'classic' };
@@ -64,6 +67,8 @@ export function migratePlayer(raw: unknown, starter: StarterSkin = 'nxo'): Playe
   if (Array.isArray(r.tutorial)) s.tutorial = [...new Set(r.tutorial.filter(isTutorialId))];
   const risk = sanitizeRisk(r.riskMode); // MODO RIESGO x2 (domain/riskMode.ts)
   if (risk) s.riskMode = risk;
+  const c2 = sanitizeCoins2v2(r.coins2v2); // MONEDAS 2v2 (domain/coins2v2.ts)
+  if (c2) s.coins2v2 = c2;
   const chest = sanitizeChest(r.chest); // cofre evolutivo de la ruleta (domain/chest.ts)
   if (chest) s.chest = chest;
   if (typeof r.giftDay === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(r.giftDay)) s.giftDay = r.giftDay; // regalo gratis de la Tienda
@@ -101,7 +106,8 @@ export function migratePlayer(raw: unknown, starter: StarterSkin = 'nxo'): Playe
     const smashId = eq.smash === 'star' ? 'light' : eq.smash;
     if (isSmashPower(smashId) && smashOwned(s.owned, smashId)) s.equipped.smash = smashId;
     // estilo de color del personaje: solo si lo tiene (el clásico es de todos)
-    if (isCharColor(eq.color) && charColorOwned(s.owned, eq.color)) s.equipped.color = eq.color;
+    // (19-11-2026) por personaje: se conserva si lo tiene para alguno (en pantalla, getProfile pone el clásico en los personajes sin ese color)
+    if (isCharColor(eq.color) && COLOR_SKINS.some((sk) => charColorOwned(s.owned, eq.color as CharColorId, sk))) s.equipped.color = eq.color;
     // poder del defensivo elegido: solo si lo tiene (el DASH es de todos)
     if (isDefensivePower(eq.defensive) && defensiveOwned(s.owned, eq.defensive)) s.equipped.defensive = eq.defensive;
     // estilo de ZONA: solo si lo tiene

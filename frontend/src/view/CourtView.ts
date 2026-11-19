@@ -65,6 +65,24 @@ export interface DrawnWall {
   key: string;
 }
 
+/**
+ * Ambiente (cancha + música) de un partido ONLINE: sale del id de la sala, así que los dos teléfonos eligen el mismo sin enviarse nada
+ * (en 1v1 y en 2v2). null = no hay imagen de ambiente cargada. Contra el bot sigue el sorteo de siempre (pickAmbiente).
+ */
+export function ambienteForRoom(scene: Phaser.Scene, roomId: string): string | null {
+  const available = AMBIENTES.filter((a) => scene.textures.exists(a.key));
+  if (!available.length) return null;
+  let h = 2166136261;
+  for (const c of roomId) {
+    h ^= c.charCodeAt(0);
+    h = Math.imul(h, 16777619) >>> 0;
+  }
+  h ^= h >>> 15;
+  h = Math.imul(h, 2246822519) >>> 0;
+  h ^= h >>> 13;
+  return available[(h >>> 0) % available.length].key;
+}
+
 /** Sortea el ambiente del partido (respeta 'dev.ambiente'). null = no hay imagen de ambiente cargada. */
 export function pickAmbiente(scene: Phaser.Scene): string | null {
   const available = AMBIENTES.filter((a) => scene.textures.exists(a.key));

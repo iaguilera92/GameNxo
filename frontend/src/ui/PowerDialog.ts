@@ -48,6 +48,11 @@ export interface PowerSlot {
   preview: IconFactory;
   /** dibujo pequeño del hueco; sin él se usa `preview` */
   thumb?: IconFactory;
+  /**
+   * (21-11-2026) bloqueado PERO visible: aunque no lo tenga, su dibujo se ve (apagado) con un candado chico en la esquina, en el hueco y en la televisión
+   * (CAMBIAR PERSONAJE: JUN y NET). Sin esto, un hueco bloqueado solo muestra un candado.
+   */
+  showLocked?: boolean;
   /** rareza del poder: su marco en el hueco (ausente = sin marco: gratis o sin clasificar) */
   rarity?: ItemRarity;
   /** rótulo de la columna RAREZA de la televisión grande cuando el poder no tiene rareza (por defecto, INCLUIDO), p. ej. 'DEL PASE' */
@@ -86,6 +91,10 @@ export interface PowerDialogOpts {
    * deslizar hacia un lado para ver la demostración.
    */
   bigTv?: boolean;
+  /** (21-11-2026) con `bigTv`: multiplica el tamaño del dibujo de la columna izquierda (1 = el de siempre; CAMBIAR PERSONAJE usa más para ver bien al personaje) */
+  iconScale?: number;
+  /** (21-11-2026) con `bigTv`: cuánto "palpita" el dibujo de la televisión (1 = como siempre, 0,3 = leve, 0 = quieto; CAMBIAR PERSONAJE y ESTILOS) */
+  pulse?: number;
   /** página 2 de la televisión: una demostración en acción (se llega deslizando; ver PowerDemo) */
   demo?: { create: (parent: Phaser.GameObjects.Container, outer: DemoRect, inner: DemoRect, id: string | undefined) => PowerDemo };
 }
@@ -155,7 +164,7 @@ function drawLock(g: Phaser.GameObjects.Graphics, s: number, color: number) {
  * Tocar un hueco lo muestra en la televisión. Se cierra con la X, tocando fuera o al EQUIPAR (al instante: se equipa y se cierra).
  */
 export function openPowerDialog(scene: Phaser.Scene, opts: PowerDialogOpts) {
-  const { title: titleText, color, slots, layout = 'center', onShop, onClose, shopLabel = 'IR A LA TIENDA', lockedNote = 'Se compra en la TIENDA.', previewOnly = false, special = false, bigTv = false, demo } = opts;
+  const { title: titleText, color, slots, layout = 'center', onShop, onClose, shopLabel = 'IR A LA TIENDA', lockedNote = 'Se compra en la TIENDA.', previewOnly = false, special = false, bigTv = false, demo, iconScale = 1, pulse: pulseK = 1 } = opts;
   const W = scene.scale.width;
   const H = scene.scale.height;
   // (17-11-2026, usuario) lo de detrás se CONGELA mientras el diálogo está abierto: así la pantalla "En acción" va fluida
@@ -586,6 +595,8 @@ export function openPowerDialog(scene: Phaser.Scene, opts: PowerDialogOpts) {
       // apaga lo que no está seleccionado (el equipado, algo menos) para que se note cuál es
       const dimA = on ? 1 : s?.equipped ? 0.7 : 0.3;
       for (const o of cellItems[i] ?? []) (o as unknown as Phaser.GameObjects.Components.Alpha).setAlpha?.(dimA);
+      // bloqueado pero visible: su dibujo siempre algo más apagado que el de un personaje que sí tienes
+      if (s?.showLocked && !s.owned) (cellItems[i]?.[0] as unknown as Phaser.GameObjects.Components.Alpha | undefined)?.setAlpha?.(Math.max(0.35, dimA * 0.6));
     });
 
   const show = (i: number) => {
@@ -618,7 +629,7 @@ export function openPowerDialog(scene: Phaser.Scene, opts: PowerDialogOpts) {
       const accent = rs ? rs.main : color;
       // --- columna izquierda: icono y nombre
       const icx = sx + half / 2;
-      const isize = Math.min(half * 0.5, sh * 0.3, 160);
+      const isize = Math.min(half * 0.5 * iconScale, sh * 0.3 * iconScale, 160 * iconScale);
       const icy = midY - 26;
       const glowA = scene.add.graphics({ x: icx, y: icy });
       glowA.fillStyle(accent, 0.12).fillCircle(0, 0, isize * 0.95).fillStyle(accent, 0.16).fillCircle(0, 0, isize * 0.66);
@@ -629,12 +640,18 @@ export function openPowerDialog(scene: Phaser.Scene, opts: PowerDialogOpts) {
         const base = (o: unknown) => (o as { scaleX?: number }).scaleX ?? 1;
         pulse = scene.tweens.add({
           targets: [icon, glowA],
-          scale: { getStart: (o: unknown) => base(o) * 0.95, getEnd: (o: unknown) => base(o) * 1.04 },
+          scale: { getStart: (o: unknown) => base(o) * (1 - 0.05 * pulseK), getEnd: (o: unknown) => base(o) * (1 + 0.04 * pulseK) },
           duration: 800,
           yoyo: true,
           repeat: -1,
           ease: 'Sine.easeInOut',
         });
+      } else if (s.showLocked) {
+        // bloqueado pero visible: el dibujo algo apagado y un candado en su esquina inferior derecha
+        (icon as unknown as Phaser.GameObjects.Components.Alpha).setAlpha?.(0.6);
+        const lk = scene.add.graphics({ x: icx + isize * 0.42, y: icy + isize * 0.34 });
+        drawLock(lk, isize * 0.42, 0xaebfe6);
+        screen.add(lk);
       } else {
         (icon as unknown as Phaser.GameObjects.Components.Alpha).setAlpha?.(0.3);
         const lk = scene.add.graphics({ x: icx, y: icy });
@@ -786,6 +803,16 @@ export function openPowerDialog(scene: Phaser.Scene, opts: PowerDialogOpts) {
       const th = (s.thumb ?? s.preview)(cx, cy - 6, slot * 0.66);
       grid.add(th);
       items.push(th);
+    } else if (s?.showLocked) {
+      // bloqueado pero visible: su dibujo apagado y un candado chico en la esquina
+      const th = (s.thumb ?? s.preview)(cx, cy - 6, slot * 0.66);
+      (th as unknown as Phaser.GameObjects.Components.Alpha).setAlpha?.(0.55);
+      grid.add(th);
+      items.push(th);
+      const lk = scene.add.graphics({ x: cx + slot * 0.26, y: cy + slot * 0.1 });
+      drawLock(lk, slot * 0.26, 0xaebfe6);
+      grid.add(lk);
+      items.push(lk);
     } else {
       const lk = scene.add.graphics({ x: cx, y: cy - (s ? 8 : 0) });
       drawLock(lk, slot * 0.46, 0x5d73a6);

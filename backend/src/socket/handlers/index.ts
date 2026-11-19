@@ -96,7 +96,7 @@ export function registerSocketHandlers(io: Server) {
     if (t) clearTimeout(t);
     readyTimers.delete(room.id);
     for (const p of room.players) io.to(p.id).emit(EV.START, { roomId: room.id });
-    matchLog.write(room.id, 'srv', { ev: 'start', host: room.players[0]?.profile.name, guest: room.players[1]?.profile.name });
+    matchLog.write(room.id, 'srv', { ev: 'start', mode: room.mode, host: room.players[0]?.profile.name, guest: room.players[1]?.profile.name });
     matchTimers.set(
       room.id,
       setTimeout(() => {
@@ -192,8 +192,8 @@ export function registerSocketHandlers(io: Server) {
         const toGuest: MatchedMsg = { roomId: room.id, role: 'guest', opponent: host.profile, gamesToWin: CONFIG.gamesToWin, token: guest.token, ...(room.mode === '2v2' ? { mode: room.mode } : {}) };
         io.to(host.id).emit(EV.MATCHED, toHost);
         io.to(guest.id).emit(EV.MATCHED, toGuest);
-        log(`emparejados ${host.profile.name} vs ${guest.profile.name} sala ${short(room.id)} 2/2 → PLAYING`);
-        matchLog.write(room.id, 'srv', { ev: 'matched', host: host.profile.name, hostSkin: host.profile.skin, guest: guest.profile.name, guestSkin: guest.profile.skin });
+        log(`emparejados ${room.mode === '2v2' ? '2v2 (compañeros) ' : ''}${host.profile.name} ${room.mode === '2v2' ? '+' : 'vs'} ${guest.profile.name} sala ${short(room.id)} 2/2 → PLAYING`);
+        matchLog.write(room.id, 'srv', { ev: 'matched', mode: room.mode, host: host.profile.name, hostSkin: host.profile.skin, guest: guest.profile.name, guestSkin: guest.profile.skin });
         // si alguno no llega a cargar, se empieza igualmente al vencer la espera
         readyTimers.set(
           room.id,
@@ -237,9 +237,11 @@ export function registerSocketHandlers(io: Server) {
         (volatile ? io.to(opp.id).volatile : io.to(opp.id)).emit(ev, data);
         // en el log: golpes y acciones que pasan por el servidor (los estados no: son 20 por segundo)
         if (!volatile) {
-          const d = data as { kind?: unknown; seq?: unknown };
+          const d = data as { kind?: unknown; seq?: unknown; a?: unknown; data?: { a?: unknown } };
           if (d.kind === 'ping' || d.kind === 'pong') return; // medición del retraso cada 2 s: solo ruido en el log
-          matchLog.write(room.id, 'srv', { ev: `relay:${ev}`, from: rooms.roleOf(room, socket.id), kind: String(d.kind ?? ''), seq: typeof d.seq === 'number' ? d.seq : undefined });
+          // 2v2: actor del golpe / aviso (0 = el humano que lo envía o su compañero, 1 y 2 = los bots del host)
+          const actor = typeof d.a === 'number' ? d.a : typeof d.data?.a === 'number' ? d.data.a : undefined;
+          matchLog.write(room.id, 'srv', { ev: `relay:${ev}`, from: rooms.roleOf(room, socket.id), kind: String(d.kind ?? ''), seq: typeof d.seq === 'number' ? d.seq : undefined, a: actor });
         }
       });
     socket.on(EV.STATE, relay(EV.STATE, 'state', sanitizeState, true));
@@ -313,6 +315,13 @@ export function registerSocketHandlers(io: Server) {
         log(`búsqueda terminada por ${reason} ${short(socket.id)}`);
         return;
       }
+      // (19-11-2026) 2v2: se fue el ANFITRIÓN: su compañero pasa a ser el anfitrión y el partido sigue (marcador oficial)
+      if (r.promoted) {
+        if (r.opponent) io.to(r.opponent.id).emit(EV.PROMOTED, scoreMsg(r.room));
+        log(`anfitrión fuera (${reason}) en la sala ${short(r.room.id)}: el compañero pasa a anfitrión`);
+        matchLog.write(r.room.id, 'srv', { ev: 'host-promoted', reason });
+        return;
+      }
       // 2v2: se fue el compañero: el partido sigue con un bot en su lugar (el host lo juega)
       if (r.continues) {
         if (r.opponent) io.to(r.opponent.id).emit(EV.MATE_AWAY, { gone: reason === 'abandon' });
@@ -356,6 +365,13 @@ export function registerSocketHandlers(io: Server) {
                 if (!cur || !p?.away || p.id !== oldId) return; // ya volvió o la sala terminó
                 const r = rooms.leave(oldId, 'disconnect');
                 if (!r?.wasPlaying) return;
+                // (19-11-2026) 2v2: el anfitrión no volvió a tiempo: su compañero pasa a ser el anfitrión y el partido sigue
+                if (r.promoted) {
+                  if (r.opponent) io.to(r.opponent.id).emit(EV.PROMOTED, scoreMsg(r.room));
+                  log(`anfitrión no volvió en la sala ${short(r.room.id)}: el compañero pasa a anfitrión`);
+                  matchLog.write(r.room.id, 'srv', { ev: 'host-promoted', reason: 'disconnect' });
+                  return;
+                }
                 if (r.opponent) io.to(r.opponent.id).emit(EV.OPPONENT_LEFT, { reason: 'disconnect' });
                 finish(r.room);
               }, CONFIG.reconnectGraceMs),

@@ -258,3 +258,14 @@ export function drawAbilityIcon(g: Phaser.GameObjects.Graphics, icon: AbilityIco
   }
 }
 
+
+/**
+ * Icono de ADVERTENCIA (triángulo con "!"), centrado en (0, 0) del Graphics; `s` = mitad del alto (~radio). Triángulo del color dado
+ * con borde oscuro y el signo en azul marino (21-11-2026: aviso de RAQUETA).
+ */
+export function drawWarningIcon(g: Phaser.GameObjects.Graphics, s: number, color = 0xffd23f) {
+  const o = Math.max(2, s * 0.22); // grosor del borde
+  g.fillStyle(0x0a1638, 1).fillTriangle(0, -s - o * 1.4, s * 1.15 + o * 1.3, s * 0.85 + o * 0.8, -s * 1.15 - o * 1.3, s * 0.85 + o * 0.8);
+  g.fillStyle(color, 1).fillTriangle(0, -s, s * 1.15, s * 0.85, -s * 1.15, s * 0.85);
+  g.fillStyle(0x0a1638, 1).fillRoundedRect(-s * 0.13, -s * 0.4, s * 0.26, s * 0.7, s * 0.1).fillCircle(0, s * 0.56, s * 0.15);
+}

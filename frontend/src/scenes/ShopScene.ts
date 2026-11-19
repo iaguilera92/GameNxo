@@ -12,6 +12,7 @@ import { type DefensivePower, defensiveOwned, defensivePowerDef } from '../domai
 import { drawDefensiveIcon, drawDisc } from '../ui/icons';
 import { BP_SEASON, syncSeason } from '../domain/battlePass';
 import { bpSeasonInfo } from '../domain/battlePassConfig';
+import { passHeroSkin, passPortrait, queuePassPortraits } from '../characters/passPortrait';
 import type { PlayerState } from '../domain/player';
 import { drawCashIcon } from './BattlePassScene';
 import { type ItemId, type ItemKind, type StyleId, owns } from '../domain/player';
@@ -135,7 +136,7 @@ export class ShopScene extends Phaser.Scene {
     if (!this.textures.exists('icon-zona')) this.load.image('icon-zona', 'assets/icon-zona.webp'); // cards de ZONA (recoloreada por estilo)
     if (!this.textures.exists('cash-pack')) this.load.image('cash-pack', 'assets/dinero-fardo-chico.webp'); // precios de más de 1
     // retrato de Mai (premio mayor del Pase, en OFERTAS): ya lo carga BootScene; solo se descarga si falta
-    if (!this.textures.exists('portrait-mai')) this.load.image('portrait-mai', 'assets/characters/mai_portrait.webp');
+    queuePassPortraits(this); // retrato del personaje del Pase (tarjeta del Pase)
     queueInfernoArt(this.load); // bolas de los poderes (vista previa)
     queueChargeFxArt(this.load, ['fire', 'energy', 'tulip']); // aros de carga (vista previa)
     queueButtonArt(this.load); // botón SMASH (vista previa de sus poderes)
@@ -701,8 +702,10 @@ export class ShopScene extends Phaser.Scene {
     this.cardTweens.push(edgeTw);
     c.once(Phaser.GameObjects.Events.DESTROY, () => edgeTw.remove());
 
-    // premio mayor: MAI a la izquierda, de pie sobre el borde de abajo, con resplandor detrás
-    const box = { x0: 118, y0: 4, x1: 1070, y1: 1356 }; // caja visible de mai_portrait.png (1130 × 1392), como en BattlePassScene
+    // premio mayor: el personaje del último nivel del Pase (JUN desde el 21-11-2026; antes MAI) a la izquierda, de pie sobre el borde de abajo, con resplandor detrás
+    const heroSkin = passHeroSkin();
+    const hero = passPortrait(heroSkin) ?? passPortrait('mai')!;
+    const box = hero.box; // caja visible de su retrato (characters/passPortrait.ts), la misma de BattlePassScene
     const vh = h - 22;
     const vw = ((box.x1 - box.x0) / (box.y1 - box.y0)) * vh;
     const px = x + 16 + vw / 2;
@@ -710,8 +713,8 @@ export class ShopScene extends Phaser.Scene {
     glow.fillStyle(0xfff1b8, 0.3).fillEllipse(px, y + h * 0.5, vw * 1.25, vh * 0.95);
     c.add(glow);
     this.tweens.add({ targets: glow, alpha: { from: 0.5, to: 1 }, duration: 1300, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
-    if (this.textures.exists('portrait-mai')) {
-      const img = this.add.image(px, y + h - 6, 'portrait-mai');
+    if (this.textures.exists(hero.key)) {
+      const img = this.add.image(px, y + h - 6, hero.key);
       img.setOrigin((box.x0 + box.x1) / 2 / img.width, box.y1 / img.height);
       img.setScale(vh / (box.y1 - box.y0));
       c.add(img);
@@ -726,7 +729,7 @@ export class ShopScene extends Phaser.Scene {
     const season = this.add.text(tx, y + 88, BP_SEASON.name, { fontFamily: FONT, fontSize: '18px', color: dark }).setOrigin(0.5).setLetterSpacing(2);
     const prize = this.add.text(tx, y + 128, '¡CONSIGUE MÚLTIPLES RECOMPENSAS!', { fontFamily: FONT, fontSize: '16px', color: '#fff6d8', stroke: dark, strokeThickness: 4 }).setOrigin(0.5).setLetterSpacing(1);
     fitText(prize, colW);
-    const who = this.add.text(tx, y + 160, 'NUEVO PERSONAJE: MAI', { fontFamily: FONT, fontSize: '22px', color: '#ffffff', stroke: dark, strokeThickness: 6 }).setOrigin(0.5);
+    const who = this.add.text(tx, y + 160, `NUEVO PERSONAJE: ${heroSkin.toUpperCase()}`, { fontFamily: FONT, fontSize: '22px', color: '#ffffff', stroke: dark, strokeThickness: 6 }).setOrigin(0.5);
     fitText(who, colW);
     c.add([title, season, prize, who]);
     const by = y + h - 62;

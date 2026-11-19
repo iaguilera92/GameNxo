@@ -694,6 +694,8 @@ export class InfernoFire {
   private energy?: EnergyBallFx;
   /** (17-11-2026) bola del HURACÁN (se crea al usarse) */
   private hurricane?: HurricaneBallFx;
+  /** (19-11-2026, usuario) tamaño de la bola del HURACÁN (× la esfera de la ULTI): 1,25 el smash final; el 1.er golpe la pone más grande (HURRICANE.firstHit.ball) */
+  hurricaneScale = 1.25;
   /**
    * (17-11-2026, usuario) la BOLA DE ENERGÍA sale CHICA y crece en vuelo hasta su tamaño máximo (ENERGY_BALL_SCALE) al llegar al rival:
    * `energyGrowSec` = segundos de vuelo en los que crece (el que la lanza pone su tiempo de vuelo); `energyT` = tiempo volando
@@ -770,7 +772,7 @@ export class InfernoFire {
     }
     if (this.el === 'hurricane') {
       this.hurricane ??= new HurricaneBallFx(this.scene);
-      this.hurricane.draw(dt, air.sx, air.sy, R * 1.25, d);
+      this.hurricane.draw(dt, air.sx, air.sy, R * this.hurricaneScale, d);
       return;
     }
     if (this.el === 'energy') {

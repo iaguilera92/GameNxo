@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { COURT, DASH_COOLDOWN, HIT_MAX_Z, HIT_RANGE, NET_X, PLAYER_SPEED, SHOT_SPEED, SMASH_COOLDOWN, SMASH_SPEED_MULT } from '../config';
+import { ALLEY, COURT, DASH_COOLDOWN, HIT_MAX_Z, HIT_RANGE, NET_X, PLAYER_SPEED, SHOT_SPEED, SMASH_COOLDOWN, SMASH_SPEED_MULT } from '../config';
 import { BotAI } from '../logic/BotAI';
 import { INFERNO } from '../logic/InfernoDrive';
 import type { BallState, ShotKind } from '../objects/Ball';
@@ -25,7 +25,6 @@ import { type BotMode, MOOD, isKeyPoint, nextMode } from './BotMood';
 const rand = Phaser.Math.FloatBetween;
 const clamp = Phaser.Math.Clamp;
 const LAT_C = (COURT.top + COURT.bottom) / 2;
-const HALF_W = (COURT.bottom - COURT.top) / 2;
 
 /** Movimiento con inercia del rival (en múltiplos de su velocidad máxima por segundo). */
 const MOVE = {
@@ -49,6 +48,8 @@ export interface BotBounds {
   xMax: number;
   yMin: number;
   yMax: number;
+  /** (19-11-2026) 2v2: cancha de DOBLES (los tiros también apuntan a los pasillos) */
+  wide?: boolean;
 }
 
 export interface BotTickInput {
@@ -211,10 +212,19 @@ export class BotBrain {
    * @param profile perfil de dificultad del rival (src/ai/BotProfile.ts). Sin perfil, la dificultad
    *                por defecto de config (BOT_DIFFICULTY), como antes.
    */
+  /** ancho de JUEGO donde apunta sus tiros (1v1: individuales; 2v2: dobles, `bounds.wide`) */
+  private readonly cTop: number;
+  private readonly cBot: number;
+  private readonly halfW: number;
+
   constructor(
     private readonly bounds: BotBounds,
     readonly profile?: BotProfile,
   ) {
+    const m = bounds.wide ? ALLEY : 0;
+    this.cTop = COURT.top - m;
+    this.cBot = COURT.bottom + m;
+    this.halfW = (COURT.bottom - COURT.top) / 2 + m;
     this.ai = new BotAI(profile?.difficulty);
     // el SMASH no está listo desde el primer punto (tarda medio enfriamiento)
     this.smashCd = SMASH_COOLDOWN * 0.5 * this.abil.cd;
@@ -394,7 +404,7 @@ export class BotBrain {
    * al que mandó la pelota, que es desde donde le van a devolver; no siempre al centro.
    */
   onShot(shot: ShotPlan) {
-    const ty = clamp(shot.ty, COURT.top, COURT.bottom);
+    const ty = clamp(shot.ty, this.cTop, this.cBot);
     this.ai.onBotHit(LAT_C + (ty - LAT_C) * MOVE.recoverFollow);
   }
 
@@ -436,7 +446,7 @@ export class BotBrain {
       this.lastIntents = ['normal', this.lastIntents[0]];
       return {
         tx: clamp(ctx.playerX + rand(-40, 10), COURT.left + 60, NET_X - 30),
-        ty: clamp(ctx.playerY + rand(-35, 35), COURT.top + 30, COURT.bottom - 30),
+        ty: clamp(ctx.playerY + rand(-35, 35), this.cTop + 30, this.cBot - 30),
         speed: SHOT_SPEED * 0.6,
         kind: 'normal',
         margin: 38,
@@ -451,7 +461,7 @@ export class BotBrain {
       this.lastIntents = ['deep', this.lastIntents[0]];
       return {
         tx: NET_X - ownLen * rand(0.75, 0.92),
-        ty: ctx.playerY > LAT_C ? COURT.top + rand(25, 60) : COURT.bottom - rand(25, 60),
+        ty: ctx.playerY > LAT_C ? this.cTop + rand(25, 60) : this.cBot - rand(25, 60),
         speed: SHOT_SPEED * SMASH_SPEED_MULT * INFERNO.speedMult * SMASH_AI.speedK * this.abil.power,
         kind: 'normal',
         margin: 6,
@@ -471,7 +481,7 @@ export class BotBrain {
         this.lastIntents = ['deep', this.lastIntents[0]];
         return {
           tx: NET_X - ownLen * rand(0.7, 0.9),
-          ty: ctx.playerY > LAT_C ? COURT.top + rand(25, 60) : COURT.bottom - rand(25, 60), // lejos del jugador
+          ty: ctx.playerY > LAT_C ? this.cTop + rand(25, 60) : this.cBot - rand(25, 60), // lejos del jugador
           speed: SHOT_SPEED * SMASH_SPEED_MULT * SMASH_AI.speedK * this.abil.power,
           kind: 'normal',
           margin: 6,
@@ -511,7 +521,7 @@ export class BotBrain {
     let speed = SHOT_SPEED * (0.82 + 0.3 * d) * (0.85 + 0.15 * q);
     let margin = 18;
     let kind: ShotKind = 'normal';
-    const aimed = () => LAT_C + clamp(away * ai.aimSkill * rand(0.4, 1) + rand(-0.4, 0.4) * (1 - ai.aimSkill), -1, 1) * (HALF_W - 28);
+    const aimed = () => LAT_C + clamp(away * ai.aimSkill * rand(0.4, 1) + rand(-0.4, 0.4) * (1 - ai.aimSkill), -1, 1) * (this.halfW - 28);
     switch (intent) {
       case 'deep': // profundo de ataque
         tx = NET_X - ownLen * rand(0.8, 0.95);
@@ -520,12 +530,12 @@ export class BotBrain {
         break;
       case 'angle': // cruzado a la línea lateral
         tx = NET_X - ownLen * rand(0.45, 0.75);
-        ty = LAT_C + away * rand(0.75, 1) * (HALF_W - 20);
+        ty = LAT_C + away * rand(0.75, 1) * (this.halfW - 20);
         kind = 'side';
         break;
       case 'drop': // dejada junto a la red
         tx = NET_X - ownLen * rand(0.1, 0.25);
-        ty = LAT_C + away * rand(0.2, 0.7) * (HALF_W - 40);
+        ty = LAT_C + away * rand(0.2, 0.7) * (this.halfW - 40);
         speed = SHOT_SPEED * 0.78;
         margin = 8;
         kind = 'drop';
@@ -539,7 +549,7 @@ export class BotBrain {
         break;
       case 'lob': // globo alto y profundo (por encima del jugador en la red, o para defenderse)
         tx = NET_X - ownLen * rand(0.82, 0.94);
-        ty = LAT_C + away * rand(0.2, 0.8) * (HALF_W - 40);
+        ty = LAT_C + away * rand(0.2, 0.8) * (this.halfW - 40);
         speed = SHOT_SPEED * 0.85;
         margin = 75;
         kind = 'lob';
@@ -555,7 +565,7 @@ export class BotBrain {
     if (Math.random() < ai.outChance * STRAT.risk[intent] * (STRAT.outBase + STRAT.outBadContact * (1 - q))) {
       if (intent === 'drop') tx = NET_X + rand(10, 45); // dejada corta: se queda en su campo
       else if (Math.random() < 0.5) tx = COURT.left - rand(15, 55);
-      else ty = Math.random() < 0.5 ? COURT.top - rand(15, 45) : COURT.bottom + rand(15, 45);
+      else ty = Math.random() < 0.5 ? this.cTop - rand(15, 45) : this.cBot + rand(15, 45);
     }
     return { tx, ty, speed, kind, margin, intent, quality: q, ...(dropZero ? { dropZero } : {}) };
   }

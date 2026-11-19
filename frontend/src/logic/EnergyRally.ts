@@ -98,6 +98,12 @@ export const ENERGY_RALLY = {
   diveLeadMs: 180, // (18-11-2026) < flightMs (paleteo x2)
   /** los golpes del que lanza la ULTI empiezan este tiempo antes del contacto (la raqueta llega a su frame) */
   swingLeadMs: 110,
+  /**
+   * (21-11-2026, usuario) tras el golpe final de la BOLA DE ENERGIA el que la lanza se queda con el ULTIMO frame del clip inferno-swing (frame 9 = indice 8: la
+   * raqueta del ultimo golpe) durante `finishHoldMs` y luego siguen sus sprites de siempre.
+   */
+  finishFrame: 8,
+  finishHoldMs: 1000,
   /** la pelota llega a esta distancia lateral del sitio del rival (fuera de su alcance normal: solo llega estirándose) */
   diveReach: 115,
   /** donde queda el cuerpo del rival al final de la estirada (respecto a su sitio) */
@@ -199,6 +205,20 @@ export const HURRICANE = {
   riseMs: 750,
   tornadoMs: 960,
   hoverMs: 500,
+  /**
+   * (21-11-2026, usuario) 1.er golpe tras la carga (el viento potente): su efecto sale al DOBLE de tamano (`k`), con mas sacudida y un destello, y suena
+   * inferno.mp3 (clave 'inferno-hit'); el rival recibe un viento algo mayor (`blast`).
+   */
+  // (21-11-2026, usuario) "sigue muy pequeno": k 2 -> 3,2 y mas viento sobre el rival (2,2). Luego "no veo el primer golpe": con 3,2 el destello cubria
+  // toda la pantalla y tapaba la raqueta y la pelota; queda k 2,6 con el destello mas chico y sin el flash de cámara completo.
+  // (19-11-2026, usuario) "no se ve el primer golpe": la pelota vuela como BOLA DE ENERGÍA del huracán, algo MÁS GRANDE que la del smash final
+  // (`ball` × la esfera de la ULTI; el smash usa 1,25) y al llegar al rival / máquina explota con un impacto (`impactK`, sacudida `impactShake`)
+  firstHit: { k: 2.6, shakeMs: 340, shake: 0.024, blast: 2.2, sound: 'inferno-hit', ball: 1.6, impactK: 1.8, impactShakeMs: 320, impactShake: 0.03 },
+  /**
+   * (21-11-2026, usuario) tras el SMASH final el que la lanza se queda en el aire con la pose del golpe (frame 7 del clip smash-power = indice 6: raqueta a
+   * la izquierda) hasta que cae al suelo; entonces sigue con sus sprites de siempre.
+   */
+  finishFrame: 6,
 };
 
 /** Guion del HURACÁN. `a` = sitio del que la lanza (su contacto de la ULTI); `v` = el rival (canónico, como planEnergyRally). */

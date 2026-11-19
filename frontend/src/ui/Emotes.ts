@@ -229,10 +229,10 @@ export class Emotes {
    * Emote del RIVAL (multijugador): globo sobre SU cabeza, sin botón ni espera (la espera de 10 s es del emisor).
    * Un solo globo remoto a la vez: uno nuevo sustituye al anterior (no se acumulan aunque lleguen muchos).
    */
-  showRemote(kind: string, head: () => { x: number; y: number }) {
+  showRemote(kind: string, head: () => { x: number; y: number }, skin = this.rivalSkin) {
     if (!(EMOTES as string[]).includes(kind)) return; // llega por red: solo las caritas conocidas
     this.remote?.c.destroy();
-    const c = this.makeBubble(kind as EmoteKind, this.rivalSkin);
+    const c = this.makeBubble(kind as EmoteKind, skin); // (19-11-2026) 2v2 online: el del COMPAÑERO, con su cara
     this.remote = { c, until: performance.now() + (isAnim(kind as EmoteKind) ? LEGEND_BUBBLE_MS : BUBBLE_MS), head };
     const h = head();
     c.setPosition(h.x, h.y - REMOTE_LIFT).setScale(0.2);

@@ -156,17 +156,23 @@ export function windShotFx(scene: Phaser.Scene, x: number, y: number, k: number,
   const C = HURRICANE_COL;
   const ang = Math.atan2(dy, dx);
   // cono de viento: líneas largas que salen hacia el rival
-  for (let i = 0; i < 9; i++) {
-    const a = ang + R(-0.32, 0.32);
+  for (let i = 0; i < 16; i++) {
+    const a = ang + R(-0.4, 0.4);
     const g = scene.add.graphics({ x, y }).setDepth(3652).setBlendMode(Phaser.BlendModes.ADD).setRotation(a);
-    const L = R(90, 190) * kk;
-    g.lineStyle(R(2, 4) * kk, pick([C.wind, C.mint, C.light]), 0.9).lineBetween(R(10, 30) * kk, R(-6, 6) * kk, L, R(-10, 10) * kk);
+    const L = R(110, 230) * kk;
+    g.lineStyle(R(2.5, 5) * kk, pick([C.wind, C.mint, C.light]), 0.9).lineBetween(R(10, 30) * kk, R(-6, 6) * kk, L, R(-12, 12) * kk);
     g.setScale(0.2, 1);
-    scene.tweens.add({ targets: g, scaleX: 1.6, alpha: 0, duration: R(260, 420), ease: 'Cubic.easeOut', onComplete: kill(g) });
+    scene.tweens.add({ targets: g, scaleX: 1.8, alpha: 0, duration: R(300, 500), ease: 'Cubic.easeOut', onComplete: kill(g) });
   }
-  gusts(scene, x, y, kk, 3652, 8, 60, 130);
-  const flash = scene.add.circle(x, y, 30 * kk, C.light, 0.9).setDepth(3653).setBlendMode(Phaser.BlendModes.ADD);
-  scene.tweens.add({ targets: flash, scale: 2.6, alpha: 0, duration: 200, ease: 'Quad.easeOut', onComplete: kill(flash) });
+  gusts(scene, x, y, kk, 3652, 12, 70, 160);
+  // (21-11-2026, usuario) este golpe derriba al rival: onda de choque (2 aros amarillos) y un destello. El destello NO tapa la raqueta ni la pelota
+  // (con el primero, a escala grande, cubría toda la pantalla): chico, translúcido y rápido
+  for (let i = 0; i < 2; i++) {
+    const ring = scene.add.circle(x, y, 22 * kk, 0xffffff, 0).setStrokeStyle((6 - i * 2.5) * kk, i ? C.gold : C.wind, 0.95).setDepth(3652).setBlendMode(Phaser.BlendModes.ADD);
+    scene.tweens.add({ targets: ring, scale: 3.4 + i * 1.1, alpha: 0, delay: i * 70, duration: 420, ease: 'Cubic.easeOut', onComplete: kill(ring) });
+  }
+  const flash = scene.add.circle(x, y, 22 * kk, C.light, 0.5).setDepth(3653).setBlendMode(Phaser.BlendModes.ADD);
+  scene.tweens.add({ targets: flash, scale: 1.9, alpha: 0, duration: 200, ease: 'Quad.easeOut', onComplete: kill(flash) });
 }
 
 /** El rival choca contra el FONDO (o la pared): destello, polvo que se abre, onda a ras de suelo y ráfagas. (x, y) = sus pies. */
@@ -204,6 +210,7 @@ export class TornadoSprite {
   }
   draw(frame: number, x: number, feetY: number, topY: number, depth: number) {
     if (!this.ok) return;
+    if (this.img && !this.img.scene) this.img = null; // la escena se reinició y destruyó la imagen: se crea otra
     this.img ??= this.scene.add.image(0, 0, TORNADO_ART.key, 0).setOrigin(0.5, TORNADO_ART.baseY);
     const f = Math.max(0, Math.min(TORNADO_ART.frames - 1, Math.floor(frame)));
     const k = Math.max(20, feetY - topY) / (TORNADO_ART.h * 0.85);
@@ -217,6 +224,7 @@ export class TornadoSprite {
    * instante casi transparente (fuera de la vista del jugador: tras la cortinilla) y se esconde.
    */
   warm(x: number, y: number, depth: number) {
+    if (this.img && !this.img.scene) this.img = null; // (imagen de una partida anterior, ya destruida)
     if (!this.ok || this.img) return;
     this.img = this.scene.add.image(x, y, TORNADO_ART.key, 0).setOrigin(0.5, TORNADO_ART.baseY).setAlpha(0.01).setDepth(depth).setScale(0.2);
     this.scene.time.delayedCall(120, () => {

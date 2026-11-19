@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import { FONT } from '../ui/theme';
 import { COINS_LOSS, COINS_SURRENDER, COINS_WIN, XP_LOSS, XP_SURRENDER, XP_WIN, xpToNext, MAX_LEVEL } from '../config';
-import { addCoins, addXp, getProfile } from '../logic/Profile';
+import { addCoins, addCoins2v2, addXp, getProfile } from '../logic/Profile';
 import { applyCharColor } from '../fx/CharColorFx';
 import { sfx } from '../fx/sfx';
 import { arcadeButton } from '../ui/modeButtons';
@@ -54,6 +54,8 @@ export interface MatchEndData {
   clips?: { me?: DuelClips; rival?: DuelClips };
   win: boolean;
   surrendered?: boolean;
+  /** (19-11-2026) el RIVAL humano se rindió o se fue (1v1 online): EXP reducida (95 si ganaste ≥ 1 juego, si no 0) */
+  rivalLeft?: boolean;
   playerName: string;
   rivalName: string;
   /** juegos ganados (formato actual: mejor de GAMES_TO_WIN*2-1 juegos) */
@@ -294,7 +296,7 @@ export class MatchEndScene extends Phaser.Scene {
     this.banner(W, win);
     const btnH = 84;
     const btnY = H - 26 - btnH / 2;
-    const panelH = 108 + 16 + CARD_H + 22 + this.mrow + (this.duel() ? RANKED_H : 0) + (d.missions ? ADD_H : 0);
+    const panelH = 108 + 16 + CARD_H + 22 + this.mrow + (this.duel() ? RANKED_H : 0) + (d.missions ? ADD_H : 0) + (d.doubles ? 64 + 18 : 0); // (19-11-2026) 2v2: franja de las MONEDAS 2v2
     const panelTop = btnY - btnH / 2 - 14 - panelH;
     this.resultPanel(W, panelTop, panelH);
     this.buttons(W, btnY, btnH);
@@ -427,13 +429,17 @@ export class MatchEndScene extends Phaser.Scene {
     // --- recompensas (se aplican UNA vez por partida; las reglas de siempre)
     //   XP: victoria XP_WIN, derrota/rendición XP_LOSS · monedas: COINS_WIN / COINS_LOSS / COINS_SURRENDER
     const store = d as MatchEndData & { _xp?: ReturnType<typeof addXp>; _coins?: ReturnType<typeof addCoins> };
-    const gained = d.surrendered ? XP_SURRENDER : d.win ? XP_WIN : XP_LOSS; // rendirse da un tercio de lo de perder (14-11-2026)
+    // (19-11-2026, usuario) rendirte NO da EXP; si el RIVAL se rinde o se va, 95 (lo de perder) si ganaste al menos un juego, si no 0
+    const gained = d.surrendered ? XP_SURRENDER : d.rivalLeft ? (d.playerGames >= 1 ? XP_LOSS : 0) : d.win ? XP_WIN : XP_LOSS;
     if (!store._xp) {
       store._xp = addXp(gained);
       // el MENÚ, al volver, muestra "+N EXP" y llena las barras de nivel y del pase (después de la ruleta, si se abre)
       this.registry.set('menu.xpGain', gained);
     }
     if (!store._coins) store._coins = addCoins(d.surrendered ? COINS_SURRENDER : d.win ? COINS_WIN : COINS_LOSS);
+    // MONEDAS 2v2 (domain/coins2v2.ts): contador propio del 2v2 (online y contra bots), una vez por partido
+    const c2 = d as MatchEndData & { _c2?: ReturnType<typeof addCoins2v2> };
+    if (d.doubles && !c2._c2) c2._c2 = addCoins2v2(d.surrendered ? 'surrender' : d.win ? 'win' : 'loss');
     // MISIONES POR PARTIDA: sus monedas se suman UNA vez, aparte de la partida y de la apuesta Ranked (también si pierdes)
     const mst = d as MatchEndData & { _missionCoins?: number };
     if (d.missions && mst._missionCoins === undefined) {
@@ -452,6 +458,7 @@ export class MatchEndScene extends Phaser.Scene {
       if (got > 0) this.registry.set('menu.coinGain', ((this.registry.get('menu.coinGain') as number | undefined) ?? 0) + got);
     }
     this.rewardCards(c, W, top, w, sepY + 16);
+    if (c2._c2) this.coins2v2Row(c, w, sepY + 16 + CARD_H + 12 + this.mrow, c2._c2);
 
     // --- duelo de apuestas: Ranked (con la apuesta real) o, en desarrollo, el partido online (de prueba)
     const duel = this.duel();
@@ -685,8 +692,53 @@ export class MatchEndScene extends Phaser.Scene {
    *  - MODO DESARROLLO + partido online (d.lan): online aún no se apuesta nada, pero los cuadros se ven para probarlos,
    *    con la entrada x1 de tu liga. Es SOLO visual: no se cobra ni se paga ninguna moneda.
    */
+  /**
+   * (19-11-2026) MONEDAS 2v2 del partido: franja con la moneda 2v2, el cambio (+30 verde / −15 rojo) que cuenta hasta su valor y el total.
+   * (y = arriba de la franja, dentro del panel)
+   */
+  private coins2v2Row(c: Phaser.GameObjects.Container, w: number, y: number, r: { before: number; after: number; delta: number }) {
+    const h = 64;
+    const bw = w - 48;
+    const row = this.add.container(0, y + h / 2).setAlpha(0);
+    c.add(row);
+    const g = this.add.graphics();
+    g.fillStyle(0x0a1638, 0.95).fillRoundedRect(-bw / 2, -h / 2, bw, h, 18);
+    g.lineStyle(3, 0x7f6bff, 1).strokeRoundedRect(-bw / 2, -h / 2, bw, h, 18);
+    row.add(g);
+    // moneda 2v2: disco morado con borde dorado y "2v2"
+    const cx = -bw / 2 + 40;
+    const coin = this.add.graphics();
+    coin.fillStyle(0x2a1458, 1).fillCircle(cx, 0, 22);
+    coin.fillStyle(0x7f4bff, 1).fillCircle(cx, 0, 19);
+    coin.fillStyle(0xffffff, 0.25).fillEllipse(cx, -8, 26, 10);
+    coin.lineStyle(3, 0xffd23f, 1).strokeCircle(cx, 0, 19);
+    row.add(coin);
+    row.add(this.add.text(cx, 1, '2v2', { fontFamily: FONT, fontSize: '15px', color: '#ffffff', stroke: '#2a1458', strokeThickness: 3 }).setOrigin(0.5));
+    row.add(this.add.text(cx + 34, -11, 'MONEDAS 2v2', { fontFamily: FONT, fontSize: '19px', color: '#ffffff' }).setOrigin(0, 0.5).setLetterSpacing(1));
+    const total = this.add.text(cx + 34, 13, `TOTAL ${r.before}`, { fontFamily: FONT, fontSize: '15px', color: '#b9a8ff' }).setOrigin(0, 0.5).setLetterSpacing(1);
+    row.add(total);
+    const up = r.delta >= 0;
+    const dt = this.add.text(bw / 2 - 22, 0, `${up ? '+' : '−'}0`, { fontFamily: FONT, fontSize: '32px', color: up ? '#5dff8a' : '#ff6b78', stroke: '#0a1638', strokeThickness: 6 }).setOrigin(1, 0.5);
+    row.add(dt);
+    this.tweens.add({ targets: row, alpha: 1, duration: 260, delay: 1500 });
+    const k = { v: 0 };
+    this.tweens.add({
+      targets: k,
+      v: 1,
+      delay: 1750,
+      duration: 700,
+      ease: 'Cubic.easeOut',
+      onUpdate: () => {
+        dt.setText(`${up ? '+' : '−'}${Math.round(Math.abs(r.delta) * k.v)}`);
+        total.setText(`TOTAL ${Math.round(r.before + r.delta * k.v)}`);
+      },
+      onComplete: () => this.tweens.add({ targets: dt, scale: { from: 1.25, to: 1 }, duration: 220, ease: 'Back.easeOut' }),
+    });
+  }
+
   private duel(): Duel | null {
     const d = this.d;
+    if (d.doubles) return null; // (19-11-2026) el 2v2 no apuesta monedas de la Liga: en su lugar, las MONEDAS 2v2 (coins2v2Row)
     const r = d.ranked;
     if (r) {
       const entry = r.entry ?? Math.abs(r.delta);

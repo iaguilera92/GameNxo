@@ -16,17 +16,7 @@ import type { BoardEntry } from '../domain/rankedBots';
 import type { RankedView } from '../domain/ranked';
 import type { WeeklyReward } from '../domain/rankedState';
 import { onPlayerChange } from '../domain/playerStore';
-import { type RiskActivateError, activateRiskMode, claimWeekly, markRankedSeen, pendingWeekly, rankedState, rankedView, riskModeStatus, syncRanked, syncRiskMode } from '../logic/Ranked';
-import { formatRiskLeft } from '../domain/riskMode';
-import { showConfirm } from '../ui/ConfirmDialog';
-
-const RISK_ERRORS: Record<RiskActivateError, string> = {
-  offline: 'Necesitas conexión para activar el MODO RIESGO',
-  not_monday: 'El MODO RIESGO solo se activa los lunes',
-  already_used: 'Ya usaste el MODO RIESGO esta semana',
-  active: 'El MODO RIESGO ya está activo',
-  unknown: 'No se pudo activar el MODO RIESGO',
-};
+import { claimWeekly, markRankedSeen, pendingWeekly, rankedState, rankedView, syncRanked } from '../logic/Ranked';
 
 const NAVY = 0x0b1733;
 const NEON = 0x3a7bff;
@@ -79,7 +69,6 @@ export class RankedScene extends Phaser.Scene {
     installTapSound(this); // clic de interfaz en cada botón / diálogo
     this.cameras.main.fadeIn(200, 0, 0, 0);
     syncRanked();
-    void syncRiskMode(); // MODO RIESGO x2: el servidor manda (hora y activación); si cambia algo, onPlayerChange redibuja
     this.overlay = [];
     this.build();
     this.setupScroll();
@@ -121,6 +110,11 @@ export class RankedScene extends Phaser.Scene {
       this.add.image(W / 2, headY - 1, 'liga-title').setDisplaySize(titleW, titleW / 3);
     } else this.add.text(W / 2, headY + 2, 'LIGA', { fontFamily: FONT, fontSize: '54px', color: '#ffd23f', stroke: '#0a1638', strokeThickness: 10 }).setOrigin(0.5).setLetterSpacing(6).setShadow(0, 5, '#000000', 6, true, true);
     this.coinPill(W - 24, headY, v.coins); // monedas de la cuenta (arriba a la derecha)
+    // (19-11-2026) LIGA 2v2 (ranking por MONEDAS 2v2: Liga2v2Scene), bajo el botón de volver
+    arcadeButton(this, 84, headY + 74, 128, 46, 'LIGA 2v2', () => {
+      this.cameras.main.fadeOut(180, 0, 0, 0);
+      this.cameras.main.once('camerafadeoutcomplete', () => this.scene.start('Liga2v2'));
+    }, { palette: 'blue' });
     const headerObjects = this.children.list.slice(headerStart);
     this.add.container(0, 0, headerObjects).setScrollFactor(0);
     const contentStart = this.children.list.length;
@@ -390,9 +384,10 @@ export class RankedScene extends Phaser.Scene {
     // ---- líderes de la liga: podio, puestos siguientes y tabla completa
     // panel: la etiqueta del título va montada sobre su borde de arriba (centro en `panelTop`)
     const TAG_H = 34;
-    // ---- MODO RIESGO x2 (evento de los lunes, domain/riskMode.ts): tarjeta entre la recompensa semanal y los líderes
-    const riskH = this.riskCard(W / 2, ry + rh / 2 + GAP, rw);
-    const panelTop = ry + rh / 2 + GAP + riskH + GAP + TAG_H / 2;
+    // ---- (19-11-2026, usuario) ÚLTIMAS PARTIDAS y PREMIOS EXTRA: dos botones chicos (abren su diálogo) entre la recompensa
+    // semanal y los líderes. El MODO RIESGO x2 ya no está aquí: vive en el menú principal.
+    const quickH = this.quickButtons(v, W / 2, ry + rh / 2 + GAP, rw);
+    const panelTop = ry + rh / 2 + GAP + quickH + GAP + TAG_H / 2;
     const podiumW = Math.min(660, W - 40);
     const podiumPanel = this.add.graphics();
     // LÍDERES (13-11-2026, estilo de la referencia): top 3 en cards pegadas (el 1.º al centro y más alto), insignia
@@ -509,19 +504,9 @@ export class RankedScene extends Phaser.Scene {
     });
     arcadeButton(this, W / 2, top100Y, Math.min(480, W - 80), 46, 'VER TOP 100', () => this.leaderboard(), { palette: 'blue' });
 
-    // ---- paneles inferiores: historial y premios por posición
-    const panelsTop = panelTop + leadersH + GAP;
-    const panelGap = 16;
-    const bottomPanelW = (podiumW - panelGap) / 2;
-    const panelH = 210;
-    const leftPanelX = W / 2 - bottomPanelW / 2 - panelGap / 2;
-    const rightPanelX = W / 2 + bottomPanelW / 2 + panelGap / 2;
-    this.historyCard(v, leftPanelX, panelsTop, bottomPanelW, panelH);
-    this.extraRewardsCard(rightPanelX, panelsTop, bottomPanelW, panelH);
-
     const contentObjects = this.children.list.slice(contentStart);
     this.add.container(0, 0, contentObjects);
-    const contentBottom = panelsTop + panelH;
+    const contentBottom = panelTop + leadersH;
     const navTop = H - this.navImageHeight(W);
     this.maxScrollY = Math.max(0, contentBottom - navTop + 16);
     this.scrollY = Phaser.Math.Clamp(this.scrollY, 0, this.maxScrollY);
@@ -531,96 +516,71 @@ export class RankedScene extends Phaser.Scene {
   }
 
   /**
-   * MODO RIESGO x2: nombre, estado (disponible · cuenta regresiva · terminado · solo lunes) y botón ACTIVAR.
-   * El tiempo se calcula con la hora de activación del servidor: cerrar la pantalla o el juego no lo pausa.
-   * Devuelve el alto de la tarjeta.
+   * (19-11-2026, usuario) Dos botones CHICOS lado a lado: ÚLTIMAS PARTIDAS (reloj, con los últimos resultados en puntitos) y
+   * PREMIOS EXTRA (regalo). Cada uno abre su diálogo (historyOverlay / extraRewardsOverlay). Reemplazan a las dos tarjetas
+   * grandes del final y a la tarjeta del MODO RIESGO. Devuelve el alto de la fila.
    */
-  private riskCard(cx: number, top: number, w: number): number {
-    const rs = riskModeStatus();
-    const h = 92;
-    const x0 = cx - w / 2;
+  private quickButtons(v: RankedView, cx: number, top: number, w: number): number {
+    const h = 54;
+    const gap = 12;
+    const bw = Math.min(260, (w - gap) / 2);
     const cy = top + h / 2;
-    const active = rs.phase === 'active';
-    const avail = rs.phase === 'available';
-    const line = active ? 0xff5a2e : avail ? 0xffa42e : 0x5a3a2a;
-    const g = this.add.graphics();
-    g.fillStyle(0x000000, 0.35).fillRoundedRect(x0 + 3, top + 6, w, h, 20);
-    g.fillStyle(active ? 0x3a0d06 : 0x1f0f0a, 0.97).fillRoundedRect(x0, top, w, h, 20);
-    g.fillStyle(0xff7a2e, active ? 0.22 : 0.08).fillRoundedRect(x0 + 4, top + 4, w - 8, h * 0.4, 16);
-    g.lineStyle(3, line, 1).strokeRoundedRect(x0, top, w, h, 20);
-    if (active) {
-      const halo = this.add.graphics();
-      halo.lineStyle(8, 0xff5a2e, 0.35).strokeRoundedRect(x0 - 2, top - 2, w + 4, h + 4, 22);
-      this.tweens.add({ targets: halo, alpha: { from: 1, to: 0.3 }, duration: 700, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
-    }
-    // medallón x2
-    const mx = x0 + 48;
-    const med = this.add.graphics({ x: mx, y: cy });
-    med.fillStyle(0x07152f, 1).fillCircle(0, 0, 32);
-    med.fillStyle(active || avail ? 0xd8361e : 0x4a2a20, 1).fillCircle(0, 0, 29);
-    med.fillStyle(0xffffff, 0.22).fillCircle(-8, -9, 10);
-    med.lineStyle(2.5, active || avail ? 0xffd23f : 0x8a6a50, 1).strokeCircle(0, 0, 29);
-    const x2 = this.add.text(mx, cy + 1, 'x2', { fontFamily: FONT, fontSize: '30px', color: active || avail ? '#ffffff' : '#b7a090', stroke: '#4a0d00', strokeThickness: 5 }).setOrigin(0.5);
-    if (active) this.tweens.add({ targets: [med, x2], scale: { from: 1, to: 1.08 }, duration: 450, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
-    // textos
-    const tx = mx + 46;
-    const btnW = 150;
-    const textW = w - (tx - x0) - (avail ? btnW + 26 : 18);
-    const title = this.add.text(tx, cy - 20, 'MODO RIESGO x2', { fontFamily: FONT, fontSize: '22px', color: active ? '#ffb347' : '#ffd23f', stroke: '#2a0a00', strokeThickness: 5 }).setOrigin(0, 0.5).setLetterSpacing(1);
-    fitText(title, textW);
-    const sub =
-      active ? 'APUESTAS RANKED x2 · QUEDAN' : avail ? '¡DISPONIBLE HOY! Apuestas Ranked x2 por 10 min' : rs.phase === 'used' ? 'TERMINADO · vuelve el próximo lunes' : 'Solo los LUNES · una vez por semana';
-    const st = this.add.text(tx, cy + 14, sub, { fontFamily: FONT, fontSize: '15px', color: active ? '#ffffff' : avail ? '#ffe0b0' : '#b7a090' }).setOrigin(0, 0.5);
-    fitText(st, active ? textW - 90 : textW);
-    if (active) {
-      // cuenta regresiva (cada segundo, con la hora real: al volver muestra lo que de verdad queda)
-      const clock = this.add.text(tx + st.displayWidth + 10, cy + 14, formatRiskLeft(rs.msLeft), { fontFamily: FONT, fontSize: '24px', color: '#ffd23f', stroke: '#2a0a00', strokeThickness: 5 }).setOrigin(0, 0.5);
-      const ev = this.time.addEvent({
-        delay: 1000,
-        loop: true,
-        callback: () => {
-          if (!clock.active) return void ev.remove();
-          const now = riskModeStatus();
-          if (now.phase !== 'active') {
-            ev.remove();
-            if (this.overlay.length === 0) this.rebuild(); // se apagó solo
-            return;
-          }
-          clock.setText(formatRiskLeft(now.msLeft));
-        },
-      });
-    }
-    if (avail) {
-      arcadeButton(this, x0 + w - 14 - btnW / 2, cy, btnW, 52, 'ACTIVAR', () => this.confirmRisk(), { palette: 'red', pulse: true });
-    }
+    const recent = v.history.slice(0, 5);
+    this.quickButton(cx - bw / 2 - gap / 2, cy, bw, h, 'history', 'ÚLTIMAS PARTIDAS', 0x168bff, 0x061433, recent.map((m) => m.outcome === 'win'), () => this.historyOverlay());
+    this.quickButton(cx + bw / 2 + gap / 2, cy, bw, h, 'gift', 'PREMIOS EXTRA', 0xf0b91f, 0x211704, null, () => this.extraRewardsOverlay());
     return h;
   }
 
-  /** Confirmación (una sola vez por semana) y activación en el servidor. */
-  private confirmRisk() {
-    if (this.overlay.length) return;
-    const objs = showConfirm(this, {
-      title: 'MODO RIESGO x2',
-      message: 'Durante 10 minutos tus apuestas Ranked descuentan y pagan el DOBLE.',
-      detail: 'El tiempo corre aunque salgas del juego. Solo una vez por semana.',
-      confirmLabel: 'ACTIVAR',
-      cancelLabel: 'AHORA NO',
-      onConfirm: () => {
-        close();
-        void activateRiskMode().then((r) => {
-          if (!this.scene.isActive()) return;
-          this.rebuild();
-          if (r.ok) this.toast('¡MODO RIESGO x2 ACTIVO!');
-          else this.toast(RISK_ERRORS[r.error]);
-        });
-      },
-      onCancel: () => close(),
-    });
-    const close = () => {
-      objs.forEach((o) => o.destroy());
-      this.overlay = [];
+  /** Botón chico: ícono a la izquierda, título y (en el historial) los últimos resultados como puntitos verde / rojo. */
+  private quickButton(x: number, y: number, w: number, h: number, icon: 'history' | 'gift', label: string, line: number, fill: number, dots: boolean[] | null, onTap: () => void) {
+    const holder = this.add.container(x, y);
+    const inner = this.add.container(0, 0);
+    holder.add(inner);
+    const g = this.add.graphics();
+    g.fillStyle(0x000000, 0.3).fillRoundedRect(-w / 2 + 2, -h / 2 + 4, w, h, 16);
+    g.fillStyle(fill, 0.97).fillRoundedRect(-w / 2, -h / 2, w, h, 16);
+    g.fillStyle(0xffffff, 0.06).fillRoundedRect(-w / 2 + 3, -h / 2 + 3, w - 6, h * 0.42, 13);
+    g.lineStyle(6, line, 0.14).strokeRoundedRect(-w / 2, -h / 2, w, h, 16);
+    g.lineStyle(2.5, line, 1).strokeRoundedRect(-w / 2, -h / 2, w, h, 16);
+    inner.add(g);
+    const ix = -w / 2 + 28;
+    const ic = this.add.graphics({ x: ix, y: 0 });
+    if (icon === 'history') {
+      ic.lineStyle(3, 0x45d9ff, 1).strokeCircle(0, 0, 13);
+      ic.lineStyle(3, 0x45d9ff, 1).beginPath().moveTo(0, -8).lineTo(0, 0).lineTo(7, 4).strokePath();
+    } else drawGiftIcon(ic, 17);
+    inner.add(ic);
+    const tx = ix + 24;
+    const maxW = w / 2 - 12 - tx;
+    const hasDots = !!dots && dots.length > 0;
+    const t = this.add.text(tx, hasDots ? -9 : 0, label, { fontFamily: FONT, fontSize: '15px', color: icon === 'gift' ? '#fff0a8' : '#ffffff' }).setOrigin(0, 0.5).setLetterSpacing(0.3);
+    fitText(t, maxW);
+    inner.add(t);
+    if (hasDots) {
+      const dg = this.add.graphics();
+      dots!.forEach((win, i) => {
+        const dx = tx + 6 + i * 16;
+        dg.fillStyle(0x07152f, 1).fillCircle(dx, 12, 7);
+        dg.fillStyle(win ? 0x52e432 : 0xff5a4f, 1).fillCircle(dx, 12, 5.5);
+      });
+      inner.add(dg);
+    }
+    holder.setSize(w, h).setInteractive({ useHandCursor: true });
+    let pressed = false;
+    const release = (fire: boolean) => {
+      if (!pressed) return;
+      pressed = false;
+      this.tweens.killTweensOf(inner);
+      this.tweens.add({ targets: inner, scale: 1, duration: 220, ease: 'Back.easeOut', easeParams: [3], onComplete: () => fire && !this.overlay.length && onTap() });
     };
-    this.overlay = objs;
+    holder.on('pointerdown', () => {
+      pressed = true;
+      this.tweens.killTweensOf(inner);
+      this.tweens.add({ targets: inner, scale: 0.93, duration: 70, ease: 'Quad.easeOut' });
+    });
+    holder.on('pointerup', () => release(true));
+    holder.on('pointerout', () => release(false));
+    return holder;
   }
 
   private setupScroll() {
@@ -661,60 +621,6 @@ export class RankedScene extends Phaser.Scene {
   private setScroll(y: number) {
     this.scrollY = Phaser.Math.Clamp(y, 0, this.maxScrollY);
     this.cameras.main.setScroll(0, this.scrollY);
-  }
-
-  private historyCard(v: RankedView, x: number, y: number, w: number, h: number) {
-    const left = x - w / 2;
-    const g = this.add.graphics();
-    g.fillStyle(0x061433, 0.96).fillRoundedRect(left, y, w, h, 22);
-    g.lineStyle(8, 0x19bdff, 0.14).strokeRoundedRect(left, y, w, h, 22);
-    g.lineStyle(3, 0x168bff, 1).strokeRoundedRect(left, y, w, h, 22);
-    const clock = this.add.graphics({ x: left + 30, y: y + 28 });
-    clock.lineStyle(3, 0x45d9ff, 1).strokeCircle(0, 0, 13);
-    clock.lineStyle(3, 0x45d9ff, 1).beginPath().moveTo(0, -8).lineTo(0, 0).lineTo(7, 4).strokePath();
-    this.add.text(left + 54, y + 28, 'ÚLTIMAS PARTIDAS', { fontFamily: FONT, fontSize: '19px', color: '#ffffff' }).setOrigin(0, 0.5).setLetterSpacing(0.5);
-    const recent = v.history.slice(0, 3);
-    if (!recent.length) {
-      this.add.text(x, y + 103, 'Juega partidas de Liga para ver tus resultados', { fontFamily: FONT, fontSize: '14px', color: '#9fb4e0', align: 'center', wordWrap: { width: w - 32 } }).setOrigin(0.5);
-    } else {
-      recent.forEach((match, i) => {
-        const rowY = y + 60 + i * 33;
-        const win = match.outcome === 'win';
-        const row = this.add.graphics();
-        row.fillStyle(0x081a3a, 0.98).fillRoundedRect(left + 12, rowY - 15, w - 24, 30, 13);
-        row.lineStyle(1.5, win ? 0x168bff : 0x168bff, 0.65).strokeRoundedRect(left + 12, rowY - 15, w - 24, 30, 13);
-        row.fillStyle(win ? 0x087d39 : 0x962b29, 1).fillRoundedRect(left + 18, rowY - 11, 94, 22, 11);
-        this.add.text(left + 65, rowY, win ? 'VICTORIA' : 'DERROTA', { fontFamily: FONT, fontSize: '14px', color: '#ffffff' }).setOrigin(0.5);
-        const delta = `${match.delta >= 0 ? '+' : '−'}${fmtCoins(Math.abs(match.delta))}`;
-        this.add.text(left + w - 19, rowY, delta, { fontFamily: FONT, fontSize: '18px', color: win ? '#55ef81' : '#ff8174' }).setOrigin(1, 0.5);
-      });
-    }
-    arcadeButton(this, x, y + h - 39, w - 40, 36, 'VER HISTORIAL', () => this.historyOverlay(), { palette: 'blue' });
-  }
-
-  private extraRewardsCard(x: number, y: number, w: number, h: number) {
-    const left = x - w / 2;
-    const g = this.add.graphics();
-    g.fillStyle(0x211704, 0.97).fillRoundedRect(left, y, w, h, 22);
-    g.lineStyle(8, GOLD, 0.14).strokeRoundedRect(left, y, w, h, 22);
-    g.lineStyle(3, 0xf0b91f, 1).strokeRoundedRect(left, y, w, h, 22);
-    const gift = this.add.graphics({ x: left + 30, y: y + 28 });
-    drawGiftIcon(gift, 18);
-    this.add.text(left + 56, y + 28, 'PREMIOS EXTRA', { fontFamily: FONT, fontSize: '20px', color: '#fff0a8' }).setOrigin(0, 0.5).setLetterSpacing(0.5);
-    RANKED.positionPrizes.forEach((prize, i) => {
-      // 4 tramos (v2): filas más bajas para que quepan sobre el botón
-      const rowY = y + 60 + i * 24;
-      const row = this.add.graphics();
-      row.fillStyle(0x191405, 0.98).fillRoundedRect(left + 12, rowY - 11, w - 24, 22, 11);
-      row.lineStyle(1.5, 0x927322, 0.95).strokeRoundedRect(left + 12, rowY - 11, w - 24, 22, 11);
-      row.fillStyle(i === 0 ? 0xa96800 : 0x4b4635, 1).fillRoundedRect(left + 16, rowY - 9, 80, 18, 9);
-      const lb = this.add.text(left + 56, rowY, prize.label, { fontFamily: FONT, fontSize: '12px', color: '#ffffff' }).setOrigin(0.5);
-      fitText(lb, 74);
-      const cash = prize.cash > 0 ? ` · ${prize.cash} dinero` : '';
-      const value = this.add.text(left + 104, rowY, `+${fmtCoins(prize.coins)}${cash}`, { fontFamily: FONT, fontSize: '13px', color: '#ffe15b' }).setOrigin(0, 0.5);
-      fitText(value, w - 124);
-    });
-    arcadeButton(this, x, y + h - 39, w - 40, 36, 'VER PREMIOS', () => this.extraRewardsOverlay(), { palette: 'yellow' });
   }
 
   private historyOverlay() {

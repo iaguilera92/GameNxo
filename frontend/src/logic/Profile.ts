@@ -1,6 +1,7 @@
 import type { AbilityId } from './Abilities';
 import { getPlayer, commit } from '../domain/playerStore';
 import * as ops from '../domain/operations';
+import { type Result2v2, apply2v2Result } from '../domain/coins2v2';
 import type { SkinId } from '../characters/skins';
 import { type ZoneStatLevels, zoneStatsOf } from '../domain/zoneProgress';
 import { type PassiveId, passiveOf, passiveValue } from '../domain/characterPassives';
@@ -8,7 +9,7 @@ import { type InfernoPower, infernoPowerOf } from '../domain/infernoPowers';
 import { type ChargeFxId, chargeFxOf } from '../domain/chargeFx';
 import { type SmashPower, smashPowerOf } from '../domain/smashPowers';
 import { type DefensivePower, defensivePowerOf } from '../domain/defensivePowers';
-import { type CharColorId, charColorOf } from '../domain/charColors';
+import { type CharColorId, charColorFor } from '../domain/charColors';
 
 /**
  * Fachada de compatibilidad: las escenas (incluida MatchScene) siguen usando esta API.
@@ -64,7 +65,7 @@ export function getProfile(): Profile {
     charge: chargeFxOf(s.equipped.charge, skin),
     smash: smashPowerOf(s.equipped.smash),
     defensive: defensivePowerOf(s.equipped.defensive),
-    color: charColorOf(s.equipped.color),
+    color: charColorFor(s.owned, s.equipped.color, skin), // (19-11-2026) por personaje: si no lo tiene para este, el clásico
   };
 }
 
@@ -86,6 +87,17 @@ export function addCoins(amount: number): { gained: number; before: number; afte
   const res = commit((s) => ops.addCoins(s, amount));
   const after = getPlayer().coins;
   return { gained: res.ok ? after - before : 0, before, after };
+}
+
+/** MONEDAS 2v2: aplica el resultado de un partido 2v2 y guarda (domain/coins2v2.ts). */
+export function addCoins2v2(r: Result2v2): { before: number; after: number; delta: number } {
+  let out = { before: 0, after: 0, delta: 0 };
+  commit((s) => {
+    const a = apply2v2Result(s, r);
+    out = { before: a.before, after: a.after, delta: a.delta };
+    return { ok: true as const, state: a.state };
+  });
+  return out;
 }
 
 /** Cambia el personaje elegido y lo guarda (solo si el jugador lo posee). */

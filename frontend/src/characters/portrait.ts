@@ -19,16 +19,16 @@ const PORTRAITS: Partial<Record<SkinId, PortraitDef>> = {
   nxo: {
     key: 'portrait-nxo',
     file: 'personajes/Nxo/pj-nxo.webp',
-    w: 1132,
-    h: 1390,
-    box: { x0: 186, y0: 8, x1: 1072, y1: 1371 },
+    w: 1122, // (21-11-2026) retrato nuevo (pj-nxo.png sobre fondo NEGRO, sin el fondo, a WebP; antes sobre verde croma)
+    h: 1402,
+    box: { x0: 153, y0: 2, x1: 1016, y1: 1359 },
   },
   mai: {
     key: 'portrait-mai',
     file: 'assets/characters/mai_portrait.webp',
-    w: 1130,
-    h: 1392,
-    box: { x0: 118, y0: 4, x1: 1070, y1: 1356 },
+    w: 1122, // (21-11-2026) retrato nuevo (pj-mai.png sin el verde croma, con la hoja verde de la flor conservada)
+    h: 1402,
+    box: { x0: 110, y0: 7, x1: 1078, y1: 1374 },
   },
 };
 

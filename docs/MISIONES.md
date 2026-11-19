@@ -19,9 +19,17 @@ Cada una cuenta **una sola vez** por partida. Lógica: `frontend/src/domain/matc
   cadena ESPECIAL → devolución → GLOBO máximo; se corta con cualquier otro golpe y en cada punto nuevo.
 - **Puntos**: `pointTo` (tras `netGate`, o sea el punto que se aplica de verdad, también en red) llama a `missionPoint`, que
   devuelve las misiones nuevas. Cada una dispara la alerta de LOGRO.
-- **Alerta de LOGRO** (`fx/missionAlert.ts`): placa navy con borde dorado, estrella, "¡LOGRO!", nombre y "+N" con moneda. Centrada
-  entre el joystick y los botones de habilidades, ~350 px sobre el borde de abajo (más arriba que el botón ESPECIAL). Varias a la vez
-  salen en fila. No sale en el punto que termina el partido (ya empezó el final): esa misión se ve en ADICIONALES.
+- **Alerta de LOGRO** (`fx/missionAlert.ts`, arte nuevo 21-11-2026): la imagen `public/assets/ui/marcador-misiones.webp` (660 × 163,
+  pastilla navy con borde dorado, medalla con estrella a la izquierda, moneda-pelota arriba a la derecha y un casillero para el
+  premio; la original en PNG está en `_temp/respaldo_oficial/ui-png-originales/`). Sobre ella, en una sola pieza: "¡LOGRO!" (dorado) y
+  el nombre (blanco, se achica si es largo) centrados en la zona libre, y "+N" (dorado) centrado en el casillero. Ya no se dibuja
+  placa, estrella ni moneda por código. Se muestra a 330 px de ancho × ~81 de alto (el alto sale de la proporción de la imagen), centrada
+  entre el joystick y los botones de habilidades, ~350 px sobre el borde de abajo (más arriba que el botón ESPECIAL). Animaciones:
+  entrada con rebote, destello del borde, halo dorado que late y salida. La textura `ui-marcador-misiones` se precarga en
+  `MatchScene.preload` (`queueMissionAlertArt`); si falta, dibuja una pastilla simple. Las zonas del texto y del casillero están en
+  `MARKER_ART` (coordenadas de la imagen a 2128 × 524): si se cambia el arte, se ajustan ahí. Varias a la vez salen en fila.
+  No sale en el punto que termina el partido (ya empezó el final): esa misión se ve en ADICIONALES. Solo la ve el usuario local
+  en 1v1: en 2v2 no hay misiones y el bot o el rival online no la muestran.
 - **Fin de partido** (`MatchEndScene`): `MatchScene.endMatch` manda `missions` (ids cumplidos). Tras las 3 cards de recompensa y,
   si hubo duelo de apuestas, tras pasar las monedas apostadas, aparece **ADICIONALES**: 4 cards (✓ dorada = cumplida, candado =
   no) y el total que cuenta hacia arriba.

@@ -519,6 +519,15 @@ export class Character extends Phaser.GameObjects.Container {
     return this.nxo?.remateJump() ?? false;
   }
 
+  /** (21-11-2026) ULTI HURACAN: deja el golpe en curso congelado en su frame `frame` (indice) hasta releaseFollowThrough (ver NxoActor). */
+  holdFollowThrough(frame: number, ms = 0) {
+    this.nxo?.holdFollowThrough(frame, ms);
+  }
+
+  releaseFollowThrough() {
+    this.nxo?.releaseFollowThrough();
+  }
+
   impactStun(kind: 'smash' | 'inferno', ms: number, throwRacket = true): boolean {
     return this.nxo?.impactStun(kind, ms, throwRacket) ?? false;
   }

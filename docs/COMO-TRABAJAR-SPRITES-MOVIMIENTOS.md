@@ -121,21 +121,36 @@ una carpeta por personaje, y la vista de frente (rival) en su subcarpeta `rival/
 ```
 frontend/public/personajes/
 ├── Nxo/
-│   ├── pj-nxo-1.png … -4.png           hojas de movimientos, de espaldas (jugador)
-│   ├── pj-nxo-ulti.png                 ULTI completa, de espaldas (6 filas × 9)
-│   ├── pj-nxo-mirada.webp              franja de los ojos del INFERNO        (la carga el juego)
-│   ├── pj-nxo.webp                     retrato: menú, PERSONAJE y VS         (la carga el juego)
-│   ├── emojis/                         nxo-risa, nxo-pensando, nxo-enojado   (fuentes: el juego usa assets/emotes/)
-│   └── rival/
-│       ├── pj-nxo-rival-1.png … -4.png hojas de movimientos, de frente (rival)
-│       └── pj-nxo-rival-ulti.png       ULTI completa, de frente (6 filas × 9)
-└── Mai/
-    ├── pj-mai-1.png … -4.png           hojas de movimientos, de espaldas
-    ├── pj-mai-ulti.png                 ULTI completa (6 × 9), de espaldas
-    ├── pj-mai-mirada.webp              franja de los ojos del INFERNO        (la carga el juego)
-    ├── pj-mai.png                      referencia del diseño
-    └── rival/                          pj-mai-rival-1..4.png, pj-mai-rival-ulti.png (solo la ULTI está cortada; ver §6 y §8)
+│   ├── pj-nxo.png                      arte del retrato sobre fondo NEGRO liso (fuente; 21-11-2026, 2.ª versión)
+│   ├── pj-nxo.webp                     retrato sin el fondo: menú, PERSONAJE y VS  (la carga el juego)
+│   ├── pj-nxo-mirada.webp              franja de los ojos del INFERNO              (la carga el juego)
+│   ├── jugador/                        imágenes HD de espaldas (una por animación; nxo-movimientos-N, nxo-golpes-N, nxo-ulti-N…)
+│   ├── emojis/                         nxo-risa, nxo-pensando, nxo-enojado         (fuentes: el juego usa assets/emotes/)
+│   └── rival/                          pj-nxo-rival-1..4.png / -ulti.png (hojas antiguas de frente) y hd/ (las de ahora)
+├── Mai/
+│   ├── pj-mai.png                      arte del retrato sobre verde croma (fuente; 21-11-2026)
+│   ├── pj-mai-mirada.webp              franja de los ojos del INFERNO              (la carga el juego)
+│   ├── jugador/  emotes/               HD de espaldas y fuentes de sus emotes
+│   └── rival/                          pj-mai-rival-1..4.png / -ulti.png (antiguas) y hd/ (las de ahora)
+├── Jun/
+│   └── pj-jun.png                      arte del retrato sobre verde croma; SIN hojas (personaje del PASE, aún no jugable; ver §8)
+└── Net/
+    └── pj-net.png                      arte del retrato sobre verde croma (21-11-2026); SIN hojas (aún no jugable). Su retrato sin el verde es
+                                        assets/characters/net_portrait.webp (159 KB; medidas en characters/passPortrait.ts, SOON_PORTRAITS)
 ```
+En CAMBIAR PERSONAJE (PERSONALIZAR, 21-11-2026) salen los 4 personajes: NXO y MAI (jugables) y JUN y NET bloqueados. Sus retratos de JUN y NET se piden al abrir el diálogo.
+
+**Limpieza del 21-11-2026 (usuario):** se borraron las hojas ANTIGUAS de espaldas `pj-nxo-1..4.png`, `pj-nxo-ulti.png`, `pj-mai-1..4.png` y
+`pj-mai-ulti.png` y la carpeta `Mai/Old sprites/` (todo sigue en el historial de git). Las animaciones de espaldas salen de `jugador/` con
+`build-hd.mjs`; `build-moves.mjs nxo|mai` YA NO funciona (no tiene sus hojas) y no hace falta. El retrato del juego es `pj-nxo.webp` (Nxo, en
+`personajes/`) y `assets/characters/mai_portrait.webp` (Mai): se hacen quitando el verde de `pj-<id>.png` (croma de `build-hd.mjs`; en Mai se conserva la
+hoja verde de la flor de la gorra) y pasando a WebP con `tools/convert-image.mjs`; sus medidas (`w`, `h`, caja visible) están en `characters/portrait.ts`
+y `characters/passPortrait.ts`: si se cambia el retrato, volver a medirlas.
+**Retrato de Nxo sobre fondo NEGRO (21-11-2026):** la 2.ª versión de `pj-nxo.png` llegó sin croma verde y sin transparencia (fondo casi negro, canales 0-2). El
+croma de `build-hd.mjs` no sirve: se quitó el fondo con un flood-fill desde el borde sobre los píxeles de brillo ≤ 2 (con borde suave hasta 14; con un umbral
+mayor se comía el pelo, la chaqueta y el short, que también son negros) y los huecos de negro puro dentro de la malla de la raqueta se hicieron transparentes.
+Es un proceso aproximado: lo ideal es entregar el retrato sobre VERDE croma o ya con transparencia. El respaldo del retrato anterior está en
+`_temp/respaldo_oficial/Nxo/pj-nxo-retrato-anterior.webp`. Caja visible nueva: 153, 2, 1016, 1359 (de 1122 × 1402).
 
 Los respaldos de hojas NO viven en `personajes/`: están fuera de `frontend/public/`, en `_temp/respaldo_oficial/`
 (en la raíz del repo), con la misma estructura (`Nxo/`, `Nxo/rival/`, `Mai/`, `Mai/rival/`), para que nunca lleguen al APK.
@@ -168,9 +183,9 @@ Por personaje y por vista (espaldas = jugador, frente = rival):
 
 | Pack | Vista | Hojas 1-4 | INFERNO | Tiras que carga el juego | JSON (`src/characters/`) |
 |---|---|---|---|---|---|
-| `nxo` | espaldas | `Nxo/pj-nxo-1..4.png` | `Nxo/pj-nxo-ulti.png` (6 × 9, tiras WebP) | `nxo-v2/`, `nxo-inferno/` | `nxo-{sprites,hits,move,special,extra,inferno}.json` |
+| `nxo` | espaldas | `Nxo/jugador/nxo-*.png` (HD, `build-hd.mjs`; las hojas `pj-nxo-1..4.png` se borraron el 21-11-2026) | `Nxo/jugador/nxo-ulti-1..6.png` (HD, `--ulti`; `pj-nxo-ulti.png` borrada) | `nxo-v2/`, `nxo-inferno/` | `nxo-{sprites,hits,move,special,extra,inferno}.json` |
 | `nxo-front` | frente | `Nxo/rival/pj-nxo-rival-1..4.png` | `Nxo/rival/pj-nxo-rival-ulti.png` (6 × 9, tiras WebP) | `nxo-front-v2/`, `nxo-front-inferno/` | `nxo-front-*.json` |
-| `mai` | espaldas | `Mai/pj-mai-1..4.png` | `Mai/pj-mai-ulti.png` (6 × 9, tiras WebP) | `mai-v2/`, `mai-inferno/` | `mai-*.json` |
+| `mai` | espaldas | `Mai/jugador/mai-*.png` (HD, `build-hd.mjs`; las hojas `pj-mai-1..4.png` se borraron el 21-11-2026) | `Mai/jugador/mai-ulti-1..6.png` (HD, `--ulti`; `pj-mai-ulti.png` borrada) | `mai-v2/`, `mai-inferno/` | `mai-*.json` |
 | `mai-front` | frente | `Mai/rival/hd/mai-rival-*.png` (HD, `build-hd.mjs`, 17-11-2026) | `Mai/rival/hd/mai-rival-ulti-1..6.png` (HD, `--ulti`) | `mai-front-v2/`, `mai-front-inferno/` | `mai-front-*.json` |
 
 Qué pack usa cada personaje: `src/characters/catalog.ts`. Carga de los packs: `PACKS` en
@@ -598,6 +613,14 @@ Personaje nuevo: las mismas 4 hojas, la ULTI y la mirada, con este contrato. Pas
 
 
 ## 8. Pendiente de arte (hojas por redibujar)
+
+**JUN (21-11-2026): personaje nuevo, SIN hojas todavía.** Solo existe `public/personajes/Jun/pj-jun.png` (cuerpo entero sobre verde croma, 1122 × 1402). Es el
+personaje del nivel 30 del PASE DE BATALLA (reemplaza a Mai) pero NO se puede elegir ni jugar: no está en `SkinId`, `characters.mjs`, `NxoActor` ni
+`catalog.ts`. Su retrato `public/assets/characters/jun_portrait.webp` se hizo quitando el verde con el mismo croma de `build-hd.mjs` (caja visible y datos
+en `characters/passPortrait.ts`; la fuente PNG no llega al APK). Para volverlo jugable: seguir "Personaje nuevo" (§7: hojas en `personajes/Jun/` con los
+nombres de siempre, entrada en `tools/characters.mjs`, `build-moves` / `build-hd` y `build-ulti`, conectar el pack, pasiva) y quitar `soon` de su premio en
+`domain/battlePassConfig.ts`; los jugadores que ya reclamaron el nivel 30 reciben `skin:jun` al cargar (`bpGrantClaimedItemsInPlace`). Su color DORADO
+(premium del Pase) usa el tono de la ropa de Jun medido en `fx/CharColorFx.ts` (`SOURCE.jun`, con `boost.dorado` por ser ropa oscura).
 
 Anotado el 12-11-2026. Ninguna de estas hojas se instala hasta que cumpla el contrato (�4 y �5); mientras tanto el juego sigue con lo que ya tiene.
 

@@ -43,9 +43,11 @@ export const CHAR_COLORS: CharColorDef[] = [
 
 /** Color principal de la ropa de cada personaje (el que se cambia). */
 // medidos en los retratos (11-11-2026): ropa de NXO ≈ 356° (sat. 0,9-0,96); su piel sombreada ≈ 17° queda FUERA del rango
-const SOURCE: Record<string, { from: number; range: number; minSat: number }> = {
+// `boost` (opcional): brillo extra por estilo para ropas OSCURAS (el azul marino de JUN pasado a dorado salía marrón: ×2,3 lo deja dorado brillante)
+const SOURCE: Record<string, { from: number; range: number; minSat: number; boost?: Partial<Record<CharColorId, number>> }> = {
   nxo: { from: 0.9875, range: 0.045, minSat: 0.5 }, // rojo de la chaqueta, el short, las zapatillas y la raqueta
   mai: { from: 0.925, range: 0.07, minSat: 0.45 }, // rosa de la gorra y el vestido
+  jun: { from: 0.625, range: 0.05, minSat: 0.55, boost: { dorado: 3.2 } }, // (21-11-2026) azul marino de la camiseta, el short, las muñequeras y la raqueta (medido en su retrato)
 };
 
 /**
@@ -53,9 +55,9 @@ const SOURCE: Record<string, { from: number; range: number; minSat: number }> = 
  * no se puede separar. El retrato es una imagen fija, así que se recolorea en CPU una vez por estilo (recoloredPortrait).
  */
 const PORTRAIT_PROTECT: Record<string, [number, number, number, number][]> = {
-  'portrait-nxo': [[474, 396, 584, 452]],
+  // (21-11-2026) sin zonas protegidas: el retrato nuevo de NXO no tiene la boca roja del anterior (antes: [[474, 396, 584, 452]])
 };
-const PORTRAIT_KEYS = new Set(['portrait-nxo', 'portrait-mai']);
+const PORTRAIT_KEYS = new Set(['portrait-nxo', 'portrait-mai', 'portrait-jun']);
 
 export function charColorDef(id: CharColorId | string | null | undefined): CharColorDef | null {
   return CHAR_COLORS.find((c) => c.id === id) ?? null;
@@ -147,7 +149,7 @@ function paramsFor(skin: string, def: CharColorDef): ColorParams {
   let p = PARAMS_CACHE.get(key);
   if (!p) {
     const src = SOURCE[skin] ?? SOURCE.nxo;
-    p = { from: src.from, range: src.range, minSat: src.minSat, to: def.to ?? src.from, keepHue: def.to === null ? 1 : 0, sat: def.sat, bright: def.bright };
+    p = { from: src.from, range: src.range, minSat: src.minSat, to: def.to ?? src.from, keepHue: def.to === null ? 1 : 0, sat: def.sat, bright: def.bright * (src.boost?.[def.id] ?? 1) };
     PARAMS_CACHE.set(key, p);
   }
   return p;
@@ -291,7 +293,7 @@ function recoloredPortrait(scene: Phaser.Scene, key: string, def: CharColorDef, 
     if (w <= 0) continue;
     const nh = def.to === null ? h : fract(h - S.from + def.to);
     const ns = Math.min(1, s * def.sat);
-    const nv = Math.min(1, v * def.bright);
+    const nv = Math.min(1, v * def.bright * (S.boost?.[def.id] ?? 1));
     const f = (n: number) => {
       const k = (n + nh * 6) % 6;
       return nv - nv * ns * Math.max(0, Math.min(k, 4 - k, 1));

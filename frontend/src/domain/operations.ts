@@ -195,7 +195,7 @@ export function equipCharge(s: PlayerState, fx: ChargeFxId): OpResult {
 /** Elige el ESTILO DE COLOR del personaje (solo uno que tengas: el clásico o uno ganado en el Pase). */
 export function equipColor(s: PlayerState, id: CharColorId): OpResult {
   if (!isCharColor(id)) return fail('not_found');
-  if (!charColorOwned(s.owned, id)) return fail('not_owned');
+  if (!charColorOwned(s.owned, id, s.equipped.skin)) return fail('not_owned'); // (19-11-2026) colores por personaje
   const n = clonePlayer(s);
   n.equipped.color = id;
   return { ok: true, state: n };

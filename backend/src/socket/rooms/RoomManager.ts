@@ -223,7 +223,10 @@ export class RoomManager {
    * Un jugador abandona (rendición) o se desconecta. En búsqueda: se cancela. En partido: gana el rival y la
    * sala queda FINISHED (luego finish()). Devuelve la sala afectada y al rival a avisar.
    */
-  leave(playerId: string, reason: 'abandon' | 'disconnect'): { room: Room; opponent?: RoomPlayer; wasPlaying: boolean; continues?: boolean } | null {
+  leave(
+    playerId: string,
+    reason: 'abandon' | 'disconnect',
+  ): { room: Room; opponent?: RoomPlayer; wasPlaying: boolean; continues?: boolean; promoted?: boolean } | null {
     const room = this.roomOf(playerId);
     if (!room) return null;
     if (room.status === 'WAITING') {
@@ -239,6 +242,17 @@ export class RoomManager {
         else p.away = true;
       }
       return { room, opponent, wasPlaying: true, continues: true };
+    }
+    // (19-11-2026, usuario) 2v2: si se va el ANFITRIÓN y el compañero sigue conectado, el compañero PASA A SER el anfitrión (simula a los bots
+    // y juzga los puntos) y el partido sigue con el mismo marcador. El que se fue queda fuera para siempre (no puede volver: gone).
+    // El marcador no cambia de lado: en el 2v2 el índice 0 es el EQUIPO humano, sea quien sea el anfitrión.
+    if (room.mode === '2v2' && room.status === 'PLAYING' && this.roleOf(room, playerId) === 'host' && opponent && !opponent.away && !opponent.gone) {
+      const old = room.players[0];
+      old.gone = true;
+      old.away = false;
+      room.players = [opponent, old];
+      if (this.playerRoom.get(old.id) === room.id) this.playerRoom.delete(old.id); // el que se fue queda libre (puede buscar otra partida)
+      return { room, opponent, wasPlaying: true, continues: true, promoted: true };
     }
     if (room.status !== 'FINISHED') {
       const role = this.roleOf(room, playerId);

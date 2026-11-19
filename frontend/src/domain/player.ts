@@ -41,7 +41,7 @@ export const newLoginState = (): LoginState => ({ last: '', streak: 0, adBonusDa
 export type StyleId = 'classic' | 'red' | 'green' | 'gold' | 'pink' | 'rainbow' | 'ember' | 'frost' | 'tulip' | 'hearts' | 'stars' | 'neon' | 'smoke';
 export type ItemKind = 'ability' | 'skin' | 'style' | 'inferno' | 'charge' | 'defensive' | 'smash' | 'emote' | 'color' | 'zone';
 /** Id único de ítem: `<tipo>:<id>` (ej. 'ability:wall', 'skin:mai'). Los `emote:` solo se ganan en el Pase de Batalla. */
-export type ItemId = `ability:${AbilityId}` | `skin:${SkinId}` | `style:${StyleId}` | `inferno:${InfernoPower}` | `charge:${ChargeFxId}` | `defensive:${DefensivePower}` | `smash:${SmashPower}` | `emote:${EmoteKind}` | `color:${CharColorId}` | `zone:${'fire' | 'shadow'}`;
+export type ItemId = `ability:${AbilityId}` | `skin:${SkinId}` | `style:${StyleId}` | `inferno:${InfernoPower}` | `charge:${ChargeFxId}` | `defensive:${DefensivePower}` | `smash:${SmashPower}` | `emote:${EmoteKind}` | `color:${CharColorId}` | `color:${CharColorId}:${'nxo' | 'mai'}` | `zone:${'fire' | 'shadow'}`;
 
 export interface Loadout {
   skin: SkinId;
@@ -94,6 +94,8 @@ export interface PlayerState {
   mastery?: Record<string, number>;
   /** MODO RIESGO x2 (domain/riskMode.ts): última activación confirmada por el servidor; nunca usado = undefined */
   riskMode?: RiskModeState;
+  /** MONEDAS 2v2 (domain/coins2v2.ts): contador propio del ranking del 2v2; 0 = undefined */
+  coins2v2?: number;
 }
 import type { RiskModeState } from './riskMode';
 

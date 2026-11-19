@@ -36,6 +36,8 @@ export interface MatchNetHandlers {
   /** 2v2: el compañero se cortó o se rindió (gone): un bot juega por él / volvió y recupera su personaje */
   onMateAway?(gone: boolean): void;
   onMateBack?(score: ScoreMsg): void;
+  /** (19-11-2026) 2v2: se fue el anfitrión y este teléfono pasa a ser el anfitrión (marcador oficial) */
+  onPromoted?(score: ScoreMsg): void;
   /** se perdió la conexión con el servidor */
   onDisconnect(): void;
 }
@@ -71,7 +73,8 @@ export class MatchNet {
   constructor(
     private tr: NetTransport,
     readonly roomId: string,
-    readonly role: Role,
+    /** (19-11-2026) cambia a 'host' si en el 2v2 se va el anfitrión (EV.PROMOTED) */
+    public role: Role,
     readonly opponent: PlayerProfile,
     readonly gamesToWin: number,
     /** clave del emparejamiento para volver a la sala tras un corte (sin ella no se reconecta) */
@@ -97,6 +100,11 @@ export class MatchNet {
     on<{ gone?: boolean }>(EV.MATE_AWAY, (m) => this.handlers?.onMateAway?.(!!m?.gone));
     on<ScoreMsg>(EV.MATE_BACK, (s) => this.handlers?.onMateBack?.(s));
     on<ScoreMsg>(EV.OPPONENT_BACK, (s) => this.handlers?.onOpponentBack?.(s));
+    on<ScoreMsg>(EV.PROMOTED, (s) => {
+      // 2v2: el servidor ya me tiene como anfitrión (juez de los puntos): desde aquí simulo a los bots
+      this.role = 'host';
+      this.handlers?.onPromoted?.(s);
+    });
   }
 
   /** Se cortó la conexión: en pleno partido (y con clave) se intenta volver; si no, fin por desconexión. */
@@ -198,11 +206,11 @@ export class MatchNet {
         if (m.seq <= this.lastHitIn) return; // repetido
         this.lastHitIn = m.seq;
       }
-      this.trace?.('recv', 'hit', m.kind, { seq: m.seq, shot: m.shotKind, power: m.power, inferno: m.inferno, special: m.special, lunge: m.lunge, impact: m.impact });
+      this.trace?.('recv', 'hit', m.kind, { seq: m.seq, shot: m.shotKind, power: m.power, inferno: m.inferno, special: m.special, lunge: m.lunge, impact: m.impact, a: m.a });
       h.onHit(mir ? { ...m, x: mirrorX(m.x), y: mirrorY(m.y), ball: mirrorBall(m.ball) } : m);
     });
     on<ActionMsg>(EV.ACTION, (a) => {
-      if (a.kind !== 'ping' && a.kind !== 'pong') this.trace?.('recv', 'action', a.kind, { sub: typeof a.data?.kind === 'string' ? a.data.kind : undefined, grade: typeof a.data?.grade === 'string' ? a.data.grade : undefined });
+      if (a.kind !== 'ping' && a.kind !== 'pong') this.trace?.('recv', 'action', a.kind, { sub: typeof a.data?.kind === 'string' ? a.data.kind : undefined, grade: typeof a.data?.grade === 'string' ? a.data.grade : undefined, a: typeof a.data?.a === 'number' ? a.data.a : undefined });
       h.onAction(a);
     });
     on<PointMsg>(EV.POINT, (p) => {
@@ -250,12 +258,12 @@ export class MatchNet {
   }
 
   sendHit(h: Omit<HitMsg, 'seq'>) {
-    this.trace?.('send', 'hit', h.kind, { seq: this.hitSeq, shot: h.shotKind, power: h.power, inferno: h.inferno, special: h.special, lunge: h.lunge, impact: h.impact });
+    this.trace?.('send', 'hit', h.kind, { seq: this.hitSeq, shot: h.shotKind, power: h.power, inferno: h.inferno, special: h.special, lunge: h.lunge, impact: h.impact, a: h.a });
     this.transport.emit(EV.HIT, { ...h, seq: this.hitSeq++ });
   }
 
   sendAction(kind: ActionMsg['kind'], data?: ActionMsg['data']) {
-    if (kind !== 'ping' && kind !== 'pong') this.trace?.('send', 'action', kind, { sub: typeof data?.kind === 'string' ? data.kind : undefined, grade: typeof data?.grade === 'string' ? data.grade : undefined });
+    if (kind !== 'ping' && kind !== 'pong') this.trace?.('send', 'action', kind, { sub: typeof data?.kind === 'string' ? data.kind : undefined, grade: typeof data?.grade === 'string' ? data.grade : undefined, a: typeof data?.a === 'number' ? data.a : undefined });
     this.transport.emit(EV.ACTION, { kind, data });
   }
 

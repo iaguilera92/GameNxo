@@ -73,7 +73,7 @@ export class MatchLogger {
     if (ev === 'matched' && roomId !== this.textRoom) {
       this.textRoom = roomId;
       this.textBytes = 0;
-      head = `===== PARTIDO ${roomId}  ${new Date().toISOString()}  host=${entry.host} (${entry.hostSkin})  guest=${entry.guest} (${entry.guestSkin}) =====
+      head = `===== PARTIDO ${entry.mode === '2v2' ? '2v2 ' : ''}${roomId}  ${new Date().toISOString()}  host=${entry.host} (${entry.hostSkin})  guest=${entry.guest} (${entry.guestSkin}) =====
 `;
     }
     if (roomId !== this.textRoom) return;

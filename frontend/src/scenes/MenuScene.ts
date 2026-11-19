@@ -115,6 +115,7 @@ export class MenuScene extends Phaser.Scene {
     if (!this.textures.exists('cash-pack')) this.load.image('cash-pack', 'assets/dinero-fardo-chico.webp');
     if (!this.textures.exists('daily-title-art')) this.load.image('daily-title-art', 'assets/premio-diario.webp');
     if (!this.textures.exists(NAV.key)) this.load.image(NAV.key, NAV.file);
+    if (!this.textures.exists('battle-pass-insignia')) this.load.image('battle-pass-insignia', 'assets/insignia-pase-batalla.webp'); // escudo del nivel del PASE (el mismo de su pantalla)
     if (!this.textures.exists('menu-liga')) this.load.image('menu-liga', 'assets/liga.webp'); // trofeo de la card de LIGA
     preloadRankBadges(this.load, [myLeague()]);
   }
@@ -1523,12 +1524,7 @@ export class MenuScene extends Phaser.Scene {
     const ready = bpClaimable(s) - (welcomeLocked ? (s.bp.welcomeFreeClaimed ? 0 : 1) + (s.bp.premium && !s.bp.welcomePremClaimed ? 1 : 0) : 0);
     const h = 76;
     const c = this.add.container(x, y);
-    // halo dorado que respira (invita a tocar)
-    const halo = this.add.graphics();
-    halo.lineStyle(12, 0xffd23f, 0.55).strokeRoundedRect(-2, -2, w + 4, h + 4, 22);
-    halo.setBlendMode(Phaser.BlendModes.ADD).setAlpha(0.25);
-    c.add(halo);
-    this.tweens.add({ targets: halo, alpha: 0.75, duration: 900, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
+    // (21-11-2026, usuario) sin el halo dorado que latía alrededor del botón
     const g = this.add.graphics();
     // cuerpo DORADO brillante (capas: base ámbar, mitad alta oro, reflejo claro) + doble borde
     g.fillStyle(0x000000, 0.35).fillRoundedRect(3, 6, w, h, 20);
@@ -1540,12 +1536,13 @@ export class MenuScene extends Phaser.Scene {
     g.lineStyle(2, 0xfff1b8, 0.9).strokeRoundedRect(3, 3, w - 6, h - 6, 17);
     // insignia (corona + nivel del pase): disco azul noche con corona dorada
     const bx0 = 10 + 43;
-    g.fillStyle(0x7a4a00, 1).fillCircle(bx0, h / 2, 31);
-    g.fillStyle(0x0a1638, 1).fillCircle(bx0, h / 2, 27);
-    g.fillStyle(0x1f3a7a, 0.6).fillEllipse(bx0 - 4, h / 2 - 12, 30, 10);
-    g.fillStyle(0xffd23f, 1).fillPoints([{ x: bx0 - 11, y: h / 2 - 8 }, { x: bx0 - 13, y: h / 2 - 19 }, { x: bx0 - 6, y: h / 2 - 13 }, { x: bx0, y: h / 2 - 21 }, { x: bx0 + 6, y: h / 2 - 13 }, { x: bx0 + 13, y: h / 2 - 19 }, { x: bx0 + 11, y: h / 2 - 8 }], true);
     c.add(g);
-    const lvNum = this.add.text(bx0, h / 2 + 7, String(level), { fontFamily: FONT, fontSize: '24px', color: '#ffd23f' }).setOrigin(0.5);
+    // (21-11-2026, usuario) la insignia del nivel es el MISMO escudo dorado con corona de la pantalla del PASE (assets/insignia-pase-batalla.webp),
+    // con "NIV" y el nivel encima, como allí
+    const BH = 68;
+    if (this.textures.exists('battle-pass-insignia')) c.add(this.add.image(bx0, h / 2 + 1, 'battle-pass-insignia').setDisplaySize((BH * 240) / 287, BH));
+    c.add(this.add.text(bx0, h / 2 - 5, 'NIV', { fontFamily: FONT, fontSize: '9px', color: '#0a1638', stroke: '#fff0a8', strokeThickness: 2 }).setOrigin(0.5));
+    const lvNum = this.add.text(bx0, h / 2 + 9, String(level), { fontFamily: FONT, fontSize: '21px', color: '#0a1638', stroke: '#fff0a8', strokeThickness: 3 }).setOrigin(0.5);
     c.add(lvNum);
     // chevron que empuja hacia la derecha
     const chev = this.add.graphics({ x: w - 22, y: h / 2 });

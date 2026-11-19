@@ -12,6 +12,15 @@ import type { DemoRect, PowerDemo } from '../ui/PowerDialog';
  * Zona cada pocos segundos con el destello, el aura y el rayo de los ojos de ese estilo (los mismos objetos del partido: HyperAura y ZoneFx).
  * Todo vive en un escenario (`stage`) dentro de la pantalla de la televisión: los efectos se crean con un proxy de la escena que los mete ahí.
  */
+/**
+ * Ajuste del ojo IZQUIERDO de la pantalla en la pose congelada de la demo respecto a ZONE_EYES (unidades del personaje): `up` sube, `dx` se suma al
+ * desplazamiento (negativo = más a la izquierda). Si se cambia la pose o la hoja del reposo de frente, volver a medir con una captura ampliada.
+ */
+const DEMO_EYE_ADJUST: Record<string, { up: number; dx: number }> = {
+  nxo: { up: 3, dx: 1 },
+  mai: { up: 3, dx: -2 },
+};
+
 class ZoneDemo implements PowerDemo {
   private readonly stage: Phaser.GameObjects.Container;
   private readonly ch: Character;
@@ -155,7 +164,10 @@ class ZoneDemo implements PowerDemo {
     const k = this.ch.scaleY;
     const head = { x: this.ch.x, y: this.ch.y - 150 * k };
     const e = zoneEyes(this.skin, 'front');
-    this.fx.update(dt, head, { x: this.ch.x, y: this.ch.y }, k, this.ch.depth, 1, false, { up: e.up - 4, dx: -e.dx + 3 }); // (usuario 16-11-2026) un poco más abajo y a la derecha: justo en el ojo
+    const o = DEMO_EYE_ADJUST[this.skin] ?? DEMO_EYE_ADJUST.nxo;
+    // (21-11-2026, usuario: "los rayos no salen de los ojos") el ojo de la pose congelada de la demo, medido sobre captura ampliada: ZONE_EYES (del partido)
+    // + el ajuste propio de la demo por personaje. Antes: up − 4 y dx + 3 para todos, que ya no cuadraban tras remedir los ojos (quedaba en la sien / la mejilla)
+    this.fx.update(dt, head, { x: this.ch.x, y: this.ch.y }, k, this.ch.depth, 1, false, { up: e.up + o.up, dx: -e.dx + o.dx });
   }
 }
 

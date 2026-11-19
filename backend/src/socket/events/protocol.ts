@@ -51,6 +51,8 @@ export const EV = {
   MATE_AWAY: 'game:mate-away',
   /** 2v2: el compañero volvió y recupera su personaje */
   MATE_BACK: 'game:mate-back',
+  /** (19-11-2026) 2v2: se fue el ANFITRIÓN y este teléfono PASA A SER el anfitrión (simula a los bots y juzga los puntos; data: ScoreMsg) */
+  PROMOTED: 'game:promoted',
   /** reconexión aceptada (data: ResumedMsg) */
   RESUMED: 'game:resumed',
   SCORE: 'game:score',

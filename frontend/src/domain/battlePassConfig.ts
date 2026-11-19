@@ -7,15 +7,26 @@
  */
 import type { ItemId, PlayerState, StyleId } from './player';
 import type { SkinId } from '../characters/skins';
+import { type CharColorId, charColorItem } from './charColors';
 import { newBattlePass } from './battlePassState';
 import { gameClock } from './timeSource';
 
 export type BpReward =
   | { kind: 'cash'; amount: number }
   | { kind: 'item'; item: ItemId; name: string }
-  | { kind: 'character'; skin: SkinId; style?: StyleId; name: string }
+  /**
+   * Personaje del final del Pase. `skin` puede ser uno que aún NO existe como personaje jugable (`soon`: solo tiene retrato, como JUN el 21-11-2026):
+   * al reclamarlo no se entrega `skin:<id>` (no se puede elegir para jugar) y se guarda solo que el nivel está reclamado. `style` = estilo de la
+   * pelota (Oro); `color` = estilo de COLOR del personaje (domain/charColors.ts: el premium de JUN lo trae DORADO) y se entrega como ítem `color:<id>`.
+   */
+  | { kind: 'character'; skin: SkinId | 'jun'; style?: StyleId; color?: CharColorId; soon?: true; name: string }
   /** Rayos de la ZONA (zone.rays): se gastan en sus atributos (PERSONALIZACIÓN) */
-  | { kind: 'rays'; amount: number };
+  | { kind: 'rays'; amount: number }
+  /**
+   * (19-11-2026, usuario) COFRE NORMAL (domain/chest.ts): como el de la ruleta, se abre a los 2 días. Si ya hay uno sin abrir, EVOLUCIONA
+   * (normal → especial → épico, sin reiniciar el tiempo); si ya era épico, monedas. En lo entregado: `level` = cómo quedó el cofre, `coins` = compensación.
+   */
+  | { kind: 'chest'; level?: 0 | 1 | 2; upgraded?: boolean; coins?: number };
 
 export type BpTrack = 'free' | 'prem';
 
@@ -27,6 +38,7 @@ export interface BpTier {
 const $ = (amount: number): BpReward => ({ kind: 'cash', amount });
 const it = (item: ItemId, name: string): BpReward => ({ kind: 'item', item, name });
 const rays = (amount: number): BpReward => ({ kind: 'rays', amount });
+const chest: BpReward = { kind: 'chest' };
 
 export const BP_SEASON = {
   id: 'S1',
@@ -62,42 +74,51 @@ export const BP_SEASON = {
    * DINERO DEL PASE (11-11-2026, con el usuario): un pase COMPLETO (gratis + premium) da como mucho para 2 objetos de la
    * Tienda de 50: GRATIS 40 y PREMIUM 60 (con la bienvenida) = 100. El resto del dinero sale de la ruleta, el premio
    * diario y la clasificación semanal. Antes daba 175 + 535.
-   * niveles 1..N (índice 0 = nivel 1): entre medio, los emotes (3 y 11), los efectos
-   * de pelota (ROSADO 5, ORO 10 premium, VERDE 15 y ROJO 20; los 4 efectos NORMALES: los demás son especial, épica o legendaria y no salen en el Pase), el cargando golpe TULIPÁN (12 premium), Rayos para la ZONA (25) y Mai (30).
-   * ESTILOS DE COLOR del personaje (domain/charColors.ts): AZUL 8 y VERDE 18 (gratis); MORADO 7, DORADO 21 y SOMBRA 27
-   * (premium). Se equipan en PERSONALIZACIÓN.
+   * niveles 1..N (índice 0 = nivel 1): el reparto de premios está explicado sobre `tiers` (19-11-2026).
+   */
+  /*
+   * (19-11-2026, usuario) REPARTO NUEVO. Reglas: en un mismo camino nunca van seguidos dos premios del mismo tipo (solo el dinero puede ir seguido) y
+   * tampoco en el mismo nivel o en niveles vecinos entre los dos caminos; de cada tipo hay uno en GRATIS y otro en PREMIUM:
+   *   efecto pelota  Rosado 5 · Oro 3 (premium)          cargando golpe  Energía 23 · Tulipán 15 (premium)
+   *   color (POR PERSONAJE, de NXO)  Azul 17 · Dorado 21 (premium)       cofre normal  11 · 7 (premium)
+   *   emotes  Risa 2, Pensando 8, Enojado 14, Llorando 20 · LENTES 11 y TESORO 27 (legendarios, premium)
+   *   Rayo 26 (gratis) y Jun 30 (los dos). El resto, dinero (gratis 36 + bienvenida 1; premium 55 + bienvenida 5, como antes).
+   * Cargando gratis = ENERGÍA (no FUEGO): el FUEGO ya viene con NXO, que es el personaje de todos.
+   * Fuera del Pase: efectos Verde y Rojo (siguen en la Tienda) y los colores Verde, Morado y Sombra.
    */
   tiers: [
-    { free: $(1), prem: $(2) },
-    { free: it('emote:happy', 'Risa'), prem: $(2) }, // (18-11-2026) RISA: primer emote, nivel 2 (antes en la bienvenida)
-    { free: it('emote:cool', 'Pensando'), prem: $(2) },
-    { free: $(1), prem: $(2) },
-    { free: it('style:pink', 'Rosado'), prem: $(2) },
-    { free: $(2), prem: $(2) },
-    { free: $(1), prem: it('color:morado', 'Color Morado') },
-    { free: it('color:azul', 'Color Azul'), prem: $(2) },
-    { free: $(2), prem: $(2) },
-    { free: $(1), prem: it('style:gold', 'Oro') },
-    { free: it('emote:wow', 'Enojado'), prem: $(2) },
-    { free: $(2), prem: it('charge:tulip', 'Tulipán') },
-    { free: $(1), prem: $(2) },
-    { free: $(2), prem: $(2) },
-    { free: it('style:green', 'Verde'), prem: $(2) },
-    { free: $(2), prem: $(3) },
-    { free: it('emote:cry', 'Llorando'), prem: $(2) }, // (18-11-2026) emote LLORANDO (nivel 17)
-    { free: it('color:verde', 'Color Verde'), prem: $(3) },
-    { free: $(2), prem: $(3) },
-    { free: it('style:red', 'Rojo'), prem: $(3) },
-    { free: $(1), prem: it('color:dorado', 'Color Dorado') },
-    { free: $(2), prem: $(2) },
-    { free: $(2), prem: $(3) },
-    { free: $(3), prem: $(2) },
-    { free: rays(1), prem: $(3) }, // (18-11-2026, usuario) sin los 2 Rayos de la ZONA en el premium
-    { free: $(2), prem: it('emote:treasure', 'Tesoro') }, // (18-11-2026) EMOTE LEGENDARIO animado TESORO (premium)
-    { free: $(3), prem: it('color:sombra', 'Color Sombra') },
-    { free: $(3), prem: $(3) },
-    { free: $(3), prem: $(4) },
-    { free: { kind: 'character', skin: 'mai', name: 'Mai' }, prem: { kind: 'character', skin: 'mai', style: 'gold', name: 'Mai · Estilo Oro' } },
+    { free: $(1), prem: $(2) }, // 1
+    { free: it('emote:happy', 'Risa'), prem: $(2) }, // 2
+    { free: $(1), prem: it('style:gold', 'Oro') }, // 3
+    { free: $(1), prem: $(2) }, // 4
+    { free: it('style:pink', 'Rosado'), prem: $(2) }, // 5
+    { free: $(1), prem: $(2) }, // 6
+    { free: $(1), prem: chest }, // 7
+    { free: it('emote:cool', 'Pensando'), prem: $(2) }, // 8
+    { free: $(1), prem: $(2) }, // 9
+    { free: $(1), prem: $(2) }, // 10
+    { free: chest, prem: it('emote:shades', 'Lentes') }, // 11 (LENTES: emote LEGENDARIO animado)
+    { free: $(1), prem: $(2) }, // 12
+    { free: $(2), prem: $(2) }, // 13
+    { free: it('emote:wow', 'Enojado'), prem: $(2) }, // 14
+    { free: $(2), prem: it('charge:tulip', 'Tulipán') }, // 15
+    { free: $(2), prem: $(2) }, // 16
+    { free: it(charColorItem('azul', 'nxo'), 'Azul · NXO'), prem: $(2) }, // 17
+    { free: $(2), prem: $(2) }, // 18
+    { free: $(2), prem: $(2) }, // 19
+    { free: it('emote:cry', 'Llorando'), prem: $(3) }, // 20
+    { free: $(2), prem: it(charColorItem('dorado', 'nxo'), 'Dorado · NXO') }, // 21
+    { free: $(2), prem: $(3) }, // 22
+    { free: it('charge:energy', 'Energía'), prem: $(3) }, // 23
+    { free: $(2), prem: $(3) }, // 24
+    { free: $(2), prem: $(3) }, // 25
+    { free: rays(1), prem: $(3) }, // 26
+    { free: $(2), prem: it('emote:treasure', 'Tesoro') }, // 27 (TESORO: emote LEGENDARIO animado)
+    { free: $(3), prem: $(3) }, // 28
+    { free: $(3), prem: $(4) }, // 29
+    // (21-11-2026, usuario) JUN reemplaza a MAI como personaje del nivel 30; aún NO se puede jugar (solo tiene retrato): `soon`. Premium: JUN con el
+    // color DORADO. Cuando tenga sus hojas (docs/COMO-TRABAJAR-SPRITES-MOVIMIENTOS.md) se quita `soon` y se entrega `skin:jun`.
+    { free: { kind: 'character', skin: 'jun', soon: true, name: 'Jun' }, prem: { kind: 'character', skin: 'jun', color: 'dorado', soon: true, name: 'Jun · Color Dorado' } },
   ] as BpTier[],
 };
 

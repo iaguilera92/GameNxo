@@ -16,7 +16,7 @@ import { CATALOG } from '../characters/catalog';
 import { type ItemId, type PlayerState, clonePlayer } from './player';
 import { SHOP_ITEMS } from './shopCatalog';
 import { EMOTES } from './emotes';
-import { CHAR_COLOR_LIST } from './charColors';
+import { CHAR_COLOR_LIST, COLOR_SKINS, charColorItem } from './charColors';
 
 /** Con qué modo arranca la app cuando el jugador aún no ha elegido. true mientras se prueba; ponlo en false para publicar. */
 export const DEV_MODE_DEFAULT = true;
@@ -58,6 +58,7 @@ export function allItems(): ItemId[] {
     ...CATALOG.map((s) => `skin:${s.id}` as ItemId),
     ...EMOTES.map((k) => `emote:${k}` as ItemId),
     ...CHAR_COLOR_LIST.filter((c) => c.id !== 'classic').map((c) => `color:${c.id}` as ItemId),
+    ...CHAR_COLOR_LIST.filter((c) => c.id !== 'classic').flatMap((c) => COLOR_SKINS.map((sk) => charColorItem(c.id, sk) as ItemId)),
   ];
 }
 

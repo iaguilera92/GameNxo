@@ -5,7 +5,7 @@ import type { Character } from '../objects/Character';
 import type { Ball } from '../objects/Ball';
 import { HyperAura } from '../objects/HyperAura';
 import { type CineFocus, type CineProfile, type SmashCinematic, spritesIn } from './SmashCinematic';
-import { ENERGY_MATCH_CINE, ENERGY_MATCH_K, HURRICANE_MATCH_CINE } from '../logic/EnergyRally';
+import { ENERGY_MATCH_CINE, ENERGY_MATCH_K, ENERGY_RALLY, HURRICANE, HURRICANE_MATCH_CINE } from '../logic/EnergyRally';
 import { HURRICANE_COL, TORNADO_ART, TornadoFx, TornadoSprite, WindSphereFx, sphereBreakFx, wallKnockFx, windShotFx } from './hurricaneFx';
 import { SPECIAL_SERVE_K } from './powerDemo';
 import { EnergyCineFx } from './energyBallCine';
@@ -274,6 +274,7 @@ export class EnergyDemo {
     this.sphere.hide();
     this.h.scene.tweens.killTweensOf(this.h.pa);
     this.h.pa.lift = 0;
+    this.h.pl.releaseFollowThrough(); // (21-11-2026) por si se cortó con el golpe congelado en el aire
     this.h.pl.setAlpha(1); // (18-11-2026) por si se cortó convertido en la esfera
     this.tornadoSndStop(false);
     this.hAir = false;
@@ -507,7 +508,11 @@ export class EnergyDemo {
     const feet = project(this.h.pa.x, this.h.pa.y);
     this.cineFx.drawGrow(dt, this.t / T.grow, { x: f.x, y: f.y, racketX: f.racketX, racketY: f.racketY, s: f.s, hh: f.hh, depth: f.depth, feetY: feet.sy });
     this.h.fire.energyGrowSec = T.final;
-    if (!this.swung && this.t >= T.grow - SWING_LEAD) this.swing();
+    if (!this.swung && this.t >= T.grow - SWING_LEAD) {
+      this.swing();
+      // (21-11-2026, usuario) tras el golpe final se queda 1 s con el frame 9 del swing de la ULTI (raqueta del último golpe), como en el partido
+      this.h.pl.holdFollowThrough(ENERGY_RALLY.finishFrame, ENERGY_RALLY.finishHoldMs);
+    }
     if (this.t >= T.grow) {
       this.cineFx.hideCharge();
       this.strike();
@@ -550,10 +555,14 @@ export class EnergyDemo {
         rb.setPower(false);
         rb.setKind('normal');
         rb.setMaxCharge(true);
-        h.setBall(true, false);
-        windShotFx(h.st, p.sx, p.sy, p.s, (to.sx - p.sx) / len, (to.sy - p.sy) / len);
-        h.snd('golpe-fuerte', 0.9);
-        h.shake(6);
+        // (19-11-2026, usuario) vuela como BOLA DE ENERGÍA del huracán, algo más grande que la del smash; explota en la máquina (hurKnock)
+        h.fire.setElement('hurricane');
+        h.fire.hurricaneScale = HURRICANE.firstHit.ball;
+        h.setBall(true, true);
+        // (21-11-2026, usuario) 1.er golpe MAS POTENTE, como en el partido: efecto al doble, sonido de inferno.mp3, mas sacudida y destello
+        windShotFx(h.st, p.sx, p.sy, p.s * HURRICANE.firstHit.k, (to.sx - p.sx) / len, (to.sy - p.sy) / len);
+        h.snd(HURRICANE.firstHit.sound, 1);
+        h.shake(12); // (sin flash completo, como en el partido: tapaba el golpe)
         // (18-11-2026, usuario) 0,3 s después del golpe se va corriendo a la T de su campo: desde ahí salta a por el globo
         h.scene.time.delayedCall(H_T.toT * 1000, () => {
           if (!this.hur || this.phase === 'idle') return;
@@ -642,6 +651,11 @@ export class EnergyDemo {
     const m = this.m[H_VIC];
     const back = project(h.machineX + H_BACK_X, m.y);
     const bk = back.s * VIEW.CHAR_K;
+    // (19-11-2026, usuario) la bola de energía EXPLOTA en la máquina: impacto del huracán y sacudida fuerte
+    const hit = project(h.machineX - 30, m.y, HIT_Z);
+    infernoImpactFx(h.st, hit.sx, hit.sy, Math.max(0.7, hit.s) * HURRICANE.firstHit.impactK, 'hurricane');
+    h.shake(14);
+    h.fire.hurricaneScale = 1.25; // el smash final vuelve a su tamaño
     m.ko = true;
     m.koT = 0;
     m.smokeT = 0;
@@ -794,6 +808,7 @@ export class EnergyDemo {
       this.swung = true;
       this.h.pl.facing = 1;
       this.h.pl.swing(true, true, true, false); // el SMASH desde la pose congelada del salto
+      this.h.pl.holdFollowThrough(HURRICANE.finishFrame); // (21-11-2026, usuario) queda en el aire con la pose del golpe hasta caer
     }
     if (t >= H_T.fly) {
       this.placeBall(hov);
@@ -853,6 +868,7 @@ export class EnergyDemo {
     h.setBall(false, false);
     h.rb.setPower(false);
     h.fire.clear();
+    h.fire.hurricaneScale = 1.25;
     if (this.hur) {
       // (18-11-2026, usuario) el SMASH del HURACÁN: el impacto de su ULTI (oro y viento), el choque de viento en el suelo y ráfagas
       infernoImpactFx(h.st, cx, ey, s * 1.6, 'hurricane'); // (trae hurricaneBurst: no se repite)
@@ -860,7 +876,7 @@ export class EnergyDemo {
       h.flash(200, 0xfff6b0);
       this.sphere.hide();
       this.hAir = false;
-      h.scene.tweens.add({ targets: h.pa, lift: 0, duration: 380, ease: 'Quad.easeIn' });
+      h.scene.tweens.add({ targets: h.pa, lift: 0, duration: 380, ease: 'Quad.easeIn', onComplete: () => h.pl.releaseFollowThrough() }); // al caer, suelta la pose y sigue con sus sprites
     } else {
       // (17-11-2026) el impacto DESTRUCTIVO de la BOLA DE ENERGÍA (estrella, columna, ondas y grietas en el suelo, esquirlas, brasas, trozos)
       this.impact.play(cx, ey, cy, s);

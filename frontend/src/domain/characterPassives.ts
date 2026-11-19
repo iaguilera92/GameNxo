@@ -10,7 +10,7 @@
  */
 import { MAX_LEVEL } from '../config';
 
-export type PassiveId = 'agility' | 'precision';
+export type PassiveId = 'agility' | 'precision' | 'strength';
 
 export interface PassiveDef {
   /** id de personaje (skin del catálogo) */
@@ -46,6 +46,16 @@ export const PASSIVES: Record<string, PassiveDef> = {
     detail: 'Reduce el desvío de tus golpes (a los lados y en profundidad) y de tu saque. Cada nivel de maestría suma un 1 % (hasta un 10 % en el nivel 10) y se aplica en todos tus partidos con Mai.',
     color: 0xff8fc4,
     css: '#ffc2dd',
+  },
+  // (21-11-2026, usuario) JUN = FUERZA. Jun aún no es jugable (sin hojas): la pasiva ya está definida y se aplica en cuanto se pueda elegir.
+  jun: {
+    skin: 'jun',
+    id: 'strength',
+    name: 'FUERZA',
+    short: 'Tus golpes salen más fuertes y rápidos.',
+    detail: 'Aumenta la velocidad de tus golpes (no los globos ni las dejadas). Cada nivel de maestría suma un 1 % (hasta un 10 % en el nivel 10) y se aplica en todos tus partidos con Jun.',
+    color: 0xff8a4a,
+    css: '#ffb98f',
   },
 };
 

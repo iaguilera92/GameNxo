@@ -7,7 +7,7 @@ import { searchSpinner } from '../ui/searchSpinner';
 import { UI, flatButton, stadiumBg } from '../ui/ui';
 import { showConfirm } from '../ui/ConfirmDialog';
 import { totalWins } from '../logic/Stats';
-import { playMatchMusic, prepareMatchMusic, stopMatchMusic } from '../fx/matchMusic';
+import { playMatchMusic, prepareMatchMusic, setRoomMatchMusic, stopMatchMusic } from '../fx/matchMusic';
 import { showVersus as showVersusScreen } from '../ui/VersusScreen';
 import { lookForSkin, playerLook } from '../objects/Character';
 import type { SkinId } from '../characters/skins';
@@ -180,6 +180,8 @@ export class LanSearchScene extends Phaser.Scene {
         ? { name: b1 + ' + ' + b2, level: Math.round((p.level + opp.level) / 2), look: lookForSkin(p.skin, 'front', p.skin), portraitSkin: rivalFor(p.skin), wins: 0, frame: null }
         : { name: opp.name, level: opp.level, look: lookForSkin(opp.skin, 'front', p.skin), portraitSkin: opp.skin as SkinId, color: charColorOf(opp.color), wins: opp.wins, frame: isFrameId(opp.frame) ? opp.frame : null }, // sus victorias y su marco, si los mandó
     );
+    // misma cancha y misma música en los dos teléfonos: el ambiente sale del id de la sala (el sorteo de la búsqueda era de cada teléfono)
+    this.ambiente = setRoomMatchMusic(this, net.roomId);
     // 1 s después del sonido del VS entra la música de la cancha (sigue sonando en el partido)
     const musicIn = this.time.delayedCall(1000, () => playMatchMusic(this, this.ambiente));
     // durante la pantalla VS el rival puede irse (o caerse la conexión): se avisa y NO se entra al partido

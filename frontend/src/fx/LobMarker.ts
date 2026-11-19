@@ -18,7 +18,6 @@ const COL = {
   neutral: 0x37e0ff,
   ready: 0xffc42e,
   out: 0xff5a6a,
-  readyInner: 0x6fb2ff,
 };
 
 /** Latido: periodo (s) y amplitud del pulso, por estado. */
@@ -32,15 +31,21 @@ interface Ripple {
   color: number;
 }
 
+/** Al entrar alguien en el círculo: el mismo círculo da un giro (spinS) y se agranda `grow` (x) en growS; al salir vuelve en shrinkS. */
+const ENTER = { spinS: 0.6, growS: 0.35, shrinkS: 0.3, grow: 0.16 };
+
 export class LobMarker {
   private g: Phaser.GameObjects.Graphics;
-  private wasReady = false;
+  private wasInside = false;
+  /** 0..1: cuánto está agrandado el círculo; 0..1: avance del giro de entrada (1 = sin giro en curso) */
+  private inGrow = 0;
+  private spinT = 1;
   private t = 0;
   private alpha = 0;
   private beatPhase = 0;
   private ripples: Ripple[] = [];
 
-  constructor(private scene: Phaser.Scene) {
+  constructor(scene: Phaser.Scene) {
     // justo encima del suelo de la cancha (la cancha horneada está en -10; la mira de saque en 0.8)
     this.g = scene.add.graphics().setDepth(0.9);
   }
@@ -52,13 +57,22 @@ export class LobMarker {
     this.alpha = Phaser.Math.Clamp(this.alpha + (show ? dt * 6 : -dt * 8), 0, 1);
     this.g.clear();
     if (this.alpha <= 0) {
-      this.wasReady = false;
+      this.wasInside = false;
+      this.inGrow = 0;
+      this.spinT = 1;
       this.ripples.length = 0;
       return;
     }
     const out = !st.inCourt && !LOB_SMASH.allowOutLob;
     const color = out ? COL.out : ready ? COL.ready : COL.neutral;
-    const R = LOB_SMASH.radius;
+    // (21-11-2026, usuario) SIEMPRE EL MISMO círculo: al entrar alguien, ese mismo círculo da UN GIRO (las marcas) y se agranda un poco
+    // (hasta que sale o salta: entonces se desvanece). Ya no sale otro círculo (antes: anillo interior azul y una onda dorada al abrirse la ventana)
+    if (inside && !this.wasInside) this.spinT = 0;
+    this.wasInside = inside;
+    this.spinT = Math.min(1, this.spinT + dt / ENTER.spinS);
+    this.inGrow = Phaser.Math.Clamp(this.inGrow + (inside ? dt / ENTER.growS : -dt / ENTER.shrinkS), 0, 1);
+    const R = LOB_SMASH.radius * (1 + ENTER.grow * Phaser.Math.Easing.Back.Out(this.inGrow));
+    const turn = Phaser.Math.Easing.Cubic.InOut(this.spinT) * Math.PI * 2;
     const a = this.alpha;
 
     // --- latido: doble pulso por periodo; cada latido lanza una onda
@@ -98,32 +112,25 @@ export class LobMarker {
     this.g.lineStyle(1.4, 0xffffff, (0.55 + 0.35 * pulse) * a).strokePoints(main, true, true);
 
     // --- 4 marcas de mira que giran por fuera del anillo
-    const spin = this.t * (ready ? 2.4 : 1.1);
+    const spin = this.t * (ready ? 2.4 : 1.1) + turn;
     for (let i = 0; i < 4; i++) {
       const a0 = spin + (i * Math.PI) / 2;
       const arc = this.arc(st.x, st.y, R * 1.2 * k, a0 - 0.32, a0 + 0.32);
       this.g.lineStyle(4, color, 0.85 * a).strokePoints(arc, false, false);
     }
 
-    // --- anillo interior (listo) + centro
-    if (ready) {
-      const inner = this.ring(st.x, st.y, R * 0.5 * (2 - k));
-      this.g.lineStyle(6, COL.readyInner, 0.25 * a).strokePoints(inner, true, true);
-      this.g.lineStyle(2.5, COL.readyInner, 0.9 * a).strokePoints(inner, true, true);
-    }
+    // --- centro
     const c = project(st.x, st.y);
     this.g.fillStyle(color, 0.5 * a).fillEllipse(c.sx, c.sy, 20 * c.s * k, 9 * c.s * k);
     this.g.fillStyle(0xffffff, 0.95 * a).fillEllipse(c.sx, c.sy, 9 * c.s, 4 * c.s);
-
-    // activación: al abrirse la ventana con el receptor dentro, un destello que se expande
-    if (ready && !this.wasReady) this.burst(st.x, st.y);
-    this.wasReady = ready;
   }
 
   hide() {
     this.alpha = 0;
     this.g.clear();
-    this.wasReady = false;
+    this.wasInside = false;
+    this.inGrow = 0;
+    this.spinT = 1;
     this.ripples.length = 0;
   }
 
@@ -146,15 +153,6 @@ export class LobMarker {
     return new Phaser.Math.Vector2(p.sx, p.sy);
   }
 
-  private burst(x: number, y: number) {
-    const c = project(x, y);
-    const e = this.scene.add
-      .ellipse(c.sx, c.sy, LOB_SMASH.radius * 2 * c.s, (LOB_SMASH.radius * 2 * c.s) / 2.4, COL.ready, 0)
-      .setStrokeStyle(4, COL.ready, 1)
-      .setDepth(0.95)
-      .setBlendMode(Phaser.BlendModes.ADD);
-    this.scene.tweens.add({ targets: e, scale: 1.8, alpha: 0, duration: 420, ease: 'Quad.easeOut', onComplete: () => e.destroy() });
-  }
 }
 
 /**

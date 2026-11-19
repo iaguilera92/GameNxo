@@ -24,8 +24,8 @@ import maiFExtra from '../characters/mai-front-extra.json';
 import { runAnimRate } from '../logic/PlayerMotion';
 
 /**
- * Hojas NUEVAS de NXO de espaldas (public/personajes/Nxo/pj-nxo-1..4.png, cortadas con
- * tools/build-moves.mjs): todas las tiras viven en assets/characters/nxo-v2/ con la misma celda y ancla.
+ * Hojas NUEVAS de NXO de espaldas (antes pj-nxo-1..4.png con tools/build-moves.mjs, borradas el 21-11-2026; hoy las imágenes HD de
+ * public/personajes/Nxo/jugador/ con tools/build-hd.mjs): todas las tiras viven en assets/characters/nxo-v2/ con la misma celda y ancla.
  * Con ellas NO se voltea nada: correr a la izquierda, frenadas, etc. ya vienen dibujados.
  */
 const V2_DIR = 'nxo-v2';
@@ -463,6 +463,15 @@ export class NxoActor {
   private swingHitDone = false;
   /** tras el impacto + 1 frame ya se puede salir a correr (la recuperaciÃ³n no bloquea el movimiento) */
   private swingInterruptible = false;
+  /**
+   * (21-11-2026) Congelado del seguimiento del golpe (ULTI HURACAN: el que la lanza queda en el aire con la pose del golpe): frame (indice) en el
+   * que el clip se detiene (-1 = no) y si ya esta detenido ahi. Lo suelta releaseFollowThrough.
+   */
+  private followHold = -1;
+  private followHeld = false;
+  /** ms que se queda congelado antes de soltarse solo (0 = hasta releaseFollowThrough) y marca del temporizador en curso */
+  private followMs = 0;
+  private followTok = 0;
   private swingOverhead = false;
   /** el golpe en curso es el INFERNO DRIVE (su hoja ya trae el barrido de fuego: sin estela extra) */
   private swingInferno = false;
@@ -871,6 +880,8 @@ export class NxoActor {
     this.swingOverhead = overhead;
     this.swingHitDone = false;
     this.swingInterruptible = false;
+    this.followHold = -1; // (cada golpe empieza sin congelado: lo pide quien lo necesita DESPUES de llamar a swing)
+    this.followHeld = false;
     // la velocidad sube lo justo para que el contacto llegue dentro de maxImpactMs aunque el golpe arranque lejos del impacto
     const need = (impact - start) / (info.fps * (SWING.maxImpactMs / 1000));
     const accel = Math.max(power ? SWING.accelPower : SWING.accel, need);
@@ -931,6 +942,26 @@ export class NxoActor {
   }
 
   /**
+   * (21-11-2026, usuario) Congela el golpe EN CURSO en el frame `frame` (indice) de su seguimiento, despues del impacto: el personaje se queda
+   * en esa pose (en el smash potenciado, el frame 7: raqueta a la izquierda) hasta releaseFollowThrough. Hay que llamarlo DESPUES de swing().
+   */
+  holdFollowThrough(frame: number, ms = 0) {
+    if (this.state !== 'swing') return;
+    this.followHold = frame;
+    this.followHeld = false;
+    this.followMs = ms; // > 0: se suelta solo a los `ms` de quedar congelado
+  }
+
+  /** Suelta el congelado de holdFollowThrough: el clip sigue hasta el final y vuelve al reposo (o a lo que el personaje este haciendo). */
+  releaseFollowThrough() {
+    const held = this.followHeld;
+    this.followHold = -1;
+    this.followHeld = false;
+    this.followTok++; // un temporizador pendiente ya no vale
+    if (held && this.state === 'swing' && this.sprite.anims.isPaused) this.sprite.anims.resume();
+  }
+
+  /**
    * Suelta la pose del REMATE sin golpear (punto terminado, golpe al aire o remate del rival en red que no llegó a su
    * golpe). Sin esto el estado 'remate' queda ocupado y el personaje ya no anima la carrera. (Claude, 12-11-2026)
    */
@@ -943,6 +974,8 @@ export class NxoActor {
 
   /** Inicio del toque del saque (la pelota acaba de salir). El golpe llega con serveRelease(). */
   serve(kind: 'normal' | 'spin' = 'normal') {
+    this.followHold = -1;
+    this.followHeld = false;
     if (this.state === 'victory') return;
     this.stopShake();
     this.stopLean();
@@ -1345,6 +1378,8 @@ export class NxoActor {
   }
   /** Vuelve a la pose neutra (nuevo punto: el jugador se recoloca). */
   resetPose() {
+    this.followHold = -1; // nuevo punto: sin golpe congelado
+    this.followHeld = false;
     this.pendingPoint = null; // (18-11-2026) nuevo punto: la reacción pendiente ya no vale
     if (this.launchRestore) {
       const r = this.launchRestore;
@@ -1665,13 +1700,26 @@ export class NxoActor {
       });
       return;
     }
+    // ULTI HURACAN: tras el golpe se queda quieto en la pose del seguimiento (raqueta a la izquierda) hasta releaseFollowThrough
+    if (this.swingHitDone && this.followHold >= 0 && !this.followHeld && frame >= this.followHold) {
+      this.followHeld = true;
+      this.sprite.anims.pause();
+      if (this.followMs > 0) {
+        // se suelta solo pasado ese tiempo (si nadie lo soltó antes: la marca cambia al soltar)
+        const tok = ++this.followTok;
+        this.scene.time.delayedCall(this.followMs, () => {
+          if (this.followTok === tok && this.followHeld) this.releaseFollowThrough();
+        });
+      }
+      return;
+    }
     if (this.swingHitDone && frame >= Math.min(this.swingFrames - 1, this.swingImpact + SWING.followLock)) this.swingInterruptible = true;
     // recuperaciÃ³n: los dos Ãºltimos frames algo mÃ¡s lentos (no salta de golpe al reposo)
     if (frame >= this.swingFrames - 2) this.sprite.anims.timeScale = SWING.recover;
     // si el jugador ya se mueve o carga, sale de la recuperaciÃ³n sin esperar al final
     const wantsRun = this.moving && !this.charging;
     const wantsHold = this.charging && !this.moving;
-    if (this.swingInterruptible && (wantsRun || wantsHold)) {
+    if (this.swingInterruptible && this.followHold < 0 && (wantsRun || wantsHold)) { // (con un congelado pedido, el golpe llega a su frame antes de soltarse)
       this.state = 'idle';
       this.refresh();
     }

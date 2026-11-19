@@ -33,7 +33,7 @@ export const MAX_LEVEL = 20;
 /** (14-11-2026, usuario) UNA VICTORIA = UN NIVEL; perder, medio nivel (2 derrotas = 1 nivel); abandonar, un tercio de lo de perder. */
 export const XP_WIN = 190;
 export const XP_LOSS = XP_WIN / 2;
-export const XP_SURRENDER = Math.round(XP_LOSS / 3);
+export const XP_SURRENDER = 0; // (19-11-2026, usuario) rendirse NO da EXP (antes un tercio de perder)
 /** Monedas por partido: victoria / derrota (pocas). Rendirse no da monedas (evita farmear rindiéndose). */
 export const COINS_WIN = 50;
 export const COINS_LOSS = 10;

@@ -1,22 +1,42 @@
 import Phaser from 'phaser';
 import { FONT } from '../ui/theme';
-import { coinIcon } from '../ui/wheelArt';
 import { sfx } from './sfx';
 
 /**
- * Alerta de LOGRO de las MISIONES POR PARTIDA (domain/matchMissions.ts, docs/MISIONES.md): placa navy con borde dorado,
- * estrella, "¡LOGRO!", el nombre de la misión y "+N" con la moneda. Centrada entre el joystick (x 150) y los botones de
+ * Alerta de LOGRO de las MISIONES POR PARTIDA (domain/matchMissions.ts, docs/MISIONES.md): el arte `marcador-misiones`
+ * (medalla con estrella a la izquierda, moneda-pelota arriba a la derecha y un casillero para el premio) con "¡LOGRO!"
+ * y el nombre de la misión en el centro y "+N" dentro del casillero. Centrada entre el joystick (x 150) y los botones de
  * habilidades (MatchScene.layout) y un poco más arriba que ellos, en su propio hueco: no tapa ni toca los botones.
- * Varias a la vez van en fila (una detrás de otra). Fija en pantalla (scrollFactor 0).
+ * Varias a la vez van en fila (una detrás de otra). Fija en pantalla (scrollFactor 0). Solo la ve el usuario local en 1v1.
  */
 const ALERT = {
   /** centro: px sobre el borde de abajo (ESPECIAL en H-225 con radio ~64 → su borde de arriba en H-289) */
   lift: 350,
+  /** ancho en pantalla; el alto sale de la proporción de la imagen (MARKER_ART.w × MARKER_ART.h) */
   w: 330,
-  h: 72,
   holdMs: 2100,
   gapMs: 250,
 };
+
+/**
+ * Imagen de la placa (public/assets/ui/marcador-misiones.webp, 660 × 163, recortada al borde del arte). Las zonas están en
+ * coordenadas de la imagen a 2128 × 524 (el tamaño del PNG original ya recortado): `text` = zona libre para el texto
+ * (x0..x1), `prize` = centro y tamaño del casillero del premio, `midY` = línea central de la placa.
+ */
+export const MARKER_ART = {
+  key: 'ui-marcador-misiones',
+  file: 'assets/ui/marcador-misiones.webp',
+  w: 2128,
+  h: 524,
+  midY: 262,
+  text: { x0: 468, x1: 1658 },
+  prize: { cx: 1869, cy: 319.5, w: 392, h: 175 },
+} as const;
+
+/** Llamar desde un `preload()` del partido: encola la imagen de la placa. */
+export function queueMissionAlertArt(load: Phaser.Loader.LoaderPlugin) {
+  if (!load.textureManager.exists(MARKER_ART.key)) load.image(MARKER_ART.key, MARKER_ART.file);
+}
 
 const queue = new WeakMap<Phaser.Scene, { busy: boolean; items: { title: string; coins: number }[] }>();
 
@@ -58,57 +78,46 @@ function draw(scene: Phaser.Scene, title: string, coins: number) {
   const W = scene.scale.width;
   const H = scene.scale.height;
   const w = Math.min(ALERT.w, W - 60);
-  const h = ALERT.h;
+  const A = MARKER_ART;
+  const k = w / A.w; // px de pantalla por px de la imagen
+  const h = A.h * k; // alto en pantalla (la imagen es más alargada que la placa de antes: 330 × 81 con el ancho de siempre)
   const GOLD = 0xffc42e;
+  const r = h / 2; // la placa es una píldora
   const c = scene.add.container(W / 2, H - ALERT.lift).setScrollFactor(0).setDepth(6062);
+  // de un punto de la imagen (x, y) al centro de la placa
+  const lx = (x: number) => (x - A.w / 2) * k;
+  const ly = (y: number) => (y - A.midY) * k;
 
-  // halo dorado que late + placa (mismo lenguaje que las cards del resultado)
+  // halo dorado que late + la imagen (la medalla con estrella y la moneda ya vienen en el arte)
   const halo = scene.add.graphics();
-  halo.lineStyle(12, GOLD, 0.22).strokeRoundedRect(-w / 2 - 2, -h / 2 - 2, w + 4, h + 4, 20);
-  const g = scene.add.graphics();
-  g.fillStyle(0x000000, 0.4).fillRoundedRect(-w / 2 + 3, -h / 2 + 5, w, h, 18);
-  g.fillStyle(0x0a1638, 1).fillRoundedRect(-w / 2 - 3, -h / 2 - 3, w + 6, h + 6, 20);
-  g.fillStyle(0x0b1733, 0.97).fillRoundedRect(-w / 2, -h / 2, w, h, 18);
-  g.fillStyle(0xffffff, 0.08).fillRoundedRect(-w / 2 + 4, -h / 2 + 4, w - 8, h * 0.42, { tl: 15, tr: 15, bl: 6, br: 6 });
-  g.lineStyle(3, GOLD, 1).strokeRoundedRect(-w / 2, -h / 2, w, h, 18);
+  halo.lineStyle(12, GOLD, 0.22).strokeRoundedRect(-w / 2 - 2, -h / 2 - 2, w + 4, h + 4, r + 2);
+  let plate: Phaser.GameObjects.GameObject;
+  if (scene.textures.exists(A.key)) plate = scene.add.image(0, 0, A.key).setDisplaySize(w, h);
+  else plate = scene.add.graphics().fillStyle(0x0b1733, 0.97).fillRoundedRect(-w / 2, -h / 2, w, h, r).lineStyle(3, GOLD, 1).strokeRoundedRect(-w / 2, -h / 2, w, h, r); // sin la imagen cargada
 
-  // insignia: estrella dorada en un círculo
-  const bx = -w / 2 + 38;
-  const badge = scene.add.graphics({ x: bx, y: 0 });
-  badge.fillStyle(0x0a1638, 1).fillCircle(0, 0, 25);
-  badge.fillStyle(GOLD, 1).fillCircle(0, 0, 22);
-  badge.fillStyle(0xfff1b8, 0.55).fillEllipse(-5, -9, 20, 8);
-  const star: Phaser.Types.Math.Vector2Like[] = [];
-  for (let i = 0; i < 10; i++) {
-    const a = -Math.PI / 2 + (i * Math.PI) / 5;
-    const r = i % 2 ? 6 : 14;
-    star.push({ x: Math.cos(a) * r, y: Math.sin(a) * r + 1 });
-  }
-  badge.fillStyle(0x0a1638, 1).fillPoints(star, true);
-
-  // textos: ¡LOGRO! (dorado, chico) y la misión
-  const tx = bx + 34;
-  const head = scene.add.text(tx, -15, '¡LOGRO!', { fontFamily: FONT, fontSize: '16px', color: '#ffd23f', stroke: '#0a1638', strokeThickness: 4 }).setOrigin(0, 0.5).setLetterSpacing(2);
-  const name = scene.add.text(tx, 12, title.toUpperCase(), { fontFamily: FONT, fontSize: '17px', color: '#ffffff', stroke: '#0a1638', strokeThickness: 4 }).setOrigin(0, 0.5);
-  // premio a la derecha
-  const coin = scene.add.container(w / 2 - 26, -12, [coinIcon(scene, 0, 0, 12)]);
-  const val = scene.add.text(w / 2 - 26, 14, `+${coins}`, { fontFamily: FONT, fontSize: '20px', color: '#ffd23f', stroke: '#0a1638', strokeThickness: 4 }).setOrigin(0.5);
-  const maxName = w / 2 - 52 - tx;
+  // textos en la zona libre: ¡LOGRO! (dorado, chico) y la misión (blanca), centrados; los nombres largos se achican
+  const tx = lx((A.text.x0 + A.text.x1) / 2);
+  const maxName = (A.text.x1 - A.text.x0) * k;
+  const head = scene.add.text(tx, -14, '¡LOGRO!', { fontFamily: FONT, fontSize: '16px', color: '#ffd23f', stroke: '#0a1638', strokeThickness: 4 }).setOrigin(0.5).setLetterSpacing(2);
+  const name = scene.add.text(tx, 11, title.toUpperCase(), { fontFamily: FONT, fontSize: '17px', color: '#ffffff', stroke: '#0a1638', strokeThickness: 4 }).setOrigin(0.5);
   if (name.width > maxName) name.setScale(maxName / name.width);
+  // premio: "+N" dorado y grande, centrado en el casillero
+  const P = A.prize;
+  const val = scene.add.text(lx(P.cx), ly(P.cy), `+${coins}`, { fontFamily: FONT, fontSize: '20px', color: '#ffd23f', stroke: '#0a1638', strokeThickness: 3 }).setOrigin(0.5);
+  const maxVal = P.w * k - 10;
+  if (val.width > maxVal) val.setScale(maxVal / val.width);
 
   // destello del borde al entrar (como las cards del resultado; sin máscaras: la placa va en la cámara de interfaz)
   const flash = scene.add.graphics().setBlendMode(Phaser.BlendModes.ADD).setAlpha(0);
-  flash.lineStyle(5, 0xffffff, 1).strokeRoundedRect(-w / 2, -h / 2, w, h, 18);
+  flash.lineStyle(5, 0xffffff, 1).strokeRoundedRect(-w / 2, -h / 2, w, h, r);
 
-  c.add([halo, g, badge, head, name, coin, val, flash]);
+  c.add([halo, plate, head, name, val, flash]);
 
-  // entrada: rebote + estrella que gira + destello
+  // entrada: rebote + destello del borde + halo que late
   c.setScale(0.5).setAlpha(0);
   scene.tweens.add({ targets: c, scale: 1, alpha: 1, duration: 360, ease: 'Back.easeOut', easeParams: [2.2] });
-  scene.tweens.add({ targets: badge, angle: { from: -180, to: 0 }, scale: { from: 0.3, to: 1 }, duration: 520, ease: 'Back.easeOut' });
   scene.tweens.add({ targets: flash, alpha: { from: 1, to: 0 }, duration: 520, delay: 300, ease: 'Quad.easeOut' });
   scene.tweens.add({ targets: halo, alpha: { from: 1, to: 0.4 }, duration: 600, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
-  scene.tweens.add({ targets: coin, scale: { from: 1.4, to: 1 }, duration: 320, delay: 300, ease: 'Back.easeOut' });
   sfx(scene, 'power-up', 0.8);
   return c;
 }

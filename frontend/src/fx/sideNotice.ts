@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { FONT } from '../ui/theme';
+import { drawWarningIcon } from '../ui/icons';
 
 /**
  * Aviso lateral: entra desde la IZQUIERDA, se queda un momento y sale por la izquierda
@@ -46,15 +47,20 @@ function takeSlot(scene: Phaser.Scene): number {
 }
 const slotY = (i: number) => NOTICE.y + i * (NOTICE.h + NOTICE.gap);
 
-export function showSideNotice(scene: Phaser.Scene, text: string, color = 0xffd23f, ms = 1600) {
+/** hueco extra a la izquierda del texto cuando el aviso lleva icono (px) */
+const ICON_W = 36;
+
+/** `icon: 'warning'` (21-11-2026): triángulo de advertencia a la izquierda del texto (p. ej. RAQUETA). */
+export function showSideNotice(scene: Phaser.Scene, text: string, color = 0xffd23f, ms = 1600, icon?: 'warning') {
   const h = NOTICE.h;
   const s = NOTICE.slant;
   const slot = takeSlot(scene);
   const y = slotY(slot);
-  const t = scene.add.text(NOTICE.textX, 0, text.toUpperCase(), { fontFamily: FONT, fontSize: `${NOTICE.font}px`, color: '#ffffff', stroke: '#0a1638', strokeThickness: 4 }).setOrigin(0, 0.5).setLetterSpacing(2);
+  const extra = icon ? ICON_W : 0;
+  const t = scene.add.text(NOTICE.textX + extra, 0, text.toUpperCase(), { fontFamily: FONT, fontSize: `${NOTICE.font}px`, color: '#ffffff', stroke: '#0a1638', strokeThickness: 4 }).setOrigin(0, 0.5).setLetterSpacing(2);
   const maxW = scene.scale.width - NOTICE.rightClear;
-  if (t.width + NOTICE.padW > maxW) t.setScale((maxW - NOTICE.padW) / t.width); // texto largo: se encoge para no tapar el botón de emotes
-  const w = t.displayWidth + NOTICE.padW;
+  if (t.width + NOTICE.padW + extra > maxW) t.setScale((maxW - NOTICE.padW - extra) / t.width); // texto largo: se encoge para no tapar el botón de emotes
+  const w = t.displayWidth + NOTICE.padW + extra;
   const g = scene.add.graphics();
   g.fillStyle(0x000000, 0.35).fillPoints([{ x: 0, y: -h / 2 + 4 }, { x: w + 4, y: -h / 2 + 4 }, { x: w - s + 4, y: h / 2 + 4 }, { x: 0, y: h / 2 + 4 }], true);
   // ESTILO ÚNICO de los avisos laterales (13-11-2026): el de la cuenta atrás del saque, fondo negro y borde del color
@@ -62,6 +68,12 @@ export function showSideNotice(scene: Phaser.Scene, text: string, color = 0xffd2
   g.fillStyle(color, 1).fillRect(0, -h / 2, NOTICE.bar, h);
   g.lineStyle(3, color, 1).lineBetween(0, -h / 2, w, -h / 2).lineBetween(w, -h / 2, w - s, h / 2).lineBetween(w - s, h / 2, 0, h / 2);
   const c = scene.add.container(-w - 20, y, [g, t]).setScrollFactor(0).setDepth(6060);
+  if (icon) {
+    const ig = scene.add.graphics({ x: NOTICE.textX + ICON_W / 2 - 4, y: 1 });
+    drawWarningIcon(ig, 14, 0xffd23f);
+    c.add(ig);
+    scene.tweens.add({ targets: ig, scale: { from: 1.35, to: 1 }, duration: 320, delay: 200, ease: 'Back.easeOut' }); // latido al entrar
+  }
   scene.tweens.add({ targets: c, x: 0, duration: 260, ease: 'Cubic.easeOut' });
   scene.tweens.add({
     targets: c,

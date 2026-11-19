@@ -138,8 +138,10 @@ export function aimShot(from: BallState, tx: number, ty: number, speed: number, 
   from.vz = (0.5 * GRAVITY * T * T - from.z) / T;
 }
 
-export function isInCourt(x: number, y: number) {
-  return x >= COURT.left && x <= COURT.right && y >= COURT.top && y <= COURT.bottom;
+/** `wide` (2v2, 19-11-2026): cancha de DOBLES, con los pasillos laterales (ALLEY). */
+export function isInCourt(x: number, y: number, wide = false) {
+  const m = wide ? ALLEY : 0;
+  return x >= COURT.left && x <= COURT.right && y >= COURT.top - m && y <= COURT.bottom + m;
 }
 
 /**

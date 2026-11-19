@@ -14,7 +14,11 @@ import { EMOTE_ANIM, EMOTE_TEXTURE, MAI_EMOTE_TEXTURE, ensureEmoteAnims, queueEm
 import { styleLook } from '../ui/styleLook';
 import { passiveOf } from '../domain/characterPassives';
 import { openPassiveDialog } from '../ui/passiveInfo';
-import { CHAR_COLOR_LIST } from '../domain/charColors';
+import { CHAR_COLOR_LIST, COLOR_SKINS, charColorItem } from '../domain/charColors';
+import { CHEST } from '../domain/chest';
+import { drawChestIcon } from '../ui/wheelArt';
+import { passPortrait, queuePassPortraits } from '../characters/passPortrait';
+import { applyCharColor } from '../fx/CharColorFx';
 
 /**
  * PASE DE BATALLA a pantalla completa (estilo Clash Royale): cabecera con el nivel y el escudo del Premium, y debajo la
@@ -45,6 +49,8 @@ const STYLE_SWATCH: Record<string, number> = {
   'style:classic': 0x3a8bff,
   // estilos de color del personaje (Claude, domain/charColors.ts): muestra del color de su ropa
   ...Object.fromEntries(CHAR_COLOR_LIST.map((c) => [`color:${c.id}`, c.color])),
+  // (19-11-2026) colores POR PERSONAJE (`color:<id>:<skin>`)
+  ...Object.fromEntries(CHAR_COLOR_LIST.flatMap((c) => COLOR_SKINS.map((sk) => [charColorItem(c.id, sk), c.color]))),
 };
 
 /** Una fila creada: su contenedor y las animaciones que hay que parar al quitarla. */
@@ -81,7 +87,7 @@ export class BattlePassScene extends Phaser.Scene {
     if (!this.textures.exists('battle-pass-title')) this.load.image('battle-pass-title', 'assets/titulo-pase-batalla.webp');
     if (!this.textures.exists('battle-pass-insignia')) this.load.image('battle-pass-insignia', 'assets/insignia-pase-batalla.webp');
     // retrato de Mai: ya lo carga BootScene (characters/portrait.ts); solo se descarga si falta (1,3 MB)
-    if (!this.textures.exists('portrait-mai')) this.load.image('portrait-mai', 'assets/characters/mai_portrait.webp');
+    queuePassPortraits(this); // retratos del personaje del Pase (JUN; Mai por si algún premio suyo queda guardado)
     queueEmoteArt(this.load); // premios: emotes (miniaturas de ~32 KB)
     // (16-11-2026) premio de 1 DINERO: un solo billete (assets/dinero-virtual-1.webp, sin fondo; original con croma magenta en dinero-virtual.webp)
     if (!this.textures.exists('bp-cash-1')) this.load.image('bp-cash-1', 'assets/dinero-virtual-1.webp');
@@ -360,7 +366,8 @@ export class BattlePassScene extends Phaser.Scene {
 
     // el personaje del Pase explica su PASIVA (franja de arriba con el icono i); su zona táctil debe quedar encima de la celda entera (más abajo)
     let passiveZone: Phaser.GameObjects.Zone | null = null;
-    if (row === BP_TIERS && reward.kind === 'character' && this.textures.exists('portrait-mai')) passiveZone = this.characterCell(c, cx, cy, w - 50, h, prem, reward);
+    const heroPortrait = reward.kind === 'character' ? passPortrait(reward.skin) : undefined;
+    if (row === BP_TIERS && reward.kind === 'character' && heroPortrait && this.textures.exists(heroPortrait.key)) passiveZone = this.characterCell(c, cx, cy, w - 50, h, prem, reward);
     else {
       const iy = cy - 22;
       if (ready) {
@@ -386,7 +393,7 @@ export class BattlePassScene extends Phaser.Scene {
           if (key && this.textures.exists(key)) c.add(this.add.image(cx, iy, key).setDisplaySize(76, 76));
         }
       }
-      if (reward.kind === 'character' && this.textures.exists('portrait-mai')) c.add(this.add.image(cx, iy, 'portrait-mai').setDisplaySize(68, 88));
+      if (reward.kind === 'character' && heroPortrait && this.textures.exists(heroPortrait.key)) c.add(this.add.image(cx, iy, heroPortrait.key).setDisplaySize(68, 88));
       const label = rewardLabel(reward);
       const t = this.add.text(cx, cy + 46, label.top, { fontFamily: FONT, fontSize: '26px', color: '#ffffff', stroke: prem ? '#04392a' : '#06122e', strokeThickness: 5 }).setOrigin(0.5);
       fitText(t, w - 50);
@@ -440,7 +447,8 @@ export class BattlePassScene extends Phaser.Scene {
    */
   private characterCell(c: Phaser.GameObjects.Container, cx: number, cy: number, w: number, h: number, prem: boolean, reward: Extract<BpReward, { kind: 'character' }>): Phaser.GameObjects.Zone | null {
     const accent = prem ? 0xfff1b8 : 0x8fd8ff;
-    const box = { x0: 118, y0: 4, x1: 1070, y1: 1356 }; // caja visible de mai_portrait.png (1130 × 1392), como en characters/portrait.ts
+    const pp = passPortrait(reward.skin) ?? passPortrait('mai')!;
+    const box = pp.box; // caja visible del retrato (characters/passPortrait.ts)
     const vh = h * 0.68; // (16-11-2026, usuario) más grande: ya no hay franja de la PASIVA arriba
     const vw = ((box.x1 - box.x0) / (box.y1 - box.y0)) * vh;
     const feetY = cy + h * 0.24;
@@ -455,9 +463,10 @@ export class BattlePassScene extends Phaser.Scene {
     cell.add(glow);
     this.loop({ targets: glow, alpha: { from: 0.55, to: 1 }, duration: 1500, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
     cell.add(this.add.ellipse(0, feetY - cy + 2, vw * 0.9, 14, 0x000000, 0.35));
-    const img = this.add.image(0, feetY - cy, 'portrait-mai');
+    const img = this.add.image(0, feetY - cy, pp.key);
     img.setOrigin(((box.x0 + box.x1) / 2) / img.width, box.y1 / img.height);
     img.setScale(vh / (box.y1 - box.y0));
+    if (reward.color) applyCharColor(img, reward.color, reward.skin); // premium de JUN: su ropa en el color DORADO
     cell.add(img);
 
     const spark: [number, number, number][] = [[-0.4, -0.36, 8], [0.36, -0.4, 6], [0.42, -0.06, 7], [-0.44, 0.06, 5], [0.3, 0.22, 5]];
@@ -476,7 +485,7 @@ export class BattlePassScene extends Phaser.Scene {
     tag.fillStyle(0x06122e, 1).fillRoundedRect(-tagW / 2 - 2, tagY - 16, tagW + 4, 32, 16);
     tag.fillStyle(prem ? GOLD : 0x2f8bff, 1).fillRoundedRect(-tagW / 2, tagY - 14, tagW, 28, 14);
     cell.add(tag);
-    const tagText = this.add.text(0, tagY, reward.style ? '★ ESTILO ORO' : 'PERSONAJE NUEVO', { fontFamily: FONT, fontSize: '15px', color: prem ? '#3b2600' : '#ffffff' }).setOrigin(0.5);
+    const tagText = this.add.text(0, tagY, characterTag(reward), { fontFamily: FONT, fontSize: '15px', color: prem ? '#3b2600' : '#ffffff' }).setOrigin(0.5);
     fitText(tagText, tagW - 12);
     cell.add(tagText);
 
@@ -664,6 +673,11 @@ export class BattlePassScene extends Phaser.Scene {
       const bolt = [{ x: 4, y: -20 }, { x: -11, y: 3 }, { x: -1, y: 3 }, { x: -5, y: 20 }, { x: 11, y: -4 }, { x: 1, y: -4 }];
       g.fillStyle(0x0a1638, 1).fillPoints(bolt.map((p) => ({ x: p.x + 2, y: p.y + 2 })), true);
       g.fillStyle(0xffe14a, 1).fillPoints(bolt, true);
+    } else if (r.kind === 'chest') {
+      // (19-11-2026) COFRE NORMAL: el cofre sobre un disco azul (el color del cofre normal)
+      g.fillStyle(0x07152f, 1).fillCircle(0, 0, 29);
+      g.lineStyle(3, CHEST.colors[0], 1).strokeCircle(0, 0, 27);
+      drawChestIcon(g, 19);
     } else if (r.kind === 'character') {
       const accent = r.style ? GOLD : NEON;
       g.fillStyle(0x07152f, 1).fillCircle(0, 0, 29);
@@ -713,7 +727,12 @@ export class BattlePassScene extends Phaser.Scene {
   private rewardFx(r: BpReward, x: number, y: number) {
     if (r.kind === 'cash' || r.kind === 'rays') this.flyToWallet(r, x, y);
     else if (r.kind === 'character') this.characterUnlock(r);
-    else this.toast(`¡${rewardLabel(r).top}!`);
+    else if (r.kind === 'chest') {
+      // (19-11-2026) cofre nuevo, cofre que evolucionó o (ya era épico) monedas
+      if (r.coins) this.toast(`Tu cofre ya es ÉPICO: +${r.coins} monedas`);
+      else if (r.upgraded) this.toast(`¡Tu cofre subió a ${CHEST.names[r.level ?? 0]}!`);
+      else this.toast('¡COFRE NORMAL! Se abre en 2 días desde el menú');
+    } else this.toast(`¡${rewardLabel(r).top}!`);
   }
 
   /**
@@ -867,10 +886,11 @@ export class BattlePassScene extends Phaser.Scene {
     this.tweens.add({ targets: glow, scale: 1, duration: 500, ease: 'Back.easeOut' });
     this.tweens.add({ targets: glow, alpha: { from: 0.35, to: 0.15 }, scale: { from: 1, to: 1.12 }, delay: 500, duration: 900, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
     // el personaje entra creciendo con rebote y luego flota
-    const key = this.textures.exists(`portrait-${r.skin}`) ? `portrait-${r.skin}` : 'portrait-mai';
+    const key = passPortrait(r.skin)?.key ?? 'portrait-mai';
     if (this.textures.exists(key)) {
       const ph = Math.min(H * 0.46, 420);
       const img = add(this.add.image(cx, cy, key));
+      if (r.color) applyCharColor(img, r.color, r.skin); // JUN premium: en dorado
       const k = ph / img.height;
       img.setScale(0);
       this.tweens.add({
@@ -883,7 +903,7 @@ export class BattlePassScene extends Phaser.Scene {
       });
     }
     // textos
-    const t1 = add(this.add.text(cx, H * 0.1, '¡PERSONAJE DESBLOQUEADO!', { fontFamily: FONT, fontSize: '34px', color: '#ffe36b', stroke: '#5a3200', strokeThickness: 8, align: 'center' }).setOrigin(0.5).setAlpha(0));
+    const t1 = add(this.add.text(cx, H * 0.1, r.soon ? '¡PERSONAJE GANADO!' : '¡PERSONAJE DESBLOQUEADO!', { fontFamily: FONT, fontSize: '34px', color: '#ffe36b', stroke: '#5a3200', strokeThickness: 8, align: 'center' }).setOrigin(0.5).setAlpha(0));
     fitText(t1, W - 40);
     const s1 = t1.scale;
     t1.setScale(s1 * 3);
@@ -892,6 +912,12 @@ export class BattlePassScene extends Phaser.Scene {
     this.tweens.add({ targets: name, alpha: 1, y: { from: H * 0.75 + 40, to: H * 0.75 }, delay: 700, duration: 400, ease: 'Back.easeOut' });
     const sub = add(this.add.text(cx, H * 0.75 + 48, rewardLabel(r).sub, { fontFamily: FONT, fontSize: '20px', color: '#ffd86a', stroke: '#061431', strokeThickness: 5 }).setOrigin(0.5).setLetterSpacing(2).setAlpha(0));
     this.tweens.add({ targets: sub, alpha: 1, delay: 950, duration: 300 });
+    if (r.soon) {
+      // aún no se puede jugar: se avisa para que no se espere poder elegirlo ya
+      const soon = add(this.add.text(cx, H * 0.75 + 84, 'DISPONIBLE MUY PRONTO PARA JUGAR', { fontFamily: FONT, fontSize: '17px', color: '#ffffff', stroke: '#061431', strokeThickness: 5 }).setOrigin(0.5).setLetterSpacing(1).setAlpha(0));
+      fitText(soon, W - 40);
+      this.tweens.add({ targets: soon, alpha: 1, delay: 1150, duration: 300 });
+    }
     const tap = add(this.add.text(cx, H * 0.9, 'Toca para continuar', { fontFamily: FONT, fontSize: '18px', color: '#d1e3ff' }).setOrigin(0.5).setAlpha(0));
     this.tweens.add({ targets: tap, alpha: { from: 0, to: 1 }, delay: 1600, duration: 600, yoyo: true, repeat: -1 });
     // confeti y estrellas
@@ -1085,10 +1111,18 @@ export function drawCashIcon(g: Phaser.GameObjects.Graphics, k = 1, x = 0, y = 0
 }
 
 /** Textos del premio. */
+/** etiqueta de la celda del personaje del final: su variante (color / estilo) o, si aún no se puede jugar, que llega pronto */
+function characterTag(r: Extract<BpReward, { kind: 'character' }>): string {
+  if (r.color) return r.soon ? '★ DORADO · PRONTO' : '★ COLOR DORADO';
+  if (r.style) return '★ ESTILO ORO';
+  return r.soon ? 'PRÓXIMAMENTE' : 'PERSONAJE NUEVO';
+}
+
 function rewardLabel(r: BpReward): { top: string; sub: string } {
   if (r.kind === 'cash') return { top: String(r.amount), sub: 'DINERO' };
   if (r.kind === 'rays') return { top: `${r.amount} ${r.amount === 1 ? 'RAYO' : 'RAYOS'}`, sub: 'PARA LA ZONA' };
-  if (r.kind === 'character') return { top: r.name.toUpperCase(), sub: r.style ? 'PERSONAJE · ESTILO ORO' : 'PERSONAJE NUEVO' };
+  if (r.kind === 'chest') return { top: 'COFRE', sub: 'COFRE NORMAL' };
+  if (r.kind === 'character') return { top: r.name.toUpperCase(), sub: r.color ? 'PERSONAJE · COLOR DORADO' : r.style ? 'PERSONAJE · ESTILO ORO' : 'PERSONAJE NUEVO' };
   const sub = r.item.startsWith('emote:') ? (EMOTE_ANIM[r.item.slice(6) as EmoteKind] ? 'EMOTE LEGENDARIO' : 'EMOTE') : r.item.startsWith('charge:') ? 'CARGANDO GOLPE' : r.item.startsWith('style:') ? 'EFECTO PELOTA' : r.item.startsWith('color:') ? 'COLOR DE ROPA' : 'ESTILO';
   return { top: r.name.replace('Estilo ', '').toUpperCase(), sub };
 }

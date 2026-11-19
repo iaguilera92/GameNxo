@@ -5,10 +5,11 @@ import { stadiumBg } from '../ui/ui';
 import { Character, playerLook } from '../objects/Character';
 import { MAX_LEVEL } from '../config';
 import { getProfile, levelProgress, setCharColor, setCharge, setDefensive, setInferno, setSkin, setSmash } from '../logic/Profile';
-import { CHAR_COLOR_LIST, type CharColorId, charColorInfo, charColorOf, charColorOwned } from '../domain/charColors';
+import { CHAR_COLOR_LIST, type CharColorId, charColorFor, charColorInfo, charColorOwned } from '../domain/charColors';
 import { applyCharColor } from '../fx/CharColorFx';
 import { type UnlockKey, isUnlocked, unlockLabel } from '../domain/unlocks';
-import { CATALOG, skinById } from '../characters/catalog';
+import { skinById } from '../characters/catalog';
+import { rosterPortrait } from '../characters/passPortrait';
 import { addPortrait } from '../characters/portrait';
 import type { SkinId } from '../characters/skins';
 import { ABILITIES, type AbilityDef, type AbilityId } from '../logic/Abilities';
@@ -500,8 +501,8 @@ ${unlockLabel(key)}`, { fontFamily: FONT, fontSize: '16px', color: '#ffd23f', st
     plate.lineStyle(3, NEON, 1).strokePoints(shape, true, true);
     this.add.text(px + pw / 2, py + ph / 2, name, { fontFamily: FONT, fontSize: '32px', color: '#ffffff' }).setOrigin(0.5).setLetterSpacing(2);
 
-    // TEMPORAL (pruebas): selector Hombre/Mujer, a la derecha de la vitrina
-    this.sexToggle(W - 40, py + ph / 2, skin);
+    // botón CAMBIAR PERSONAJE (21-11-2026; antes el interruptor HOMBRE | MUJER), a la derecha de la vitrina
+    this.changeCharButton(W - 40, py + ph / 2, skin);
 
     // NIVEL MÁXIMO: pastilla pequeña justo encima del nombre (la tarjeta de nivel ya no sale en la lista)
     if (maxed) this.maxLevelPill(px + 6, py - 8);
@@ -695,7 +696,7 @@ ${unlockLabel(key)}`, { fontFamily: FONT, fontSize: '16px', color: '#ffd23f', st
   /** ESTILOS DE COLOR: televisión con el personaje pintado; los que faltan se ganan en el PASE DE BATALLA. */
   private openColorDialog(skin: SkinId) {
     const p = getPlayer();
-    const cur = charColorOf(p.equipped.color);
+    const cur = charColorFor(p.owned, p.equipped.color, skin); // (19-11-2026) colores por personaje
     const portrait = (x: number, y: number, size: number, id: CharColorId) => {
       const img = addPortrait(this, skin, x, y + size * 0.5, size * 1.05);
       if (!img) return this.add.circle(x, y, size / 2, charColorInfo(id).color, 1);
@@ -707,7 +708,7 @@ ${unlockLabel(key)}`, { fontFamily: FONT, fontSize: '16px', color: '#ffd23f', st
       ...byDefault(d.id === 'classic', d.name, d.desc),
       // sin rareza (se ganan en el PASE): el clásico es "INCLUIDO" y los demás "DEL PASE"
       badge: d.id === 'classic' ? undefined : 'DEL PASE',
-      owned: charColorOwned(p.owned, d.id),
+      owned: charColorOwned(p.owned, d.id, skin),
       equipped: d.id === cur,
       // tu personaje pintado con ese color, grande a la izquierda; en la lista, su miniatura
       preview: (x, y, size) => portrait(x, y, size * 1.15, d.id),
@@ -720,6 +721,8 @@ ${unlockLabel(key)}`, { fontFamily: FONT, fontSize: '16px', color: '#ffd23f', st
       // televisión grande como los demás selectores (información en dos columnas, botones planos, lista paginada), pero SIN "En acción": el color se
       // ve en el propio personaje
       bigTv: true,
+      iconScale: 1.55, // (21-11-2026) el personaje del mismo tamaño que en CAMBIAR PERSONAJE
+      pulse: 0.3,
       slots,
       shopLabel: 'IR AL PASE',
       lockedNote: 'Se gana en el PASE DE BATALLA.',
@@ -734,42 +737,103 @@ ${unlockLabel(key)}`, { fontFamily: FONT, fontSize: '16px', color: '#ffd23f', st
   }
 
   /**
-   * TEMPORAL: interruptor HOMBRE | MUJER para probar ambos personajes mientras no haya cuentas.
-   * Guarda la skin en el perfil (se usa en menú, VS y partido). Quitar cuando exista selección real.
+   * Botón CAMBIAR PERSONAJE (a la derecha de la vitrina): abre el diálogo con los 4 personajes (ver openCharacterDialog). Sustituye al interruptor
+   * temporal HOMBRE | MUJER.
    */
-  private sexToggle(right: number, cy: number, skin: SkinId) {
-    // un personaje solo se puede elegir si es tuyo (Mai es premio del Pase de Batalla): si no, candado y aviso
-    const owned = getPlayer().owned;
-    const opts = CATALOG.map((s) => ({ id: s.id, name: s.name, label: s.sex === 'f' ? 'MUJER' : 'HOMBRE', has: owned.includes(`skin:${s.id}` as never) }));
-    const segW = 104;
-    const h = 50;
-    const w = segW * opts.length;
+  private changeCharButton(right: number, cy: number, skin: SkinId) {
+    // (21-11-2026) tarjeta COMPACTA de dos líneas (CAMBIAR / PERSONAJE) con el icono a la izquierda. Primero el fondo y luego el texto: antes el texto
+    // se creaba primero y el fondo lo tapaba (la tarjeta salía sin texto), y en una sola línea ocupaba demasiado ancho
+    const h = 60;
+    const style = { fontFamily: FONT, fontSize: '15px', color: '#ffffff' };
+    const t1 = this.add.text(0, cy - 10, 'CAMBIAR', style).setOrigin(0, 0.5).setLetterSpacing(1);
+    const t2 = this.add.text(0, cy + 10, 'PERSONAJE', style).setOrigin(0, 0.5).setLetterSpacing(1);
+    const tw = Math.max(t1.width, t2.width);
+    const iconW = 38;
+    const w = Math.round(iconW + tw + 26);
     const x0 = right - w;
     const g = this.add.graphics();
-    g.fillStyle(0x000000, 0.35).fillRoundedRect(x0 + 3, cy - h / 2 + 5, w, h, h / 2);
-    g.fillStyle(NAVY, 0.94).fillRoundedRect(x0, cy - h / 2, w, h, h / 2);
-    g.lineStyle(3, NEON, 1).strokeRoundedRect(x0, cy - h / 2, w, h, h / 2);
-    opts.forEach((o, i) => {
-      const sx = x0 + i * segW;
-      const active = o.id === skin;
-      if (active) {
-        g.fillStyle(NEON, 1).fillRoundedRect(sx + 4, cy - h / 2 + 4, segW - 8, h - 8, (h - 8) / 2);
-        g.fillStyle(0x6fb2ff, 0.5).fillRoundedRect(sx + 8, cy - h / 2 + 6, segW - 16, (h - 8) * 0.4, { tl: 14, tr: 14, bl: 0, br: 0 });
+    g.fillStyle(0x000000, 0.35).fillRoundedRect(x0 + 3, cy - h / 2 + 5, w, h, 18);
+    g.fillStyle(NAVY, 0.94).fillRoundedRect(x0, cy - h / 2, w, h, 18);
+    g.fillStyle(0x6fb2ff, 0.18).fillRoundedRect(x0 + 5, cy - h / 2 + 4, w - 10, (h - 8) * 0.42, { tl: 14, tr: 14, bl: 0, br: 0 });
+    g.lineStyle(3, NEON, 1).strokeRoundedRect(x0, cy - h / 2, w, h, 18);
+    // icono de intercambio (dos flechas), sobre el fondo
+    const ix = x0 + 24;
+    const ic = this.add.graphics();
+    ic.lineStyle(3.5, 0x7fd6ff, 1).lineBetween(ix - 9, cy - 5, ix + 8, cy - 5).lineBetween(ix + 8, cy - 5, ix + 3, cy - 10).lineBetween(ix + 8, cy - 5, ix + 3, cy);
+    ic.lineBetween(ix + 9, cy + 6, ix - 8, cy + 6).lineBetween(ix - 8, cy + 6, ix - 3, cy + 11).lineBetween(ix - 8, cy + 6, ix - 3, cy + 1);
+    // texto por encima del fondo y del icono
+    const tx = x0 + iconW + 14;
+    t1.setPosition(tx, cy - 10).setDepth(2);
+    t2.setPosition(tx, cy + 10).setDepth(2);
+    ic.setDepth(2);
+    g.setDepth(1);
+    const hit = this.add.rectangle(x0 + w / 2, cy, w, h + 8, 0x000000, 0.001).setDepth(3).setInteractive({ useHandCursor: true });
+    hit.on('pointerup', () => this.openCharacterDialog(skin));
+  }
+
+  /**
+   * CAMBIAR PERSONAJE: el mismo diálogo de los selectores de poderes (televisión grande con dos columnas, lista de huecos y borde con destellos como el de
+   * la ULTI) con los 4 personajes: NXO y MAI (jugables; MAI solo si es tuyo, premio del Pase) y JUN y NET, BLOQUEADOS (aún no jugables). Al equipar, se
+   * guarda la skin en el perfil (menú, VS y partido) y la pantalla se reinicia con el personaje nuevo.
+   */
+  private openCharacterDialog(skin: SkinId) {
+    // los retratos de JUN y NET no los carga el arranque: si faltan, se piden ahora y se abre al terminar
+    const need = ['jun', 'net'].map((id) => rosterPortrait(id)).filter((p): p is NonNullable<typeof p> => !!p && !this.textures.exists(p.key));
+    if (need.length) {
+      need.forEach((p) => this.load.image(p.key, p.file));
+      this.load.once(Phaser.Loader.Events.COMPLETE, () => this.sys.isActive() && this.openCharacterDialogNow(skin));
+      this.load.start();
+      return;
+    }
+    this.openCharacterDialogNow(skin);
+  }
+
+  private openCharacterDialogNow(skin: SkinId) {
+    const owned = getPlayer().owned;
+    // retrato centrado en (x, y) con `size` px de alto (NXO y MAI de portrait.ts; JUN y NET de passPortrait.ts); sin imagen, un disco
+    const portrait = (id: string, x: number, y: number, size: number) => {
+      if (id === 'nxo' || id === 'mai') {
+        const img = addPortrait(this, id as SkinId, x, y + size * 0.5, size * 1.05);
+        if (img) return img;
       }
-      this.add.text(sx + segW / 2 + (o.has ? 0 : 9), cy, o.label, { fontFamily: FONT, fontSize: '19px', color: active ? '#ffffff' : o.has ? '#7f93bf' : '#56688f' }).setOrigin(0.5);
-      if (!o.has) {
-        // candado a la izquierda del texto
-        const lk = this.add.graphics({ x: sx + 17, y: cy });
-        lk.lineStyle(3, 0x8ea3ce, 1).beginPath().arc(0, -3, 5, Math.PI, 0).strokePath();
-        lk.fillStyle(0x8ea3ce, 1).fillRoundedRect(-7, -3, 14, 11, 3);
-      }
-      const hit = this.add.rectangle(sx + segW / 2, cy, segW, h, 0x000000, 0.001).setInteractive({ useHandCursor: true });
-      hit.on('pointerdown', () => {
-        if (active) return;
-        if (!o.has) return this.toast(`${o.name} se desbloquea en el Pase de Batalla`);
-        setSkin(o.id);
-        this.scene.restart();
-      });
+      const p = rosterPortrait(id);
+      if (!p || !this.textures.exists(p.key)) return this.add.circle(x, y, size / 2, 0x24365f, 1);
+      const { x0, y0, x1, y1 } = p.box;
+      return this.add.image(x, y + size * 0.5, p.key).setOrigin((x0 + x1) / 2 / p.w, y1 / p.h).setScale((size * 1.05) / (y1 - y0));
+    };
+    const ROSTER: { id: string; name: string; playable: boolean; badge?: string }[] = [
+      { id: 'nxo', name: 'Nxo', playable: true },
+      { id: 'mai', name: 'Mai', playable: true, badge: 'DEL PASE' },
+      { id: 'jun', name: 'Jun', playable: false, badge: 'PRONTO' },
+      { id: 'net', name: 'Net', playable: false, badge: 'PRONTO' },
+    ];
+    const slots: PowerSlot[] = ROSTER.map((c) => {
+      const pas = passiveOf(c.id);
+      return {
+        id: c.id,
+        name: c.name,
+        desc: pas ? `PASIVA · ${pas.name}\n${pas.short}${c.playable ? '' : '\nAún no se puede jugar.'}` : c.playable ? 'Personaje jugable.' : 'Personaje nuevo. Aún no se puede jugar.',
+        badge: c.badge,
+        showLocked: true, // JUN, NET (y MAI si no es tuya) se ven, apagados y con candado
+        owned: c.playable && owned.includes(`skin:${c.id}` as never),
+        equipped: c.id === skin,
+        preview: (x, y, size) => portrait(c.id, x, y, size * 1.15),
+        thumb: (x, y, size) => portrait(c.id, x, y, size),
+        onEquip: () => setSkin(c.id as SkinId),
+      };
+    });
+    openPowerDialog(this, {
+      title: 'CAMBIAR PERSONAJE',
+      color: NEON,
+      slots,
+      special: true,
+      bigTv: true,
+      iconScale: 1.55, // los personajes más grandes en la televisión
+      pulse: 0.3, // y casi sin palpitar
+      lockedNote: 'Aún no disponible.',
+      onClose: ({ changed }) => {
+        if (changed) this.scene.restart(); // al instante: la pantalla ya muestra el personaje elegido
+      },
     });
   }
 
@@ -862,7 +926,8 @@ ${unlockLabel(key)}`, { fontFamily: FONT, fontSize: '16px', color: '#ffd23f', st
       // título y descriptor con los mismos tamaños y posiciones que la ULTI (20 px arriba, 14 px abajo)
       const title = this.add.text(tx, top + 18, item.title, { fontFamily: FONT, fontSize: '20px', color: '#ffe36b', stroke: '#061431', strokeThickness: 4 }).setOrigin(0, 0);
       title.setScale(Math.min(1, (tw - 44) / title.width));
-      const sub = this.add.text(tx, top + 43, 'Pasiva de remontada', { fontFamily: FONT, fontSize: '14px', color: '#ffffff' }).setOrigin(0, 0).setLetterSpacing(1);
+      // (21-11-2026, usuario) la ZONA es POR PERSONAJE: el descriptor dice de quién son los atributos que se ven (cambia al cambiar de personaje)
+      const sub = this.add.text(tx, top + 43, `POR PERSONAJE · ${skinById(getProfile().skin as SkinId).name.toUpperCase()}`, { fontFamily: FONT, fontSize: '14px', color: '#ffffff' }).setOrigin(0, 0).setLetterSpacing(1);
       sub.setScale(Math.min(1, (tw - 44) / sub.width));
       // (usuario 16-11-2026) tocar el icono o el texto abre los ESTILOS DE ZONA (como el DEFENSIVO); la zona de toque es solo la cabecera,
       // los + de los atributos de abajo siguen funcionando. Se crea antes del (i): el (i) queda encima

@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { pickAmbiente } from '../view/CourtView';
+import { ambienteForRoom, pickAmbiente } from '../view/CourtView';
 
 /**
  * Música de la cancha (soundtrack del ambiente), compartida entre la pantalla VS y el partido.
@@ -23,11 +23,15 @@ let musicKey = '';
 /** cada play/stop invalida las cargas anteriores (una carga que termina tarde no arranca música vieja) */
 let token = 0;
 
+/** soundtracks pedidos al cargador en esta partida (para liberar también el que se pidió y no llegó a sonar) */
+const requested = new Set<string>();
+
 function ensureLoaded(scene: Phaser.Scene, key: string, onReady?: () => void) {
   if (scene.cache.audio.exists(key)) {
     onReady?.();
     return;
   }
+  requested.add(key);
   scene.load.audio(key, `mp3/${key}.mp3`);
   // si el archivo falta, COMPLETE llega igual y simplemente no suena (sin error)
   if (onReady) scene.load.once(Phaser.Loader.Events.COMPLETE, onReady);
@@ -39,6 +43,19 @@ export function prepareMatchMusic(scene: Phaser.Scene): string {
   if (picked === null) picked = pickAmbiente(scene) ?? '';
   ensureLoaded(scene, trackFor(picked));
   return picked;
+}
+
+/**
+ * Partido ONLINE emparejado: el ambiente y su música salen del id de la sala (`ambienteForRoom`), iguales en los dos teléfonos. Sustituye al
+ * sorteado al empezar la búsqueda (que cada teléfono hacía por su cuenta): se suelta su soundtrack si era otro y se carga el nuevo.
+ */
+export function setRoomMatchMusic(scene: Phaser.Scene, roomId: string): string {
+  const next = ambienteForRoom(scene, roomId) ?? '';
+  const old = picked !== null ? trackFor(picked) : '';
+  picked = next;
+  if (old && old !== trackFor(next) && old !== musicKey && scene.cache.audio.exists(old)) scene.cache.audio.remove(old);
+  ensureLoaded(scene, trackFor(next));
+  return next;
 }
 
 /** Ambiente ya elegido para este partido (lo consume el partido: una revancha vuelve a sortear). */
@@ -71,7 +88,8 @@ export function stopMatchMusic(scene: Phaser.Scene, release = true) {
   music?.destroy();
   music = null;
   if (release) {
-    for (const k of new Set([musicKey, picked ? trackFor(picked) : ''])) if (k && scene.cache.audio.exists(k)) scene.cache.audio.remove(k);
+    for (const k of new Set([musicKey, picked ? trackFor(picked) : '', ...requested])) if (k && scene.cache.audio.exists(k)) scene.cache.audio.remove(k);
+    requested.clear();
     picked = null;
   }
   musicKey = '';

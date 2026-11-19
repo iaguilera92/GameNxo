@@ -142,7 +142,8 @@ intenso tiene toda la tienda recién el día ~50.
 
 ## 6. XP y niveles (`frontend/src/config.ts`, `frontend/src/domain/unlocks.ts`)
 
-- XP (14-11-2026, decisión del usuario): **una victoria = un nivel** (190 XP), una derrota = medio nivel (95: dos derrotas hacen un nivel) y rendirse o abandonar = un tercio de una derrota (32). Ruleta ~5 de media por giro. Toda la XP llena también el pase de la temporada.
+- XP (14-11-2026, decisión del usuario): **una victoria = un nivel** (190 XP), una derrota = medio nivel (95: dos derrotas hacen un nivel) y rendirse o abandonar = **0** (19-11-2026, usuario; antes un tercio de una derrota, 32). Si el RIVAL se rinde o se va: 95 si ganaste al menos un juego, si no 0 (`MatchEndData.rivalLeft`). El 2v2 (online y contra bots) da la misma EXP y la misma ruleta que el 1v1. Ruleta ~5 de media por giro.
+- **MONEDAS 2v2** (19-11-2026, usuario; `domain/coins2v2.ts`): contador PROPIO del ranking del 2v2, aparte de las monedas de la Liga y del dinero: +30 al ganar, −15 al perder, −30 al rendirse, nunca baja de 0; cuentan en el 2v2 online y contra bots. Se ven en una franja de la pantalla de resultados del 2v2 (en lugar del duelo de apuestas). Su tabla y rango están en la LIGA 2v2 (`Liga2v2Scene`, `domain/league2v2.ts`; por ahora con jugadores simulados). Toda la XP llena también el pase de la temporada.
 - Curva: **plana**, 190 XP por nivel en todos los niveles (`xpToNext` en `config.ts`; antes 100 + 120 por nivel, 22.420 XP del 1 al 20). Del 1 al 20: 3.610 XP.
 - Tutorial por nivel con el modo desarrollo apagado: `docs/TUTORIAL.md`.
 
@@ -171,10 +172,18 @@ El rival se elige por tu nivel (tu nivel ±2; en Ranked, +2 por liga): subir de 
 - XP por nivel: Temporada 1 = 100. **Desde la Temporada 2 = 350.** Cambiarlo en plena temporada bajaría el nivel de
   quien ya avanzó. Con 350, el casual lo completa cerca del día 25 del mes, el regular en ~2 semanas y el intenso en
   ~8 días (con 100: días 10, 5 y 3).
-- Gratis: emotes (Risa de bienvenida, Pensando 3, Enojado 11), Rosado 5, Color Azul 8, Verde 15, Color Verde 18,
-  1 Rayo 25, Mai 30 y 40 de dinero.
-- Premium ($3.990 CLP, solo dinero real): Color Morado 7, Oro 10, Cargando Tulipán 12, Color Dorado 21, 2 Rayos 25,
-  Color Sombra 27, Mai Estilo Oro 30 y 60 de dinero.
+- **Reparto (19-11-2026, usuario):** en un camino nunca van seguidos dos premios del mismo tipo (solo el dinero) ni en el mismo nivel o en
+  niveles vecinos entre los dos caminos; de cada tipo, uno en gratis y otro en premium. Los ESTILOS DE COLOR son POR PERSONAJE
+  (`color:<id>:<skin>`; los `color:<id>` ganados antes valen para todos). El COFRE es el NORMAL de la ruleta (2 días; si ya hay uno, evoluciona).
+- Gratis: Risa 2, Rosado 5, Pensando 8, Cofre 11, Enojado 14, Azul · NXO 17, Llorando 20, Cargando Energía 23, 1 Rayo 26, Jun 30
+  y 36 de dinero (+1 de bienvenida). Cargando ENERGÍA y no FUEGO: el FUEGO ya viene con NXO.
+- Premium: Oro 3, Cofre 7, LENTES 11 (legendario), Cargando Tulipán 15, Dorado · NXO 21, TESORO 27 (legendario), Jun Dorado 30 y 55 de
+  dinero (+5 de bienvenida). Fuera del Pase: efectos Verde y Rojo (Tienda) y los colores Verde, Morado y Sombra.
+- (Anterior) Gratis: emotes (Risa de bienvenida, Pensando 3, Enojado 11), Rosado 5, Color Azul 8, Verde 15, Color Verde 18,
+  1 Rayo 25, Jun 30 y 40 de dinero. **Jun** (21-11-2026, reemplaza a Mai como personaje del nivel 30) **aún no se puede jugar**: se reclama
+  el nivel, pero no se entrega `skin:jun` hasta que tenga hojas (se quita `soon` en `battlePassConfig.ts` y se entrega solo al cargar).
+- (Anterior) Premium ($3.990 CLP, solo dinero real): Color Morado 7, Oro 10, Cargando Tulipán 12, Color Dorado 21, 2 Rayos 25,
+  Color Sombra 27, Jun Color Dorado 30 (da el ítem `color:dorado`; si ya lo tienes del nivel 21, 3 de dinero) y 60 de dinero.
 - Completo: una ruleta extra. Premio que ya tienes: 3 de dinero.
 
 ## 8. Ruleta diaria (`frontend/src/domain/wheelConfig.ts`)

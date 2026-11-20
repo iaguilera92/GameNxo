@@ -32,7 +32,10 @@ const CELLS = SET === '2v2' ? [
   { id: 'challenger', cell: [765, 615, 771, 340] },
 ];
 // cuerpo de cada marco dentro de su WebP (px): el rect?ngulo que coincide con la card; alas y corona sobresalen. Sin entrada = todo el WebP
-const BODY = SET === '2v2' ? {} : {
+const BODY = SET === '2v2' ? {
+  diamond: { x: 26, y: 16, w: 646, h: 222 },
+  challenger: { x: 34, y: 44, w: 638, h: 208 },
+} : {
   diamond: { x: 24, y: 18, w: 696, h: 214 },
   challenger: { x: 26, y: 42, w: 693, h: 221 },
 };

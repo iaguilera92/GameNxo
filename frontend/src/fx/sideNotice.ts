@@ -25,6 +25,9 @@ const NOTICE = {
   rightClear: 100,
 };
 
+/** (21-11-2026, usuario) la placa nace EXT px fuera de la pantalla a la izquierda y SIN borde ni franja de color ahí: parece venir de más allá del borde y no queda hueco sin fondo. */
+const EXT = 40;
+
 /**
  * Huecos ocupados (0 = arriba, 1 = debajo…): cada aviso toma el PRIMER hueco libre y lo suelta al irse. (Antes un
  * contador: si se iba el de arriba, el siguiente caía encima del de abajo, p. ej. de "SACA EN 5".)
@@ -62,11 +65,10 @@ export function showSideNotice(scene: Phaser.Scene, text: string, color = 0xffd2
   if (t.width + NOTICE.padW + extra > maxW) t.setScale((maxW - NOTICE.padW - extra) / t.width); // texto largo: se encoge para no tapar el botón de emotes
   const w = t.displayWidth + NOTICE.padW + extra;
   const g = scene.add.graphics();
-  g.fillStyle(0x000000, 0.35).fillPoints([{ x: 0, y: -h / 2 + 4 }, { x: w + 4, y: -h / 2 + 4 }, { x: w - s + 4, y: h / 2 + 4 }, { x: 0, y: h / 2 + 4 }], true);
+  g.fillStyle(0x000000, 0.35).fillPoints([{ x: -EXT, y: -h / 2 + 4 }, { x: w + 4, y: -h / 2 + 4 }, { x: w - s + 4, y: h / 2 + 4 }, { x: -EXT, y: h / 2 + 4 }], true);
   // ESTILO ÚNICO de los avisos laterales (13-11-2026): el de la cuenta atrás del saque, fondo negro y borde del color
-  g.fillStyle(0x000000, 0.95).fillPoints([{ x: 0, y: -h / 2 }, { x: w, y: -h / 2 }, { x: w - s, y: h / 2 }, { x: 0, y: h / 2 }], true);
-  g.fillStyle(color, 1).fillRect(0, -h / 2, NOTICE.bar, h);
-  g.lineStyle(3, color, 1).lineBetween(0, -h / 2, w, -h / 2).lineBetween(w, -h / 2, w - s, h / 2).lineBetween(w - s, h / 2, 0, h / 2);
+  g.fillStyle(0x000000, 0.95).fillPoints([{ x: -EXT, y: -h / 2 }, { x: w, y: -h / 2 }, { x: w - s, y: h / 2 }, { x: -EXT, y: h / 2 }], true);
+  g.lineStyle(3, color, 1).lineBetween(-EXT, -h / 2, w, -h / 2).lineBetween(w, -h / 2, w - s, h / 2).lineBetween(w - s, h / 2, -EXT, h / 2);
   const c = scene.add.container(-w - 20, y, [g, t]).setScrollFactor(0).setDepth(6060);
   if (icon) {
     const ig = scene.add.graphics({ x: NOTICE.textX + ICON_W / 2 - 4, y: 1 });
@@ -100,15 +102,16 @@ export function showServeSpeedNotice(scene: Phaser.Scene, kmh: number, color: nu
   const y = slotY(slot);
   const hex = '#' + color.toString(16).padStart(6, '0');
   const style = (size: number, col: string, stroke = 4) => ({ fontFamily: FONT, fontSize: `${size}px`, color: col, stroke: '#0a1638', strokeThickness: stroke });
-  const t1 = scene.add.text(NOTICE.textX, 0, 'SAQUE', style(20, '#ffffff')).setOrigin(0, 0.5).setLetterSpacing(2);
-  const t2 = scene.add.text(t1.x + t1.width + 12, 1, String(kmh), style(34, hex, 5)).setOrigin(0, 0.5);
-  const t3 = scene.add.text(t2.x + t2.width + 8, 7, 'KM/H', style(15, '#ffffff')).setOrigin(0, 0.5).setLetterSpacing(1);
+  // (21-11-2026, usuario) los tres textos del MISMO tamaño y en la misma línea (el número lleva el color de la fuerza; los otros, blancos)
+  const FS = 28;
+  const t1 = scene.add.text(NOTICE.textX, 0, 'SAQUE', style(FS, '#ffffff', 5)).setOrigin(0, 0.5).setLetterSpacing(2);
+  const t2 = scene.add.text(t1.x + t1.width + 12, 0, String(kmh), style(FS, hex, 5)).setOrigin(0, 0.5);
+  const t3 = scene.add.text(t2.x + t2.width + 10, 0, 'KM/H', style(FS, '#ffffff', 5)).setOrigin(0, 0.5).setLetterSpacing(1);
   const w = Math.round(t3.x + t3.width + 30);
   const g = scene.add.graphics();
-  g.fillStyle(0x000000, 0.35).fillPoints([{ x: 0, y: -h / 2 + 4 }, { x: w + 4, y: -h / 2 + 4 }, { x: w - s + 4, y: h / 2 + 4 }, { x: 0, y: h / 2 + 4 }], true);
-  g.fillStyle(0x000000, 0.95).fillPoints([{ x: 0, y: -h / 2 }, { x: w, y: -h / 2 }, { x: w - s, y: h / 2 }, { x: 0, y: h / 2 }], true);
-  g.fillStyle(color, 1).fillRect(0, -h / 2, NOTICE.bar, h);
-  g.lineStyle(3, color, 1).lineBetween(0, -h / 2, w, -h / 2).lineBetween(w, -h / 2, w - s, h / 2).lineBetween(w - s, h / 2, 0, h / 2);
+  g.fillStyle(0x000000, 0.35).fillPoints([{ x: -EXT, y: -h / 2 + 4 }, { x: w + 4, y: -h / 2 + 4 }, { x: w - s + 4, y: h / 2 + 4 }, { x: -EXT, y: h / 2 + 4 }], true);
+  g.fillStyle(0x000000, 0.95).fillPoints([{ x: -EXT, y: -h / 2 }, { x: w, y: -h / 2 }, { x: w - s, y: h / 2 }, { x: -EXT, y: h / 2 }], true);
+  g.lineStyle(3, color, 1).lineBetween(-EXT, -h / 2, w, -h / 2).lineBetween(w, -h / 2, w - s, h / 2).lineBetween(w - s, h / 2, -EXT, h / 2);
   const c = scene.add.container(-w - 20, y, [g, t1, t2, t3]).setScrollFactor(0).setDepth(6060);
   scene.tweens.add({ targets: c, x: 0, duration: 260, ease: 'Cubic.easeOut' });
   scene.tweens.add({ targets: t2, scale: { from: 1.5, to: 1 }, duration: 380, delay: 200, ease: 'Back.easeOut' }); // el número "golpea" al entrar
@@ -157,10 +160,9 @@ export function createServeCountdown(scene: Phaser.Scene): ServeCountdown {
     const line = n <= 3 ? 0xff1f2e : 0xff9a1f; // 5-4 naranja · 3-1 rojo
     const fill = n <= 1 ? 0xe0182a : 0x000000; // 1: todo rojo
     g.clear();
-    g.fillStyle(0x000000, 0.35).fillPoints([{ x: 0, y: -h / 2 + 4 }, { x: w + 4, y: -h / 2 + 4 }, { x: w - s + 4, y: h / 2 + 4 }, { x: 0, y: h / 2 + 4 }], true);
-    g.fillStyle(fill, 0.95).fillPoints([{ x: 0, y: -h / 2 }, { x: w, y: -h / 2 }, { x: w - s, y: h / 2 }, { x: 0, y: h / 2 }], true);
-    g.fillStyle(line, 1).fillRect(0, -h / 2, NOTICE.bar, h);
-    g.lineStyle(3, line, 1).lineBetween(0, -h / 2, w, -h / 2).lineBetween(w, -h / 2, w - s, h / 2).lineBetween(w - s, h / 2, 0, h / 2);
+    g.fillStyle(0x000000, 0.35).fillPoints([{ x: -EXT, y: -h / 2 + 4 }, { x: w + 4, y: -h / 2 + 4 }, { x: w - s + 4, y: h / 2 + 4 }, { x: -EXT, y: h / 2 + 4 }], true);
+    g.fillStyle(fill, 0.95).fillPoints([{ x: -EXT, y: -h / 2 }, { x: w, y: -h / 2 }, { x: w - s, y: h / 2 }, { x: -EXT, y: h / 2 }], true);
+    g.lineStyle(3, line, 1).lineBetween(-EXT, -h / 2, w, -h / 2).lineBetween(w, -h / 2, w - s, h / 2).lineBetween(w - s, h / 2, -EXT, h / 2);
   };
   return {
     show(n: number) {

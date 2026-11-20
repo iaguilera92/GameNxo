@@ -44,7 +44,7 @@ export const matchLog = new MatchLogger();
 
 export function registerSocketHandlers(io: Server) {
   const rooms = new RoomManager(
-    { searchTimeoutMs: CONFIG.searchTimeoutMs, gamesToWin: CONFIG.gamesToWin, goldenPoint: CONFIG.goldenPoint },
+    { searchTimeoutMs: CONFIG.searchTimeoutMs, searchTimeout2v2Ms: CONFIG.searchTimeout2v2Ms, gamesToWin: CONFIG.gamesToWin, goldenPoint: CONFIG.goldenPoint },
     {
       onTimeout(playerId, roomId) {
         log(`búsqueda sin rival ${short(playerId)} (sala ${short(roomId)} borrada)`);
@@ -181,7 +181,7 @@ export function registerSocketHandlers(io: Server) {
         }
         const room = res.room;
         if (res.type === 'waiting') {
-          const msg: SearchingMsg = { roomId: room.id, timeoutMs: CONFIG.searchTimeoutMs, players: 1 };
+          const msg: SearchingMsg = { roomId: room.id, timeoutMs: rooms.searchMs(mode), players: 1 };
           socket.emit(EV.SEARCHING, msg);
           log(`buscando ${short(socket.id)} (${clean.name}) sala ${short(room.id)} 1/2`);
           return;

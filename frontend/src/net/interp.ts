@@ -39,6 +39,12 @@ const MAX_LAG = 150;
 const START_MS = 50;
 /** sin estados nuevos: el rival sigue en su dirección como mucho este tiempo (ms) antes de quedarse quieto */
 const EXTRAP_MS = 120;
+/**
+ * (20-11-2026, log AWS del 2v2) velocidad máxima creíble para seguir "adivinando" (unidades / s; PLAYER_SPEED = 330, el DASH ~3 veces). Más
+ * rápido que esto entre dos estados no es una carrera sino un TELETRANSPORTE (DESTELLO de un bot, colocación del saque): no se extrapola
+ * (antes, con 237 de salto en 50 ms, el bot salía disparado fuera de la cancha y volvía de golpe).
+ */
+const EXTRAP_MAX_SPEED = 1400;
 
 export class RemoteInterp {
   private buf: Entry[] = [];
@@ -107,10 +113,10 @@ export class RemoteInterp {
       // saltar cuando llegue el siguiente; luego se queda en el último
       const dt = (c.t - a.t) / 1000;
       const stale = rt - c.t > EXTRAP_MS;
-      if (c.moving && a.moving && dt >= 0.02) {
+      const vx = dt > 0 ? (c.x - a.x) / dt : 0;
+      const vy = dt > 0 ? (c.y - a.y) / dt : 0;
+      if (c.moving && a.moving && dt >= 0.02 && Math.hypot(vx, vy) <= EXTRAP_MAX_SPEED) {
         const ex = Math.min(rt - c.t, EXTRAP_MS) / 1000;
-        const vx = (c.x - a.x) / dt;
-        const vy = (c.y - a.y) / dt;
         return { x: c.x + vx * ex, y: c.y + vy * ex, speed: stale ? 0 : Math.hypot(vx, vy), snap: c, starved: true, stale };
       }
       return { x: c.x, y: c.y, speed: 0, snap: c, starved: true, stale };

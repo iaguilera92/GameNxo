@@ -44,6 +44,7 @@ export const SFX_FILES: Record<string, string> = {
   'recolectar-monedas': 'mp3/recolectar-monedas.m4a',
   'recolectar-exp': 'mp3/recolectar-exp.m4a',
   'power-up': 'mp3/power-up.m4a',
+  'modo-riesgo': 'mp3/modo-riesgo.mp3', // (20-11-2026) carga del MODO RIESGO x2 mientras se mantiene (MenuScene.holdPress, se corta a los 2 s)
   'tornado-1': 'mp3/tornado-1.m4a',
   'impacto-ulti-fuego': 'mp3/impacto-ulti-fuego.m4a',
   'ulti-rayo': 'mp3/ulti-rayo.m4a',

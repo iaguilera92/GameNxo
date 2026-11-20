@@ -54,6 +54,13 @@ export function apply2v2Result(s: PlayerState, r: Result2v2, wantedBet = 1): { s
   return { state: n, before, after, delta: after - before, bet };
 }
 
+/** (21-11-2026) Suma monedas 2v2 de un premio (Pase, ruleta). No pasa por apply2v2Result: no es un resultado de partida. */
+export function addCoins2v2(s: PlayerState, amount: number): PlayerState {
+  const n = clonePlayer(s);
+  n.coins2v2 = Math.max(0, Math.floor(n.coins2v2 ?? 0)) + Math.max(0, Math.floor(amount));
+  return n;
+}
+
 /** Valida lo guardado (entero > 0; si no, sin campo). */
 export function sanitizeCoins2v2(raw: unknown): number | undefined {
   return typeof raw === 'number' && Number.isFinite(raw) && raw > 0 ? Math.floor(raw) : undefined;

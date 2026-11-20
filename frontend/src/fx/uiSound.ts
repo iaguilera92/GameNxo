@@ -7,7 +7,7 @@ import Phaser from 'phaser';
  * Para cambiar uno por un archivo de verdad: dejar public/mp3/ui-<tipo>.mp3 (p. ej. ui-play.mp3) y añadir el tipo a
  * UI_SOUND_FILES. Se carga en BootScene (queueUiSounds) y, si existe, suena el archivo en vez del sintetizado.
  */
-export type UiSound = 'tap' | 'play' | 'back' | 'duel-hit' | 'duel-tick' | 'duel-win';
+export type UiSound = 'tap' | 'play' | 'back' | 'duel-hit' | 'duel-tick' | 'duel-win' | 'risk-on';
 
 /** tipos que tienen archivo en public/mp3/ui-<tipo>.mp3 (vacío = todos sintetizados) */
 export const UI_SOUND_FILES: UiSound[] = [];
@@ -85,6 +85,14 @@ export function uiSound(scene: Phaser.Scene, kind: UiSound) {
     // DUELO RED: ronda ganada (dos notas que suben)
     tone(ctx, out, 660, t, 0.1, 'triangle', 0.12);
     tone(ctx, out, 990, t + 0.08, 0.16, 'triangle', 0.12);
+  } else if (kind === 'risk-on') {
+    // (20-11-2026, usuario) MODO RIESGO x2 ACTIVADO: estallido grave + golpe de aire + acorde que sube a lo alto y un brillo final
+    tone(ctx, out, 110, t, 0.45, 'sawtooth', 0.22, 45); // estallido
+    tone(ctx, out, 220, t, 0.3, 'square', 0.08, 90);
+    noise(ctx, out, t, 0.5, 0.3, 300, 6000); // golpe de aire
+    [392, 523, 659, 784, 1047, 1319].forEach((f, i) => tone(ctx, out, f, t + 0.05 + i * 0.05, 0.5, 'triangle', 0.1));
+    tone(ctx, out, 1568, t + 0.35, 0.6, 'sine', 0.08);
+    tone(ctx, out, 2637, t + 0.42, 0.5, 'sine', 0.05);
   } else if (kind === 'back') {
     // volver / cerrar: dos notas que bajan
     tone(ctx, out, 700, t, 0.07, 'triangle', 0.1);

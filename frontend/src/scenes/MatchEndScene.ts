@@ -3,6 +3,7 @@ import { FONT } from '../ui/theme';
 import { COINS_LOSS, COINS_SURRENDER, COINS_WIN, XP_LOSS, XP_SURRENDER, XP_WIN, xpToNext, MAX_LEVEL } from '../config';
 import { addCoins, addCoins2v2, addXp, getProfile } from '../logic/Profile';
 import { loadBet2v2 } from '../ui/PlayEntry2v2';
+import { COINS_2V2, friendly2v2 } from '../domain/coins2v2';
 import { applyCharColor } from '../fx/CharColorFx';
 import { sfx } from '../fx/sfx';
 import { arcadeButton } from '../ui/modeButtons';
@@ -11,7 +12,7 @@ import type { RankId } from '../domain/ranks';
 import { resetMatchEnd } from '../fx/matchEnd';
 import { markWheelPresented, recordMatchWin, wheelToPresent, wheelStatuses } from '../logic/Wheels';
 import { openWheel, whenWheelReady } from './WheelScene';
-import { coinIcon, drawWheelFace, drawXpIcon } from '../ui/wheelArt';
+import { coin2v2Image, coinIcon, drawWheelFace, drawXpIcon } from '../ui/wheelArt';
 import { WHEEL } from '../domain/wheelConfig';
 import { commit, getPlayer } from '../domain/playerStore';
 import { awardMastery } from '../domain/operations';
@@ -30,7 +31,7 @@ import type { EndClip } from '../objects/NxoActor';
 
 type DuelClips = { idle: EndClip; victory: EndClip; defeat: EndClip };
 /** Lo que muestran los dos cuadros del duelo: entrada de cada uno, bolsa y cambio neto. `demo` = solo visual (sin monedas). */
-type Duel = { entry: number; pot: number; delta: number; demo: boolean };
+type Duel = { entry: number; pot: number; delta: number; demo: boolean; /** 2v2: dos personajes por cuadro y monedas 2v2 */ two?: boolean };
 
 /** Id único de partida (ruletas: cada partida se cuenta una sola vez). */
 function newMatchId(): string {
@@ -53,6 +54,10 @@ export interface MatchEndData {
   poses?: { me?: { key: string; frame: number }; rival?: { key: string; frame: number } };
   /** clips DE FRENTE de cada lado (reposo en bucle; luego victoria o derrota) con su ancla y alto de pie (NxoActor.endClips) */
   clips?: { me?: DuelClips; rival?: DuelClips };
+  /** 2v2: clips del compañero (me) y del segundo rival (rival) */
+  clips2?: { me?: DuelClips; rival?: DuelClips };
+  /** 2v2: puntos ganados por cada jugador (me, compañero, rival 1 = el activo, rival 2) */
+  pointStats?: { me: number; ally: number; r1: number; r2: number };
   win: boolean;
   surrendered?: boolean;
   /** (19-11-2026) el RIVAL humano se rindió o se fue (1v1 online): EXP reducida (95 si ganaste ≥ 1 juego, si no 0) */
@@ -297,7 +302,7 @@ export class MatchEndScene extends Phaser.Scene {
     this.banner(W, win);
     const btnH = 84;
     const btnY = H - 26 - btnH / 2;
-    const panelH = 108 + 16 + CARD_H + 22 + this.mrow + (this.duel() ? RANKED_H : 0) + (d.missions ? ADD_H : 0) + (d.doubles ? 64 + 18 : 0); // (19-11-2026) 2v2: franja de las MONEDAS 2v2
+    const panelH = 108 + 16 + CARD_H + 22 + this.mrow + (this.duel() ? RANKED_H : 0) + (d.missions ? ADD_H : 0);
     const panelTop = btnY - btnH / 2 - 14 - panelH;
     this.resultPanel(W, panelTop, panelH);
     this.buttons(W, btnY, btnH);
@@ -327,7 +332,11 @@ export class MatchEndScene extends Phaser.Scene {
 
     // insignia: corona (victoria) o trofeo apagado (derrota)
     const icon = this.add.graphics({ y: -92 });
-    if (win) {
+    // (21-11-2026, usuario) VICTORIA: en vez de la corona dibujada, la imagen victoria.png (textura 'ui-victoria', la carga MatchScene); sin ella, la corona de siempre
+    const art = win && this.textures.exists('ui-victoria');
+    if (art) {
+      // (la imagen va abajo: c.add)
+    } else if (win) {
       icon.fillStyle(0x0a1638, 1).fillCircle(0, 0, 40);
       icon.fillStyle(GOLD, 1).fillCircle(0, 0, 35);
       icon.fillStyle(0xfff1b8, 0.6).fillEllipse(-8, -14, 30, 12);
@@ -339,7 +348,12 @@ export class MatchEndScene extends Phaser.Scene {
       icon.fillStyle(0xb7c2de, 1).fillRoundedRect(-14, -16, 28, 18, { tl: 2, tr: 2, bl: 12, br: 12 });
       icon.fillRect(-3, 2, 6, 8).fillRoundedRect(-11, 10, 22, 6, 2);
     }
-    c.add(icon);
+    if (art) {
+      const im = this.add.image(0, -112, 'ui-victoria');
+      im.setScale(Math.min(150 / im.width, 120 / im.height)); // el dibujo es más ancho que alto (con sus rayos): sube un poco para no tapar VICTORIA
+      c.add(im);
+      icon.destroy();
+    } else c.add(icon);
 
     const title = this.add
       .text(0, 0, win ? 'VICTORIA' : 'DERROTA', {
@@ -375,9 +389,7 @@ export class MatchEndScene extends Phaser.Scene {
     pill.fillStyle(0x0a1638, 1).fillRoundedRect(-pw / 2 - 3, 76 - 22, pw + 6, 44, 22);
     pill.fillStyle(win ? GOLD : 0xff4f5e, 1).fillRoundedRect(-pw / 2, 76 - 19, pw, 38, 19);
     pill.fillStyle(0xffffff, 0.25).fillRoundedRect(-pw / 2 + 10, 76 - 16, pw - 20, 8, 4);
-    // mini corona junto al nombre del ganador
-    const mc = -pw / 2 + 24;
-    pill.fillStyle(win ? 0x0a1638 : 0xffffff, 1).fillPoints([{ x: mc - 9, y: 82 }, { x: mc - 10, y: 70 }, { x: mc - 4, y: 76 }, { x: mc, y: 67 }, { x: mc + 4, y: 76 }, { x: mc + 10, y: 70 }, { x: mc + 9, y: 82 }], true);
+    // (21-11-2026, usuario) sin la mini corona junto al nombre del ganador
     c.add([pill, label]);
 
     // entrada
@@ -437,10 +449,17 @@ export class MatchEndScene extends Phaser.Scene {
       // el MENÚ, al volver, muestra "+N EXP" y llena las barras de nivel y del pase (después de la ruleta, si se abre)
       this.registry.set('menu.xpGain', gained);
     }
-    if (!store._coins) store._coins = addCoins(d.surrendered ? COINS_SURRENDER : d.win ? COINS_WIN : COINS_LOSS);
+    // 2v2 (21-11-2026, usuario): no se ganan monedas de 1v1, solo las MONEDAS 2v2
+    if (!store._coins) store._coins = d.doubles ? { before: getPlayer().coins, gained: 0, after: getPlayer().coins } as ReturnType<typeof addCoins> : addCoins(d.surrendered ? COINS_SURRENDER : d.win ? COINS_WIN : COINS_LOSS);
     // MONEDAS 2v2 (domain/coins2v2.ts): contador propio del 2v2 (online y contra bots), una vez por partido
     const c2 = d as MatchEndData & { _c2?: ReturnType<typeof addCoins2v2> };
     if (d.doubles && !c2._c2) c2._c2 = addCoins2v2(d.surrendered ? 'surrender' : d.win ? 'win' : 'loss', loadBet2v2()); // (21-11-2026) con la apuesta x1 / x2 del menú
+    // (21-11-2026, usuario) lo que se GANO en monedas 2v2: el MENU lo hace llegar al monedero 2v2 (tras las monedas y antes de la EXP). Se acumula (REVANCHA no pasa por el menu)
+    const c2g = d as MatchEndData & { _c2Gain?: boolean };
+    if (c2._c2 && !c2g._c2Gain) {
+      c2g._c2Gain = true;
+      if (c2._c2.delta > 0) this.registry.set('menu.coin2v2Gain', ((this.registry.get('menu.coin2v2Gain') as number | undefined) ?? 0) + c2._c2.delta);
+    }
     // MISIONES POR PARTIDA: sus monedas se suman UNA vez, aparte de la partida y de la apuesta Ranked (también si pierdes)
     const mst = d as MatchEndData & { _missionCoins?: number };
     if (d.missions && mst._missionCoins === undefined) {
@@ -459,7 +478,6 @@ export class MatchEndScene extends Phaser.Scene {
       if (got > 0) this.registry.set('menu.coinGain', ((this.registry.get('menu.coinGain') as number | undefined) ?? 0) + got);
     }
     this.rewardCards(c, W, top, w, sepY + 16);
-    if (c2._c2) this.coins2v2Row(c, w, sepY + 16 + CARD_H + 12 + this.mrow, c2._c2);
 
     // --- duelo de apuestas: Ranked (con la apuesta real) o, en desarrollo, el partido online (de prueba)
     const duel = this.duel();
@@ -481,9 +499,11 @@ export class MatchEndScene extends Phaser.Scene {
    * (una vez por partida); aquí solo se muestran.
    */
   private rewardCards(c: Phaser.GameObjects.Container, W: number, top: number, w: number, y0: number) {
-    const d = this.d as MatchEndData & { _xp?: ReturnType<typeof addXp>; _coins?: ReturnType<typeof addCoins>; _wheel?: number | null };
+    const d = this.d as MatchEndData & { _xp?: ReturnType<typeof addXp>; _coins?: ReturnType<typeof addCoins>; _wheel?: number | null; _c2?: { before: number; after: number; delta: number; bet: number } };
     const xp = d._xp!;
-    const coins = d._coins!;
+    // 2v2: la primera card son las MONEDAS 2v2 (cambio con signo, morada); 1v1: las monedas de siempre
+    const c2 = d.doubles ? d._c2 : undefined;
+    const coins = c2 ? { before: c2.before, gained: c2.delta } : d._coins!;
     const gap = 12;
     const cw = (w - 40 - gap * 2) / 3;
     const xs = [-cw - gap, 0, cw + gap];
@@ -491,14 +511,14 @@ export class MatchEndScene extends Phaser.Scene {
     const step = 380;
 
     // --- 1) MONEDAS
-    const m = this.card(c, xs[0], y0, cw, 'MONEDAS', GOLD, 0x3a2a08);
+    const m = this.card(c, xs[0], y0, cw, c2 ? ((c2.bet ?? 1) > 1 ? 'MONEDAS 2V2 · x2' : 'MONEDAS 2V2') : 'MONEDAS', c2 ? 0xb06bff : GOLD, c2 ? 0x2a1458 : 0x3a2a08);
     // (17-11-2026) moneda: imagen moneda-1.webp (en un contenedor con la misma posición/escala del icono, así sus tweens de escala no cambian)
-    const mCoin = this.add.container(m.icon.x, m.icon.y, [coinIcon(this, 0, 0, 30)]).setScale(m.icon.scaleX);
+    const mCoin = this.add.container(m.icon.x, m.icon.y, [(c2 ? coin2v2Image : coinIcon)(this, 0, 0, 30)]).setScale(m.icon.scaleX);
     m.cont.addAt(mCoin, m.cont.getIndex(m.icon) + 1);
-    m.value.setText('+0').setColor('#ffd23f');
+    m.value.setText('+0').setColor(c2 ? '#d2b0ff' : '#ffd23f');
     m.sub.setText(`TOTAL ${coins.before.toLocaleString('es-CL')}`);
     this.pop(m.cont, base, () => {
-      if (coins.gained <= 0) return m.value.setColor('#7f93bf');
+      if (coins.gained === 0) return m.value.setColor('#7f93bf');
       const cc = { v: 0 };
       this.tweens.add({
         targets: cc,
@@ -507,13 +527,13 @@ export class MatchEndScene extends Phaser.Scene {
         ease: 'Cubic.easeOut',
         onUpdate: () => {
           const v = Math.round(cc.v);
-          m.value.setText(`+${v}`);
+          m.value.setText(`${v < 0 ? '\u2212' : '+'}${Math.abs(v)}`);
           m.sub.setText(`TOTAL ${(coins.before + v).toLocaleString('es-CL')}`);
           fitText(m.sub, cw - 16);
         },
         onComplete: () => this.tweens.add({ targets: mCoin, scale: { from: 1.3, to: 1 }, duration: 300, ease: 'Back.easeOut' }),
       });
-      this.coinShower(c, xs[0], y0 + 70, xs[0], y0 + 40, Math.min(7, 2 + Math.round(coins.gained / 10)));
+      if (coins.gained > 0) this.coinShower(c, xs[0], y0 + 70, xs[0], y0 + 40, Math.min(7, 2 + Math.round(coins.gained / 10)));
     });
 
     // --- 2) EXP (+ barra de nivel; sube de nivel si corresponde)
@@ -693,60 +713,20 @@ export class MatchEndScene extends Phaser.Scene {
    *  - MODO DESARROLLO + partido online (d.lan): online aún no se apuesta nada, pero los cuadros se ven para probarlos,
    *    con la entrada x1 de tu liga. Es SOLO visual: no se cobra ni se paga ninguna moneda.
    */
-  /**
-   * (19-11-2026) MONEDAS 2v2 del partido: franja con la moneda 2v2, el cambio (+30 verde / −15 rojo) que cuenta hasta su valor y el total.
-   * (y = arriba de la franja, dentro del panel)
-   */
-  private coins2v2Row(c: Phaser.GameObjects.Container, w: number, y: number, r: { before: number; after: number; delta: number; bet?: number }) {
-    const h = 64;
-    const bw = w - 48;
-    const row = this.add.container(0, y + h / 2).setAlpha(0);
-    c.add(row);
-    const g = this.add.graphics();
-    g.fillStyle(0x0a1638, 0.95).fillRoundedRect(-bw / 2, -h / 2, bw, h, 18);
-    g.lineStyle(3, 0x7f6bff, 1).strokeRoundedRect(-bw / 2, -h / 2, bw, h, 18);
-    row.add(g);
-    // moneda 2v2: disco morado con borde dorado y "2v2"
-    const cx = -bw / 2 + 40;
-    const coin = this.add.graphics();
-    coin.fillStyle(0x2a1458, 1).fillCircle(cx, 0, 22);
-    coin.fillStyle(0x7f4bff, 1).fillCircle(cx, 0, 19);
-    coin.fillStyle(0xffffff, 0.25).fillEllipse(cx, -8, 26, 10);
-    coin.lineStyle(3, 0xffd23f, 1).strokeCircle(cx, 0, 19);
-    // (21-11-2026) con su imagen (assets/moneda-2v2.webp, la carga el menú) se usa la moneda 2v2 de verdad; si no, el disco dibujado con "2v2"
-    if (this.textures.exists('coin-2v2')) {
-      coin.destroy(); // (el disco dibujado ya no hace falta)
-      row.add(this.add.image(cx, 0, 'coin-2v2').setDisplaySize(52, 52));
-    }
-    else {
-      row.add(coin);
-      row.add(this.add.text(cx, 1, '2v2', { fontFamily: FONT, fontSize: '15px', color: '#ffffff', stroke: '#2a1458', strokeThickness: 3 }).setOrigin(0.5));
-    }
-    row.add(this.add.text(cx + 34, -11, (r.bet ?? 1) > 1 ? 'MONEDAS 2v2 · APUESTA x2' : 'MONEDAS 2v2', { fontFamily: FONT, fontSize: '19px', color: (r.bet ?? 1) > 1 ? '#ff9aa3' : '#ffffff' }).setOrigin(0, 0.5).setLetterSpacing(1));
-    const total = this.add.text(cx + 34, 13, `TOTAL ${r.before}`, { fontFamily: FONT, fontSize: '15px', color: '#b9a8ff' }).setOrigin(0, 0.5).setLetterSpacing(1);
-    row.add(total);
-    const up = r.delta >= 0;
-    const dt = this.add.text(bw / 2 - 22, 0, `${up ? '+' : '−'}0`, { fontFamily: FONT, fontSize: '32px', color: up ? '#5dff8a' : '#ff6b78', stroke: '#0a1638', strokeThickness: 6 }).setOrigin(1, 0.5);
-    row.add(dt);
-    this.tweens.add({ targets: row, alpha: 1, duration: 260, delay: 1500 });
-    const k = { v: 0 };
-    this.tweens.add({
-      targets: k,
-      v: 1,
-      delay: 1750,
-      duration: 700,
-      ease: 'Cubic.easeOut',
-      onUpdate: () => {
-        dt.setText(`${up ? '+' : '−'}${Math.round(Math.abs(r.delta) * k.v)}`);
-        total.setText(`TOTAL ${Math.round(r.before + r.delta * k.v)}`);
-      },
-      onComplete: () => this.tweens.add({ targets: dt, scale: { from: 1.25, to: 1 }, duration: 220, ease: 'Back.easeOut' }),
-    });
-  }
-
   private duel(): Duel | null {
     const d = this.d;
-    if (d.doubles) return null; // (19-11-2026) el 2v2 no apuesta monedas de la Liga: en su lugar, las MONEDAS 2v2 (coins2v2Row)
+    if (d.doubles) {
+      // 2v2 (21-11-2026, usuario): las cards de personajes con el traspaso de MONEDAS 2v2 (domain/coins2v2.ts)
+      const c2 = (d as MatchEndData & { _c2?: { before: number; after: number; delta: number; bet: number } })._c2;
+      const bet = c2?.bet ?? loadBet2v2();
+      if (d.win) {
+        const prize = c2?.delta ?? COINS_2V2.win * bet;
+        const entry = c2 && friendly2v2(c2.before) ? 0 : COINS_2V2.loss * bet;
+        return { entry, pot: entry + prize, delta: prize, demo: false, two: true };
+      }
+      const lost = c2 ? -c2.delta : (d.surrendered ? COINS_2V2.surrender : COINS_2V2.loss) * bet;
+      return { entry: lost, pot: lost + COINS_2V2.win * bet, delta: -lost, demo: false, two: true };
+    }
     const r = d.ranked;
     if (r) {
       const entry = r.entry ?? Math.abs(r.delta);
@@ -771,7 +751,8 @@ export class MatchEndScene extends Phaser.Scene {
     const won = r.delta > 0;
     // cabecera: resultado de la apuesta (rendirse = perderla); la de prueba lo dice
     const hy = y0 + 16; // a media altura entre las 3 tarjetas de arriba y los 2 cuadros de abajo
-    const headText = `${won ? 'Ganaste la apuesta' : 'Has perdido la apuesta'}${r.demo ? ' (PRUEBA, sin monedas)' : ''}:`;
+    const two = !!r.two;
+    const headText = `${two ? (won ? 'Ganaron la apuesta' : 'Perdieron la apuesta') : won ? 'Ganaste la apuesta' : 'Has perdido la apuesta'}${r.demo ? ' (PRUEBA, sin monedas)' : ''}:`;
     const head = this.add
       .text(0, hy, headText, { fontFamily: FONT, fontSize: '22px', color: won ? '#ffd23f' : '#ff9aa3', stroke: '#0a1638', strokeThickness: 5 })
       .setOrigin(0.5)
@@ -786,14 +767,16 @@ export class MatchEndScene extends Phaser.Scene {
     const rx = w / 2 - 20 - bw / 2;
     // cada cuadro, 2 columnas: IZQUIERDA el personaje (centrado, de pie sobre el borde de abajo) y DERECHA la moneda
     // arriba con la cifra debajo
-    const colL = -bw / 4;
-    const colR = bw / 4;
+    // 2v2: DOS personajes por cuadro (a la izquierda) y la moneda 2v2 a la derecha
+    const colL = two ? -bw * 0.33 : -bw / 4;
+    const colL2 = -bw * 0.07;
+    const colR = two ? bw * 0.3 : bw / 4;
+    const coinF = two ? coin2v2Image : coinIcon;
     /** alto del cuerpo (silueta medida) de los dos personajes: el MISMO para los dos */
     const bodyPx = bh * 0.74;
     /** ancho máximo del dibujo: su columna (media tarjeta) con un margen pequeño; la raqueta no se sale del borde */
-    const maxW = bw / 2 - 6;
+    const maxW = two ? bw * 0.27 : bw / 2 - 6;
     const feetY = bh / 2 - 10;
-    const sprites: { me?: Phaser.GameObjects.Sprite; rival?: Phaser.GameObjects.Sprite } = {};
     // ancla y escala por la SILUETA real del primer frame (pies y alto dibujados), no por el ancla de la hoja: así ningún
     // personaje queda hundido ni más grande que el otro aunque sus hojas tengan celdas y márgenes distintos
     /**
@@ -852,57 +835,94 @@ export class MatchEndScene extends Phaser.Scene {
       // centrado en alto dentro del cuadro (si el ancho lo achica, no queda pegado al borde de abajo)
       sp.setOrigin(b.cx / b.fw, b.bottom / b.fh).setScale(s).setY(Math.min(feetY, (b.h * s) / 2 + 6));
     };
-    const box = (x: number, color: number, amount: number, clips?: DuelClips, pose?: { key: string; frame: number }) => {
-      const useClip = !!clips && this.textures.exists(clips.idle.key) && this.anims.exists(clips.idle.key);
-      const hasPose = !useClip && !!pose && this.textures.exists(pose.key);
-      const useDefault = !useClip && !hasPose && this.textures.exists('portrait-nxo');
+    type Who = { clips?: DuelClips; pose?: { key: string; frame: number }; pts?: number; mvp?: boolean; mine?: boolean };
+    /** pastilla de puntos sobre un personaje (2v2); la del que hizo MÁS puntos va dorada, con brillo */
+    const pill = (bc: Phaser.GameObjects.Container, x: number, pts: number, mvp: boolean) => {
+      const t = this.add.text(0, 0, mvp ? `★ ${pts} PTS` : `${pts} PTS`, { fontFamily: FONT, fontSize: '14px', color: mvp ? '#3a2a00' : '#ffffff' }).setOrigin(0.5);
+      const pw = t.width + 16;
+      const ph = 24;
+      const pc = this.add.container(x, -bh / 2 + 26);
+      const pg = this.add.graphics();
+      if (mvp) {
+        const glow = this.add.graphics();
+        glow.fillStyle(0xffd23f, 0.35).fillRoundedRect(-pw / 2 - 6, -ph / 2 - 6, pw + 12, ph + 12, ph / 2 + 6);
+        pc.add(glow);
+        this.tweens.add({ targets: glow, alpha: { from: 1, to: 0.3 }, duration: 700, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
+        pg.fillStyle(0xffc42e, 1).fillRoundedRect(-pw / 2, -ph / 2, pw, ph, ph / 2);
+        pg.lineStyle(2, 0xfff2b0, 1).strokeRoundedRect(-pw / 2, -ph / 2, pw, ph, ph / 2);
+      } else {
+        pg.fillStyle(0x0a1638, 0.85).fillRoundedRect(-pw / 2, -ph / 2, pw, ph, ph / 2);
+        pg.lineStyle(2, 0x5f7fc8, 1).strokeRoundedRect(-pw / 2, -ph / 2, pw, ph, ph / 2);
+      }
+      pc.add([pg, t]);
+      bc.add(pc);
+      if (mvp) this.tweens.add({ targets: pc, scale: { from: 0.6, to: 1 }, duration: 380, delay: 300, ease: 'Back.easeOut' });
+    };
+    const box = (x: number, color: number, amount: number, who: Who[]) => {
       const bc = this.add.container(x, by);
       const shadow = this.add.graphics();
       shadow.fillStyle(0x000000, 0.35).fillRoundedRect(-bw / 2 + 3, -bh / 2 + 5, bw, bh, 16);
       const g = this.add.image(0, 0, boxTex(color === 0x3a7bff ? 'me' : 'rv')).setDisplaySize(bw, bh);
       bc.add([shadow, g]);
       // sin círculo de luz ni sombra bajo los pies: en las cards no gustaron
-      let sp: Phaser.GameObjects.Sprite | undefined;
-      if (useClip && clips) {
-        // de frente, parado y animado (reposo en bucle); al decidirse la apuesta, victoria o derrota
-        sp = this.add.sprite(colL, feetY, clips.idle.key, 0);
-        place(sp, clips.idle.key);
-        sp.play(clips.idle.key);
-        bc.add(sp);
-      } else if (pose && hasPose) {
-        const fr = this.textures.getFrame(pose.key, pose.frame);
-        const ch = this.add.image(colL, feetY, pose.key, pose.frame).setOrigin(0.5, 0.94);
-        ch.setScale(Math.min(1.1, (bh - 30) / (fr.height * 0.94)));
-        bc.add(ch);
-      } else if (useDefault) {
-        // Retrato frontal de NXO como respaldo para animaciones ausentes o skins sin hoja de poses finales.
-        bc.add(this.add.image(colL, feetY, 'portrait-nxo').setOrigin(0.5, 1).setDisplaySize(84, 108));
-      }
-      const coin = this.add.container(colR, -24, [coinIcon(this, 0, 0, 24)]); // (17-11-2026) moneda: imagen moneda-1.webp
+      const sps: { sp: Phaser.GameObjects.Sprite; clips: DuelClips; mine?: boolean }[] = [];
+      who.forEach((u, i) => {
+        const cx = who.length > 1 ? (i === 0 ? colL : colL2) : colL;
+        const { clips, pose } = u;
+        const useClip = !!clips && this.textures.exists(clips.idle.key) && this.anims.exists(clips.idle.key);
+        const hasPose = !useClip && !!pose && this.textures.exists(pose.key);
+        const useDefault = !useClip && !hasPose && this.textures.exists('portrait-nxo');
+        if (useClip && clips) {
+          // de frente, parado y animado (reposo en bucle); al decidirse la apuesta, victoria o derrota
+          const sp = this.add.sprite(cx, feetY, clips.idle.key, 0);
+          place(sp, clips.idle.key);
+          sp.play(clips.idle.key);
+          bc.add(sp);
+          sps.push({ sp, clips, mine: u.mine });
+        } else if (pose && hasPose) {
+          const fr = this.textures.getFrame(pose.key, pose.frame);
+          const ch = this.add.image(cx, feetY, pose.key, pose.frame).setOrigin(0.5, 0.94);
+          ch.setScale(Math.min(1.1, (bh - 30) / (fr.height * 0.94)));
+          bc.add(ch);
+        } else if (useDefault) {
+          // Retrato frontal de NXO como respaldo para animaciones ausentes o skins sin hoja de poses finales.
+          bc.add(this.add.image(cx, feetY, 'portrait-nxo').setOrigin(0.5, 1).setDisplaySize(two ? 56 : 84, two ? 72 : 108));
+        }
+        if (two && u.pts !== undefined) pill(bc, cx, u.pts, !!u.mvp);
+      });
+      const coin = this.add.container(colR, -24, [coinF(this, 0, 0, 24)]); // (17-11-2026) moneda: imagen moneda-1.webp (2v2: moneda 2v2)
       const val = this.add.text(colR, 30, amount.toLocaleString('es-CL'), { fontFamily: FONT, fontSize: '32px', color: '#ffffff', stroke: '#0a1638', strokeThickness: 5 }).setOrigin(0.5);
       bc.add([coin, val]);
-      const center = () => fitText(val, bw / 2 - 16);
+      const center = () => fitText(val, two ? bw * 0.38 : bw / 2 - 16);
       center();
       c.add(bc);
-      return { bc, g, val, center, coin, sp };
+      return { bc, g, val, center, coin, sps };
     };
     // MAI de frente: sus 3 poses salen de su hoja nueva (tools/build-end-poses.mjs; la del partido no trae derrota)
     const clipsMe = endPosesFor(this, d.clips?.me);
     const clipsRv = endPosesFor(this, d.clips?.rival);
-    const me = box(lx, 0x3a7bff, entry, clipsMe, d.poses?.me);
-    const rv = box(rx, 0xff4f5e, rivalStake, clipsRv, d.poses?.rival);
-    sprites.me = me.sp;
-    // tu ESTILO DE COLOR también en la tarjeta del resultado (el rival, con sus colores de siempre)
-    if (me.sp) applyCharColor(me.sp, getProfile().color, getProfile().skin);
-    sprites.rival = rv.sp;
-    // al decidirse la apuesta: el ganador celebra y el otro hace su derrota (se quedan en la última pose)
+    let leftWho: Who[] = [{ clips: clipsMe, pose: d.poses?.me, mine: true }];
+    let rightWho: Who[] = [{ clips: clipsRv, pose: d.poses?.rival }];
+    if (two) {
+      // 4 personajes: [compañero, tú] y [rival 2, rival 1]; puntos de cada uno y el que hizo MÁS destacado
+      const ps = d.pointStats;
+      const max = ps ? Math.max(ps.me, ps.ally, ps.r1, ps.r2) : 0;
+      const pt = (n?: number) => (ps ? { pts: n ?? 0, mvp: max > 0 && n === max } : {});
+      leftWho = [{ clips: endPosesFor(this, d.clips2?.me), ...pt(ps?.ally) }, { clips: clipsMe, pose: d.poses?.me, mine: true, ...pt(ps?.me) }];
+      rightWho = [{ clips: endPosesFor(this, d.clips2?.rival), ...pt(ps?.r2) }, { clips: clipsRv, pose: d.poses?.rival, ...pt(ps?.r1) }];
+    }
+    const me = box(lx, 0x3a7bff, entry, leftWho);
+    const rv = box(rx, 0xff4f5e, rivalStake, rightWho);
+    // tu ESTILO DE COLOR tambien en la tarjeta del resultado (el rival, con sus colores de siempre)
+    for (const e of me.sps) if (e.mine) applyCharColor(e.sp, getProfile().color, getProfile().skin);
+    // al decidirse la apuesta: el ganador celebra y el otro hace su derrota (se quedan en la ultima pose)
     const finalPose = (sp: Phaser.GameObjects.Sprite | undefined, clips: DuelClips | undefined, victory: boolean) => {
       if (!sp || !clips) return;
       const clip = victory ? clips.victory : clips.defeat;
       if (!this.anims.exists(clip.key)) return;
       place(sp, clip.key);
       if (clip.key === clips.idle.key) return void sp.play({ key: clip.key, repeat: -1 });
-      // la derrota termina en su pose más baja (la de NXO vuelve a ponerse de pie al final de la hoja)
+      // la derrota termina en su pose mas baja (la de NXO vuelve a ponerse de pie al final de la hoja)
       sp.play({ key: victory ? clip.key : defeatHoldKey(this, clip.key), repeat: 0 });
     };
     // centro: VS, luego flecha hacia el ganador
@@ -918,8 +938,8 @@ export class MatchEndScene extends Phaser.Scene {
       // victoria / derrota según el PARTIDO (con rendición, gana el rival)
       // con los MISMOS clips de la tarjeta (MAI de frente usa sus poses nuevas: con los del partido salía con la raqueta
       // en la otra mano, otro color y más grande que el cuadro)
-      finalPose(sprites.me, clipsMe, d.win);
-      finalPose(sprites.rival, clipsRv, !d.win);
+      for (const e of me.sps) finalPose(e.sp, e.clips, d.win);
+      for (const e of rv.sps) finalPose(e.sp, e.clips, !d.win);
       const from = won ? rv : me;
       const to = won ? me : rv;
       const moved = won ? rivalStake : entry;
@@ -933,7 +953,7 @@ export class MatchEndScene extends Phaser.Scene {
       const gapMs = (TOTAL - FLY) / n;
       let pulse: Phaser.Tweens.Tween | null = null;
       for (let i = 0; i < n; i++) {
-        const cg = coinIcon(this, 0, 0, Phaser.Math.Between(10, 15)); // (17-11-2026) moneda: imagen moneda-1.webp
+        const cg = coinF(this, 0, 0, Phaser.Math.Between(10, 15)); // (17-11-2026) moneda: imagen moneda-1.webp
         const sx = from.bc.x + colR + Phaser.Math.Between(-14, 14);
         const sy = by + Phaser.Math.Between(-22, 22);
         const ex = to.bc.x + colR + Phaser.Math.Between(-10, 10);
@@ -978,12 +998,12 @@ export class MatchEndScene extends Phaser.Scene {
         onComplete: () => {
           // ganador en VERDE (ganó las monedas) y perdedor en ROJO suave
           to.g.setTexture(boxTex('win')); // verde: ganó las monedas
-          to.val.setColor('#9fe8a0');
+          to.val.setColor('#ffffff'); // (21-11-2026, usuario) las cifras de monedas, siempre en blanco
           from.g.setTexture(boxTex('lose')); // rojo vino tinto: las perdió
-          from.val.setColor('#ffb3ba');
+          from.val.setColor('#ffffff');
           this.tweens.add({ targets: to.bc, scale: { from: 1.08, to: 1 }, duration: 300, ease: 'Back.easeOut' });
           const gain = this.add
-            .text(me.bc.x + colR, by - 66, won ? `+${moved.toLocaleString('es-CL')}` : `−${entry.toLocaleString('es-CL')}`, { fontFamily: FONT, fontSize: '24px', color: won ? '#9fe8a0' : '#ff9aa3', stroke: '#0a1638', strokeThickness: 5 })
+            .text(me.bc.x + colR, by - 66, won ? `+${moved.toLocaleString('es-CL')}` : `−${entry.toLocaleString('es-CL')}`, { fontFamily: FONT, fontSize: '24px', color: '#ffffff', stroke: '#0a1638', strokeThickness: 5 })
             .setOrigin(0.5);
           c.add(gain);
           this.tweens.add({ targets: gain, y: gain.y - 26, alpha: { from: 1, to: 0 }, duration: 1400, delay: 400 });
@@ -1018,6 +1038,7 @@ export class MatchEndScene extends Phaser.Scene {
     const cw = (w - 40 - gap * 3) / 4;
     const ch = ADD_CARD_H;
     const cy = y0 + 68;
+    const titles: Phaser.GameObjects.Text[] = [];
     const cards = MISSIONS.map((m, i) => {
       const ok = done.includes(m.id);
       const x = -w / 2 + 20 + cw / 2 + i * (cw + gap);
@@ -1045,10 +1066,11 @@ export class MatchEndScene extends Phaser.Scene {
       }
       cont.add(badge);
       // nombre de la misión (una fila) y premio
+      // (21-11-2026, usuario) título más grande (14 → 18 px) y siempre en UNA fila: tras crear las 4 cards todos se achican por igual hasta que quepa el más largo
       const title = this.add
-        .text(0, 5, m.title.toUpperCase(), { fontFamily: FONT, fontSize: '14px', color: ok ? '#ffffff' : '#8a98b8' })
+        .text(0, 5, m.title.toUpperCase(), { fontFamily: FONT, fontSize: '18px', color: ok ? '#ffffff' : '#8a98b8', stroke: '#0a1638', strokeThickness: 3 })
         .setOrigin(0.5);
-      if (title.width > cw - 10) title.setScale((cw - 10) / title.width); // una sola fila
+      titles.push(title);
       // (18-11-2026, usuario) premio más grande y CENTRADO en la card (moneda + cifra como un solo bloque)
       const py = ch / 2 - 22;
       const cr = 12; // radio de la moneda
@@ -1067,6 +1089,8 @@ export class MatchEndScene extends Phaser.Scene {
       return { cont, ok, badge };
     });
 
+    const titleK = Math.min(1, ...titles.map((t) => (cw - 10) / Math.max(1, t.width)));
+    titles.forEach((t) => t.setScale(titleK));
     // animación: la sección aparece y las cards entran una a una; las cumplidas laten y suman al total
     this.time.delayedCall(startMs, () => {
       if (!sec.scene) return;
@@ -1213,7 +1237,7 @@ export class MatchEndScene extends Phaser.Scene {
         return;
       }
       this.scene.start('Menu');
-    }, { palette: 'yellow' });
+    }, { palette: 'yellow', noShadow: true }); // (21-11-2026, usuario) sin la sombra azul
     // REVANCHA: misma lógica que ya existía (reiniciar el partido con el mismo rival).
     // En Ranked se vuelve a buscar partida con la misma apuesta (la entrada se paga de nuevo al empezar).
     const again = arcadeButton(this, x1, y, bw, bh, d.ranked ? 'OTRA DE LIGA' : d.lan ? 'OTRA PARTIDA' : 'REVANCHA', () => {

@@ -14,6 +14,9 @@ import { MatchEndScene, type MatchEndData } from '../scenes/MatchEndScene';
 export interface MatchEndOpts {
   winner: Character;
   loser: Character;
+  /** 2v2: tu compañero y el segundo rival (para sus cuadros en la pantalla de resultados) */
+  mate?: Character;
+  rival2?: Character;
   data: MatchEndData;
 }
 
@@ -47,6 +50,7 @@ export function playMatchEnd(scene: Phaser.Scene, o: MatchEndOpts) {  // 1) sin 
     matchKey: scene.scene.key,
     poses: { me: o.data.win ? wp : lp, rival: o.data.win ? lp : wp },
     clips: { me: (o.data.win ? wc : lc) ?? undefined, rival: (o.data.win ? lc : wc) ?? undefined },
+    ...(o.data.doubles ? { clips2: { me: o.mate?.endClips() ?? undefined, rival: o.rival2?.endClips() ?? undefined } } : {}),
   };
   scene.time.delayedCall(450, () => {
     if (scene.scene.get(key)) scene.scene.launch(key, data);

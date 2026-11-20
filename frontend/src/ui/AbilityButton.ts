@@ -3,6 +3,7 @@ import { C, textStyle } from './theme';
 import { drawAbilityIcon, drawDisc } from './icons';
 import type { AbilityIcon } from '../logic/Abilities';
 import type { SmashPower } from '../domain/smashPowers';
+import { BUTTON_ART } from './buttonArt';
 
 /** Botón de habilidad circular con cooldown visible (relleno radial + anillo + segundos). */
 export class AbilityButton extends Phaser.GameObjects.Container {
@@ -155,6 +156,10 @@ export class AbilityButton extends Phaser.GameObjects.Container {
     this.infernoMode = on;
     this.goldMode = on && legend;
     const gold = this.goldMode;
+    // (21-11-2026, usuario) con el arte de la ULTI (rayo blanco sobre azul noche; BUTTON_ART.ulti) el botón lo usa en vez del ESPECIAL teñido de morado; la
+    // ULTI legendaria sigue dorada (goldTexture sobre ese arte). Sin la imagen, todo como antes (morado).
+    const ultiKey = this.scene.textures.exists(BUTTON_ART.ulti.key) ? BUTTON_ART.ulti.key : null;
+    const blue = !!ultiKey && !gold;
     const R = this.radius;
     for (const o of this.face.list) {
       const img = o as Phaser.GameObjects.Image;
@@ -163,8 +168,8 @@ export class AbilityButton extends Phaser.GameObjects.Container {
       if (on) {
         const src = img.texture.key;
         if (!img.getData('baseKey')) img.setData('baseKey', src);
-        const base = img.getData('baseKey') as string;
-        const key = gold ? goldTexture(this.scene, base) : hyperTexture(this.scene, base);
+        const base = ultiKey ?? (img.getData('baseKey') as string);
+        const key = gold ? goldTexture(this.scene, base) : ultiKey ? ultiKey : hyperTexture(this.scene, base);
         img.clearTint();
         if (key) img.setTexture(key);
         else if (gold) img.setTint(0xffe27a, 0xfff1b8, 0xd99400, 0xffc42e);
@@ -183,8 +188,8 @@ export class AbilityButton extends Phaser.GameObjects.Container {
       this.addAt(this.hyperWave, 1);
     }
     // colores: morado (hipercarga) o DORADO (ULTI legendaria)
-    this.fireRing.setFillStyle(gold ? 0xd99400 : 0x7a2dff, 0.45).setStrokeStyle(6, gold ? 0xffe27a : 0xc77dff, 1);
-    this.hyperWave!.setStrokeStyle(5, gold ? 0xfff1b8 : 0xb46bff, 1);
+    this.fireRing.setFillStyle(gold ? 0xd99400 : blue ? 0x2d6bff : 0x7a2dff, 0.45).setStrokeStyle(6, gold ? 0xffe27a : blue ? 0x7fd0ff : 0xc77dff, 1);
+    this.hyperWave!.setStrokeStyle(5, gold ? 0xfff1b8 : blue ? 0x58b8ff : 0xb46bff, 1);
     this.setGoldSparks(gold);
     this.scene.tweens.killTweensOf(this.hyperWave!);
     this.hyperWave!.setVisible(on).setScale(1).setAlpha(1);
@@ -196,8 +201,8 @@ export class AbilityButton extends Phaser.GameObjects.Container {
       // disponible: rebote + destello
       this.scene.tweens.add({ targets: this.face, scale: { from: 1.3, to: 1 }, duration: 420, ease: 'Back.easeOut' });
     }
-    this.labelText.setText(on ? 'ULTI' : this.baseLabel).setColor(on ? (gold ? '#ffe27a' : '#e0b0ff') : '#ffffff');
-    this.subText.setText(on ? sub : this.baseSub).setColor(on ? (gold ? '#fff1b8' : '#e0b0ff') : '#cfe0ff');
+    this.labelText.setText(on ? 'ULTI' : this.baseLabel).setColor(on ? (gold ? '#ffe27a' : blue ? '#9fd8ff' : '#e0b0ff') : '#ffffff');
+    this.subText.setText(on ? sub : this.baseSub).setColor(on ? (gold ? '#fff1b8' : blue ? '#bfe4ff' : '#e0b0ff') : '#cfe0ff');
     this.redraw();
   }
 

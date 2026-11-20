@@ -30,6 +30,8 @@ export class HurricaneBallFx {
   private readonly glow: Phaser.GameObjects.Image;
   private readonly core: Phaser.GameObjects.Image;
   private t = 0;
+  /** (20-11-2026, usuario) sentido del giro de los brazos y los rayos: 1 (smash final) o -1 (el 1.er golpe gira al revés) */
+  spinDir = 1;
   private readonly px = new Float32Array(5);
   private readonly py = new Float32Array(5);
   constructor(scene: Phaser.Scene, parent?: Phaser.GameObjects.Container) {
@@ -53,14 +55,15 @@ export class HurricaneBallFx {
     this.glow.setPosition(x, y).setDisplaySize(r * 3.2 * pulse, r * 3.2 * pulse).setAlpha(0.95).setDepth(depth - 0.01).setVisible(true);
     const g = this.g.clear().setDepth(depth).setVisible(true);
     // brazos en espiral del huracán (amarillo claro / dorado), girando rápido
-    const spin = t * 9;
+    const dir = this.spinDir;
+    const spin = t * 9 * dir;
     for (let i = 0; i < 4; i++) {
       const a0 = spin + (i * Math.PI) / 2;
       g.lineStyle(Math.max(1.5, r * 0.2), i % 2 ? C.light : C.gold, 0.85).beginPath();
       for (let j = 0; j <= 8; j++) {
         const q = j / 8;
         const rr = r * (0.55 + 1.35 * q);
-        const th = a0 + q * 2.4;
+        const th = a0 + q * 2.4 * dir;
         if (j === 0) g.moveTo(x + Math.cos(th) * rr, y + Math.sin(th) * rr);
         else g.lineTo(x + Math.cos(th) * rr, y + Math.sin(th) * rr);
       }
@@ -71,7 +74,7 @@ export class HurricaneBallFx {
     // RAYOS blancos que salen del borde y GIRAN alrededor del círculo (cambian de forma a saltos)
     const n = 6;
     const slot = Math.floor(t * 18);
-    const rot = t * 5;
+    const rot = t * 5 * dir;
     const px = this.px;
     const py = this.py;
     const g2 = this.g2.clear().setDepth(depth + 0.02).setVisible(true);
@@ -82,7 +85,7 @@ export class HurricaneBallFx {
         const q = j / 4;
         const d = r * 0.9 + len * q;
         const off = j === 0 ? 0 : hash(slot * 31 + i * 5 + j) * r * 0.32;
-        const bend = q * q * 0.45; // se curva en el sentido del giro (arrastrados por el huracán)
+        const bend = q * q * 0.45 * dir; // se curva en el sentido del giro (arrastrados por el huracán)
         const cb = Math.cos(a + bend);
         const sb = Math.sin(a + bend);
         px[j] = x + cb * d - sb * off;

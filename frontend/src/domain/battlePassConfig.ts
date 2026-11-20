@@ -3,7 +3,7 @@
  * operations.addXp la usa para llenar el pase sin imports circulares.
  *
  * El pase entrega algo de dinero (billetes), cosméticos (efecto pelota, cargando golpe), los 3 EMOTES, Rayos para la
- * ZONA y el personaje del final; las monedas quedan reservadas para Ranked.
+ * ZONA y el personaje del final. (21-11-2026, usuario) El camino GRATIS también da MONEDAS 1v1 (niveles 9 y 24) y MONEDAS 2V2 (6 y 19).
  */
 import type { ItemId, PlayerState, StyleId } from './player';
 import type { SkinId } from '../characters/skins';
@@ -13,6 +13,10 @@ import { gameClock } from './timeSource';
 
 export type BpReward =
   | { kind: 'cash'; amount: number }
+  /** (21-11-2026, usuario) MONEDAS de Ranked 1v1 (PlayerState.coins) */
+  | { kind: 'coins'; amount: number }
+  /** (21-11-2026, usuario) MONEDAS 2V2 (PlayerState.coins2v2, domain/coins2v2.ts) */
+  | { kind: 'coins2v2'; amount: number }
   | { kind: 'item'; item: ItemId; name: string }
   /**
    * Personaje del final del Pase. `skin` puede ser uno que aún NO existe como personaje jugable (`soon`: solo tiene retrato, como JUN el 21-11-2026):
@@ -38,6 +42,8 @@ export interface BpTier {
 const $ = (amount: number): BpReward => ({ kind: 'cash', amount });
 const it = (item: ItemId, name: string): BpReward => ({ kind: 'item', item, name });
 const rays = (amount: number): BpReward => ({ kind: 'rays', amount });
+const coins = (amount: number): BpReward => ({ kind: 'coins', amount });
+const coins2v2 = (amount: number): BpReward => ({ kind: 'coins2v2', amount });
 const chest: BpReward = { kind: 'chest' };
 
 export const BP_SEASON = {
@@ -92,10 +98,10 @@ export const BP_SEASON = {
     { free: $(1), prem: it('style:gold', 'Oro') }, // 3
     { free: $(1), prem: $(2) }, // 4
     { free: it('style:pink', 'Rosado'), prem: $(2) }, // 5
-    { free: $(1), prem: $(2) }, // 6
+    { free: coins2v2(50), prem: $(2) }, // 6
     { free: $(1), prem: chest }, // 7
     { free: it('emote:cool', 'Pensando'), prem: $(2) }, // 8
-    { free: $(1), prem: $(2) }, // 9
+    { free: coins(500), prem: $(2) }, // 9
     { free: $(1), prem: $(2) }, // 10
     { free: chest, prem: it('emote:shades', 'Lentes') }, // 11 (LENTES: emote LEGENDARIO animado)
     { free: $(1), prem: $(2) }, // 12
@@ -105,12 +111,12 @@ export const BP_SEASON = {
     { free: $(2), prem: $(2) }, // 16
     { free: it(charColorItem('azul', 'nxo'), 'Azul · NXO'), prem: $(2) }, // 17
     { free: $(2), prem: $(2) }, // 18
-    { free: $(2), prem: $(2) }, // 19
+    { free: coins2v2(100), prem: $(2) }, // 19
     { free: it('emote:cry', 'Llorando'), prem: $(3) }, // 20
     { free: $(2), prem: it(charColorItem('dorado', 'nxo'), 'Dorado · NXO') }, // 21
     { free: $(2), prem: $(3) }, // 22
     { free: it('charge:energy', 'Energía'), prem: $(3) }, // 23
-    { free: $(2), prem: $(3) }, // 24
+    { free: coins(1000), prem: $(3) }, // 24
     { free: $(2), prem: $(3) }, // 25
     { free: rays(1), prem: $(3) }, // 26
     { free: $(2), prem: it('emote:treasure', 'Tesoro') }, // 27 (TESORO: emote LEGENDARIO animado)

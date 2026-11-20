@@ -67,6 +67,8 @@ export type FindResult =
 
 export interface RoomRules {
   searchTimeoutMs: number;
+  /** (20-11-2026) espera del 2v2 (si falta, la de siempre) */
+  searchTimeout2v2Ms?: number;
   gamesToWin: number;
   goldenPoint: boolean;
 }
@@ -139,9 +141,14 @@ export class RoomManager {
     this.playerRoom.set(playerId, room.id);
     this.searchTimers.set(
       room.id,
-      this.timers.set(() => this.expire(room.id), this.rules.searchTimeoutMs),
+      this.timers.set(() => this.expire(room.id), this.searchMs(mode)),
     );
     return { type: 'waiting', room };
+  }
+
+  /** Espera de la búsqueda según el modo (2v2: la suya, más larga). */
+  searchMs(mode: string): number {
+    return mode === '2v2' ? (this.rules.searchTimeout2v2Ms ?? this.rules.searchTimeoutMs) : this.rules.searchTimeoutMs;
   }
 
   /** Vence la búsqueda: si sigue sin rival, se borra la sala y se avisa. */

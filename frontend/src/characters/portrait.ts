@@ -19,9 +19,9 @@ const PORTRAITS: Partial<Record<SkinId, PortraitDef>> = {
   nxo: {
     key: 'portrait-nxo',
     file: 'personajes/Nxo/pj-nxo.webp',
-    w: 1122, // (21-11-2026) retrato nuevo (pj-nxo.png sobre fondo NEGRO, sin el fondo, a WebP; antes sobre verde croma)
-    h: 1402,
-    box: { x0: 153, y0: 2, x1: 1016, y1: 1359 },
+    w: 1024, // (20-11-2026) retrato nuevo: nuca más corta y cuerdas rectas (verde croma quitado, también dentro de la raqueta)
+    h: 1535,
+    box: { x0: 136, y0: 11, x1: 992, y1: 1396 },
   },
   mai: {
     key: 'portrait-mai',

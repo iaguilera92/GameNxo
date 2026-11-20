@@ -16,7 +16,7 @@ import { passiveOf } from '../domain/characterPassives';
 import { openPassiveDialog } from '../ui/passiveInfo';
 import { CHAR_COLOR_LIST, COLOR_SKINS, charColorItem } from '../domain/charColors';
 import { CHEST } from '../domain/chest';
-import { drawChestIcon } from '../ui/wheelArt';
+import { CHEST_TEX, chestImage, drawChestIcon } from '../ui/wheelArt';
 import { passPortrait, queuePassPortraits } from '../characters/passPortrait';
 import { applyCharColor } from '../fx/CharColorFx';
 
@@ -36,7 +36,7 @@ const GOLD = 0xffc42e;
 /** alto de una fila de nivel; la del último nivel (el personaje nuevo) mide el doble */
 const ROW_H = 200;
 /** alto de la fila del bonus final (ruleta) */
-const BONUS_H = 210; // (18-11-2026, usuario) más alta (antes 140)
+const BONUS_H = 252; // (18-11-2026, usuario) más alta (antes 140); (21-11-2026, usuario) otra vez más alta (antes 210): la card se sentía apretada
 /** alto de la cabecera (la lista empieza aquí; el escudo del Premium se monta un poco sobre ella) */
 const HEAD_H = 280;
 /** filas: 0 = regalo de bienvenida, 1..BP_TIERS = niveles, BP_TIERS + 1 = bonus */
@@ -377,9 +377,15 @@ export class BattlePassScene extends Phaser.Scene {
         this.loop({ targets: glow, scale: { from: 0.85, to: 1.15 }, alpha: { from: 0.5, to: 0.15 }, duration: 800, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
       }
       const cashKey = reward.kind !== 'cash' ? null : reward.amount === 1 ? 'bp-cash-1' : reward.amount < 10 ? 'bp-cash-pack' : null;
-      if (cashKey && this.textures.exists(cashKey)) {
+      const coinKey = reward.kind === 'coins' ? 'coin-1' : reward.kind === 'coins2v2' ? 'coin-2v2' : null;
+      if (coinKey && this.textures.exists(coinKey)) {
+        c.add(this.add.image(cx, iy, coinKey).setDisplaySize(84, 84));
+      } else if (cashKey && this.textures.exists(cashKey)) {
         // DINERO (usuario 16-11-2026): 1 = un billete; 2 a 9 = fardo chico (18-11-2026: antes hasta 4); 10 o más, el dibujo de siempre
         c.add(this.add.image(cx, iy, cashKey).setDisplaySize(cashKey === 'bp-cash-1' ? 92 : 100, cashKey === 'bp-cash-1' ? 92 : 100));
+      } else if (reward.kind === 'chest' && this.textures.exists(CHEST_TEX[0])) {
+        // (21-11-2026, usuario) el COFRE es nuestra imagen (cofre-normal.webp, la de la ruleta y el menú), no el dibujo de antes
+        c.add(chestImage(this, cx, iy, 108, 0));
       } else {
         const ic = this.add.graphics({ x: cx, y: iy }).setScale(1.6);
         this.drawReward(ic, reward);
@@ -561,17 +567,44 @@ export class BattlePassScene extends Phaser.Scene {
     if (ready) bg.lineStyle(2, 0xfff3a0, 0.9).strokeRoundedRect(-w / 2 + 7, -h / 2 + 7, w - 14, h - 14, 16);
     card.add(bg);
 
-    const radius = Math.min(70, h * 0.36);
+    const radius = Math.min(86, h * 0.36);
     const wx = -w / 2 + radius + 34;
     if (ready) {
-      // rayos de luz detrás de la ruleta
-      const rays = this.add.graphics({ x: wx, y: 0 }).setBlendMode(ADD);
-      for (let i = 0; i < 14; i++) {
-        const a = (i / 14) * Math.PI * 2;
-        rays.fillStyle(0xffe680, i % 2 ? 0.14 : 0.28).fillTriangle(0, 0, Math.cos(a - 0.11) * radius * 1.9, Math.sin(a - 0.11) * radius * 1.9, Math.cos(a + 0.11) * radius * 1.9, Math.sin(a + 0.11) * radius * 1.9);
-      }
-      card.add(rays);
-      this.loop({ targets: rays, angle: 360, duration: 8000, repeat: -1 });
+      // (21-11-2026, usuario) BRILLO NUEVO que NO se sale de la card (antes eran rayos largos que giraban y asomaban por los bordes): un halo suave y
+      // redondo detrás de la ruleta (su radio nunca pasa del alto de la card), un destello diagonal que barre la card recortado a su interior y un
+      // borde dorado que late por dentro
+      const glowR = Math.min(h / 2 - 8, radius * 1.5);
+      const halo = this.add.graphics({ x: wx, y: 0 }).setBlendMode(ADD);
+      for (let i = 14; i >= 1; i--) halo.fillStyle(i > 9 ? 0xffd86a : 0xffb13b, 0.04).fillCircle(0, 0, (glowR * i) / 14);
+      card.add(halo);
+      this.loop({ targets: halo, scale: { from: 0.86, to: 1 }, alpha: { from: 0.55, to: 1 }, duration: 950, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
+      const edge = this.add.graphics();
+      edge.lineStyle(5, 0xfff3a0, 1).strokeRoundedRect(-w / 2 + 3, -h / 2 + 3, w - 6, h - 6, 19);
+      card.add(edge);
+      this.loop({ targets: edge, alpha: { from: 0.2, to: 0.85 }, duration: 800, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
+      const shine = this.add.graphics();
+      card.add(shine);
+      const xMin = -w / 2 + 12;
+      const xMax = w / 2 - 12;
+      const yTop = -h / 2 + 8;
+      const yBot = h / 2 - 8;
+      const bandW = 64;
+      const slant = 46;
+      const sweep = { v: 0 };
+      this.loop({
+        targets: sweep,
+        v: 1,
+        duration: 2000,
+        repeat: -1,
+        repeatDelay: 1100,
+        ease: 'Sine.easeInOut',
+        onUpdate: () => {
+          shine.clear();
+          const x0 = xMin - bandW - slant + (xMax - xMin + bandW + slant * 2) * sweep.v;
+          const pts = clipBandX([{ x: x0 + slant, y: yTop }, { x: x0 + slant + bandW, y: yTop }, { x: x0 + bandW, y: yBot }, { x: x0, y: yBot }], xMin, xMax);
+          if (pts.length > 2) shine.fillStyle(0xffffff, 0.17).fillPoints(pts, true);
+        },
+      });
     }
     const wheel = this.add.graphics({ x: wx, y: 0 });
     const colors = [GOLD, 0xff6d4a, 0x5fd0ff, 0x9b72ff, 0x68d966, 0xff80b8, 0xffe14d, 0x3fe0a0];
@@ -615,7 +648,7 @@ export class BattlePassScene extends Phaser.Scene {
     if (subT.width > maxTW) subT.setScale(maxTW / subT.width);
     if (ready) {
       // botón ¡GIRAR! que late
-      const bw = 150;
+      const bw = 170;
       const btn = this.add.container(tx + bw / 2, h * 0.3);
       const bgb = this.add.graphics();
       bgb.fillStyle(0x0a1638, 1).fillRoundedRect(-bw / 2 - 3, -20, bw + 6, 42, 21);
@@ -666,7 +699,12 @@ export class BattlePassScene extends Phaser.Scene {
 
   private drawReward(g: Phaser.GameObjects.Graphics, r: BpReward) {
     if (r.kind === 'cash') drawCashIcon(g, 1.3);
-    else if (r.kind === 'rays') {
+    else if (r.kind === 'coins' || r.kind === 'coins2v2') {
+      // (21-11-2026) moneda (dorada 1v1 / morada 2v2); la imagen real la pone rewardCell
+      g.fillStyle(0x0a1638, 1).fillCircle(0, 0, 27);
+      g.fillStyle(r.kind === 'coins' ? 0xffc42e : 0x8a4dff, 1).fillCircle(0, 0, 23);
+      g.fillStyle(0xffffff, 0.35).fillCircle(-7, -8, 9);
+    } else if (r.kind === 'rays') {
       // Rayo de la ZONA: rayo amarillo sobre un disco
       g.fillStyle(0x07152f, 1).fillCircle(0, 0, 28);
       g.lineStyle(3, 0xffd23f, 1).strokeCircle(0, 0, 26);
@@ -717,26 +755,28 @@ export class BattlePassScene extends Phaser.Scene {
     const res = commit((s) => bpClaim(s, track, tier));
     if (!res.ok) return this.toast(res.error === 'not_premium' ? 'Necesitas el Pase Premium' : 'Aún no disponible');
     this.burst(x, y, track === 'prem' ? GOLD : 0x8fd0ff);
-    this.rewardFx(res.given, x, y);
+    this.rewardFx(res.given, x, y, res.dupCash);
   }
 
   /**
    * (18-11-2026, usuario) Animación del premio: DINERO / RAYOS vuelan en tandas a la billetera (arriba a la derecha) y su contador
    * sube con cada tanda; el PERSONAJE final tiene su celebración a pantalla completa; el resto, el aviso de siempre.
    */
-  private rewardFx(r: BpReward, x: number, y: number) {
-    // (21-11-2026, usuario) DINERO, RAYOS y EMOTES: celebración a pantalla completa como la del personaje, con menos impacto (rewardUnlock); al cerrarla,
-    // el dinero / los rayos vuelan a la billetera como antes
-    if (r.kind === 'cash' || r.kind === 'rays' || (r.kind === 'item' && r.item.startsWith('emote:'))) this.rewardUnlock(r, x, y);
-    else if (r.kind === 'character') this.characterUnlock(r);
-    else if (r.kind === 'chest') {
-      // (19-11-2026) cofre nuevo, cofre que evolucionó o (ya era épico) monedas
-      if (r.coins) this.toast(`Tu cofre ya es ÉPICO: +${r.coins} monedas`);
-      else if (r.upgraded) this.toast(`¡Tu cofre subió a ${CHEST.names[r.level ?? 0]}!`);
-      else this.toast('¡COFRE NORMAL! Se abre en 2 días desde el menú');
-    } else this.toast(`¡${rewardLabel(r).top}!`);
+  private rewardFx(r: BpReward, x: number, y: number, dupCash?: number) {
+    // (21-11-2026, usuario) DINERO y MONEDAS (1v1 y 2v2): se reclaman en silencio, sin celebración ni vuelo a la billetera (quien junta rápido no espera)
+    if (r.kind === 'cash' || r.kind === 'coins' || r.kind === 'coins2v2') return this.quietGain(r, x, y);
+    if (r.kind === 'character') return this.characterUnlock(r);
+    // lo demás (efecto pelota, cargando golpe, color, emote, rayos, cofre) tiene su celebración a pantalla completa (rewardUnlock)
+    this.rewardUnlock(r, x, y, dupCash);
   }
 
+  /** (21-11-2026, usuario) Dinero / monedas: un "+N" suave que sube desde la celda; el saldo se actualiza solo (sin celebración). */
+  private quietGain(r: Extract<BpReward, { kind: 'cash' | 'coins' | 'coins2v2' }>, x: number, y: number) {
+    const label = rewardLabel(r);
+    const t = this.add.text(x, y - 10, `+${label.top} ${label.sub}`, { fontFamily: FONT, fontSize: '26px', color: '#ffffff', stroke: '#06122e', strokeThickness: 6 }).setOrigin(0.5).setDepth(9500);
+    fitText(t, this.scale.width - 40);
+    this.tweens.add({ targets: t, y: y - 80, alpha: { from: 1, to: 0 }, delay: 350, duration: 800, ease: 'Cubic.easeOut', onComplete: () => t.destroy() });
+  }
   /**
    * (18-11-2026, usuario) Celda de un EMOTE LEGENDARIO (animado): fondo dorado-naranja con rayos de luz que giran, cinta "LEGENDARIO" y el emote
    * ANIMADO en bucle con la cara de MAI (es el Pase de Mai). (cx, iy) = centro del icono; w × h = la celda.
@@ -940,7 +980,7 @@ export class BattlePassScene extends Phaser.Scene {
    * luz, icono con rebote, confeti) pero con MENOS IMPACTO: sin sacudida ni destello de cámara, icono y textos más chicos, rayos más suaves y menos
    * confeti. Tocar cierra; entonces el dinero / los rayos vuelan a la billetera (flyToWallet, desde (x, y)).
    */
-  private rewardUnlock(r: Extract<BpReward, { kind: 'cash' | 'rays' | 'item' }>, x: number, y: number) {
+  private rewardUnlock(r: Extract<BpReward, { kind: 'rays' | 'item' | 'chest' }>, x: number, y: number, dupCash?: number) {
     const W = this.scale.width;
     const H = this.scale.height;
     const cx = W / 2;
@@ -951,11 +991,15 @@ export class BattlePassScene extends Phaser.Scene {
       (o as unknown as Phaser.GameObjects.Components.Depth).setDepth?.(9600 + all.length * 0.01);
       return o;
     };
-    const label = rewardLabel(r);
+    // (21-11-2026, usuario) el cofre dice qué le pasó: nuevo, evolucionó o (ya era épico) monedas
+    const label = r.kind === 'chest'
+      ? { top: r.coins ? `+${r.coins}` : CHEST.names[r.level ?? 0], sub: r.coins ? 'MONEDAS · TU COFRE YA ES ÉPICO' : r.upgraded ? '¡EVOLUCIONÓ!' : 'SE ABRE EN 2 DÍAS' }
+      : rewardLabel(r);
     const emoteKind = r.kind === 'item' && r.item.startsWith('emote:') ? (r.item.split(':')[1] as EmoteKind) : null;
     const legend = !!(emoteKind && EMOTE_ANIM[emoteKind]);
-    const title = r.kind === 'cash' ? '¡DINERO!' : r.kind === 'rays' ? '¡RAYOS!' : legend ? '¡EMOTE LEGENDARIO!' : '¡EMOTE NUEVO!';
-    const main = r.kind === 'item' ? label.top : `+${r.amount}`;
+    const it = r.kind === 'item' ? r.item : '';
+    const title = r.kind === 'rays' ? '¡RAYOS!' : r.kind === 'chest' ? (r.coins ? '¡COFRE ÉPICO!' : r.upgraded ? '¡COFRE EVOLUCIONADO!' : '¡COFRE NUEVO!') : emoteKind ? (legend ? '¡EMOTE LEGENDARIO!' : '¡EMOTE NUEVO!') : it.startsWith('charge:') ? '¡CARGANDO GOLPE NUEVO!' : it.startsWith('style:') ? '¡EFECTO DE PELOTA NUEVO!' : it.startsWith('color:') ? '¡COLOR DE ROPA NUEVO!' : '¡NUEVO!';
+    const main = r.kind === 'rays' ? `+${r.amount}` : label.top;
     uiSound(this, 'duel-win');
     const dim = add(this.add.image(0, 0, this.unlockBgKey(W, H)).setOrigin(0).setAlpha(0).setInteractive());
     this.tweens.add({ targets: dim, alpha: 1, duration: 180 });
@@ -980,14 +1024,12 @@ export class BattlePassScene extends Phaser.Scene {
         if (this.anims.exists(`${key}-loop`)) spr.play(`${key}-loop`);
         icon = spr;
       } else icon = this.add.graphics({ x: cx, y: cy });
+    } else if (r.kind === 'chest') {
+      icon = chestImage(this, cx, cy, SZ * 1.15, r.level ?? 0);
     } else {
-      const cashKey = r.kind === 'cash' ? (r.amount === 1 ? 'bp-cash-1' : r.amount < 10 ? 'bp-cash-pack' : null) : null;
-      if (cashKey && this.textures.exists(cashKey)) icon = this.add.image(cx, cy, cashKey).setDisplaySize(SZ, SZ);
-      else {
-        const g = this.add.graphics({ x: cx, y: cy }).setScale(4.2);
-        this.drawReward(g, r);
-        icon = g;
-      }
+      const g = this.add.graphics({ x: cx, y: cy }).setScale(4.2);
+      this.drawReward(g, r);
+      icon = g;
     }
     add(icon);
     const k = (icon as unknown as { scaleX: number }).scaleX;
@@ -1011,6 +1053,12 @@ export class BattlePassScene extends Phaser.Scene {
     this.tweens.add({ targets: num, alpha: 1, y: { from: H * 0.66 + 30, to: H * 0.66 }, delay: 500, duration: 360, ease: 'Back.easeOut' });
     const sub = add(this.add.text(cx, H * 0.66 + 50, label.sub, { fontFamily: FONT, fontSize: '22px', color: '#ffd86a', stroke: '#061431', strokeThickness: 5 }).setOrigin(0.5).setLetterSpacing(2).setAlpha(0));
     this.tweens.add({ targets: sub, alpha: 1, delay: 750, duration: 300 });
+    if (dupCash) {
+      // lo tenías: se compensó en dinero (sin animación, solo se avisa)
+      const dup = add(this.add.text(cx, H * 0.66 + 88, `Ya lo tenías: +${dupCash} de dinero`, { fontFamily: FONT, fontSize: '18px', color: '#9fe8a0', stroke: '#061431', strokeThickness: 4 }).setOrigin(0.5).setAlpha(0));
+      fitText(dup, W - 40);
+      this.tweens.add({ targets: dup, alpha: 1, delay: 950, duration: 300 });
+    }
     const tap = add(this.add.text(cx, H * 0.9, 'Toca para continuar', { fontFamily: FONT, fontSize: '18px', color: '#d1e3ff' }).setOrigin(0.5).setAlpha(0));
     this.tweens.add({ targets: tap, alpha: { from: 0, to: 1 }, delay: 1100, duration: 600, yoyo: true, repeat: -1 });
     // confeti suave
@@ -1025,7 +1073,7 @@ export class BattlePassScene extends Phaser.Scene {
       (dim as Phaser.GameObjects.Image).once('pointerup', () => {
         this.tweens.killTweensOf(all);
         this.tweens.add({ targets: all, alpha: 0, duration: 200, onComplete: () => all.forEach((o) => o.destroy()) });
-        if (r.kind === 'cash' || r.kind === 'rays') this.flyToWallet(r, x, y);
+        if (r.kind === 'rays') this.flyToWallet(r, x, y);
       }),
     );
   }
@@ -1069,8 +1117,7 @@ export class BattlePassScene extends Phaser.Scene {
     const res = commit((s) => bpClaimWelcome(s, track));
     if (!res.ok) return this.toast(res.error === 'not_premium' ? 'Necesitas el Pase Premium' : 'Regalo ya reclamado');
     this.burst(x, y, track === 'prem' ? GOLD : 0x8fd0ff);
-    if (res.given.kind === 'item') this.toast(`¡${rewardLabel(res.given).top} ${rewardLabel(res.given).sub}!`);
-    else this.rewardFx(res.given, x, y);
+    this.rewardFx(res.given, x, y, res.dupCash);
   }
 
   private buyPremium() {
@@ -1226,6 +1273,24 @@ export class BattlePassScene extends Phaser.Scene {
   }
 }
 
+/** Recorta un polígono convexo a la franja vertical [xMin, xMax] (Sutherland-Hodgman en x): el destello de la card del bonus no pasa de su interior. */
+function clipBandX(pts: { x: number; y: number }[], xMin: number, xMax: number): { x: number; y: number }[] {
+  const clip = (poly: { x: number; y: number }[], inside: (p: { x: number; y: number }) => boolean, cut: (a: { x: number; y: number }, b: { x: number; y: number }) => { x: number; y: number }) => {
+    const out: { x: number; y: number }[] = [];
+    poly.forEach((cur, i) => {
+      const prev = poly[(i + poly.length - 1) % poly.length];
+      if (inside(cur)) {
+        if (!inside(prev)) out.push(cut(prev, cur));
+        out.push(cur);
+      } else if (inside(prev)) out.push(cut(prev, cur));
+    });
+    return out;
+  };
+  const at = (xv: number) => (a: { x: number; y: number }, b: { x: number; y: number }) => ({ x: xv, y: a.y + ((b.y - a.y) * (xv - a.x)) / (b.x - a.x) });
+  let r = clip(pts, (p) => p.x >= xMin, at(xMin));
+  if (r.length) r = clip(r, (p) => p.x <= xMax, at(xMax));
+  return r;
+}
 /** Billetes (dinero), mismo dibujo que el contador del menú, a escala `k`. */
 export function drawCashIcon(g: Phaser.GameObjects.Graphics, k = 1, x = 0, y = 0) {
   const b = (dx: number, dy: number, col: number) => {
@@ -1248,6 +1313,8 @@ function characterTag(r: Extract<BpReward, { kind: 'character' }>): string {
 
 function rewardLabel(r: BpReward): { top: string; sub: string } {
   if (r.kind === 'cash') return { top: String(r.amount), sub: 'DINERO' };
+  if (r.kind === 'coins') return { top: r.amount.toLocaleString('es-CL'), sub: 'MONEDAS' };
+  if (r.kind === 'coins2v2') return { top: r.amount.toLocaleString('es-CL'), sub: 'MONEDAS 2V2' };
   if (r.kind === 'rays') return { top: `${r.amount} ${r.amount === 1 ? 'RAYO' : 'RAYOS'}`, sub: 'PARA LA ZONA' };
   if (r.kind === 'chest') return { top: 'COFRE', sub: 'COFRE NORMAL' };
   if (r.kind === 'character') return { top: r.name.toUpperCase(), sub: r.color ? 'PERSONAJE · COLOR DORADO' : r.style ? 'PERSONAJE · ESTILO ORO' : 'PERSONAJE NUEVO' };

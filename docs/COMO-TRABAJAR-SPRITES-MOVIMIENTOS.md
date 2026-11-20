@@ -161,6 +161,8 @@ mayor se comía el pelo, la chaqueta y el short, que también son negros) y los 
 Es un proceso aproximado: lo ideal es entregar el retrato sobre VERDE croma o ya con transparencia. El respaldo del retrato anterior está en
 `_temp/respaldo_oficial/Nxo/pj-nxo-retrato-anterior.webp`. Caja visible nueva: 153, 2, 1016, 1359 (de 1122 × 1402).
 
+**Retrato de Nxo, 3.ª versión (20-11-2026):** nuca más corta y cuerdas rectas, sobre verde croma (1024 × 1535). Se quitó el verde (dominancia del verde) y, solo DENTRO del aro de la raqueta, también las manchas negras y verde oscuro entre las cuerdas. Caja visible: 136, 11, 992, 1396. Respaldo: `_temp/respaldo_oficial/Nxo/pj-nxo-antes-20-11.*`. El `pj-nxo.png` (fuente) no se pudo reemplazar (archivo bloqueado).
+
 Los respaldos de hojas NO viven en `personajes/`: están fuera de `frontend/public/`, en `_temp/respaldo_oficial/`
 (en la raíz del repo), con la misma estructura (`Nxo/`, `Nxo/rival/`, `Mai/`, `Mai/rival/`), para que nunca lleguen al APK.
 Ahí también están `assets-sin-uso/`, `ui-png-originales/` y `tools-viejas/`.
@@ -646,3 +648,11 @@ Por confirmar (puede no requerir redibujar):
 - **Mai rival, hoja 4:** las filas 1 y 2 no se distinguen bien como bote y lanzamiento del saque.
 
 Las hojas 1 de Mai rival y de espaldas, la 2 de espaldas y la ULTI de los cuatro packs ya cumplen.
+
+- (20-11-2026, usuario) ESTIRADAS: el juego muestra solo los cuadros 1-5 de dive-right / dive-left (hasta tocar el suelo) y sigue con recover-* desde su cuadro 2 (`DIVE_CUT` / `RECOVER_FROM` en NxoActor). Los cuadros 6-8 (tirado en el suelo) solo se usan con la BOLA DE ENERGÍA (`diveHold`). Al rehacer una estirada, lo importante son los cuadros 1-5.
+- (20-11-2026) Si una hoja de estirada nueva ya termina de pie (sus cuadros 6-8 son la levantada), agregar su clip a `DIVE_SELF_RECOVER` en NxoActor: se ve entera y no usa recover-*. Hoy: NXO de espaldas, dive-left.
+- (20-11-2026) NXO de espaldas: dive-right y dive-left nuevas (movimientos-9 / -10) traen la levantada; las dos en `DIVE_SELF_RECOVER`. recover-right / recover-left ya no se usan en NXO de espaldas.
+- (20-11-2026) NXO de espaldas ya NO tiene recover-right / recover-left (fuera de nxo-extra.json; hojas movimientos-11/-12 en _temp/respaldo_oficial/Nxo/). Sus estiradas 9 y 10 traen la levantada.
+- (20-11-2026) MAI de espaldas igual que NXO: dive-right / dive-left nuevas (movimientos-9 / -10) con levantada, en `DIVE_SELF_RECOVER`; sin recover-* (hojas 11/12 en _temp/respaldo_oficial/Mai/).
+- (20-11-2026) MAI RIVAL (mai-front): dive-right / dive-left nuevas con levantada, en `DIVE_SELF_RECOVER`; sin recover-* (hojas 11/12 borradas). Falta NXO rival.
+- (20-11-2026) NXO RIVAL (nxo-front) igual: estiradas nuevas con levantada, sin recover-* (hojas 11/12 borradas). Desde hoy NINGUN personaje usa recover-right / recover-left: las estiradas (movimientos-9 / -10) traen la levantada en los cuadros 6-8 y van en `DIVE_SELF_RECOVER`.

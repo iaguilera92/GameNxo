@@ -101,16 +101,19 @@ function draw(scene: Phaser.Scene, title: string, coins: number) {
   const tx = lx((A.text.x0 + A.text.x1) / 2);
   const maxName = (A.text.x1 - A.text.x0) * k;
   const S = w / 330; // los textos crecen con la placa (medidas pensadas para 330 de ancho)
-  const head = scene.add.text(tx, -14 * S, '¡LOGRO!', { fontFamily: FONT, fontSize: `${Math.round(16 * S)}px`, color: '#ffd23f', stroke: '#0a1638', strokeThickness: 4 }).setOrigin(0.5).setLetterSpacing(2);
+  // (20-11-2026, usuario) "¡MISIÓN CUMPLIDA!" en vez de "¡LOGRO!" (se achica si no cabe)
+  const head = scene.add.text(tx, -14 * S, '¡MISIÓN CUMPLIDA!', { fontFamily: FONT, fontSize: `${Math.round(16 * S)}px`, color: '#ffd23f', stroke: '#0a1638', strokeThickness: 4 }).setOrigin(0.5).setLetterSpacing(1);
+  if (head.width > maxName) head.setScale(maxName / head.width);
   const name = scene.add.text(tx, 11 * S, title.toUpperCase(), { fontFamily: FONT, fontSize: `${Math.round(17 * S)}px`, color: '#ffffff', stroke: '#0a1638', strokeThickness: 4 }).setOrigin(0.5);
   if (name.width > maxName) name.setScale(maxName / name.width);
   // premio: "+N" dorado y grande, centrado en el casillero
   const P = A.prize;
-  const val = scene.add.text(lx(P.cx), ly(P.cy), `+${coins}`, { fontFamily: FONT, fontSize: `${Math.round(19 * S)}px`, color: '#ffd23f', stroke: '#0a1638', strokeThickness: 4 }).setOrigin(0.5);
-  // cabe en el casillero (ancho y alto libres); centrado por su caja real (no por la línea base de la fuente)
+  // (20-11-2026, usuario) 2 px a la izquierda y más grande (antes 19 px y ajustado al casillero)
+  const val = scene.add.text(lx(P.cx) - 2 * S, ly(P.cy), `+${coins}`, { fontFamily: FONT, fontSize: `${Math.round(23 * S)}px`, color: '#ffd23f', stroke: '#0a1638', strokeThickness: 4 }).setOrigin(0.5);
+  // cabe en el casillero (con un poco de holgura); centrado por su caja real (no por la línea base de la fuente)
   const fit = () => {
     val.setScale(1);
-    val.setScale(Math.min(1, (P.w * k) / Math.max(1, val.width), (P.h * k * 1.25) / Math.max(1, val.height)));
+    val.setScale(Math.min(1, (P.w * k * 1.2) / Math.max(1, val.width), (P.h * k * 1.45) / Math.max(1, val.height)));
   };
   fit();
 

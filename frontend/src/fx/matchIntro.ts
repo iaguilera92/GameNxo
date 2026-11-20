@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { FONT } from '../ui/theme';
+import { SHARED_FOOTER } from '../view/CourtView';
 
 /**
  * Presentación corta al empezar el partido (≤ 2 s en total), SOBRE el mismo mapa:
@@ -16,13 +17,16 @@ export const INTRO = {
   zoomFrom: 0.72,
   /** relativo al zoom de juego (VIEW.CAM_ZOOM): la cámara termina EXACTAMENTE en el encuadre de juego (sin salto) */
   /** desplazamiento vertical inicial de la cámara (px de mundo; positivo = mira más abajo, oculta el borde superior) */
-  liftFrom: -420,
+  // (21-11-2026, usuario) SIN elevación: el mapa ya no empieza abajo y sube; arranca LEJOS y QUIETO y solo se acerca (zoom)
+  liftFrom: 0,
   /** viñeta superior (y de mundo): opaca hasta aquí y se desvanece hasta vigFadeTo */
   vigSolidTo: -60,
   vigFadeTo: 300,
   vigBottomFrom: 1250,
   vigBottomSolid: 1560,
-  zoomMs: 2300,
+  /** (21-11-2026, usuario) quieto de lejos este tiempo (ms): el zoom arranca cuando los personajes empiezan a caminar de verdad (entranceWalk: delay 350) */
+  holdMs: 350,
+  zoomMs: 1950, // holdMs + zoomMs = 2300 (lo de antes)
   dark: 0.55,
   textAt: 1500,
   textOutAt: 2400,
@@ -53,7 +57,7 @@ export function playMatchIntro(scene: Phaser.Scene, onDone: () => void) {
   cam.setZoom(baseZoom * INTRO.zoomFrom);
   cam.scrollY = baseY + INTRO.liftFrom;
   cam.fadeIn(220, 0, 0, 0);
-  scene.tweens.add({ targets: cam, zoom: baseZoom, scrollY: baseY, duration: INTRO.zoomMs, ease: 'Sine.easeInOut' });
+  scene.tweens.add({ targets: cam, zoom: baseZoom, scrollY: baseY, delay: INTRO.holdMs, duration: INTRO.zoomMs, ease: 'Sine.easeInOut' });
 
   // oscurecido (cubre de sobra aunque la cámara esté alejada)
   const dim = scene.add
@@ -64,9 +68,12 @@ export function playMatchIntro(scene: Phaser.Scene, onDone: () => void) {
   const vig = scene.add.graphics().setDepth(8000);
   vig.fillStyle(0x02060f, 1).fillRect(-2000, -2000, 5000, 2000 + INTRO.vigSolidTo);
   vig.fillGradientStyle(0x02060f, 0x02060f, 0x02060f, 0x02060f, 1, 1, 0, 0).fillRect(-2000, INTRO.vigSolidTo, 5000, INTRO.vigFadeTo - INTRO.vigSolidTo);
-  // y abajo (bajo la cancha termina el fondo)
-  vig.fillGradientStyle(0x02060f, 0x02060f, 0x02060f, 0x02060f, 0, 0, 1, 1).fillRect(-2000, INTRO.vigBottomFrom, 5000, INTRO.vigBottomSolid - INTRO.vigBottomFrom);
-  vig.fillStyle(0x02060f, 1).fillRect(-2000, INTRO.vigBottomSolid, 5000, 2000);
+  // y abajo (bajo la cancha termina el fondo): (21-11-2026, usuario) del MISMO color que el ambiente (el del pie, tras los botones) que se va oscureciendo
+  // hacia abajo, sin llegar al negro
+  const foot = Phaser.Display.Color.IntegerToColor(SHARED_FOOTER);
+  const footDark = Phaser.Display.Color.GetColor(Math.round(foot.red * 0.5), Math.round(foot.green * 0.5), Math.round(foot.blue * 0.5));
+  vig.fillGradientStyle(SHARED_FOOTER, SHARED_FOOTER, footDark, footDark, 0, 0, 1, 1).fillRect(-2000, INTRO.vigBottomFrom, 5000, INTRO.vigBottomSolid - INTRO.vigBottomFrom);
+  vig.fillStyle(footDark, 1).fillRect(-2000, INTRO.vigBottomSolid, 5000, 2000);
 
   // texto INICIO
   const cy = H * 0.4;

@@ -15,6 +15,8 @@ import Phaser from 'phaser';
  * Lo fijo (sombra, postes) se pinta una vez; malla y cinta se redibujan solo mientras se mueven.
  */
 export type Projector = (x: number, y: number, z?: number) => { x: number; y: number };
+/** (21-11-2026, usuario) la red se DIBUJA más alta que su altura física (NET_HEIGHT): solo es visual, la pelota y las reglas no cambian. Súbelo o bájalo aquí. */
+export const NET_VIEW_SCALE = 1.32; // (20-11-2026, usuario) un poco más alta (antes 1.2)
 
 const LOOK = {
   /** tamaño del rombo (unidades de cancha) */

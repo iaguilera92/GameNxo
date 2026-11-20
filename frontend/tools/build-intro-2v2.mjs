@@ -38,7 +38,7 @@ const charsOf = (suffix) => {
  * (19-11-2026, usuario) RECORTE por personaje e intro (fracción del alto del dibujo): `top` quita pelo de arriba y `bottom` lo de abajo (cuello,
  * barbilla). El corte se funde en un borde suave (`FADE`), para que no quede una línea recta en seco.
  */
-const TRIM = { 'intro-2': { nxo: { top: 0.1, bottom: 0.14 } } };
+const TRIM = { 'intro-2': { nxo: { top: 0.06, bottom: 0.03 } } }; // (20-11-2026) hoja nueva (aura roja): antes 0.1 / 0.14 cortaba la barba
 /** (21-11-2026) personajes cuya intro 2 se alinea por el borde de arriba de cada cuadro (Mai NO: se queda quieta) */
 const ANCHOR_TOP = { 'intro-2': new Set(['nxo']) };
 const FADE = 0.06;

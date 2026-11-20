@@ -34,6 +34,40 @@ export interface ScoreBoardState {
   server: 0 | 1;
 }
 
+// ---------------------------------------------------------------- ARTE DEL MARCADOR (21-11-2026, usuario: marcador-principal.png)
+/**
+ * Imagen del marcador (public/assets/ui/marcador-principal.webp, 1500 × 320, recortada del arte original de 2138 × 735 en (10, 148, 2120 × 452)): panel AZUL (tú)
+ * a la izquierda con 2 huecos para los juegos ganados, óvalo oscuro al centro (los puntos), píldora dorada bajo el óvalo ("JUEGO N" y avisos) y panel ROJO
+ * (rival) a la derecha con sus 2 huecos. Todas las medidas de abajo están en píxeles del arte ORIGINAL (2138 × 735); `ART_K` los pasa a px de juego.
+ * Si la imagen no carga, el marcador se dibuja por código como antes.
+ */
+export const SCOREBOARD_ART = { key: 'ui-marcador-principal', file: 'assets/ui/marcador-principal.webp' };
+export function queueScoreboardArt(load: Phaser.Loader.LoaderPlugin) {
+  if (!load.textureManager.exists(SCOREBOARD_ART.key)) load.image(SCOREBOARD_ART.key, SCOREBOARD_ART.file);
+}
+/** px de juego por px del arte original (el arte ocupa ~640 px de ancho) */
+const ART_K = 0.305;
+/** origen del contenedor en el arte: centro horizontal y borde de arriba del dibujo */
+const ART_O = { x: 1070, y: 158 };
+/** recorte de la imagen cargada respecto del arte original */
+const ART_CROP = { x: 10, y: 148, w: 2120, h: 452 };
+const AX = (sx: number) => (sx - ART_O.x) * ART_K;
+const AY = (sy: number) => (sy - ART_O.y) * ART_K;
+const ART = {
+  /** centro del óvalo (los puntos) y separación de cada cifra al centro (px de juego) */
+  score: { x: 1069, y: 325, gap: 52, maxW: 80 },
+  /** centro de la píldora dorada y ancho útil de su texto (px de juego) */
+  pill: { x: 1069, y: 512, maxW: 112 },
+  /** nombres: centro y ancho útil (px del arte) en cada panel; y = altura del texto */
+  names: [{ x: 430, maxW: 470 }, { x: 1708, maxW: 470 }],
+  nameY: 300,
+  /** pelota de saque (en el extremo exterior de cada panel) */
+  balls: [{ x: 135, y: 300 }, { x: 2004, y: 300 }],
+  /** huecos de los juegos ganados, de izquierda a derecha (2 por panel) y su altura */
+  holes: [[370, 460], [1690, 1783]],
+  holeY: 404,
+};
+
 const NAVY = 0x0b1733;
 const OUTLINE = 0x0a1638;
 const NEON = 0x3a7bff;
@@ -64,16 +98,24 @@ export class ScoreBoard extends Phaser.GameObjects.Container {
   /** aviso breve en la píldora (FALTA, TIEMPO, LET…); tiene prioridad sobre `info` */
   private flash: { text: string; color: string } | null = null;
   private flashTimer?: Phaser.Time.TimerEvent;
+  /** con la imagen del marcador (marcador-principal) o dibujado por código (si la imagen no cargó) */
+  private readonly art: boolean;
+  /** ancho máximo de las cifras de los puntos y del texto de la píldora (px de juego) */
+  private scoreMaxW = CW * 0.36;
+  private pillMaxW = 108;
 
   constructor(scene: Phaser.Scene, cfg: ScoreBoardConfig) {
     super(scene, 0, 0);
     scene.add.existing(this);
     this.setScrollFactor(0);
     this.gamesToWin = cfg.gamesToWin;
-
-    this.sidePanel(0, cfg.player);
-    this.sidePanel(1, cfg.rival);
-    this.centerPlate();
+    this.art = scene.textures.exists(SCOREBOARD_ART.key);
+    if (this.art) this.artBoard(cfg);
+    else {
+      this.sidePanel(0, cfg.player);
+      this.sidePanel(1, cfg.rival);
+      this.centerPlate();
+    }
     this.setScore({ labels: ['0', '0'], games: [0, 0], gameIndex: 0, server: 0 }, false);
   }
 
@@ -84,7 +126,7 @@ export class ScoreBoard extends Phaser.GameObjects.Container {
       const t = this.pts[i];
       t.setText(l);
       t.setScale(1);
-      if (t.width > CW * 0.36) t.setScale((CW * 0.36) / t.width);
+      if (t.width > this.scoreMaxW) t.setScale(this.scoreMaxW / t.width);
       if (animate && prev && prev.labels[i] !== l) {
         const base = t.scale;
         this.scene.tweens.add({ targets: t, scale: { from: base * 1.45, to: base }, duration: 320, ease: 'Back.easeOut' });
@@ -108,6 +150,53 @@ export class ScoreBoard extends Phaser.GameObjects.Container {
     this.prevState = { ...s, labels: [...s.labels] as [string, string], games: [...s.games] as [number, number] };
   }
 
+  // ---------------------------------------------------------------- con la imagen
+  /** El marcador con la imagen: arte de fondo y, encima, nombres, juegos ganados, pelota de saque, puntos y la píldora. */
+  private artBoard(cfg: ScoreBoardConfig) {
+    const img = this.scene.add.image(AX(ART_CROP.x), AY(ART_CROP.y), SCOREBOARD_ART.key).setOrigin(0, 0).setDisplaySize(ART_CROP.w * ART_K, ART_CROP.h * ART_K);
+    this.add(img);
+    // para el aviso "x2 RIESGO" (ui/riskBadge.ts): bajo el panel de TÚ
+    this.setData('riskAnchor', { x: AX(ART.names[0].x), y: AY(459) + 16 });
+    const names = [cfg.player, cfg.rival];
+    for (let side = 0; side < 2; side++) {
+      const nx = AX(ART.names[side].x);
+      const t = this.scene.add
+        .text(nx, AY(ART.nameY), names[side].toUpperCase(), { fontFamily: FONT, fontSize: '25px', color: '#ffffff', stroke: '#0a1638', strokeThickness: 5 })
+        .setOrigin(0.5);
+      fitText(t, ART.names[side].maxW * ART_K, 0.7); // si no cabe: achica y termina en "..."
+      this.add(t);
+      // juegos ganados: cada uno sobre su hueco (si hay más de 2, se siguen hacia el centro del panel)
+      for (let i = 0; i < this.gamesToWin; i++) {
+        const hx = ART.holes[side][i] ?? ART.holes[side][ART.holes[side].length - 1] + (i - ART.holes[side].length + 1) * 92;
+        const p = this.scene.add.graphics({ x: AX(hx), y: AY(ART.holeY) });
+        this.add(p);
+        this.pips[side].push(p);
+      }
+      // pelota de saque
+      const ball = this.scene.add.container(AX(ART.balls[side].x), AY(ART.balls[side].y));
+      const bg = this.scene.add.graphics();
+      bg.fillStyle(OUTLINE, 1).fillCircle(0, 0, 12);
+      bg.fillStyle(0xd7f53a, 1).fillCircle(0, 0, 9);
+      bg.lineStyle(2, 0xffffff, 0.9).beginPath().arc(-9, 0, 7, -0.9, 0.9).strokePath();
+      bg.beginPath().arc(9, 0, 7, Math.PI - 0.9, Math.PI + 0.9).strokePath();
+      ball.add(bg);
+      this.add(ball);
+      this.balls[side] = ball;
+    }
+    // puntos en el óvalo
+    const style = { fontFamily: FONT, fontSize: '44px', color: '#ffffff', stroke: '#0a1638', strokeThickness: 6 };
+    const cx = AX(ART.score.x);
+    const cy = AY(ART.score.y);
+    this.pts[0] = this.scene.add.text(cx - ART.score.gap, cy, '0', style).setOrigin(0.5);
+    this.pts[1] = this.scene.add.text(cx + ART.score.gap, cy, '0', style).setOrigin(0.5);
+    const dash = this.scene.add.text(cx, cy - 2, '-', { ...style, color: '#ffc42e' }).setOrigin(0.5);
+    this.add([this.pts[0], dash, this.pts[1]]);
+    this.scoreMaxW = ART.score.maxW;
+    // píldora dorada: JUEGO N / avisos
+    this.pillMaxW = ART.pill.maxW;
+    this.gameTxt = this.scene.add.text(AX(ART.pill.x), AY(ART.pill.y), 'JUEGO 1', { fontFamily: FONT, fontSize: '17px', color: '#ffd76a', stroke: '#050b1e', strokeThickness: 3 }).setOrigin(0.5).setLetterSpacing(1);
+    this.add(this.gameTxt);
+  }
   // ---------------------------------------------------------------- piezas
 
   private sidePanel(side: 0 | 1, name: string) {
@@ -221,11 +310,20 @@ export class ScoreBoard extends Phaser.GameObjects.Container {
   private refreshLabel() {
     const cur = this.flash ?? this.info;
     this.gameTxt.setText(cur ? cur.text : this.gameLabel).setColor(cur ? cur.color : '#ffd76a').setScale(1);
-    if (this.gameTxt.width > 108) this.gameTxt.setScale(108 / this.gameTxt.width);
+    if (this.gameTxt.width > this.pillMaxW) this.gameTxt.setScale(this.pillMaxW / this.gameTxt.width);
   }
 
   private drawPip(g: Phaser.GameObjects.Graphics, won: boolean) {
     g.clear();
+    if (this.art) {
+      // el hueco ya está en la imagen: solo se pinta la pieza dorada cuando se ganó el juego
+      if (won) {
+        g.fillStyle(GOLD, 1).fillCircle(0, 0, 6.6);
+        g.fillStyle(0xfff1b8, 1).fillCircle(-1.8, -1.8, 2.4);
+        g.lineStyle(1.5, 0x8a5a00, 0.9).strokeCircle(0, 0, 6.6);
+      }
+      return;
+    }
     g.fillStyle(OUTLINE, 1).fillCircle(0, 0, 8);
     if (won) {
       g.fillStyle(GOLD, 1).fillCircle(0, 0, 6);

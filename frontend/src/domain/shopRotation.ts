@@ -2,6 +2,7 @@
  * ROTACIÓN DE LA TIENDA (datos puros, sin Phaser). Decidido con el usuario (15-11-2026):
  *   - CARGANDO GOLPE, ESPECIAL y DEFENSIVO: se ven 3 a la vez y cambian cada 12 h.
  *   - ULTI: se ven 3 a la vez y cambian cada 24 h.
+ *   - ZONA (21-11-2026): se ven 2 a la vez y cambian cada SEMANA (todos los domingos, con el reinicio de la noche del sábado).
  *   - EFECTO PELOTA no rota: están todos (en la Tienda se desliza hacia la derecha).
  *   - Si hay 3 o menos de una categoría, se muestran los que haya y no hay nada que cambiar.
  *
@@ -19,22 +20,29 @@ import { SHOP_ITEMS, type ShopItem, shopItem } from './shopCatalog';
 
 /** cuántos se ven a la vez en una categoría con rotación */
 export const ROTATION_SHOW = 3;
-/** categorías con rotación y cada cuántas horas cambian */
-export const ROTATION: Partial<Record<ItemKind, { hours: 12 | 24 }>> = {
+/** categorías con rotación: cada cuántas horas cambian, cuántos se ven a la vez (por defecto ROTATION_SHOW) y si el contador sale siempre */
+export const ROTATION: Partial<Record<ItemKind, { hours: 12 | 24 | 168; show?: number; alwaysTimer?: boolean }>> = {
   charge: { hours: 12 },
   smash: { hours: 12 },
   defensive: { hours: 12 },
   inferno: { hours: 24 },
+  // semanal; el contador sale siempre (aunque hoy se vean las 2 a la vez, cuando haya más estilos de zona rotarán)
+  zone: { hours: 168, show: 2, alwaysTimer: true },
 };
 
 const HOUR = 3600_000;
 
 /** Ventana actual de una rotación: su número (sube de uno en uno) y cuántos ms faltan para que cambie. */
-export function rotationWindow(now: number, hours: 12 | 24): { id: number; nextMs: number } {
+export function rotationWindow(now: number, hours: 12 | 24 | 168): { id: number; nextMs: number } {
   const next = msToNextReset(now);
   const [y, m, d] = cycleIdAt(now).split('-').map(Number);
   const day = Math.round(Date.UTC(y, m - 1, d) / 86400_000);
   if (hours === 24) return { id: day, nextMs: next };
+  if (hours === 168) {
+    // semana de domingo a domingo (el día 3 desde 1970-01-01 fue domingo): cambia con el reinicio que abre el domingo
+    const dow = (((day - 3) % 7) + 7) % 7; // 0 = domingo
+    return { id: Math.floor((day - 3) / 7), nextMs: next + (6 - dow) * 86400_000 };
+  }
   const second = next <= 12 * HOUR; // segunda mitad del ciclo: las últimas 12 h antes del reinicio
   return { id: day * 2 + (second ? 1 : 0), nextMs: second ? next : next - 12 * HOUR };
 }
@@ -79,17 +87,18 @@ function rotationOrder(kind: ItemKind): ShopItem[] {
 export function shopOffers(kind: ItemKind, now: number): ShopItem[] {
   const rot = ROTATION[kind];
   const items = pool(kind);
-  if (!rot || items.length <= ROTATION_SHOW) return items;
+  const show = rot?.show ?? ROTATION_SHOW;
+  if (!rot || items.length <= show) return items;
   const order = rotationOrder(kind);
   const w = rotationWindow(now, rot.hours);
-  const start = (w.id * ROTATION_SHOW) % order.length;
-  return Array.from({ length: ROTATION_SHOW }, (_, i) => order[(start + i) % order.length]);
+  const start = (w.id * show) % order.length;
+  return Array.from({ length: show }, (_, i) => order[(start + i) % order.length]);
 }
 
 /** ms para que cambie lo que muestra una categoría; null si no rota o no hay otros que mostrar. */
 export function offersChangeIn(kind: ItemKind, now: number): number | null {
   const rot = ROTATION[kind];
-  if (!rot || pool(kind).length <= ROTATION_SHOW) return null;
+  if (!rot || (pool(kind).length <= (rot.show ?? ROTATION_SHOW) && !rot.alwaysTimer)) return null;
   return rotationWindow(now, rot.hours).nextMs;
 }
 

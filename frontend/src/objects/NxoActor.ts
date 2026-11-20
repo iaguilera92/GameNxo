@@ -38,6 +38,12 @@ const extrasOf = (p: { extra: ExtraCfg }) => Object.entries(p.extra.animations) 
 const extraKey = (a: ExtraAnim, pk = 'nxo') => `${pk}-x-${a}`;
 /** (18-11-2026) cuadro de la ESTIRADA en que la raqueta llega a la pelota (en el aire, con la estela): 4.º de 8 */
 const DIVE_REACH = 3;
+/** (20-11-2026, usuario) la estirada se corta al llegar a este cuadro (índice; 5 de 8, tocando el suelo) y sigue la recuperación */
+const DIVE_CUT = 5;
+/** cuadro (índice) de la recuperación desde el que se sigue: de rodillas con la mano en el suelo (sin el de tumbado) */
+const RECOVER_FROM = 1;
+/** clips de estirada que ya terminan de pie (se ven enteros, sin recover-*): ver NxoActor.diveSelfRecover */
+const DIVE_SELF_RECOVER = new Set<string>([extraKey('dive-left', 'nxo'), extraKey('dive-right', 'nxo'), extraKey('dive-right', 'mai'), extraKey('dive-left', 'mai'), extraKey('dive-left', 'maif'), extraKey('dive-right', 'maif'), extraKey('dive-right', 'nxof'), extraKey('dive-left', 'nxof')]);
 
 /** Raqueta suelta (sale volando al recibir el INFERNO): imagen generada por cÃ³digo. */
 export const LOOSE_RACKET = 'nxo-loose-racket';
@@ -418,16 +424,16 @@ export function registerNxoAnims(scene: Phaser.Scene) {
 /** velocidad de las reacciones EXPRESS del DUELO RED (× fps del clip) */
 const QUICK_REACT_SPEED = 2.4;
 const SWING = {
-  accel: 1.8, // velocidad de reproducciÃ³n hasta el impacto (normal; mÃ¡s lento = se ve el armado)
+  accel: 2.4, // (20-11-2026) antes 1.8 // velocidad de reproducciÃ³n hasta el impacto (normal; mÃ¡s lento = se ve el armado)
   accelPower: 3, // Ã­dem con potencia
-  hitStopMs: 45,
-  hitStopPowerMs: 90,
+  hitStopMs: 65, // (20-11-2026, usuario) pausa en el frame de contacto un poco más larga: se nota el golpe (antes 45 / 90)
+  hitStopPowerMs: 110,
   // velocidad tras el impacto: mÃ¡s lenta para que se vea el seguimiento (frame 7: la raqueta cruza el cuerpo);
   // a 15 fps Ã— 0,55 cada frame dura ~120 ms
   follow: 0.55,
   followPower: 0.5,
   recover: 0.75, // Ãºltimos 2 frames
-  maxImpactMs: 160, // (impacto en el frame 8: la raqueta tarda algo mÃ¡s en llegar) // el destello nunca se retrasa mÃ¡s que esto respecto al golpe fÃ­sico
+  maxImpactMs: 80, // (20-11-2026, usuario: "no está preciso el golpe con el sprite") antes 160: la pelota salía y la raqueta llegaba tarde // (impacto en el frame 8: la raqueta tarda algo mÃ¡s en llegar) // el destello nunca se retrasa mÃ¡s que esto respecto al golpe fÃ­sico
   followLock: 3, // frames tras el impacto en que el seguimiento no se corta al moverse (se ven el 7 y el 8 completos)
 };
 /** Estela de la raqueta (arco en el impacto), en unidades del Character (alto = CHAR_UNITS_H). */
@@ -880,6 +886,7 @@ export class NxoActor {
     this.swingOverhead = overhead;
     this.swingHitDone = false;
     this.swingInterruptible = false;
+    this.impactHoldMs = 0;
     this.followHold = -1; // (cada golpe empieza sin congelado: lo pide quien lo necesita DESPUES de llamar a swing)
     this.followHeld = false;
     // la velocidad sube lo justo para que el contacto llegue dentro de maxImpactMs aunque el golpe arranque lejos del impacto
@@ -945,6 +952,13 @@ export class NxoActor {
    * (21-11-2026, usuario) Congela el golpe EN CURSO en el frame `frame` (indice) de su seguimiento, despues del impacto: el personaje se queda
    * en esa pose (en el smash potenciado, el frame 7: raqueta a la izquierda) hasta releaseFollowThrough. Hay que llamarlo DESPUES de swing().
    */
+  /** (20-11-2026, usuario) El golpe EN CURSO se queda `ms` en su frame de impacto (el ESPECIAL: 0,8 s). Llamar DESPUÉS de swing(). */
+  holdImpact(ms: number) {
+    if (this.state !== 'swing' || this.swingHitDone) return;
+    this.impactHoldMs = ms;
+  }
+  private impactHoldMs = 0;
+
   holdFollowThrough(frame: number, ms = 0) {
     if (this.state !== 'swing') return;
     this.followHold = frame;
@@ -1096,6 +1110,19 @@ export class NxoActor {
     this.playClip(key, DIVE_REACH);
     this.sprite.anims.pause();
     return true;
+  }
+
+  /**
+   * (20-11-2026, usuario) ¿La hoja de esta estirada ya trae su propia levantada (cuadros 6-8 terminan en guardia)? Entonces se ve entera y
+   * vuelve al reposo sin pasar por recover-*. Hoy: NXO de espaldas, estirada a la izquierda (nxo-movimientos-10 nueva).
+   */
+  /** clip de levantarse del lado de la estirada (NXO de espaldas ya no lo trae; Mai y los rivales sí): por eso el tipo se fuerza */
+  private recoverKey(): string {
+    return extraKey((this.diveSide > 0 ? 'recover-right' : 'recover-left') as ExtraAnim, this.P.key);
+  }
+
+  private diveSelfRecover(): boolean {
+    return DIVE_SELF_RECOVER.has(this.xk(this.diveSide > 0 ? 'dive-right' : 'dive-left'));
   }
 
   lunge(side: number, hold = false): boolean {
@@ -1630,6 +1657,24 @@ export class NxoActor {
     const frame = Number(f.textureFrame);
     this.jumpAt(this.sprite.anims.currentAnim?.key, frame);
     this.slideAt(this.sprite.anims.currentAnim?.key, frame);
+    // (20-11-2026, usuario) ESTIRADA: sin los cuadros de tirado en el suelo (6-8): al tocar el suelo (cuadro 5) pasa a LEVANTARSE desde su
+    // cuadro 2 (de rodillas, mano en el suelo). Con `diveHold` (BOLA DE ENERGÍA) sigue la estirada entera y se queda tendido
+    // con su propia levantada (diveSelfRecover) los cuadros 6-8 SON la recuperación: se pueden cortar moviéndose, como recover-*
+    // BOLA DE ENERGÍA (diveHold) con una hoja que ya se levanta: queda congelado en el cuadro 5 (caído, mano en el suelo), no de pie
+    if (this.state === 'dive' && !this.recovering && this.diveHold && this.diveSelfRecover() && frame >= DIVE_CUT - 1) {
+      this.sprite.anims.pause();
+      return;
+    }
+    if (this.state === 'dive' && !this.recovering && !this.diveHold && this.diveSelfRecover() && frame >= DIVE_CUT) this.recovering = true;
+    else if (this.state === 'dive' && !this.recovering && !this.diveHold && !this.diveSelfRecover() && frame >= DIVE_CUT) {
+      const rk = this.recoverKey();
+      if (this.scene.anims.exists(rk)) {
+        this.recovering = true;
+        this.playClip(rk, RECOVER_FROM);
+        this.sprite.anims.timeScale = 1.4;
+        return;
+      }
+    }
     // frenada del DASH: en guardia ya se puede mover; el Ãºltimo frame Ãºtil termina la frenada (el siguiente
     // del clip ya sale corriendo al otro lado y no se muestra)
     if (this.state === 'land') {
@@ -1693,7 +1738,10 @@ export class NxoActor {
       // latigazo: el cuerpo gira un poco hacia donde va la raqueta y vuelve
       this.scene.tweens.add({ targets: this.sprite, angle: (power ? -6 : -4) * this.facing, duration: 70, yoyo: true, ease: 'Quad.easeOut' });
       if (!this.swingInferno) this.playSwoosh(power);
-      this.scene.time.delayedCall(power ? SWING.hitStopPowerMs : SWING.hitStopMs, () => {
+      // (20-11-2026, usuario) ESPECIAL: se queda en el frame del golpe `impactHoldMs` (holdImpact) y luego sigue
+      const stopMs = Math.max(power ? SWING.hitStopPowerMs : SWING.hitStopMs, this.impactHoldMs);
+      this.impactHoldMs = 0;
+      this.scene.time.delayedCall(stopMs, () => {
         if (this.state !== 'swing') return;
         this.sprite.anims.timeScale = power ? SWING.followPower : SWING.follow;
         this.sprite.anims.resume();
@@ -1746,10 +1794,11 @@ export class NxoActor {
     }
     if (this.state === 'dive') {
       if (!this.recovering && this.diveHold) return; // (17-11-2026) tendido en el suelo hasta que otra animación lo saque
-      if (!this.recovering) {
+      // (20-11-2026) sin su clip de levantarse (NXO de espaldas ya no lo trae) vuelve directo al reposo
+      if (!this.recovering && !this.diveSelfRecover() && this.scene.anims.exists(this.recoverKey())) {
         // tras la estirada, se levanta (recuperaciÃ³n del mismo lado)
         this.recovering = true;
-        this.playClip(this.xk(this.diveSide > 0 ? 'recover-right' : 'recover-left'));
+        this.playClip(this.recoverKey());
         this.sprite.anims.timeScale = 1.4;
         return;
       }

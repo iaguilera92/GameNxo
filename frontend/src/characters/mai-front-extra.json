@@ -2,12 +2,12 @@
   "source": "personajes/Mai/rival/hd/mai-rival-*.png (tools/build-hd.mjs mai-front; JSON base copiado de nxo-front-extra.json el 17-11-2026)",
   "view": "front",
   "cell": {
-    "w": 116,
-    "h": 165
+    "w": 118,
+    "h": 169
   },
   "origin": {
     "x": 0.5,
-    "y": 0.97576
+    "y": 0.97633
   },
   "standHeight": 150,
   "animations": {
@@ -17,12 +17,12 @@
       "fps": 18,
       "loop": true,
       "cell": {
-        "w": 130,
-        "h": 161
+        "w": 132,
+        "h": 165
       },
       "origin": {
         "x": 0.5,
-        "y": 0.97516
+        "y": 0.97576
       }
     },
     "defeat": {
@@ -31,12 +31,12 @@
       "fps": 10,
       "loop": false,
       "cell": {
-        "w": 122,
-        "h": 167
+        "w": 126,
+        "h": 171
       },
       "origin": {
         "x": 0.5,
-        "y": 0.97605
+        "y": 0.97661
       }
     },
     "serve-spin": {
@@ -46,12 +46,12 @@
       "loop": false,
       "impact": 4,
       "cell": {
-        "w": 138,
-        "h": 193
+        "w": 140,
+        "h": 198
       },
       "origin": {
         "x": 0.5,
-        "y": 0.97927
+        "y": 0.9798
       }
     },
     "dive-right": {
@@ -60,12 +60,12 @@
       "fps": 18,
       "loop": false,
       "cell": {
-        "w": 162,
-        "h": 151
+        "w": 176,
+        "h": 132
       },
       "origin": {
         "x": 0.5,
-        "y": 0.97351
+        "y": 0.9697
       }
     },
     "dive-left": {
@@ -74,40 +74,12 @@
       "fps": 18,
       "loop": false,
       "cell": {
-        "w": 194,
-        "h": 144
+        "w": 180,
+        "h": 119
       },
       "origin": {
         "x": 0.5,
-        "y": 0.97222
-      }
-    },
-    "recover-right": {
-      "file": "recover-right.webp",
-      "frames": 8,
-      "fps": 14,
-      "loop": false,
-      "cell": {
-        "w": 142,
-        "h": 166
-      },
-      "origin": {
-        "x": 0.5,
-        "y": 0.9759
-      }
-    },
-    "recover-left": {
-      "file": "recover-left.webp",
-      "frames": 8,
-      "fps": 14,
-      "loop": false,
-      "cell": {
-        "w": 142,
-        "h": 158
-      },
-      "origin": {
-        "x": 0.5,
-        "y": 0.97468
+        "y": 0.96639
       }
     },
     "stunned": {
@@ -130,12 +102,12 @@
       "fps": 12,
       "loop": false,
       "cell": {
-        "w": 122,
-        "h": 165
+        "w": 124,
+        "h": 169
       },
       "origin": {
         "x": 0.5,
-        "y": 0.97576
+        "y": 0.97633
       }
     },
     "point-lost": {
@@ -158,12 +130,12 @@
       "fps": 14,
       "loop": false,
       "cell": {
-        "w": 156,
-        "h": 167
+        "w": 160,
+        "h": 171
       },
       "origin": {
         "x": 0.5,
-        "y": 0.97605
+        "y": 0.97661
       }
     },
     "volley": {
@@ -173,12 +145,12 @@
       "loop": false,
       "impact": 4,
       "cell": {
-        "w": 130,
-        "h": 165
+        "w": 134,
+        "h": 169
       },
       "origin": {
         "x": 0.5,
-        "y": 0.97576
+        "y": 0.97633
       }
     },
     "walk-intro": {
@@ -201,12 +173,12 @@
       "fps": 8,
       "loop": false,
       "cell": {
-        "w": 124,
-        "h": 169
+        "w": 128,
+        "h": 174
       },
       "origin": {
         "x": 0.5,
-        "y": 0.97633
+        "y": 0.97701
       }
     },
     "point-cheer": {
@@ -215,12 +187,12 @@
       "fps": 10,
       "loop": false,
       "cell": {
-        "w": 138,
-        "h": 161
+        "w": 146,
+        "h": 166
       },
       "origin": {
         "x": 0.5,
-        "y": 0.97516
+        "y": 0.9759
       }
     }
   }

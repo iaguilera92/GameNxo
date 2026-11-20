@@ -81,4 +81,13 @@ test('purchaseOffered rechaza lo que no está en la Tienda ahora y deja pasar lo
   assert.equal(R.purchaseOffered(s, hidden.id, t0).error, 'not_in_shop');
   assert.ok(R.purchaseOffered(s, visible.id, t0).ok);
 });
+test('ZONA: 2 a la vez, ventana semanal que cambia el domingo y contador siempre', () => {
+  assert.equal(R.shopOffers('zone', t0).length, Math.min(2, count('zone')));
+  assert.notEqual(R.offersChangeIn('zone', t0), null);
+  const sat = Date.UTC(2026, 10, 21, 15, 0); // sabado
+  const sun = Date.UTC(2026, 10, 22, 15, 0); // domingo
+  const nextSat = Date.UTC(2026, 10, 28, 15, 0);
+  assert.equal(R.rotationWindow(sun, 168).id, R.rotationWindow(nextSat, 168).id);
+  assert.equal(R.rotationWindow(sat, 168).id + 1, R.rotationWindow(sun, 168).id);
+});
 console.log(`${ok} pruebas OK`);

@@ -17,7 +17,8 @@ import { connect } from '../net/NetClient';
 import { botNamesFor } from '../net/doubles';
 import { rivalFor } from '../characters/catalog';
 import { MatchNet } from '../net/MatchNet';
-import { rankedSearchPanel } from '../ui/searchPanel';
+import { doublesFill, rankedSearchPanel } from '../ui/searchPanel';
+import { doublesSearchPanelNow, league2v2Id } from '../ui/PlayEntry2v2';
 import { startIntroMusic, stopIntroMusic } from '../fx/introMusic';
 import { preloadRankBadges } from '../ui/RankBadge';
 import { rankedView } from '../logic/Ranked';
@@ -52,12 +53,14 @@ export class LanSearchScene extends Phaser.Scene {
     this.mode = data?.mode === '2v2' ? '2v2' : '1v1';
     this.done = false;
     this.matched = false;
+    this.fill = null;
     this.cleanup = [];
   }
 
   preload() {
     // liga de la apuesta (la misma pantalla que la búsqueda contra el BOT)
     if (this.rk) preloadRankBadges(this.load, [rankedView().league]);
+    if (this.mode === '2v2') preloadRankBadges(this.load, [league2v2Id()]); // (21-11-2026) emblema de tu LIGA 2V2 en la búsqueda
     if (this.mode === '2v2') queueVersusDuoArt(this.load); // (19-11-2026) entrada del equipo en la VS del 2v2
   }
 
@@ -88,18 +91,23 @@ export class LanSearchScene extends Phaser.Scene {
     // mismo aspecto que la búsqueda contra el BOT (MatchmakingScene): anillo con la pelota, reloj encima del título
     const c = this.add.container(W / 2, H * 0.44);
     searchSpinner(this, c, W, H);
-    const title = this.add.text(0, 196, this.mode === '2v2' ? 'BUSCANDO COMPAÑERO' : 'BUSCANDO RIVAL', { fontFamily: FONT, fontSize: '40px', color: UI.text }).setOrigin(0.5).setLetterSpacing(2);
+    const duo = this.mode === '2v2';
+    const title = this.add.text(0, 196, duo ? 'BUSCANDO PARTIDA 1/4' : 'BUSCANDO RIVAL', { fontFamily: FONT, fontSize: '40px', color: UI.text }).setOrigin(0.5).setLetterSpacing(2);
     const count = this.add.text(0, 148, '0:00', { fontFamily: FONT, fontSize: '30px', color: '#37e0ff' }).setOrigin(0.5);
     c.add([title, count]);
+    this.title = title;
     // liga + lo invertido / premio (o AMISTOSO), como en la búsqueda contra el BOT
-    const panel = this.rk ? rankedSearchPanel(this, { bet: this.bet, unranked: !this.bet }, () => undefined, () => undefined) : [];
+    // (20-11-2026, usuario) 2v2: la misma presentación con las MONEDAS 2V2 (lo invertido y el premio)
+    const panel = duo ? doublesSearchPanelNow(this) : this.rk ? rankedSearchPanel(this, { bet: this.bet, unranked: !this.bet }, () => undefined, () => undefined) : [];
     const cancel = flatButton(this, W / 2, H * 0.84, 240, 72, 'CANCELAR', () => this.cancelSearch(), { fontSize: 28 });
 
     connect()
       .then((tr) => {
         if (this.done || !this.scene.isActive()) return;
         const onSearching = (m: SearchingMsg) => {
-          title.setText(this.mode === '2v2' ? 'BUSCANDO COMPAÑERO 1/2' : 'BUSCANDO RIVAL 1/2'); // jugadores en la sala
+          // 2v2: "BUSCANDO PARTIDA n/4", que se va llenando de bots mientras se espera al compañero (el servidor espera 10 s)
+          if (duo) this.fill = doublesFill(this, title, m.timeoutMs);
+          else title.setText('BUSCANDO RIVAL 1/2'); // jugadores en la sala
           // cuenta atrás visual; el tiempo real lo controla el servidor (mm:timeout)
           const end = this.time.now + m.timeoutMs;
           const tick = () => count.setText(`0:${String(Math.max(0, Math.ceil((end - this.time.now) / 1000))).padStart(2, '0')}`);
@@ -109,6 +117,7 @@ export class LanSearchScene extends Phaser.Scene {
         const onMatched = (m: MatchedMsg) => {
           if (this.done) return;
           this.done = true;
+          this.fill?.full(); // 2v2: llegó el compañero, 4/4
           cancel.destroy();
           if (panel.length) this.tweens.add({ targets: panel, alpha: 0, duration: 220, onComplete: () => panel.forEach((o) => o.destroy()) });
           this.tweens.add({ targets: c, alpha: 0, scale: 0.85, duration: 220 });
@@ -140,6 +149,9 @@ export class LanSearchScene extends Phaser.Scene {
   }
 
   private matched = false;
+  /** 2v2: el contador n/4 de la búsqueda */
+  private fill: ReturnType<typeof doublesFill> | null = null;
+  private title: Phaser.GameObjects.Text | null = null;
   private toMatch = false;
   private ambiente = '';
 
@@ -153,10 +165,19 @@ export class LanSearchScene extends Phaser.Scene {
   private noRival(why: string) {
     if (this.done) return;
     this.done = true;
+    if (this.mode === '2v2') {
+      // (20-11-2026, usuario) 2v2 sin compañero online: NO se pregunta; el lugar que falta se llena con un bot (4/4) y se juega contra bots
+      // sin servidor (o error antes de buscar): un llenado corto con bots, para que igual se vea 1/4 → 4/4
+      const quick = !this.fill && this.title ? 1500 : 0;
+      if (quick && this.title) this.fill = doublesFill(this, this.title, quick);
+      this.time.delayedCall(quick, () => this.fill?.full());
+      this.time.delayedCall(quick + 450, () => this.scene.start('Matchmaking', { ...this.fallback, skipSearch: true }));
+      return;
+    }
     showConfirm(this, {
-      title: this.mode === '2v2' ? 'SIN COMPAÑERO' : 'SIN RIVAL',
+      title: 'SIN RIVAL',
       message: why,
-      detail: this.mode === '2v2' ? '¿Jugar 2v2 con un BOT de compañero?' : '¿Quieres jugar contra el BOT?',
+      detail: '¿Quieres jugar contra el BOT?',
       confirmLabel: 'JUGAR VS BOT',
       cancelLabel: 'MENÚ',
       onConfirm: () => this.scene.start('Matchmaking', { ...this.fallback, skipSearch: true }), // la búsqueda online ya esperó: directo al VS
@@ -175,10 +196,10 @@ export class LanSearchScene extends Phaser.Scene {
     const duo = net.mode === '2v2';
     showVersusScreen(
       this,
-      { name: duo ? p.name + ' + ' + opp.name : p.name, level: p.level, look: playerLook(p.skin), portraitSkin: p.skin as SkinId, wins: totalWins(), color: p.color, frame: equippedFrame(getPlayer() as PlayerState) },
+      { name: duo ? p.name + ' / ' + opp.name : p.name, level: p.level, look: playerLook(p.skin), portraitSkin: p.skin as SkinId, wins: totalWins(), color: p.color, frame: equippedFrame(getPlayer() as PlayerState) },
       // el rival con SU personaje (opponent.skin); si no se conoce, el respaldo de siempre
       duo
-        ? { name: b1 + ' + ' + b2, level: Math.round((p.level + opp.level) / 2), look: lookForSkin(p.skin, 'front', p.skin), portraitSkin: rivalFor(p.skin), wins: 0, frame: null }
+        ? { name: b1 + ' / ' + b2, level: Math.round((p.level + opp.level) / 2), look: lookForSkin(p.skin, 'front', p.skin), portraitSkin: rivalFor(p.skin), wins: 0, frame: null }
         : { name: opp.name, level: opp.level, look: lookForSkin(opp.skin, 'front', p.skin), portraitSkin: opp.skin as SkinId, color: charColorOf(opp.color), wins: opp.wins, frame: isFrameId(opp.frame) ? opp.frame : null }, // sus victorias y su marco, si los mandó
       // (19-11-2026) 2v2: abajo, tú y tu compañero en su entrada; arriba, los 2 bots del host (los mismos personajes que en el partido)
       duo

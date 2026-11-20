@@ -39,18 +39,18 @@ export interface ShopItem {
 
 const BASE_ITEMS: ShopItem[] = [
   // estilos (estela de los golpes)
-  { id: 'style:red', kind: 'style', name: 'Rojo', price: 10, clp: 490, minLevel: 1, available: true },
-  { id: 'style:green', kind: 'style', name: 'Verde', price: 10, clp: 490, minLevel: 2, available: true },
-  { id: 'style:gold', kind: 'style', name: 'Oro', price: 25, clp: 990, minLevel: 5, available: true },
+  { id: 'style:red', kind: 'style', name: 'Rojo', price: 40, clp: 490, minLevel: 1, available: true },
+  { id: 'style:green', kind: 'style', name: 'Verde', price: 40, clp: 490, minLevel: 2, available: true },
+  { id: 'style:gold', kind: 'style', name: 'Oro', price: 80, clp: 990, minLevel: 5, available: true },
   // rosado: premio del Pase de Batalla (nivel 5); también se compra
-  { id: 'style:pink', kind: 'style', name: 'Rosado', price: 15, clp: 690, minLevel: 1, available: true },
-  // efectos de pelota con forma propia (15-11-2026, fx/ballTrailFx.ts). Precios: ESPECIAL como los poderes especiales (40 / $1.490),
+  { id: 'style:pink', kind: 'style', name: 'Rosado', price: 50, clp: 690, minLevel: 1, available: true },
+  // (21-11-2026, usuario) EFECTOS DE PELOTA más caros en dinero virtual (\, fx/ballTrailFx.ts). Precios: ESPECIAL como los poderes especiales (40 / $1.490),
   // ÉPICA 60 / $1.990 y LEGENDARIA 100 / $2.490 (referencia: solo se pagan con dinero real).
   { id: 'style:rainbow', kind: 'style', name: 'Arcoíris', price: 100, clp: 2490, minLevel: 1, available: true },
-  { id: 'style:ember', kind: 'style', name: 'Brasas', price: 40, clp: 1490, minLevel: 1, available: true },
-  { id: 'style:frost', kind: 'style', name: 'Hielo', price: 40, clp: 1490, minLevel: 1, available: true },
-  { id: 'style:neon', kind: 'style', name: 'Neón', price: 40, clp: 1490, minLevel: 1, available: true },
-  { id: 'style:smoke', kind: 'style', name: 'Humo', price: 40, clp: 1490, minLevel: 1, available: true },
+  { id: 'style:ember', kind: 'style', name: 'Brasas', price: 120, clp: 1490, minLevel: 1, available: true },
+  { id: 'style:frost', kind: 'style', name: 'Hielo', price: 120, clp: 1490, minLevel: 1, available: true },
+  { id: 'style:neon', kind: 'style', name: 'Neón', price: 120, clp: 1490, minLevel: 1, available: true },
+  { id: 'style:smoke', kind: 'style', name: 'Humo', price: 120, clp: 1490, minLevel: 1, available: true },
   { id: 'style:tulip', kind: 'style', name: 'Tulipanes', price: 60, clp: 1990, minLevel: 1, available: true },
   { id: 'style:hearts', kind: 'style', name: 'Corazones', price: 60, clp: 1990, minLevel: 1, available: true },
   { id: 'style:stars', kind: 'style', name: 'Estrellas', price: 100, clp: 2490, minLevel: 1, available: true },
@@ -115,38 +115,43 @@ const KIND_UNLOCK: Partial<Record<ItemKind, UnlockKey>> = { defensive: 'defensiv
  * (17-11-2026, usuario) PRECIO DE TODA LEGENDARIA: $59.990 CLP (solo dinero real). Su `price` en dinero queda de referencia y alto (3.500):
  * así la regla de precios en CLP se cumple (juntar 3.500 de dinero con paquetes cuesta más que $59.990).
  */
+/** (21-11-2026) precio en CLP de un EMOTE LEGENDARIO en la oferta de la Tienda (solo dinero real; pasarela pendiente). Provisional: tomado de la referencia ($4.990). */
+export const LEGENDARY_EMOTE_CLP = 4990;
 export const LEGENDARY_PRICE = { clp: 59990, price: 3500 } as const;
-export const SHOP_ITEMS: ShopItem[] = BASE_ITEMS.map(withRarity).map((it) => (it.rarity === 'legendaria' ? { ...it, ...LEGENDARY_PRICE, realMoneyOnly: true } : it));
+/** (21-11-2026, usuario) PRECIO EN DINERO VIRTUAL DE TODA ÉPICA: 600, alto a propósito (un casual junta ~274 en 60 días). Su CLP no cambia: sigue siendo más barato que juntar 600 con los paquetes. */
+export const EPIC_PRICE = 600;
+// REGLA DEL DINERO VIRTUAL (21-11-2026, usuario): todo se compra con dinero virtual Y con dinero real, MENOS lo LEGENDARIO (solo dinero real)
+export const SHOP_ITEMS: ShopItem[] = BASE_ITEMS.map(withRarity).map((it) => (it.rarity === 'legendaria' ? { ...it, ...LEGENDARY_PRICE, realMoneyOnly: true } : it.rarity === 'epica' ? { ...it, price: EPIC_PRICE } : it));
 function withRarity(it: (typeof BASE_ITEMS)[number]): ShopItem {
   const key = KIND_UNLOCK[it.kind];
   const base = key ? { ...it, minLevel: Math.max(it.minLevel, UNLOCK_LEVEL[key]) } : it;
-  // (14-11-2026) REGLA DEL DINERO VIRTUAL: la rareza normal y la especial se compran con dinero virtual; la ÉPICA y la LEGENDARIA solo con dinero real
+  // (21-11-2026) REGLA DEL DINERO VIRTUAL: normal, especial y ÉPICA se compran con dinero virtual y con dinero real (la épica cuesta EPIC_PRICE); solo la LEGENDARIA es solo dinero real
   // (más abajo: ULTIS, y CARGANDO GOLPE según su rareza).
   // (14-11-2026) TODAS las ULTIS cuestan dinero real y son de rareza ESPECIAL (aún no hay ULTIS gratuitas). Su price en dinero virtual
   // queda solo como referencia (regla de precios en CLP y total de la tienda); no se puede pagar con él.
   // (17-11-2026) ULTRA EFECTO es la primera ULTI ÉPICA (decisión del usuario); RÁFAGA (17-11-2026) también
   // (17-11-2026) BOLA DE ENERGÍA: primera ULTI LEGENDARIA
-  if (it.kind === 'inferno') return { ...base, rarity: it.id === 'inferno:energy' || it.id === 'inferno:hurricane' ? ('legendaria' as const) : it.id === 'inferno:ultra' || it.id === 'inferno:barrage' ? ('epica' as const) : ('especial' as const), realMoneyOnly: true };
+  if (it.kind === 'inferno') return { ...base, rarity: it.id === 'inferno:energy' || it.id === 'inferno:hurricane' ? ('legendaria' as const) : it.id === 'inferno:ultra' || it.id === 'inferno:barrage' ? ('epica' as const) : ('especial' as const) };
   // (16-11-2026) ESTILOS DE ZONA (decisión del usuario): FUEGO épica, SOMBRA legendaria; las dos, solo dinero real
-  if (it.kind === 'zone') return { ...base, rarity: it.id === 'zone:shadow' ? ('legendaria' as const) : ('epica' as const), realMoneyOnly: true };
+  if (it.kind === 'zone') return { ...base, rarity: it.id === 'zone:shadow' ? ('legendaria' as const) : ('epica' as const) };
   // (14-11-2026) ESPECIAL y DEFENSIVO: todos especiales, menos el DESTELLO (normal)
   // (17-11-2026) COMETA: ÉPICA (solo dinero real)
   if (it.id === 'defensive:slowmo') return { ...base, rarity: 'legendaria' as const, realMoneyOnly: true }; // (18-11-2026) TIEMPO LENTO
-  if (it.id === 'defensive:lightning') return { ...base, rarity: 'epica' as const, realMoneyOnly: true }; // (18-11-2026) RELÁMPAGO
-  if (it.id === 'smash:comet') return { ...base, rarity: 'epica' as const, realMoneyOnly: true };
+  if (it.id === 'defensive:lightning') return { ...base, rarity: 'epica' as const }; // (18-11-2026) RELÁMPAGO
+  if (it.id === 'smash:comet') return { ...base, rarity: 'epica' as const };
   if (it.id === 'smash:dragon') return { ...base, rarity: 'legendaria' as const, realMoneyOnly: true }; // (18-11-2026) DRAGÓN
   if (it.kind === 'smash' || it.kind === 'defensive') return { ...base, rarity: it.id === 'defensive:blink' ? ('normal' as const) : ('especial' as const) };
   // (14-11-2026) CARGANDO GOLPE: Fuego normal, Energía especial, Tulipán épica (propuesta aceptada por omisión; la legendaria queda reservada). Los ESTILOS siguen sin rareza (decisión del usuario).
   if (it.kind === 'charge') {
     const rarity = it.id === 'charge:fire' ? ('normal' as const) : it.id === 'charge:energy' ? ('especial' as const) : ('epica' as const);
-    return { ...base, rarity, ...(rarity === 'epica' ? { realMoneyOnly: true } : {}) };
+    return { ...base, rarity };
   }
   // (15-11-2026) EFECTOS DE PELOTA (decididos con el usuario): Brasas, Hielo, Neón y Humo = especial; Tulipanes y Corazones = épica;
   // Estrellas y Arcoíris = legendarias (épica y legendaria, solo dinero real). Rojo, Verde, Oro y Rosado = normales (dinero virtual y Pase).
   if (it.kind === 'style') {
     const STYLE_RARITY: Partial<Record<string, ItemRarity>> = { 'style:ember': 'especial', 'style:frost': 'especial', 'style:neon': 'especial', 'style:smoke': 'especial', 'style:tulip': 'epica', 'style:hearts': 'epica', 'style:stars': 'legendaria', 'style:rainbow': 'legendaria', 'style:red': 'normal', 'style:green': 'normal', 'style:gold': 'normal', 'style:pink': 'normal' };
     const rarity = STYLE_RARITY[it.id];
-    if (rarity) return { ...base, rarity, ...(rarity === 'epica' || rarity === 'legendaria' ? { realMoneyOnly: true } : {}) };
+    if (rarity) return { ...base, rarity };
   }
   return base;
 }

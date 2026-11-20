@@ -28,6 +28,8 @@ export const CONFIG = {
   trustProxy: process.env.TRUST_PROXY === '1',
   /** tiempo máximo de búsqueda de rival (lo controla el servidor) */
   searchTimeoutMs: num(process.env.SEARCH_TIMEOUT_MS, 5000),
+  /** (20-11-2026, usuario) 2v2: se busca compañero hasta 10 s (mientras, la pantalla va llenando con bots) */
+  searchTimeout2v2Ms: num(process.env.SEARCH_TIMEOUT_2V2_MS, 10000),
   /** espera máxima a que los dos clientes carguen el partido antes de empezar igualmente */
   readyTimeoutMs: num(process.env.READY_TIMEOUT_MS, 12000),
   /** RECONEXIÓN: tiempo que se guarda el sitio de un jugador que se cortó en pleno partido (0 = pierde al instante) */

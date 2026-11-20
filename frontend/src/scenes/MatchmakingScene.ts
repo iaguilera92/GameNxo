@@ -15,7 +15,8 @@ import { queueVersusDuoArt, showVersus as showVersusScreen } from '../ui/VersusS
 import { enterRanked, newMatchId, rankedView } from '../logic/Ranked';
 import { LEAGUE_ORDER } from '../domain/rankedConfig';
 import { preloadRankBadges } from '../ui/RankBadge';
-import { rankedSearchPanel } from '../ui/searchPanel';
+import { doublesFill, rankedSearchPanel } from '../ui/searchPanel';
+import { doublesSearchPanelNow, league2v2Id } from '../ui/PlayEntry2v2';
 import { searchSpinner } from '../ui/searchSpinner';
 import { startIntroMusic, stopIntroMusic } from '../fx/introMusic';
 import { MAX_LEVEL } from '../config';
@@ -71,6 +72,7 @@ export class MatchmakingScene extends Phaser.Scene {
   preload() {
     if (!this.textures.exists('menu-bg')) this.load.image('menu-bg', 'assets/menu-bg.webp');
     if (this.rankedBet || this.unranked) preloadRankBadges(this.load, [rankedView().league]);
+    if (this.doubles) preloadRankBadges(this.load, [league2v2Id()]); // (21-11-2026) emblema de tu LIGA 2V2 en la búsqueda
     if (this.doubles) queueVersusDuoArt(this.load); // (19-11-2026) entrada del equipo en la VS del 2v2
   }
 
@@ -101,7 +103,8 @@ export class MatchmakingScene extends Phaser.Scene {
     searchSpinner(this, searching, W, H);
 
     // Ranked: contador arriba del título y sin subtítulo (la liga ya se ve arriba)
-    const rk = !!this.rankedBet || this.unranked;
+    // (20-11-2026, usuario) el 2v2 se presenta como la búsqueda con apuesta (sus MONEDAS 2V2) y cuenta los jugadores n/4
+    const rk = !!this.rankedBet || this.unranked || this.doubles;
     const label = this.add
       .text(0, rk ? 196 : 150, rk ? 'BUSCANDO RIVAL' : 'BUSCANDO PARTIDA', { fontFamily: FONT, fontSize: '40px', color: UI.text })
       .setOrigin(0.5)
@@ -121,13 +124,15 @@ export class MatchmakingScene extends Phaser.Scene {
 
     // --- lógica de búsqueda (sin cambios en tiempos/estados; se pausa mientras se lee la info Ranked)
     const wait = Phaser.Math.Between(1800, 3000);
-    const ranked = rk ? rankedSearchPanel(this, { bet: this.rankedBet, unranked: this.unranked }, () => { found.paused = true; clock.paused = true; }, () => { found.paused = false; clock.paused = false; }) : null;
+    const fill = this.doubles ? doublesFill(this, label, wait) : null;
+    const ranked = this.doubles ? doublesSearchPanelNow(this) : rk ? rankedSearchPanel(this, { bet: this.rankedBet, unranked: this.unranked }, () => { found.paused = true; clock.paused = true; }, () => { found.paused = false; clock.paused = false; }) : null;
     const found = this.time.delayedCall(wait, () => {
+      fill?.full(); // 2v2: el compañero bot completa la partida (4/4)
       clock.remove();
       cancel.destroy();
       if (ranked) this.tweens.add({ targets: ranked, alpha: 0, duration: 220, onComplete: () => ranked.forEach((o) => o.destroy()) });
       this.tweens.add({ targets: searching, alpha: 0, scale: 0.85, duration: 220, onComplete: () => searching.destroy() });
-      this.showVersus(rk ? this.rankedRivalName() : this.doubles ? this.rival1Name() : Phaser.Utils.Array.GetRandom(BOT_NAMES));
+      this.showVersus(this.doubles ? this.rival1Name() : rk ? this.rankedRivalName() : Phaser.Utils.Array.GetRandom(BOT_NAMES));
     });
   }
 

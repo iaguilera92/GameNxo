@@ -1,0 +1,6 @@
+bronze: 657x205 (origen en la hoja 40,101)
+silver: 668x210 (origen en la hoja 741,95)
+gold: 668x224 (origen en la hoja 35,367)
+platinum: 677x243 (origen en la hoja 741,357)
+diamond: 697x252 (origen en la hoja 20,649)
+challenger: 705x285 (origen en la hoja 725,632)

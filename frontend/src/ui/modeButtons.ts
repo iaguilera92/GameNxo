@@ -80,10 +80,10 @@ export function arcadeButton(
   h: number,
   label: string,
   onClick: () => void,
-  opts: { palette?: ArcadePalette; chevron?: boolean; pulse?: boolean; disabled?: boolean } = {},
+  opts: { palette?: ArcadePalette; chevron?: boolean; pulse?: boolean; disabled?: boolean; noShadow?: boolean } = {},
 ) {
-  const { palette = 'yellow', chevron = false, pulse = false, disabled = false } = opts;
-  const pal = PALETTES[palette];
+  const { palette = 'yellow', chevron = false, pulse = false, disabled = false, noShadow = false } = opts;
+  const pal = noShadow ? { ...PALETTES[palette], body: { ...PALETTES[palette].body, shadowA: 0 } } : PALETTES[palette]; // (21-11-2026) noShadow: sin la sombra de color bajo el botón
   const holder = scene.add.container(x, y);
   const inner = scene.add.container(0, 0);
   holder.add(inner);

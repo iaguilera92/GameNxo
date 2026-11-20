@@ -47,7 +47,7 @@ import { HyperAura } from '../objects/HyperAura';
 import { Score } from '../logic/Score';
 import { ABILITIES } from '../logic/Abilities';
 import { Joystick } from '../ui/Joystick';
-import { ScoreBoard } from '../ui/ScoreBoard';
+import { ScoreBoard, queueScoreboardArt } from '../ui/ScoreBoard';
 import { showConfirm } from '../ui/ConfirmDialog';
 import { AbilityButton } from '../ui/AbilityButton';
 import { Emotes, queueEmoteArt } from '../ui/Emotes';
@@ -68,7 +68,7 @@ import { SMASH_LOOK, smashCine } from '../fx/smashFx';
 import { type SmashPower, isSmashPower } from '../domain/smashPowers';
 import { elementTexture } from '../ui/AbilityButton';
 import { INFERNO, INFERNO_CINE, InfernoDrive, planInfernoContact } from '../logic/InfernoDrive';
-import { GhostTrail, INFERNO_LOOK, InfernoFire, infernoCine, infernoElementFor, infernoImpactFx, infernoShake, infernoSound, queueInfernoArt, hitLookOf, type FxElement, type InfernoElement } from '../fx/InfernoFx';
+import { GhostTrail, INFERNO_LOOK, InfernoFire, infernoCine, infernoElementFor, infernoImpactFx, infernoShake, infernoSound, playUltiFile, queueInfernoArt, hitLookOf, type FxElement, type InfernoElement } from '../fx/InfernoFx';
 import { isInfernoPower, isLegendaryInferno } from '../domain/infernoPowers';
 import { HURRICANE, HURRICANE_MATCH_CINE, attackerLiftAt, planHurricane } from '../logic/EnergyRally';
 import { ENERGY_CINE, ENERGY_MATCH_CINE, ENERGY_MATCH_K, ENERGY_RALLY, attackerAt, mirrorP, planEnergyRally, shotAt, shotBallAt, victimAt, type EnergyRallyPlan, type P2, type P3, type RallyShot } from '../logic/EnergyRally';
@@ -78,7 +78,7 @@ import { MAX_PUSH, POWER_IMPACT, type PowerKind, RACKET_LOSS, knockbackX, stunMs
 import { LOOSE_RACKET, ensureLooseRacket } from '../objects/NxoActor';
 import { type BotKit, botKitFor, randomBotKit } from '../ai/botKit';
 import { ZONE_SKINS, type ZoneSkinDef, isZoneSkin, zoneSkinOf } from '../domain/zoneSkins';
-import { NetView } from '../fx/NetView';
+import { NetView, NET_VIEW_SCALE } from '../fx/NetView';
 import { applyCharColor, devCharColor } from '../fx/CharColorFx';
 import { charColorOf } from '../domain/charColors';
 import { type UnlockKey, isUnlocked, unlockLabel } from '../domain/unlocks';
@@ -90,6 +90,10 @@ import { queueAmbientBird, spawnAmbientBird } from '../fx/AmbientBird';
 const SMASH_PERFECT = { windowS: 0.12, afterBounceS: 0.45 };
 /** (18-11-2026) el REMATE del bot empieza su golpe este tiempo (s de juego) antes del contacto: la raqueta llega justo cuando sale la pelota */
 const BOT_REMATE_LEAD_S = 0.13;
+/** (20-11-2026, usuario) el rival (bot u online) salta más alto en su remate del globo que REMATE.jump */
+const RIVAL_REMATE_JUMP_K = 1.35;
+/** (20-11-2026, usuario) el que lanza el ESPECIAL se queda este tiempo en el frame del golpe (usuario, bot y rival online) */
+const SPECIAL_IMPACT_HOLD_MS = 800;
 /** (18-11-2026, usuario) en ZONA se RESISTE el ESPECIAL: aturdido solo este tiempo (ms) */
 const RESIST_STUN_MS = 1000;
 /** (18-11-2026, usuario: "el bot con el DASH no alcanza mi ESPECIAL") alcance del rival (× HIT_RANGE) en la pelota para la que usó su DEFENSIVO */
@@ -99,7 +103,7 @@ import { lightDashFlash, shadowDashFlash, lightningBodyFx, lightningDashFlash, l
 import { HURRICANE_COL, TORNADO_ART, TornadoFx, TornadoSprite, WindSphereFx, sphereBreakFx, wallKnockFx, windShotFx } from '../fx/hurricaneFx';
 import { playMatchEnd } from '../fx/matchEnd';
 import { playMatchIntro } from '../fx/matchIntro';
-import { ServeTurnTag } from '../ui/ServeTurnTag';
+import { ServeTurnTag, queueServeTagArt } from '../ui/ServeTurnTag';
 import { setupUiCamera } from '../view/uiCamera';
 import { queueParkWalkers, startParkWalkers } from '../fx/parkWalkers';
 import { createMissionTracker, missionDef, missionHit, missionPoint, missionPointStart, type MissionShot } from '../domain/matchMissions';
@@ -107,8 +111,7 @@ import { queueMissionAlertArt, showMissionAlert } from '../fx/missionAlert';
 import { queueGazeArt, showInfernoGaze } from '../fx/infernoGaze';
 import { ZONE, ZoneTracker, type Side as ZoneSide } from '../logic/Zone';
 import { ZoneFx, zoneEyes } from '../fx/ZoneFx';
-import { drawDefensiveIcon, drawDisc, drawWarningIcon } from '../ui/icons';
-import { defensivePowerDef } from '../domain/defensivePowers';
+import { drawWarningIcon } from '../ui/icons';
 import type { MatchNet } from '../net/MatchNet';
 import type { ActionMsg, HitMsg, PointMsg, ScoreMsg, StateMsg } from '../net/protocol';
 import { mirrorX, mirrorY } from '../net/mirror';
@@ -446,6 +449,21 @@ export class MatchScene extends Phaser.Scene {
     // golpes del punto (saque = 1, resto = 2…): las habilidades se bloquean hasta que el resto ya salió (serveLock)
     this.shotsThisPoint = v === null ? 0 : this.shotsThisPoint + 1;
     this._lastHitter = v;
+    // 2v2: quién del equipo pegó (el más cercano a la pelota) para acreditarle el punto en la pantalla de victoria
+    if (this.doubles) {
+      if (v === null) this.lastActorBySide = {};
+      else {
+        const team = v === 'player' ? [this.player, this.ally] : this.rivalActors;
+        let best: Actor | null = null;
+        let bd = Infinity;
+        for (const a of team) {
+          if (!a) continue;
+          const d = (a.x - this.ball.s.x) ** 2 + (a.y - this.ball.s.y) ** 2;
+          if (d < bd) { bd = d; best = a; }
+        }
+        if (best) this.lastActorBySide[v] = best;
+      }
+    }
     // MISIONES POR PARTIDA (domain/matchMissions.ts): cada golpe del punto; el del jugador lleva su etiqueta (ESPECIAL / GLOBO máximo)
     if (v === null) missionPointStart(this.missions);
     if (v === null) this.epicPoint = false;
@@ -825,6 +843,9 @@ export class MatchScene extends Phaser.Scene {
   private botRemateRoll: boolean | null = null;
   /** juego (score.gameIndex) en que el BOT ya hizo su REMATE: como mucho uno por juego (16-11-2026, "que no lo haga a cada rato") */
   private botRemateGame = -1;
+  /** 2v2: puntos ganados por cada jugador (al ?ltimo que pegó del equipo que gan? el punto) */
+  private pointStats = { me: 0, ally: 0, r1: 0, r2: 0 };
+  private lastActorBySide: { player?: Actor; bot?: Actor } = {};
   private lobMarker!: LobMarker;
   /** el SMASH se armó dentro de la ventana del globo (si al golpear se cumple todo, sale potenciado) */
   private superArmed = false;
@@ -1038,6 +1059,10 @@ export class MatchScene extends Phaser.Scene {
     this.load.audio('golpe-fuerte', 'mp3/golpe-fuerte.mp3'); // sonido de TODO golpe de raqueta a la pelota
     queueButtonArt(this.load); // imágenes de DASH, SMASH y los dos saques (si faltan, se dibujan como antes)
     queueMissionAlertArt(this.load); // placa de la alerta de LOGRO (fx/missionAlert.ts)
+    queueScoreboardArt(this.load); // imagen del marcador (ui/ScoreBoard.ts; si falta, se dibuja por código)
+    if (!this.textures.exists('ui-trofeo')) this.load.image('ui-trofeo', 'assets/ui/trofeo.webp'); // TROFEO junto al nombre del ganador en el marcador final (fx/matchFinale.ts; si falta, la corona)
+    if (!this.textures.exists('ui-victoria')) this.load.image('ui-victoria', 'assets/ui/victoria.webp'); // imagen de la pantalla de VICTORIA (scenes/MatchEndScene.ts; si falta, la corona dibujada)
+    queueServeTagArt(this.load); // globo SERVICIO sobre quien saca (ui/ServeTurnTag.ts; si falta, se dibuja por código)
     queueInfernoArt(this.load); // bola de fuego animada de INFERNO DRIVE (si falta, se dibuja por código)
     queueAmbientBird(this.load); // paloma del ambiente (fx/AmbientBird.ts)
     queueGazeArt(this.load, getProfile().skin); // INFERNO: franja con los ojos del personaje durante la concentración
@@ -1225,16 +1250,9 @@ export class MatchScene extends Phaser.Scene {
       this.dashBtn.hideTexts();
       this.smashBtn.hideTexts();
     }
-    // el botón DEFENSIVO lleva el icono del poder EQUIPADO (SOMBRA, DESTELLO…, el mismo de PERSONALIZAR); el DASH, su arte de siempre
-    const defP = getProfile().defensive;
-    if (defP === 'dash') this.dashBtn.setArt(BUTTON_ART.dash.key);
-    else {
-      const dd = defensivePowerDef(defP);
-      this.dashBtn.setDrawnFace((g, R) => {
-        drawDisc(g, R, dd.color, 0x1b3a6b);
-        drawDefensiveIcon(g, defP, R);
-      });
-    }
+    // (21-11-2026, usuario) el botón DEFENSIVO lleva SIEMPRE su arte (el corredor), sea cual sea el poder equipado (antes cambiaba al icono de la SOMBRA,
+    // el DESTELLO…). El poder equipado sigue siendo el que se activa.
+    this.dashBtn.setArt(BUTTON_ART.dash.key);
     this.smashEl = getProfile().smash;
     this.smashFlightEl = 'fire';
     this.netRivalSmashEl = 'fire';
@@ -1298,6 +1316,8 @@ export class MatchScene extends Phaser.Scene {
     this.lob = new LobTracker();
     this.lobMarker = new LobMarker(this);
     this.superArmed = false;
+    this.pointStats = { me: 0, ally: 0, r1: 0, r2: 0 };
+    this.lastActorBySide = {};
     this.botRemateGame = -1; // la escena se reutiliza: el remate del bot vuelve a estar disponible (desde el 2.º juego)
     this.smoke = new SmokeTrail(this);
     this.elementFx = new SmashElementFx(this);
@@ -1492,7 +1512,7 @@ export class MatchScene extends Phaser.Scene {
     this.serveNormalBtn.setPosition(W - 110, H - 225);
     this.serveSpinBtn.setPosition(W - 250, H - 115);
     this.serveClockText.setPosition(W / 2, 200);
-    this.secondTag.setPosition(W / 2, 144); // bajo el marcador (ScoreBoard mide ~120 px con la píldora JUEGO)
+    this.secondTag.setPosition(W / 2, 150); // bajo el marcador (ScoreBoard con su imagen mide ~132 px con la píldora JUEGO)
   }
 
   // ---------------------------------------------------------------- PRUEBA (botón bajo AUTO, solo contra el bot)
@@ -1665,6 +1685,11 @@ export class MatchScene extends Phaser.Scene {
     };
     draw();
     c.add([g, txt]);
+    // (21-11-2026, usuario) OPACO en reposo (como EMOTES y RENDIRSE: no estorba la vista) y del todo visible al pulsarlo; con AUTO encendido queda algo más
+    // visible (0,7) para que se vea que está activo
+    const rest = () => (this.autoPlay ? 0.7 : 0.4);
+    g.setAlpha(rest());
+    txt.setAlpha(rest());
     c.setSize(R * 2 + 16, R * 2 + 16).setInteractive({ useHandCursor: true });
     c.on('pointerdown', (_p: Phaser.Input.Pointer, _x: number, _y: number, e: Phaser.Types.Input.EventData) => {
       e?.stopPropagation?.();
@@ -1672,6 +1697,10 @@ export class MatchScene extends Phaser.Scene {
       this.autoServeT = 0;
       if (!this.autoPlay) stopMotion(this.motion);
       draw();
+      this.tweens.killTweensOf([g, txt]);
+      g.setAlpha(1);
+      txt.setAlpha(1);
+      this.tweens.add({ targets: [g, txt], alpha: rest(), delay: 1600, duration: 400 });
       this.tweens.add({ targets: c, scale: { from: 0.88, to: 1 }, duration: 200, ease: 'Back.easeOut' });
       const h = this.headPos(this.player);
       this.popText(h.x, h.y - 10, this.autoPlay ? 'AUTO ON' : 'AUTO OFF', this.autoPlay ? '#9dffb0' : '#cfe0ff', 24);
@@ -1793,11 +1822,23 @@ export class MatchScene extends Phaser.Scene {
       [new Phaser.Math.Vector2(-7, -16), new Phaser.Math.Vector2(12, -12), new Phaser.Math.Vector2(9, -5), new Phaser.Math.Vector2(13, 1), new Phaser.Math.Vector2(-7, -1)],
       true,
     );
-    c.add(g);
+    // (21-11-2026, usuario) con la imagen del botón (BUTTON_ART.surrender): OPACO en reposo (no estorba la vista) y se aclara del todo al pulsarlo
+    // (el diálogo de RENDIRSE se abre; el botón vuelve a su opacidad al rato). Sin la imagen, el dibujo de siempre.
+    let art: Phaser.GameObjects.Image | null = null;
+    if (this.textures.exists(BUTTON_ART.surrender.key)) {
+      g.destroy();
+      art = this.add.image(0, 0, BUTTON_ART.surrender.key).setDisplaySize(R * 2 + 12, R * 2 + 12).setAlpha(0.4);
+      c.add(art);
+    } else c.add(g);
     c.setSize(R * 2 + 16, R * 2 + 16);
     c.setInteractive({ useHandCursor: true });
     c.on('pointerdown', () => {
       this.tweens.add({ targets: c, scale: { from: 0.85, to: 1 }, duration: 250, ease: 'Back.easeOut' });
+      if (art) {
+        this.tweens.killTweensOf(art);
+        art.setAlpha(1);
+        this.tweens.add({ targets: art, alpha: 0.4, delay: 1600, duration: 400 });
+      }
       this.openSurrender();
     });
     return c;
@@ -2002,7 +2043,7 @@ export class MatchScene extends Phaser.Scene {
     // red: malla en rombos, cinta con caída al centro, correa, postes y sombra; ondula al recibir la pelota
     // (fx/NetView.ts; la física de la red no cambia: Ball.stepBall)
     // la red sobresale NET_OVERHANG por fuera de los dobles (postes azules); el choque de la pelota usa el mismo ancho
-    this.netView = new NetView(this, (x, y, z = 0) => this.P(x, y, z), NET_X, dT - NET_OVERHANG, dB + NET_OVERHANG, NET_HEIGHT, this.P(NET_X, LAT_C).y);
+    this.netView = new NetView(this, (x, y, z = 0) => this.P(x, y, z), NET_X, dT - NET_OVERHANG, dB + NET_OVERHANG, NET_HEIGHT * NET_VIEW_SCALE, this.P(NET_X, LAT_C).y);
 
     // PALOMA del ambiente (fx/AmbientBird.ts): una vez al empezar, posada ~5 s sobre el muro del fondo en una orilla
     // (lado al azar), lejos de la cancha; luego se va volando. Solo decoración.
@@ -2033,7 +2074,7 @@ export class MatchScene extends Phaser.Scene {
   // ---------------------------------------------------------------- HUD
   private createHud() {
     // marcador nuevo (diseño en ui/ScoreBoard.ts); misma posición/profundidad que el anterior
-    this.board = new ScoreBoard(this, { player: this.doubles ? 'TÚ + ' + this.allyName : 'TÚ', rival: this.doubles ? this.botName + ' + ' + this.rival2Name : this.botName, gamesToWin: GAMES_TO_WIN });
+    this.board = new ScoreBoard(this, { player: this.doubles ? 'TÚ / ' + this.allyName : 'TÚ', rival: this.doubles ? this.botName + ' / ' + this.rival2Name : this.botName, gamesToWin: GAMES_TO_WIN });
     this.hud = this.board.setDepth(5500);
     addRiskBadge(this, this.board); // MODO RIESGO x2: marca "x2 RIESGO" si la partida Ranked en curso va con el evento
     // avisos breves junto al borde opuesto a Rendirse/Emojis, centrados entre ambos controles
@@ -3646,7 +3687,14 @@ export class MatchScene extends Phaser.Scene {
         if (sh.final) this.legendFinalSwing(run, sh);
         else {
           A.ch.setCharging(false);
-          A.ch.swing(true, false, false, false);
+          // (21-11-2026, usuario) BOLA DE ENERGÍA: el SEGUNDO golpe del que la lanza es de REVÉS (los demás, de derecha). El lado lo da `facing` (+1 derecha, -1 revés);
+          // el golpe lo lee al arrancar, así que se vuelve a la derecha enseguida. Igual para ti y para el rival online (el rival se ve de frente en su clip de revés)
+          const back = plan.shots.slice(0, i).filter((q) => q.by === 'att' && !q.final).length === 1;
+          if (back) {
+            A.ch.facing = -1;
+            A.ch.swing(true, false, false, false);
+            this.time.delayedCall(300, () => (A.ch.facing = 1));
+          } else A.ch.swing(true, false, false, false);
         }
       }
       if (!(d & 2) && t >= sh.t0) {
@@ -3757,6 +3805,7 @@ export class MatchScene extends Phaser.Scene {
       // (19-11-2026, usuario) la pelota vuela como BOLA DE ENERGÍA del huracán, algo más grande que la del smash (se dibuja abajo, con la pelota)
       this.fire.setElement('hurricane');
       this.fire.hurricaneScale = FH.ball;
+      this.fire.hurricaneSpin = -1; // (20-11-2026) gira al revés que en el smash final
       this.legendLocal(run, victimAt(plan, t, run.pv), run.pv); // (pv vuelve a ser la posición del rival)
     }
     // 2) el rival recibe el viento: sale despedido y cae (la estirada que se queda tendida, hacia el centro)
@@ -3768,7 +3817,8 @@ export class MatchScene extends Phaser.Scene {
       const FH = HURRICANE.firstHit;
       infernoImpactFx(this, hp.sx, hp.sy, Math.max(0.7, hp.s) * FH.impactK, 'hurricane');
       this.cameras.main.shake(FH.impactShakeMs, FH.impactShake);
-      this.fire.hurricaneScale = 1.25; // el smash final vuelve a su tamaño
+      this.fire.hurricaneScale = 1.25;
+    this.fire.hurricaneSpin = 1; // el smash final vuelve a su tamaño
       this.legendLocal(run, { x: plan.vic.x, y: plan.vic.y + K.side * 10 }, run.pv);
       const side = run.pv.y > V.y ? 1 : -1;
       V.ch.facing = side;
@@ -4030,7 +4080,8 @@ export class MatchScene extends Phaser.Scene {
     // HURACÁN: fuera el tornado y la esfera; el que la lanza vuelve al suelo
     this.tornado.hide();
     this.tornadoImg?.hide();
-    this.fire.hurricaneScale = 1.25; // (19-11-2026) por si se cortó en el vuelo del 1.er golpe (bola más grande)
+    this.fire.hurricaneScale = 1.25;
+    this.fire.hurricaneSpin = 1; // (19-11-2026) por si se cortó en el vuelo del 1.er golpe (bola más grande)
     this.windSphere.hide();
     this.energyCine.setPalette();
     {
@@ -5539,6 +5590,7 @@ export class MatchScene extends Phaser.Scene {
 
   private startPoint(secondServe = false) {
     if (this.phase === 'over') return;
+    this.updateHud(); // (20-11-2026) respaldo: el marcador de arriba se actualiza con el splash; aquí queda seguro al día
     // en red, un saque / lanzamiento del rival puede adelantar el punto: la llamada retrasada ya no hace nada
     if (this.net && this.phase !== 'pointover' && this.phase !== 'intro') return;
     this.netNextSecond = false;
@@ -6204,6 +6256,13 @@ export class MatchScene extends Phaser.Scene {
       const fresh = missionPoint(this.missions, { winner: w === 'player' ? 'player' : 'rival', reason, rivalLaunched: !!this.bot.launched, duel: this.duelUsed });
       fresh.forEach((id, i) => this.time.delayedCall(350 + i * 120, () => this.sys.isActive() && this.phase !== 'over' && showMissionAlert(this, missionDef(id).title, missionDef(id).coins)));
     }
+    if (this.doubles) {
+      const who = this.lastActorBySide[w];
+      if (who === this.player) this.pointStats.me++;
+      else if (who && who === this.ally) this.pointStats.ally++;
+      else if (who && who === this.rivalActors[0]) this.pointStats.r1++;
+      else if (who && who === this.rivalActors[1]) this.pointStats.r2++;
+    }
     this.duelAbort('point'); // punto decidido (también el que llega por red): el duelo en curso se cancela
     this.phase = 'pointover';
     this.slowmoAbort(); // TIEMPO LENTO a medias: tiempo, cámara y personaje normales
@@ -6228,7 +6287,9 @@ export class MatchScene extends Phaser.Scene {
     // el motivo (FUERA, RED, DOBLE FALTA…) va dentro del marcador central, no flotando junto al jugador
     const why = reason === '¡PUNTO!' || reason === 'Punto rival' ? null : reason.replace(/[¡!]/g, '');
     void color;
-    this.updateHud();
+    // (20-11-2026, usuario) el marcador de arriba cambia A LA VEZ que la cifra del marcador del centro (onChange del splash);
+    // al terminar el partido no hay splash: se actualiza ya
+    if (res.matchWinner !== null) this.updateHud();
 
     if (res.matchWinner !== null) {
       const win = res.matchWinner === 0;
@@ -6246,7 +6307,7 @@ export class MatchScene extends Phaser.Scene {
         this.diag?.log('end-pose', { at: 'finale', win, me: this.diagActor(this.player), rival: this.diagActor(this.bot) });
         playResultMusic(this, win); // el soundtrack del partido se corta ya: suena el de victoria / derrota
         this.hideMatchUi(); // (14-11-2026) solo el final: fuera marcador, joystick, botones, rendirse y emojis
-        const ms = playMatchFinale(this, { win, playerName: getProfile().name, rivalName: this.botName, games: [this.score.games[0], this.score.games[1]] });
+        const ms = playMatchFinale(this, { win, playerName: this.doubles ? `${getProfile().name} / ${this.allyName}` : getProfile().name, rivalName: this.doubles ? `${this.botName} / ${this.rival2Name}` : this.botName, games: [this.score.games[0], this.score.games[1]] });
         this.time.delayedCall(ms + 150, () => this.endMatch(win));
       };
       // (21-11-2026) DROP SHOT 0 que da el partido: el punto se cuenta al cruzar la red de vuelta, pero el final espera a que la pelota bote en
@@ -6275,19 +6336,20 @@ export class MatchScene extends Phaser.Scene {
       this.otherRival()?.ch.pointEnd(w === 'bot');
     }
     // marcador en mitad de la pantalla (~2 s): puntos, o JUEGOS cuando se gana un juego; aviso de punto de partido
-    const names = { playerName: getProfile().name, rivalName: this.botName, winner: w };
+    // (21-11-2026, usuario) 2v2: salen los 4 nombres, cada pareja con ' / ' entre los dos (antes solo el tuyo y el del rival 1)
+    const names = this.doubles ? { playerName: `${getProfile().name} / ${this.allyName}`, rivalName: `${this.botName} / ${this.rival2Name}`, winner: w } : { playerName: getProfile().name, rivalName: this.botName, winner: w };
     const mp = isMatchPoint(this.score.points, this.score.games);
     if (res.gameWinner !== null) {
       const g2 = this.score.games;
       this.time.delayedCall(250, () =>
-        showPointSplash(this, { ...names, labels: [String(g2[0]), String(g2[1])], prevLabels: prevGames, title: 'JUEGOS', status: null, matchPoint: false }),
+        showPointSplash(this, { ...names, labels: [String(g2[0]), String(g2[1])], prevLabels: prevGames, title: 'JUEGOS', status: null, matchPoint: false, onChange: () => this.updateHud() }),
       );
       if (mp) this.time.delayedCall(450, () => showSideNotice(this, 'Punto de partido', 0xff3b4e, 1800));
       this.time.delayedCall(250 + POINT_SPLASH_MS + 100, () => this.startPoint());
       return;
     }
     const status = [why, this.score.status()].filter(Boolean).join(' · ') || null;
-    this.time.delayedCall(250, () => showPointSplash(this, { ...names, labels: this.score.labels(), prevLabels, status: null, matchPoint: false }));
+    this.time.delayedCall(250, () => showPointSplash(this, { ...names, labels: this.score.labels(), prevLabels, status: null, matchPoint: false, onChange: () => this.updateHud() }));
     // qué pasó (DOBLE FALTA, FUERA, IGUALES…) y PUNTO DE PARTIDO: avisos que entran desde la izquierda
     if (status) this.time.delayedCall(450, () => showSideNotice(this, status, 0xffd23f, 1600));
     if (mp) this.time.delayedCall(650, () => showSideNotice(this, 'Punto de partido', 0xff3b4e, 1600));
@@ -6338,17 +6400,18 @@ export class MatchScene extends Phaser.Scene {
     playMatchEnd(this, {
       winner: (win ? this.player : this.bot).ch,
       loser: (win ? this.bot : this.player).ch,
+      ...(this.doubles ? { mate: this.ally?.ch, rival2: this.otherRival()?.ch } : {}),
       data: {
         win,
         surrendered,
         ...(rivalLeft ? { rivalLeft: true } : {}),
-        playerName: getProfile().name,
-        rivalName: this.botName,
+        playerName: this.doubles ? `${getProfile().name} / ${this.allyName}` : getProfile().name,
+        rivalName: this.doubles ? `${this.botName} / ${this.rival2Name}` : this.botName,
         playerGames: this.score.games[0],
         rivalGames: this.score.games[1],
         botName: this.botName,
         rivalLevel: this.rivalLevel,
-        ...(this.doubles ? { doubles: { allyName: this.allyName, rival2Name: this.rival2Name } } : {}),
+        ...(this.doubles ? { doubles: { allyName: this.allyName, rival2Name: this.rival2Name }, pointStats: this.bot === this.rivalActors[1] ? { ...this.pointStats, r1: this.pointStats.r2, r2: this.pointStats.r1 } : { ...this.pointStats } } : {}),
         lan: !!this.net,
         // MISIONES POR PARTIDA cumplidas (MatchEndScene las paga en ADICIONALES); en 2v2 no hay
         ...(this.doubles ? {} : { missions: [...this.missions.done] }),
@@ -6638,7 +6701,9 @@ export class MatchScene extends Phaser.Scene {
     this.chargeMeter.setValue(this.charge);
     // flecha del golpe; cortita / globo en diagonal = flecha inclinada hacia ese lado
     this.chargeMeter.setShot(this.shotFromJoystick(), this.shotSide());
-    this.chargeMeter.place(h.x, h.y - 10, Phaser.Math.Clamp(p.s / 1.45, 0.8, 1));
+    // (20-11-2026, usuario) más arriba: chocaba con el sprite (la raqueta levantada de la carga); centrado en el personaje
+    const mk = Phaser.Math.Clamp(p.s / 1.45, 0.8, 1);
+    this.chargeMeter.place(p.sx, h.y - 10 - 38 * mk, mk);
     this.chargeMeter.tick(dt);
     // brillo alrededor del personaje y su raqueta (clásico)
     if (sprite) return;
@@ -7097,6 +7162,7 @@ export class MatchScene extends Phaser.Scene {
     // ESPECIAL: golpe fuerte de derecha / revés, nunca el remate con salto (la ULTI conserva su regla)
     const overhead = remate || (power ? (inferno ? this.powerOverhead(s) : false) : s.z > OVERHEAD_Z);
     const fxDelay = this.player.ch.swing(power || charged || remate, overhead, (power && overhead) || (remate && lobRemate), netVolley && !overhead);
+    if (power && !inferno) this.player.ch.holdImpact(SPECIAL_IMPACT_HOLD_MS); // (20-11-2026, usuario) ESPECIAL: 0,8 s en el frame del golpe
     // en red: los datos REALES de este golpe (el rival repite exactamente la misma animación); `charged` = carga o remate
     if (this.net) this.netHit = { charged: charged || remate, overhead, volley: netVolley && !overhead, special: (power && overhead) || (remate && lobRemate), shock: charged && !power && c >= 0.995 };
 
@@ -7330,6 +7396,7 @@ export class MatchScene extends Phaser.Scene {
       });
     }
     if (remate) {
+      const [rx, ry, rz] = [s.x, s.y, s.z];
       this.time.delayedCall(fxDelay, () => {
         this.ball.setImpactTrail(0.9, 0xffffff);
         this.cameras.main.shake(rs?.perfect ? 260 : lobRemate ? 190 : 110, rs?.perfect ? 0.02 : lobRemate ? 0.013 : 0.007);
@@ -7339,6 +7406,8 @@ export class MatchScene extends Phaser.Scene {
           superSmashFx(this, pp.sx, pp.sy);
           this.ball.setImpactTrail(1, 0xffd23f);
         }
+        // (20-11-2026, usuario) remate normal o flojo (sin SMASH! ni globo): impacto de golpe contra la pelota
+        if (!rs?.perfect && !power) this.smashHitImpact(rx, ry, rz);
         if (lobRemate) {
           // onda expansiva del remate: dos anillos aplastados (perspectiva) que se abren desde el impacto
           const p1 = project(s.x, s.y, s.z);
@@ -7360,6 +7429,37 @@ export class MatchScene extends Phaser.Scene {
         this.ball.setImpactTrail(1, 0xffd23f);
       });
     }
+  }
+
+  /**
+   * (20-11-2026, usuario) Impacto del REMATE normal (no SMASH!): destello blanco, anillo que se abre y rayos cortos desde la pelota.
+   */
+  private smashHitImpact(x: number, y: number, z: number) {
+    const p = project(x, y, z);
+    const s = p.s;
+    const flash = this.add.circle(p.sx, p.sy, 22 * s, 0xffffff, 0.95).setDepth(3500).setBlendMode(Phaser.BlendModes.ADD);
+    this.tweens.add({ targets: flash, scale: 2.2, alpha: 0, duration: 180, ease: 'Cubic.easeOut', onComplete: () => flash.destroy() });
+    const ring = this.add.circle(p.sx, p.sy, 14 * s, 0xffffff, 0).setStrokeStyle(5 * s, 0xfff2c0, 0.95).setDepth(3500).setBlendMode(Phaser.BlendModes.ADD);
+    this.tweens.add({ targets: ring, scale: 3.6, alpha: 0, duration: 300, ease: 'Cubic.easeOut', onComplete: () => ring.destroy() });
+    const g = this.add.graphics().setDepth(3500).setBlendMode(Phaser.BlendModes.ADD);
+    const rays = Array.from({ length: 8 }, (_, i) => ({ a: (i / 8) * Math.PI * 2 + rand(-0.2, 0.2), l: rand(26, 40) * s }));
+    const st = { k: 0 };
+    this.tweens.add({
+      targets: st,
+      k: 1,
+      duration: 220,
+      ease: 'Cubic.easeOut',
+      onUpdate: () => {
+        g.clear();
+        for (const r of rays) {
+          const r0 = 12 * s + r.l * st.k * 0.6;
+          const r1 = 12 * s + r.l * (0.4 + st.k);
+          g.lineStyle(3.5 * s * (1 - st.k) + 0.5, 0xffffff, 1 - st.k);
+          g.lineBetween(p.sx + Math.cos(r.a) * r0, p.sy + Math.sin(r.a) * r0, p.sx + Math.cos(r.a) * r1, p.sy + Math.sin(r.a) * r1);
+        }
+      },
+      onComplete: () => g.destroy(),
+    });
   }
 
   /**
@@ -7450,6 +7550,7 @@ export class MatchScene extends Phaser.Scene {
     // (la ULTI del rival conserva el remate por arriba si la pelota viene alta)
     const ultiOver = ulti && this.ball.s.z > OVERHEAD_Z;
     const fxDelay = power ? this.bot.ch.swing(true, ultiOver, ultiOver) : this.bot.ch.swing();
+    if (power && !ulti) this.bot.ch.holdImpact(SPECIAL_IMPACT_HOLD_MS); // (20-11-2026, usuario) ESPECIAL del rival: 0,8 s en el frame del golpe
     s.z = Math.max(s.z, 22);
     let shotSpeed = shot.speed * (this.zone.active('bot') && shot.kind !== 'lob' && shot.kind !== 'drop' ? ZONE.shotMult * this.zoneStatMultiplier('bot', 'strength') : 1);
     if (this.zone.active('player')) shotSpeed *= 1 - zoneStatPercent(this.zoneLevels.player.resistance);
@@ -7520,6 +7621,8 @@ export class MatchScene extends Phaser.Scene {
    * INFERNO (`el`), el anillo, las chispas y el destello van con los colores de su poder (INFERNO_LOOK).
    */
   private hitFx(bx: number, by: number, bz: number, power: boolean, level = 0.15, silent = false, el?: FxElement, snd?: string) {
+    // (20-11-2026, usuario) golpe del ESPECIAL DRAGÓN (legendaria): ulti-fuego recortado como en la ULTI (usuario, bot y rival online)
+    if (!silent && !snd && power && el === 'dragon' && playUltiFile(this, 'ulti-fuego')) silent = true;
     if (!silent) {
       // (18-11-2026, usuario) golpe del ESPECIAL de SOMBRA o de LUZ: especial-sombra-luz (la ULTI llega silenciosa: no entra aquí)
       const own = snd ?? (power && (el === 'shadow' || el === 'light') ? 'especial-sombra-luz' : undefined);
@@ -7652,6 +7755,8 @@ export class MatchScene extends Phaser.Scene {
     this.portalFx(from.x, from.y, 0x45d9ff, 0xd9f7ff);
     const h = this.headPos(bt);
     this.popText(h.x, h.y - 10, 'DEFENSIVO', '#c9a4ff', 26); // el rival: solo el tipo de habilidad
+    // (20-11-2026) 2v2 online (host): el invitado ve el DESTELLO de este bot (antes solo lo veía aparecer en otro sitio)
+    this.sendBotDefensive(bt, { kind: 'blink', x: from.x, y: from.y, tx, ty, out: BLINK.fastOut * 1000, in: BLINK.fastIn * 1000, delay: 0 });
     bt.vanished = true;
     this.tweens.add({
       targets: bt,
@@ -7705,8 +7810,20 @@ export class MatchScene extends Phaser.Scene {
       sfx(this, 'dash-jump');
     }
     this.popText(h.x, h.y - 10, 'DEFENSIVO', '#c9a4ff', 26); // el rival: solo el tipo de habilidad
+    this.sendBotDefensive(bt, { kind, x: from.x, y: from.y, tx: to.x, ty: to.y, ms: dur * 1000 }); // (20-11-2026) 2v2 online: el invitado lo ve
     this.netBotFly = fly;
     this.netBotFlyTick(0);
+  }
+
+  /**
+   * (20-11-2026, log AWS) 2v2 ONLINE, host: avisa al invitado del DEFENSIVO de uno de sus bots (con `a` = el bot), con los mismos datos que
+   * manda un humano; el invitado lo muestra con net2Defensive / net2Dash (su recorrido llega por los estados). En el 1v1 o contra bots, nada.
+   */
+  private sendBotDefensive(bt: Actor, d: Record<string, string | number>, kind: 'defensive' | 'sprint-start' | 'sprint-end' = 'defensive') {
+    if (!this.net2host) return;
+    const tag = this.net2Tag(bt);
+    if (!tag?.a) return;
+    this.net?.sendAction(kind, { ...d, ...tag } as ActionMsg['data']);
   }
 
   /**
@@ -7991,11 +8108,13 @@ export class MatchScene extends Phaser.Scene {
         this.dashFx.burst(p.sx, p.sy, p.s * VIEW.CHAR_K, bt.ch.depth);
         sfx(this, dashSfx(this.botKit.smash));
         this.botDashFx = { t: 0, ghosts: 0 };
+        this.sendBotDefensive(bt, { dirX: Math.sign(this.ai.target.y - bt.y), element: this.botKit.smash }, 'sprint-start'); // 2v2 online: el invitado lo ve
       }
     } else if (mv.sprint === 'end' && this.botKit.defensive === 'dash') {
       // llegó al punto: frenada de la hoja, como tu DASH; cortado lejos del punto: sigue corriendo
       bt.ch.setSprint(false, mv.dirX, !!mv.landed);
       this.botDashFx = null;
+      this.sendBotDefensive(bt, {}, 'sprint-end');
     }
     if (this.botDashFx) {
       const d = this.botDashFx;
@@ -8464,7 +8583,8 @@ export class MatchScene extends Phaser.Scene {
    * UNO por juego y no siempre (50 % … 80 % según su nivel), para que no lo haga a cada rato.
    */
   private rollBotRemate() {
-    return !this.net && this.score.gameIndex >= 1 && this.botRemateGame !== this.score.gameIndex && Math.random() < 0.5 + 0.3 * this.ai.d;
+    // (20-11-2026, usuario: "el bot no hace smash en el círculo") desde el PRIMER juego y más seguido (antes desde el 2.º, 50-80 %)
+    return !this.net && this.botRemateGame !== this.score.gameIndex && Math.random() < 0.75 + 0.2 * this.ai.d;
   }
 
   /**
@@ -8507,7 +8627,9 @@ export class MatchScene extends Phaser.Scene {
     this.botRemateGame = this.score.gameIndex; // uno por juego
     this.setSlowMo(clamp(T / REMATE.realS, REMATE.minSlow, 1));
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.setSlowMo(1));
-    this.bot.ch.remateHold();
+    // (20-11-2026, usuario: "el smash del rival no hace bien las animaciones") salto con sus frames (se agacha y sube) y se queda en el aire
+    // con la raqueta arriba hasta el golpe (antes saltaba ya congelado en esa pose)
+    if (!this.bot.ch.remateJump()) this.bot.ch.remateHold();
     // (18-11-2026, usuario) sin texto "REMATE" sobre el rival (solo cuenta el SMASH!); los bordes se oscurecen para intimidar
     this.rivalSmashDim(true);
   }
@@ -8547,7 +8669,7 @@ export class MatchScene extends Phaser.Scene {
     const r = this.botRemate!;
     const bt = this.bot;
     // salta en el sitio y cae donde saltó (como el jugador; antes se iba hacia la pelota)
-    bt.lift = REMATE.jump * Math.sin((Math.min(1, r.t / r.T) * Math.PI) / 2);
+    bt.lift = REMATE.jump * RIVAL_REMATE_JUMP_K * Math.sin((Math.min(1, r.t / r.T) * Math.PI) / 2);
     return { moving: false, dirX: 0, sprint: null, readyToToss: false };
   }
 
@@ -8590,6 +8712,7 @@ export class MatchScene extends Phaser.Scene {
     this.hitFxAt(fxDelay, s.x, s.y, s.z, false, 1, false, undefined, 'ball-saque-2'); // REMATE del bot
     this.tweens.add({ targets: this.bot, lift: 0, duration: 320, ease: 'Quad.easeIn' });
     const p = project(s.x, s.y, s.z);
+    const [ix, iy, iz] = [s.x, s.y, s.z];
     this.time.delayedCall(fxDelay, () => {
       this.cameras.main.shake(grade === 'perfect' ? 240 : 150, grade === 'perfect' ? 0.017 : 0.01);
       // (18-11-2026, usuario: "¿el smash del círculo tiene impacto?") la misma onda expansiva y destello que el tuyo y el del rival online
@@ -8602,7 +8725,10 @@ export class MatchScene extends Phaser.Scene {
       if (grade === 'perfect') {
         superSmashFx(this, p.sx, p.sy);
         this.ball.setImpactTrail(1, 0xffd23f);
-      } else this.ball.setImpactTrail(0.9, 0xffffff);
+      } else {
+        this.ball.setImpactTrail(0.9, 0xffffff);
+        this.smashHitImpact(ix, iy, iz); // (20-11-2026, usuario) remate flojo: impacto contra la pelota
+      }
     });
     if (grade === 'perfect') {
       const h = this.aboveHeadPos(this.bot);
@@ -9640,6 +9766,7 @@ export class MatchScene extends Phaser.Scene {
    * Los golpes y avisos enviados y recibidos (send / recv) llevan `a` (0 = compañero, 1 y 2 = bots del host).
    */
   private diag2 = {
+    cineAt: -1e9,
     mvAt: 0,
     snapAt: 0,
     fluAt: 0,
@@ -9692,8 +9819,9 @@ export class MatchScene extends Phaser.Scene {
     const keys = this.net2host ? (this.allyRemote ? [0] : []) : [0, 1, 2];
     const all = this.everyone();
 
-    // FLUIDEZ
-    if (g.lastFrame) {
+    // FLUIDEZ. (20-11-2026, log AWS) la congelación de una CINEMÁTICA (~1 s) no es un tirón: el fotograma que la sigue no cuenta
+    if (this.cine.active || this.netRemoteCine) g.cineAt = now;
+    if (g.lastFrame && now - g.cineAt > 1600) {
       const ft = now - g.lastFrame;
       g.maxF = Math.max(g.maxF, ft);
       if (ft > 50) g.jank++;
@@ -10393,15 +10521,22 @@ export class MatchScene extends Phaser.Scene {
       // animación exacta: los mismos datos (cargado / remate / volea / smash) que usó el emisor
       this.serving = false;
       fx = bt.ch.swing(h.power || h.charged, h.overhead, h.special ?? (h.power && h.overhead), h.volley);
+      if (h.power && !h.inferno && !h.impact) bt.ch.holdImpact(SPECIAL_IMPACT_HOLD_MS); // (20-11-2026, usuario) ESPECIAL del rival online
     }
     // sonido propio: saque y remate del globo; el resto, golpe-fuerte
     const netSnd = h.kind === 'serve' ? 'ball-saque-1' : h.special && h.overhead && !h.power && !h.inferno ? 'ball-saque-2' : undefined;
     if (fx >= 0) this.hitFxAt(fx, s.x, s.y, s.z, h.power || h.inferno, 0.15, !!h.inferno, h.inferno ? infernoElementFor(this.vsOpp?.skin, this.netRivalInferno) : h.power ? this.netRivalSmashEl : undefined, netSnd);
+    // (20-11-2026, usuario) remate normal del rival (sin globo ni poder): el mismo impacto que ve él
+    if (fx >= 0 && h.overhead && h.charged && !h.power && !h.inferno && !h.special && !this.netRemateGrade) {
+      const [ix, iy, iz] = [s.x, s.y, s.z];
+      this.time.delayedCall(fx, () => this.smashHitImpact(ix, iy, iz));
+    }
     // REMATE del globo del rival: la misma onda, sacudida y, si fue justo al cierre del aro, SMASH! dorado
     const rg = this.netRemateGrade;
     this.netRemateGrade = null;
     if (fx >= 0 && rg) {
       const pr = project(s.x, s.y, s.z);
+      const [rx, ry, rz] = [s.x, s.y, s.z];
       this.tweens.add({ targets: bt, lift: 0, duration: 320, ease: 'Quad.easeIn' });
       this.time.delayedCall(fx, () => {
         this.ball.setImpactTrail(rg === 'perfect' ? 1 : 0.9, rg === 'perfect' ? 0xffd23f : 0xffffff);
@@ -10414,7 +10549,8 @@ export class MatchScene extends Phaser.Scene {
           superSmashFx(this, pr.sx, pr.sy);
           const hd = this.aboveHeadPos(bt);
           this.popText(hd.x, hd.y, 'SMASH!', '#ffd23f', 44);
-        }
+        } else this.smashHitImpact(rx, ry, rz); // (20-11-2026, usuario) remate flojo: impacto contra la pelota
+
       });
     }
     // cortita cargada del rival: el mismo aviso que ve él sobre su personaje
@@ -11011,8 +11147,9 @@ export class MatchScene extends Phaser.Scene {
       this.setSlowMo(slow);
       this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.setSlowMo(1));
       // salto hasta el contacto (en tiempo de juego: con la cámara lenta dura lo mismo que en su teléfono)
-      this.tweens.add({ targets: bt, lift: REMATE.jump, duration: T * 1000, ease: 'Sine.easeOut' });
-      bt.ch.remateHold(); // raqueta arriba, como en su teléfono
+      this.tweens.add({ targets: bt, lift: REMATE.jump * RIVAL_REMATE_JUMP_K, duration: T * 1000, ease: 'Sine.easeOut' });
+      // (20-11-2026, usuario) el rival SALTA mostrando los frames del salto y se queda en el aire con la raqueta arriba hasta el golpe
+      if (!bt.ch.remateJump()) bt.ch.remateHold();
       // (18-11-2026, usuario) sin texto "REMATE"; bordes oscuros mientras salta
       this.rivalSmashDim(true);
       return;

@@ -8,6 +8,8 @@ import type { ItemId } from './player';
 export type WheelReward =
   /** `duplicateOf`: compensación por un cosmético repetido (null = catálogo agotado) */
   | { kind: 'coins'; amount: number; duplicateOf?: ItemId | null }
+  /** (21-11-2026) MONEDAS 2V2 */
+  | { kind: 'coins2v2'; amount: number }
   | { kind: 'xp'; amount: number }
   /** DINERO virtual (billetes): lo que compra en la Tienda */
   | { kind: 'cash'; amount: number }

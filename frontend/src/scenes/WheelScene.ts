@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import { FONT, restartOnResize } from '../ui/theme';
-import { GOLD, NAVY, SECTOR, TIER_LOOK, CHEST_TEX, type SectorAmountLabel, addSectorContent, chestImage, coinIcon, drawSlotIcon, drawWheelFace, ensureTierTexture, isSpecial, sectorCenter } from '../ui/wheelArt';
+import { GOLD, NAVY, SECTOR, TIER_LOOK, CHEST_TEX, type SectorAmountLabel, addSectorContent, chestImage, coin2v2Image, coinIcon, drawSlotIcon, drawWheelFace, ensureTierTexture, isSpecial, sectorCenter } from '../ui/wheelArt';
 import { WHEEL, type WheelSlot } from '../domain/wheelConfig';
 import type { WheelReward, WheelTier } from '../domain/wheelState';
 import { scaleReward, slotById } from '../domain/dailyWheel';
@@ -191,7 +191,7 @@ export class WheelScene extends Phaser.Scene {
     const name = (sl?: WheelSlot) => {
       if (!sl) return 'PREMIO: AL AZAR';
       const p = sl.prize;
-      const what = p.kind === 'coins' ? 'MONEDAS' : p.kind === 'xp' ? 'EXP' : p.kind === 'cash' ? 'DINERO' : '';
+      const what = p.kind === 'coins' ? 'MONEDAS' : p.kind === 'coins2v2' ? 'MONEDAS 2V2' : p.kind === 'xp' ? 'EXP' : p.kind === 'cash' ? 'DINERO' : '';
       return `PREMIO: ${sl.label}${what ? ' ' + what : ''}`;
     };
     const arrows = this.add.text(0, 0, '◀                              ▶', { fontFamily: FONT, fontSize: '30px', color: '#45e7ff' }).setOrigin(0.5);
@@ -748,6 +748,7 @@ export class WheelScene extends Phaser.Scene {
     const iconR = Math.min(150, W * 0.2);
     const cashKey = iconSlot.prize.kind === 'cash' ? (iconSlot.prize.amount > 1 ? 'cash-pack' : 'cash-1') : null;
     if (iconSlot.prize.kind === 'coins' && this.textures.exists('coin-1')) icon.add(coinIcon(this, 0, 0, iconR));
+    else if (reward.kind === 'coins2v2') icon.add(coin2v2Image(this, 0, 0, iconR));
     // (17-11-2026) DINERO: billete (1) o fardo chico (más de 1)
     else if (cashKey && this.textures.exists(cashKey)) icon.add(this.add.image(0, 0, cashKey).setDisplaySize(iconR * 2.4, iconR * 2.4));
     // (17-11-2026, usuario) COFRE: la imagen del NIVEL que quedó (el premio puede subir el cofre a oro o épico)
@@ -782,7 +783,7 @@ export class WheelScene extends Phaser.Scene {
     } else {
       target = reward.amount;
       big = `+${n(target)}`;
-      small = reward.kind === 'xp' ? 'EXP' : reward.kind === 'cash' ? 'DINERO' : 'MONEDAS';
+      small = reward.kind === 'xp' ? 'EXP' : reward.kind === 'cash' ? 'DINERO' : reward.kind === 'coins2v2' ? 'MONEDAS 2V2' : 'MONEDAS';
       if (reward.kind === 'coins' && reward.duplicateOf !== undefined) note = reward.duplicateOf ? 'Ya tenías ese cosmético: compensación' : 'Ya tienes todos los cosméticos: compensación';
     }
     const ty = cy + Math.min(150, W * 0.2) + 90;
@@ -871,9 +872,9 @@ export class WheelScene extends Phaser.Scene {
 
   /** (21-11-2026) Apunta lo entregado (monedas / EXP) para que el MENÚ lo muestre llegando a sus cards (registry menu.wheelGain). */
   private noteGain(g: WheelReward | null | undefined) {
-    if (!g || (g.kind !== 'coins' && g.kind !== 'xp')) return;
-    const cur = (this.registry.get('menu.wheelGain') as { coins: number; xp: number } | undefined) ?? { coins: 0, xp: 0 };
-    this.registry.set('menu.wheelGain', { coins: cur.coins + (g.kind === 'coins' ? g.amount : 0), xp: cur.xp + (g.kind === 'xp' ? g.amount : 0) });
+    if (!g || (g.kind !== 'coins' && g.kind !== 'xp' && g.kind !== 'coins2v2')) return;
+    const cur = (this.registry.get('menu.wheelGain') as { coins: number; xp: number; coins2v2?: number } | undefined) ?? { coins: 0, xp: 0 };
+    this.registry.set('menu.wheelGain', { coins: cur.coins + (g.kind === 'coins' ? g.amount : 0), xp: cur.xp + (g.kind === 'xp' ? g.amount : 0), coins2v2: (cur.coins2v2 ?? 0) + (g.kind === 'coins2v2' ? g.amount : 0) });
   }
 
   private burst(x: number, y: number, special: boolean) {

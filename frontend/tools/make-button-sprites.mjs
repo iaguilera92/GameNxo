@@ -2,7 +2,7 @@
 //
 //   node tools/make-button-sprites.mjs
 //
-// Entrada : public/assets/btn-dash.webp, btn-smash.webp, btn-saque.webp, btn-saque-efecto.webp (arte original, no se toca)
+// Entrada : public/assets/btn-dash.webp, btn-smash.webp, btn-saque.webp, btn-saque-efecto.webp, btn-ulti.webp, btn-emotes.webp, btn-rendirse.webp (arte original, no se toca)
 // Salida  : public/assets/ui/<mismo nombre>.webp  (lo que carga MatchScene; el original pesa ~1 MB y 1312x1199)
 // Si cambias el arte original, vuelve a ejecutar este script.
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
@@ -13,7 +13,10 @@ import { decode } from './png-lite.mjs';
 import { saveWebp, webpToPng } from './image-out.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
-const NAMES = ['btn-dash', 'btn-smash', 'btn-saque', 'btn-saque-efecto'];
+const ALL = ['btn-dash', 'btn-smash', 'btn-saque', 'btn-saque-efecto', 'btn-ulti', 'btn-emotes', 'btn-rendirse'];
+// (21-11-2026) con argumentos (p. ej. node tools/make-button-sprites.mjs btn-rendirse) hace solo esos; sin argumentos, todos
+const ONLY = process.argv.slice(2);
+const NAMES = ALL.filter((n) => !ONLY.length || ONLY.includes(n));
 const SIZE = 256;
 const PAD = 3; // margen transparente alrededor del círculo (px del original)
 

@@ -27,6 +27,7 @@ import { COINS_2V2 } from '../domain/coins2v2';
 import { navLigaLabel } from '../ui/navLabel';
 import { drawProfileFrame, openProfileDialog } from '../ui/ProfileDialog';
 import { equippedFrame } from '../domain/profileFrames';
+import { addProfileFrameArt, queueProfileFrameArt } from '../ui/profileFrameArt';
 import { chestButton } from '../ui/ChestButton';
 import { loadBet, rankedPlayButton } from '../ui/PlayEntry';
 import { matchStakes } from '../domain/rankedConfig';
@@ -86,7 +87,9 @@ const BG_ZOOM = 1.12;
  */
 /** MODO RIESGO x2: pulsación más corta que esto = toque (abre la explicación); mantener RISK_HOLD_MS = activarlo */
 const RISK_TAP_MS = 280;
-const RISK_HOLD_MS = 3000;
+// (20-11-2026, usuario) el anillo se llena en 2 s, lo mismo que suena modo-riesgo.mp3 (antes 3 s en total)
+const RISK_FILL_MS = 2000;
+const RISK_HOLD_MS = RISK_TAP_MS + RISK_FILL_MS;
 const RISK_MSG: Record<RiskActivateError, string> = {
   offline: 'Necesitas conexión para activar el MODO RIESGO',
   not_monday: 'El MODO RIESGO solo se activa los lunes',
@@ -112,6 +115,8 @@ export class MenuScene extends Phaser.Scene {
 
   preload() {
     if (!this.textures.exists('menu-bg')) this.load.image('menu-bg', 'assets/menu-bg.webp');
+    queueProfileFrameArt(this.load); // marcos del perfil por liga (assets/marcos/<liga>.webp)
+    if (!this.textures.exists('ruleta-frame')) this.load.image('ruleta-frame', 'assets/ruleta-frame.webp'); // marco de las ruletas pequeñas (DailyWheels)
     if (!this.textures.exists('daily-coins-art')) this.load.image('daily-coins-art', 'assets/monedas.webp');
     if (!this.textures.exists('daily-cash-art')) this.load.image('daily-cash-art', 'assets/billetes.webp');
     // icono del contador de DINERO (16-11-2026, usuario): el fardo chico (sin fondo; original magenta en dinero-virtual-2.webp)
@@ -139,12 +144,19 @@ export class MenuScene extends Phaser.Scene {
    * menú. Mientras la ruleta está abierta (registry wheel.open) los contadores NO se actualizan solos: coinRefresh, profileRefresh y passRefresh los
    * ponen al día cuando el premio llega.
    */
-  private wheelGain: { coins: number; xp: number } | null = null;
+  private wheelGain: { coins: number; xp: number; coins2v2?: number } | null = null;
   private coinRect: { x: number; y: number; w: number; h: number } | null = null;
   private coinRefresh: (() => void) | null = null;
   private coinObj: Phaser.GameObjects.Container | null = null;
   /** monedas de una ruleta ya cobrada que esperan a verse llegar a su card */
   private pendingCoins = 0;
+  /**
+   * (21-11-2026, usuario) MONEDAS 2V2 ganadas (partida 2v2 y ruleta): se ven llegar DESPUÉS de las monedas normales y ANTES de la EXP (playCoins2v2).
+   * `hold2v2` = lo que el contador 2v2 y la card de la LIGA 2V2 todavía NO muestran (baja al llegar cada moneda).
+   */
+  private coins2v2Gain = 0;
+  private hold2v2 = 0;
+  private coin2v2Refresh: (() => void) | null = null;
   /** monedas ganadas en la partida que aún no se vieron llegar al monedero (playMatchCoins) */
   private matchCoins = 0;
   /** pone el monedero de arriba en un valor al instante (cada moneda que llega suma su parte) */
@@ -174,9 +186,14 @@ export class MenuScene extends Phaser.Scene {
     this.masteryGain = (this.registry.get('menu.masteryGain') as MenuScene['masteryGain'] | undefined) ?? null;
     this.registry.remove('menu.masteryGain');
     // premio de una ruleta cobrada ANTES de abrir este menú (viene del final de la partida): la EXP se suma a la presentación de la EXP y las monedas llegan a su card
-    const wg = this.registry.get('menu.wheelGain') as { coins: number; xp: number } | undefined;
+    const wg = this.registry.get('menu.wheelGain') as { coins: number; xp: number; coins2v2?: number } | undefined;
     this.registry.remove('menu.wheelGain');
-    this.wheelGain = wg && (wg.coins > 0 || wg.xp > 0) && !this.wheelOpenNow() ? wg : null;
+    this.wheelGain = wg && (wg.coins > 0 || wg.xp > 0 || (wg.coins2v2 ?? 0) > 0) && !this.wheelOpenNow() ? wg : null;
+    // (21-11-2026, usuario) monedas 2V2 de la partida (MatchEndScene) y de la ruleta: se ven después de las monedas y antes de la EXP
+    this.coins2v2Gain = Math.max(0, (this.registry.get('menu.coin2v2Gain') as number | undefined) ?? 0) + (this.wheelGain?.coins2v2 ?? 0);
+    this.registry.remove('menu.coin2v2Gain');
+    this.hold2v2 = this.coins2v2Gain;
+    this.coin2v2Refresh = null;
     this.xpGain += this.wheelGain?.xp ?? 0;
     this.xpAnims = [];
     this.xpAt = [];
@@ -286,12 +303,17 @@ export class MenuScene extends Phaser.Scene {
     // TUTORIAL por nivel (domain/tutorial.ts; solo con el modo desarrollo apagado): DESPUÉS de la ruleta y de la presentación de la EXP
     // (que dura ~6 s), para que el aviso de un nivel recién alcanzado no se pise con ellas
     const tutorial = (delay: number) => this.time.delayedCall(delay, () => maybeShowTutorial(this));
-    // (18-11-2026, usuario) PRIMERO las monedas de la partida vuelan al monedero (≤ 1,5 s) y LUEGO la EXP
-    if (this.matchCoins > 0) {
-      const coinsFirst = (then: () => void) => this.playMatchCoins(this.matchCoins, then);
-      const xpAfter = this.xpGain > 0 ? () => (this.playXpGain(), tutorial(6500)) : () => tutorial(500);
-      if (wheelOpened) this.time.delayedCall(700, () => whenWheelReady(this, (w) => w.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.time.delayedCall(250, () => coinsFirst(xpAfter)))));
-      else this.time.delayedCall(450, () => coinsFirst(xpAfter));
+    // (21-11-2026, usuario) ORDEN al volver de una partida: 1) las MONEDAS, todas juntas en UN solo vuelo al monedero (partida + adicionales + ruleta),
+    // 2) las MONEDAS 2V2 (si ganaste), 3) la EXP y 4) la MAESTRÍA (es la 3.ª oleada de la EXP: playXpGain). Con la ruleta abriéndose sola, todo espera a que se cierre
+    // (y lo suyo lo muestra wheelClosed).
+    const coinsTotal = this.matchCoins + (wheelOpened ? 0 : this.pendingCoins);
+    if (!wheelOpened) this.pendingCoins = 0; // ya va dentro del total
+    const xpStep = () => (this.xpGain > 0 ? (this.playXpGain(), tutorial(6500)) : tutorial(500));
+    const coins2Step = () => (this.coins2v2Gain > 0 ? this.playCoins2v2(this.coins2v2Gain, xpStep) : xpStep());
+    const coinsStep = () => (coinsTotal > 0 ? this.playMatchCoins(coinsTotal, coins2Step) : coins2Step());
+    if (coinsTotal > 0 || this.coins2v2Gain > 0) {
+      if (wheelOpened) this.time.delayedCall(700, () => whenWheelReady(this, (w) => w.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.time.delayedCall(250, coinsStep))));
+      else this.time.delayedCall(450, coinsStep);
     } else if (this.xpGain > 0) {
       const play = () => {
         this.playXpGain();
@@ -301,14 +323,6 @@ export class MenuScene extends Phaser.Scene {
       else this.time.delayedCall(550, play);
     } else if (wheelOpened) this.time.delayedCall(700, () => whenWheelReady(this, (w) => w.events.once(Phaser.Scenes.Events.SHUTDOWN, () => tutorial(500))));
     else tutorial(1600); // tras el fundido y la cascada de ruletas
-
-    // monedas de una ruleta cobrada al final de la partida: llegan a su card tras la presentación de la EXP (o enseguida si no hay)
-    if (this.pendingCoins > 0 && !wheelOpened) this.time.delayedCall((this.xpGain > 0 ? 550 + 6200 : 900) + (this.matchCoins > 0 ? 1500 : 0), () => {
-      const c = this.pendingCoins;
-      this.pendingCoins = 0;
-      if (c > 0) this.playCoinGain(c);
-    });
-
     if (this.textures.exists(NAV.key)) this.navImage(W, H);
     else this.bottomBar(W, navTop, navH);
     this.riskCard(W, playY);
@@ -452,13 +466,25 @@ export class MenuScene extends Phaser.Scene {
       }
       ring.strokePath();
     };
+    // (20-11-2026, usuario) sonido de carga (modo-riesgo.mp3) mientras se llena; se corta al soltar o a los 2 s
+    let snd: Phaser.Sound.BaseSound | null = null;
+    const stopSnd = () => {
+      snd?.stop();
+      snd?.destroy();
+      snd = null;
+    };
     const tick = () => {
       if (t0 < 0 || !target.active) return;
       const held = this.time.now - t0;
       if (held < RISK_TAP_MS || !canHold()) return; // aún puede ser un toque (o no se puede mantener: ya activo)
+      if (!snd && this.cache.audio.exists('modo-riesgo')) {
+        snd = this.sound.add('modo-riesgo', { volume: 0.9 });
+        snd.play();
+      }
       const f = (held - RISK_TAP_MS) / (RISK_HOLD_MS - RISK_TAP_MS);
       if (f >= 1) {
         t0 = -1;
+        stopSnd();
         draw(0);
         target.setScale(1);
         onDone();
@@ -468,9 +494,13 @@ export class MenuScene extends Phaser.Scene {
       target.setScale(1 - 0.06 * f);
     };
     this.events.on(Phaser.Scenes.Events.UPDATE, tick);
-    target.once(Phaser.GameObjects.Events.DESTROY, () => this.events.off(Phaser.Scenes.Events.UPDATE, tick));
+    target.once(Phaser.GameObjects.Events.DESTROY, () => {
+      this.events.off(Phaser.Scenes.Events.UPDATE, tick);
+      stopSnd();
+    });
     target.on('pointerdown', () => (t0 = this.time.now));
     const stop = (tap: boolean) => {
+      stopSnd();
       if (t0 < 0) return;
       const held = this.time.now - t0;
       t0 = -1;
@@ -516,7 +546,7 @@ export class MenuScene extends Phaser.Scene {
     if (rs.phase === 'active') return this.toast(RISK_MSG.active);
     const done = (msg: string) => {
       onOk?.();
-      sfx(this, 'power-up');
+      uiSound(this, 'risk-on'); // (20-11-2026, usuario) sonido propio de ACTIVADO (antes power-up)
       this.cameras.main.flash(260, 255, 140, 30);
       this.toast(msg);
     };
@@ -677,7 +707,7 @@ export class MenuScene extends Phaser.Scene {
     bg.lineStyle(3, active ? 0xfff3a0 : live ? 0xffd23f : 0x9a7f8a, 1).strokeCircle(0, 0, R);
     const bt = this.add.text(0, -8, 'x2', { fontFamily: FONT, fontSize: '72px', color: '#ffffff', stroke: active ? '#7a2a00' : '#4a0d00', strokeThickness: 9 }).setOrigin(0.5);
     const bs = this.add
-      .text(0, 46, active ? formatRiskLeft(rs.msLeft) : 'MANTÉN 3 s', { fontFamily: FONT, fontSize: active ? '24px' : '18px', color: active ? '#ffffff' : '#ffd23f', stroke: active ? '#7a2a00' : '#2a0a00', strokeThickness: 4 })
+      .text(0, 46, active ? formatRiskLeft(rs.msLeft) : 'MANTÉN 2 s', { fontFamily: FONT, fontSize: active ? '24px' : '18px', color: active ? '#ffffff' : '#ffd23f', stroke: active ? '#7a2a00' : '#2a0a00', strokeThickness: 4 })
       .setOrigin(0.5)
       .setLetterSpacing(1);
     const ring = this.add.graphics();
@@ -728,7 +758,7 @@ export class MenuScene extends Phaser.Scene {
     dim.on('pointerup', close);
     // ya ACTIVO: el botón solo muestra el tiempo (no se puede volver a activar)
     if (active) btn.on('pointerup', () => this.toast(RISK_MSG.active));
-    else this.holdPress(btn, ring, R + 10, 0xffd23f, () => this.toast('Mantén presionado 3 segundos'), () => this.tryActivateRisk(close));
+    else this.holdPress(btn, ring, R + 10, 0xffd23f, () => this.toast('Mantén presionado 2 segundos'), () => this.tryActivateRisk(close));
     root.add([dim, p]);
     root.setAlpha(0);
     p.setScale(0.85);
@@ -961,27 +991,133 @@ export class MenuScene extends Phaser.Scene {
    */
   private wheelClosed() {
     if (!this.sys.isActive() || this.wheelOpenNow()) return;
-    const g = this.registry.get('menu.wheelGain') as { coins: number; xp: number } | undefined;
+    const g = this.registry.get('menu.wheelGain') as { coins: number; xp: number; coins2v2?: number } | undefined;
     this.registry.remove('menu.wheelGain');
     const coins = (g?.coins ?? 0) + this.pendingCoins;
     this.pendingCoins = 0;
     const xp = g?.xp ?? 0;
+    const c2 = g?.coins2v2 ?? 0;
     // nada que mostrar con orbes: los contadores se ponen al día sin más (por si el premio fue otro)
     if (xp <= 0) {
       this.profileRefresh?.();
       this.passRefresh?.();
     }
+    // (21-11-2026, usuario) mismo orden que al volver de una partida: monedas, luego monedas 2V2 y luego la EXP
     let wait = 250;
+    if (coins > 0) {
+      this.time.delayedCall(wait, () => this.playCoinGain(coins));
+      wait += 2600; // lo que dura el vuelo de las monedas (playCoinGain)
+    } else this.coinRefresh?.();
+    if (c2 > 0) {
+      this.hold2v2 += c2; // la card y el contador 2v2 esperan a que lleguen
+      this.leagueRepaint?.();
+      this.time.delayedCall(wait, () => this.playCoins2v2(c2, () => undefined));
+      wait += 2200;
+    }
     if (xp > 0) {
       this.xpGain = xp;
       this.xpAnims = [];
       if (getPlayer().level < MAX_LEVEL && this.profileRefresh) this.xpAnims.push(this.profileRefresh);
       if (this.passRefresh) this.xpAnims.push(this.passRefresh);
       this.time.delayedCall(wait, () => this.playXpGain());
-      wait += 6200; // lo que dura la presentación de la EXP
     }
-    if (coins > 0) this.time.delayedCall(wait, () => this.playCoinGain(coins));
-    else this.coinRefresh?.();
+  }
+
+  /**
+   * (21-11-2026, usuario) MONEDAS 2V2 ganadas (partida 2v2 y ruleta): el contador de arriba pasa a las monedas 2V2, sale el "+N" con la moneda morada y varias
+   * monedas vuelan al monedero (cada una suma su parte). Luego el contador vuelve a las monedas de siempre y sigue `then` (la EXP). Dura ~1,6 s.
+   */
+  private playCoins2v2(amount: number, then: () => void) {
+    const card = this.coinObj;
+    const rect = this.coinRect;
+    if (!this.sys.isActive() || !card || !rect || amount <= 0) {
+      this.hold2v2 = 0;
+      this.leagueRepaint?.();
+      this.coin2v2Refresh?.();
+      then();
+      return;
+    }
+    const wasMode = this.leagueMode;
+    this.hold2v2 = Math.max(this.hold2v2, amount);
+    this.setLeagueMode('2v2'); // contador y card de la liga pasan a lo 2V2 (arrancan SIN estas monedas: hold2v2)
+    const W = this.scale.width;
+    const src = { x: W / 2, y: this.scale.height * 0.46 };
+    const N = Phaser.Math.Clamp(Math.round(4 + amount / 8), 4, 12);
+    const gap = Math.min(50, 520 / N);
+    const FLY = 540;
+    const TOTAL_MS = 1600;
+    const prevDepth = card.depth;
+    card.setDepth(195);
+    const glow = this.add.circle(src.x, src.y, 110, 0xb06bff, 0.25).setBlendMode(Phaser.BlendModes.ADD).setDepth(200).setScale(0.2);
+    const total = this.add.text(src.x, src.y, `+${amount.toLocaleString('es-CL')}`, { fontFamily: FONT, fontSize: '72px', color: '#e6d2ff', stroke: '#2a1458', strokeThickness: 10 }).setOrigin(0.5).setDepth(201).setScale(0.3);
+    const ICON = 84;
+    const icon = this.textures.exists('coin-2v2') ? this.add.image(0, src.y, 'coin-2v2').setDisplaySize(ICON, ICON).setDepth(201) : null;
+    fitText(total, W - 60 - (icon ? ICON + 12 : 0));
+    const ts = total.scale;
+    if (icon) {
+      const pairW = total.width * ts + 12 + ICON;
+      total.setX(src.x - pairW / 2 + (total.width * ts) / 2);
+      icon.setX(src.x + pairW / 2 - ICON / 2).setScale(icon.scaleX * 0.3);
+      this.tweens.add({ targets: icon, scale: icon.scaleX / 0.3, duration: 300, delay: 60, ease: 'Back.easeOut' });
+    }
+    total.setScale(ts * 0.3);
+    this.tweens.add({ targets: glow, scale: 1, duration: 300, ease: 'Cubic.easeOut' });
+    this.tweens.add({ targets: total, scale: ts, duration: 260, ease: 'Back.easeOut' });
+    sfx(this, 'recolectar-monedas');
+    const dx = rect.x + rect.w * 0.3;
+    const dy = rect.y + rect.h / 2;
+    const start = this.hold2v2;
+    let arrived = 0;
+    for (let o = 0; o < N; o++) {
+      this.time.delayedCall(260 + o * gap, () => {
+        if (!this.sys.isActive()) return;
+        const coin = this.textures.exists('coin-2v2') ? this.add.image(0, 0, 'coin-2v2').setDisplaySize(34, 34) : this.add.circle(0, 0, 15, 0x8a4dff).setStrokeStyle(3, 0x2a1458);
+        const orb = this.add.container((icon ? icon.x : src.x) + Phaser.Math.Between(-36, 36), src.y + Phaser.Math.Between(-16, 16), [coin]).setDepth(202).setScale(0.5);
+        const sx = orb.x;
+        const sy = orb.y;
+        const arc = Phaser.Math.Between(50, 120);
+        const side = (dx < src.x ? -1 : 1) * Phaser.Math.Between(20, 60);
+        const k = { v: 0 };
+        this.tweens.add({ targets: orb, scale: 1, duration: 140 });
+        this.tweens.add({
+          targets: k,
+          v: 1,
+          duration: FLY,
+          ease: 'Sine.easeIn',
+          onUpdate: () => {
+            orb.setPosition(sx + (dx - sx) * k.v + Math.sin(k.v * Math.PI) * side, sy + (dy - sy) * k.v - Math.sin(k.v * Math.PI) * arc);
+            orb.setAngle(k.v * 360);
+          },
+          onComplete: () => {
+            orb.destroy();
+            arrived++;
+            this.hold2v2 = start - Math.round((start * arrived) / N);
+            this.coin2v2Refresh?.();
+            this.leagueRepaint?.();
+            const spark = this.add.circle(dx, dy, 7, 0xffffff, 0.9).setDepth(203).setBlendMode(Phaser.BlendModes.ADD);
+            this.tweens.add({ targets: spark, scale: 3, alpha: 0, duration: 260, onComplete: () => spark.destroy() });
+            this.tweens.add({ targets: card, scale: { from: 1.08, to: 1 }, duration: 140 });
+          },
+        });
+      });
+    }
+    // fin fijo (aunque alguna moneda se atrase): se apagan los textos, el contador queda completo y vuelve a las monedas de siempre
+    this.time.delayedCall(TOTAL_MS, () => {
+      if (!this.sys.isActive()) return;
+      this.hold2v2 = 0;
+      this.coin2v2Refresh?.();
+      this.leagueRepaint?.();
+      card.setDepth(prevDepth);
+      const outs = [total, glow, ...(icon ? [icon] : [])];
+      this.tweens.add({ targets: outs, alpha: 0, duration: 200, onComplete: () => outs.forEach((x) => x.destroy()) });
+      const flash = this.add.graphics().setDepth(196).setBlendMode(Phaser.BlendModes.ADD);
+      flash.fillStyle(0xb06bff, 0.45).fillRoundedRect(rect.x, rect.y, rect.w, rect.h, rect.h / 2);
+      this.tweens.add({ targets: flash, alpha: 0, duration: 420, onComplete: () => flash.destroy() });
+      this.time.delayedCall(500, () => {
+        if (this.sys.isActive() && wasMode === '1v1') this.setLeagueMode('1v1');
+        then();
+      });
+    });
   }
 
   /**
@@ -1356,8 +1492,9 @@ export class MenuScene extends Phaser.Scene {
    * entera, destella dorada y vuelve a empezar con el nivel nuevo. Muestra "PASIVA NV n" y "puntos / necesarios".
    */
   private masteryBar(m: { before: number; after: number }, color: number, passiveName: string, cx: number, y: number, depth: number) {
-    const w = Math.min(340, this.scale.width - 80);
-    const h = 34; // (18-11-2026, usuario) más alta (antes 24)
+    // (20-11-2026, usuario) más grande (antes 340 x 34); "LVL n" a la DERECHA, al otro lado del nombre; brillo al asignarse
+    const w = Math.min(420, this.scale.width - 60);
+    const h = 42;
     const p0 = masteryProgress(m.before);
     const p1 = masteryProgress(m.after);
     const box = this.add.container(cx, y).setDepth(depth).setAlpha(0);
@@ -1368,17 +1505,44 @@ export class MenuScene extends Phaser.Scene {
     const fill = this.add.graphics();
     const shine = this.add.graphics();
     shine.fillStyle(0xffffff, 0.18).fillRoundedRect(-w / 2 + 4, 3, w - 8, h * 0.38, { tl: 9, tr: 9, bl: 3, br: 3 });
-    const name = this.add.text(-w / 2 + 4, -20, '', { fontFamily: FONT, fontSize: '20px', color: '#ffffff', stroke: '#0a1638', strokeThickness: 5 }).setOrigin(0, 0.5);
-    const nums = this.add.text(0, h / 2, '', { fontFamily: FONT, fontSize: '21px', color: '#ffffff', stroke: '#0a1638', strokeThickness: 4 }).setOrigin(0.5);
-    box.add([bg, fill, shine, name, nums]);
+    const name = this.add.text(-w / 2 + 4, -22, '', { fontFamily: FONT, fontSize: '23px', color: '#ffffff', stroke: '#0a1638', strokeThickness: 5 }).setOrigin(0, 0.5);
+    const lvl = this.add.text(w / 2 - 4, -22, '', { fontFamily: FONT, fontSize: '23px', color: '#ffd23f', stroke: '#0a1638', strokeThickness: 5 }).setOrigin(1, 0.5);
+    const nums = this.add.text(0, h / 2, '', { fontFamily: FONT, fontSize: '24px', color: '#ffffff', stroke: '#0a1638', strokeThickness: 4 }).setOrigin(0.5);
+    // destello SHINY: una franja de luz inclinada recorre la parte llena de la barra (se lanza al asignarse la maestría)
+    const sweep = this.add.graphics().setBlendMode(Phaser.BlendModes.ADD);
+    let filled = 0;
+    const shiny = (delay: number) => {
+      const st = { x: -0.2 };
+      this.tweens.add({
+        targets: st,
+        x: 1.2,
+        delay,
+        duration: 650,
+        ease: 'Sine.easeInOut',
+        onUpdate: () => {
+          sweep.clear();
+          const L = -w / 2;
+          const R = L + Math.max(filled, h);
+          const bw = 34;
+          const cx0 = L + st.x * w;
+          const pts = [cx0 - bw / 2 + 10, cx0 + bw / 2 + 10, cx0 + bw / 2 - 10, cx0 - bw / 2 - 10].map((x) => Phaser.Math.Clamp(x, L + 6, R - 6));
+          if (pts[1] - pts[0] < 1 && pts[2] - pts[3] < 1) return;
+          sweep.fillStyle(0xffffff, 0.55).fillPoints([{ x: pts[0], y: 2 }, { x: pts[1], y: 2 }, { x: pts[2], y: h - 2 }, { x: pts[3], y: h - 2 }], true);
+        },
+        onComplete: () => sweep.clear(),
+      });
+    };
+    box.add([bg, fill, sweep, shine, name, lvl, nums]);
     const paint = (frac: number, col: number) => {
       fill.clear();
       const fw = Math.max(0, Math.min(1, frac)) * w;
+      filled = fw;
       if (fw < 2) return;
       fill.fillStyle(col, 1).fillRoundedRect(-w / 2, 0, Math.max(fw, h), h, h / 2);
     };
     const label = (p: ReturnType<typeof masteryProgress>, into: number) => {
-      name.setText(`${passiveName.toUpperCase()}  NV ${p.level}`);
+      name.setText(passiveName.toUpperCase());
+      lvl.setText(`LVL ${p.level}`);
       nums.setText(p.max ? 'MÁX' : `${Math.round(into)} / ${p.need}`);
     };
     label(p0, p0.into);
@@ -1410,10 +1574,12 @@ export class MenuScene extends Phaser.Scene {
         this.tweens.add({ targets: fl, alpha: 0, duration: 380, onComplete: () => fl.destroy() });
         this.tweens.add({ targets: box, scale: { from: 1.08, to: 1 }, duration: 300, ease: 'Back.easeOut' });
         label(p1, 0);
+        this.tweens.add({ targets: lvl, scale: { from: 1.5, to: 1 }, duration: 360, ease: 'Back.easeOut' });
+        shiny(0);
         if (p1.max) return paint(1, 0xffe14d);
-        this.time.delayedCall(380, () => box.scene && (paint(0, color), grow(p1, 0, p1.into, 0)));
+        this.time.delayedCall(380, () => box.scene && (paint(0, color), grow(p1, 0, p1.into, 0, () => shiny(0))));
       });
-    } else grow(p1, p0.into, p1.into, 250);
+    } else grow(p1, p0.into, p1.into, 250, () => box.scene && (shiny(0), shiny(700)));
     this.tweens.add({ targets: box, alpha: 0, delay: 2600, duration: 450, onComplete: () => box.destroy() });
   }
 
@@ -1755,13 +1921,20 @@ export class MenuScene extends Phaser.Scene {
     g.fillStyle(0x1b2d5c, 0.5).fillRoundedRect(3, 3, cw - 6, ch * 0.45, { tl: 17, tr: 17, bl: 0, br: 0 });
     card.add(g);
     // MARCO del perfil (16-11-2026): el borde es el marco elegido (de una liga alcanzada; ui/ProfileDialog.ts). Se repinta al cambiarlo
+    // (21-11-2026, usuario) con las imágenes de los marcos (ui/profileFrameArt.ts); sin ellas, el borde dibujado de siempre
     const frameG = this.add.graphics();
+    let frameImg: Phaser.GameObjects.Image | null = null;
     const paintFrame = () => {
       frameG.clear();
-      drawProfileFrame(frameG, cw, ch, 20, equippedFrame(getPlayer() as PlayerState));
+      frameImg?.destroy();
+      frameImg = null;
+      const fid = equippedFrame(getPlayer() as PlayerState);
+      frameImg = fid ? addProfileFrameArt(this, cw, ch, fid) : null;
+      if (frameImg) card.addAt(frameImg, card.getIndex(frameG));
+      else drawProfileFrame(frameG, cw, ch, 20, fid);
     };
-    paintFrame();
     card.add(frameG);
+    paintFrame();
     const offFrame = onPlayerChange(() => frameG.active && paintFrame());
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => offFrame());
     // tocar la card (fuera de la insignia, que abre la lista de rangos) abre el PERFIL: datos de la cuenta y marcos
@@ -1973,9 +2146,15 @@ export class MenuScene extends Phaser.Scene {
       (c.getData('coin2v2') as Phaser.GameObjects.Components.Visible | undefined)?.setVisible(m2);
       (c.getData('coin2Text') as Phaser.GameObjects.Text | undefined)?.setVisible(m2);
       this.tweens.killTweensOf(shown);
-      txt.setText(fmt(m2 ? Math.max(0, Math.floor(getPlayer().coins2v2 ?? 0)) : shown.v)).setColor(m2 ? '#e6d2ff' : '#ffe28a');
+      txt.setText(fmt(m2 ? Math.max(0, Math.floor(getPlayer().coins2v2 ?? 0) - this.hold2v2) : shown.v)).setColor(m2 ? '#e6d2ff' : '#ffe28a');
       fitText(txt, COUNTER_TEXT_W);
       this.tweens.add({ targets: txt, scale: { from: txt.scale * 1.2, to: txt.scale }, duration: 240, ease: 'Back.easeOut' });
+    };
+    // (21-11-2026) monedas 2V2 que llegan (playCoins2v2): pone al día lo que muestra el contador mientras se ve en modo 2V2
+    this.coin2v2Refresh = () => {
+      if (this.leagueMode !== '2v2') return;
+      txt.setText(fmt(Math.max(0, Math.floor(getPlayer().coins2v2 ?? 0) - this.hold2v2))).setColor('#ffe27a');
+      fitText(txt, COUNTER_TEXT_W);
     };
     const animateTo = (to: number) => {
       this.registry.set(KEY, to);
@@ -2036,7 +2215,7 @@ export class MenuScene extends Phaser.Scene {
       // (21-11-2026, usuario) tocar la card ALTERNA entre la LIGA de siempre y la LIGA 2V2 (monedas 2v2 y rango 2v2); antes abría el TOP 100
       const m2 = this.leagueMode === '2v2';
       const accent = m2 ? 0xb06bff : 0x3a7bff;
-      const total2 = Math.max(0, Math.floor(getPlayer().coins2v2 ?? 0));
+      const total2 = Math.max(0, Math.floor(getPlayer().coins2v2 ?? 0) - this.hold2v2); // (21-11-2026) menos lo que aún no llegó (playCoins2v2)
       const rk2 = rank2v2(total2);
       // (21-11-2026, 3.er diseño, referencia del usuario) card azul del menú con trofeo dorado a la izquierda, "LIGA <NOMBRE> · SEMANAL" en
       // dorado y UNA barra con las monedas que llevas esta semana en la liga. La barra se llena hacia la meta de ascenso (15.000 de 30.000 =

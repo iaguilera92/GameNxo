@@ -11,6 +11,7 @@
 import { grantItem } from './operations';
 import { type ItemId, type PlayerState, clonePlayer, itemId, owns } from './player';
 import { gainChest } from './chest';
+import { addCoins2v2 } from './coins2v2';
 import { charColorItem } from './charColors';
 import { gameClock } from './timeSource';
 import { newBattlePass } from './battlePassState';
@@ -52,7 +53,7 @@ export function bpCanClaim(s: PlayerState, track: BpTrack, tier: number): BpErro
 }
 
 /** Reclama un premio (una sola vez). Devuelve lo entregado (un cosmético repetido se compensa). */
-export function bpClaim(s: PlayerState, track: BpTrack, tier: number): BpResult<{ given: BpReward }> {
+export function bpClaim(s: PlayerState, track: BpTrack, tier: number): BpResult<{ given: BpReward; dupCash?: number }> {
   const synced = syncSeason(s);
   const err = bpCanClaim(synced, track, tier);
   if (err) return { ok: false, error: err };
@@ -61,26 +62,27 @@ export function bpClaim(s: PlayerState, track: BpTrack, tier: number): BpResult<
   const granted = grantBpReward(n, reward);
   n = granted.state;
   const given = granted.given;
+  const dupCash = granted.dupCash;
   n = clonePlayer(n);
   (track === 'free' ? n.bp.free : n.bp.prem).push(tier);
-  return { ok: true, state: n, given };
+  return { ok: true, state: n, given, ...(dupCash ? { dupCash } : {}) };
 }
 
 /** Cobra una sola vez el regalo de bienvenida del camino elegido. */
-export function bpClaimWelcome(s: PlayerState, track: BpTrack): BpResult<{ given: BpReward }> {
+export function bpClaimWelcome(s: PlayerState, track: BpTrack): BpResult<{ given: BpReward; dupCash?: number }> {
   const synced = syncSeason(s);
   const claimed = track === 'free' ? synced.bp.welcomeFreeClaimed : synced.bp.welcomePremClaimed;
   if (claimed) return { ok: false, error: 'already_claimed' };
   if (track === 'prem' && !synced.bp.premium) return { ok: false, error: 'not_premium' };
   const reward = BP_SEASON.welcome[track];
-  const { state: n, given } = grantBpReward(clonePlayer(synced), reward);
+  const { state: n, given, dupCash } = grantBpReward(clonePlayer(synced), reward);
   if (track === 'free') n.bp.welcomeFreeClaimed = true;
   else n.bp.welcomePremClaimed = true;
-  return { ok: true, state: n, given };
+  return { ok: true, state: n, given, ...(dupCash ? { dupCash } : {}) };
 }
 
 /** Entrega dinero, cosméticos o un personaje con estilo; compensa solo si ya se posee todo. */
-function grantBpReward(player: PlayerState, reward: BpReward): { state: PlayerState; given: BpReward } {
+function grantBpReward(player: PlayerState, reward: BpReward): { state: PlayerState; given: BpReward; dupCash?: number } {
   const n = clonePlayer(player);
   if (reward.kind === 'cash') {
     n.gems += reward.amount;
@@ -90,6 +92,12 @@ function grantBpReward(player: PlayerState, reward: BpReward): { state: PlayerSt
     n.zone.rays += reward.amount;
     return { state: n, given: reward };
   }
+  // (21-11-2026, usuario) MONEDAS 1v1 y 2v2: se suman a la cuenta sin más
+  if (reward.kind === 'coins') {
+    n.coins += reward.amount;
+    return { state: n, given: reward };
+  }
+  if (reward.kind === 'coins2v2') return { state: addCoins2v2(n, reward.amount), given: reward };
   if (reward.kind === 'chest') {
     // (19-11-2026, usuario) COFRE NORMAL, como el de la ruleta: si ya hay uno sin abrir, evoluciona; si ya era épico, monedas
     const r = gainChest(n, gameClock.now());
@@ -112,8 +120,9 @@ function grantBpReward(player: PlayerState, reward: BpReward): { state: PlayerSt
     : [reward.item];
   const newItems = ids.filter((id) => !owns(n, id));
   if (!newItems.length) {
+    // (21-11-2026, usuario) ya lo tenías: se compensa en dinero, pero given sigue siendo el premio (la pantalla muestra el emote / efecto, no el dinero)
     n.gems += BP_SEASON.duplicateCash;
-    return { state: n, given: { kind: 'cash', amount: BP_SEASON.duplicateCash } };
+    return { state: n, given: reward, dupCash: BP_SEASON.duplicateCash };
   }
   for (const id of newItems) {
     const result = grantItem(n, id);

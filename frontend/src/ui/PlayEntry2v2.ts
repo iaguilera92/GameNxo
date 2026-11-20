@@ -5,6 +5,10 @@ import { drawStakePill, drawUnrankedChip, modal } from './PlayEntry';
 import { fmtCoins } from './leagueStyle';
 import { getPlayer } from '../domain/playerStore';
 import { COINS_2V2, effectiveBet2v2, friendly2v2, stakes2v2 } from '../domain/coins2v2';
+import { doublesSearchPanel } from './searchPanel';
+import { rank2v2 } from '../domain/league2v2';
+import { rankDef, type RankId } from '../domain/ranks';
+import { fitText } from './fitText';
 
 /**
  * (21-11-2026, usuario) Entrada del 2v2 en el menú: el botón GRANDE "2v2" con la apuesta en MONEDAS 2V2 (la píldora "🪙 15 x1", con posibilidad de x2, igual
@@ -118,7 +122,7 @@ export function doublesPlayButton(scene: Phaser.Scene, x: number, y: number, w: 
  *   - CABECERA morada con la moneda 2v2, "2V2" y la pareja contra 2 bots;
  *   - tarjeta de APUESTA: "TU APUESTA" y "TIENES <monedas 2v2>", el monto GRANDE con su moneda, un INTERRUPTOR x1 | x2 con las dos opciones a la vista (el x2
  *     se atenúa con candado si no hay monedas para cubrirlo) y dos recuadros: SI GANAS (verde) y SI PIERDES (rojo);
- *   - los dos botones (JUGAR 2V2 e INVITAR AMIGO), sin cambios.
+ *   - los dos botones (JUGAR 2V2 e INVITAR AMIGO), con el mismo ancho que la tarjeta (20-11-2026).
  * `plain` (modo desarrollo apagado) = solo cabecera y botones. `onChange` avisa de un cambio de apuesta (el botón del menú repinta su píldora).
  */
 export function openDoublesDialog(scene: Phaser.Scene, opts: { plain: boolean; onPlay: () => void; onInvite: () => void; onChange?: () => void }) {
@@ -126,10 +130,11 @@ export function openDoublesDialog(scene: Phaser.Scene, opts: { plain: boolean; o
   const pw = Math.min(560, scene.scale.width - 48);
   const HEAD = 100;
   const CARD_Y = HEAD + 22;
-  const CARD_H = 250;
+  const CARD_H = 272; // (20-11-2026, usuario) más aire abajo, bajo SI GANAS / SI PIERDES (antes 250)
   const ph = plain ? 360 : CARD_Y + CARD_H + 28 + 80 + 20 + 68 + 36;
   const top = -ph / 2;
   const { p, close } = modal(scene, pw, ph, PURPLE);
+  // (20-11-2026, usuario) sin el subtítulo 'TÚ Y TU COMPAÑERO CONTRA 2 BOTS': el título va centrado en la cabecera
   // --- cabecera morada (esquinas de arriba redondeadas como el panel) con la moneda 2v2 y el título
   const hg = scene.add.graphics();
   hg.fillStyle(0x4a1fb8, 1).fillRoundedRect(-pw / 2 + 3, top + 3, pw - 6, HEAD, { tl: 21, tr: 21, bl: 0, br: 0 });
@@ -137,12 +142,14 @@ export function openDoublesDialog(scene: Phaser.Scene, opts: { plain: boolean; o
   hg.fillStyle(0xffffff, 0.12).fillRoundedRect(-pw / 2 + 12, top + 9, pw - 24, 16, 8);
   hg.fillStyle(0x1d0a52, 1).fillRect(-pw / 2 + 3, top + 3 + HEAD - 3, pw - 6, 3);
   p.add(hg);
-  const title = scene.add.text(0, top + 40, '2V2', { fontFamily: FONT, fontSize: '48px', color: '#ffffff', stroke: '#1d0a52', strokeThickness: 8 }).setOrigin(0.5).setLetterSpacing(5);
+  // (21-11-2026, usuario) el título dice en qué liga estás ("LIGA 2V2 - BRONCE") y ya no lleva las monedas 2v2 a los lados
+  const league = rankDef(rank2v2(Math.max(0, Math.floor(getPlayer().coins2v2 ?? 0))).id).name.toUpperCase();
+  const title = scene.add.text(0, top + 52, `LIGA 2V2 - ${league}`, { fontFamily: FONT, fontSize: '42px', color: '#ffffff', stroke: '#1d0a52', strokeThickness: 8 }).setOrigin(0.5).setLetterSpacing(3);
+  fitText(title, pw - 110); // deja sitio a la X de cerrar
   p.add(title);
-  p.add(coin2v2Icon(scene, -title.width / 2 - 38, top + 40, 22));
-  p.add(coin2v2Icon(scene, title.width / 2 + 38, top + 40, 22));
-  p.add(scene.add.text(0, top + 80, 'TÚ Y TU COMPAÑERO CONTRA 2 BOTS', { fontFamily: FONT, fontSize: '15px', color: '#e6d2ff' }).setOrigin(0.5).setLetterSpacing(2));
-  const bw = Math.min(400, pw - 80);
+
+  // (20-11-2026, usuario) con la tarjeta de apuesta, los botones tienen su MISMO ancho
+  const bw = plain ? Math.min(400, pw - 80) : pw - 56;
   if (!plain) {
     const card = scene.add.container(0, top + CARD_Y);
     p.add(card);
@@ -328,3 +335,13 @@ function openDoublesInfo(scene: Phaser.Scene, openPicker: () => void) {
     }, { palette: 'red' }),
   );
 }
+
+/** (20-11-2026, usuario) Panel de la búsqueda del 2v2 (liga 2v2 arriba; lo invertido y el premio en MONEDAS 2V2 abajo), con la apuesta de ahora. */
+export function doublesSearchPanelNow(scene: Phaser.Scene): Phaser.GameObjects.GameObject[] {
+  const coins = Math.max(0, Math.floor(getPlayer().coins2v2 ?? 0));
+  const st = stakeOf(currentBet2v2());
+  return doublesSearchPanel(scene, { bet: st.bet, risk: st.risk, prize: st.prize, friendly: friendly2v2(coins), icon: (x, y, r) => coin2v2Icon(scene, x, y, r), rank: rank2v2(coins).id });
+}
+
+/** (21-11-2026) liga 2v2 actual (por tus monedas 2v2): para precargar su emblema en la búsqueda */
+export const league2v2Id = (): RankId => rank2v2(Math.max(0, Math.floor(getPlayer().coins2v2 ?? 0))).id;

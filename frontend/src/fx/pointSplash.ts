@@ -24,6 +24,8 @@ export interface PointSplashOpts {
   title?: string;
   /** aviso grande de punto de partido */
   matchPoint?: boolean;
+  /** (20-11-2026, usuario) se llama justo cuando la cifra cambia (30 → 40): el marcador de arriba cambia a la vez */
+  onChange?: () => void;
 }
 
 /**
@@ -83,9 +85,13 @@ export function showPointSplash(scene: Phaser.Scene, o: PointSplashOpts) {
     for (let x = left ? 0 : cx; x < (left ? cx : W); x += 18) g.lineBetween(x, bot, x + 30, top);
     c.add(g);
     // nombre (pestaña sobre la franja, hacia fuera del centro)
-    const nameX = left ? cx - SLANT - 150 : cx + SLANT + 150;
-    const tag = scene.add.text(nameX, top - 4, o[left ? 'playerName' : 'rivalName'].toUpperCase(), { fontFamily: FONT, fontSize: '24px', color: '#ffffff', stroke: '#0a1638', strokeThickness: 6 }).setOrigin(left ? 1 : 0, 1);
-    if (tag.width > W / 2 - 120) tag.setScale((W / 2 - 120) / tag.width);
+    // (21-11-2026, usuario) 2v2: los dos nombres de la pareja ("A / B") van más cerca de la diagonal para que quepan los dos enteros
+    const label = o[left ? 'playerName' : 'rivalName'].toUpperCase();
+    const dbl = label.includes(' / ');
+    const nameX = dbl ? (left ? cx + SLANT - 6 : cx + SLANT + 14) : left ? cx - SLANT - 150 : cx + SLANT + 150;
+    const tag = scene.add.text(nameX, top - 4, label, { fontFamily: FONT, fontSize: '24px', color: '#ffffff', stroke: '#0a1638', strokeThickness: 6 }).setOrigin(left ? 1 : 0, 1);
+    const maxTag = dbl ? (left ? nameX - 10 : W - nameX - 10) : W / 2 - 120;
+    if (tag.width > maxTag) tag.setScale(maxTag / tag.width);
     c.add(tag);
     // cifra cerca de la diagonal
     const num = scene.add
@@ -157,6 +163,8 @@ export function showPointSplash(scene: Phaser.Scene, o: PointSplashOpts) {
   scene.time.delayedCall(IN + 300, () => {
     if (scene.cache.audio.exists('marcador')) scene.sound.play('marcador', { volume: 0.9 });
   });
+  // el nuevo valor queda a la vista a los IN + 320 ms (sube el anterior y entra el nuevo): ahí cambia también el marcador de arriba
+  if (o.onChange) scene.time.delayedCall(IN + 320, o.onChange);
 
   const outAt = POINT_SPLASH_MS - OUT - 60;
   scene.time.delayedCall(outAt, () => {

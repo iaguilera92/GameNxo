@@ -28,6 +28,8 @@ export interface DailyWheelsOpts {
 
 const MINI_R = 34;
 const PANEL_H = 104;
+/** marco de las ruletas (assets/ruleta-frame.webp, el mismo de WheelScene): 900 px de lado y el disco de 336 px de radio */
+const FRAME = { key: 'ruleta-frame', size: 900, disc: 336 };
 
 /** ms que se espera antes de que las ruletas aparezcan en cascada al entrar al menú (a los 0 s ya iban por la mitad) */
 const INTRO_DELAY = 1000;
@@ -159,7 +161,7 @@ export class DailyWheels extends Phaser.GameObjects.Container {
 
   /** Efecto de "abierta": destello y anillo que se expande en la posición de la ruleta cobrada. */
   private vanish(x: number) {
-    const ring = this.scene.add.circle(x, 4, MINI_R + 4, 0xffffff, 0).setStrokeStyle(5, GOLD, 1).setBlendMode(Phaser.BlendModes.ADD);
+    const ring = this.scene.add.circle(x, 4, this.scene.textures.exists(FRAME.key) ? MINI_R + 11 : MINI_R + 4, 0xffffff, 0).setStrokeStyle(5, GOLD, 1).setBlendMode(Phaser.BlendModes.ADD);
     const core = this.scene.add.circle(x, 4, MINI_R, 0xfff1b8, 0.8).setBlendMode(Phaser.BlendModes.ADD);
     this.add([ring, core]);
     this.scene.tweens.add({ targets: ring, scale: 1.9, alpha: 0, duration: 520, ease: 'Cubic.easeOut', onComplete: () => ring.destroy() });
@@ -180,39 +182,50 @@ export class DailyWheels extends Phaser.GameObjects.Container {
     const c = this.scene.add.container(x, y);
     this.add(c);
     const ready = s === 'ready' || s === 'spun';
+    // (21-11-2026, usuario) con ruleta-frame.webp: aro metálico con luces, indicador dorado y centro; si no cargó, el dibujo de siempre
+    const framed = this.scene.textures.exists(FRAME.key);
     if (selected) {
       // la próxima en abrirse: aro celeste que late alrededor (como un "seleccionado")
       const sel = this.scene.add.graphics();
-      sel.lineStyle(4, 0x7ff0ff, 1).strokeCircle(0, 0, MINI_R + 9);
-      sel.lineStyle(10, 0x7ff0ff, 0.22).strokeCircle(0, 0, MINI_R + 10);
+      const sr = framed ? MINI_R + 15 : MINI_R + 9; // con el marco, el aro va por fuera de él
+      sel.lineStyle(4, 0x7ff0ff, 1).strokeCircle(0, 0, sr);
+      sel.lineStyle(10, 0x7ff0ff, 0.22).strokeCircle(0, 0, sr + 1);
       c.add(sel);
       this.scene.tweens.add({ targets: sel, scale: { from: 0.96, to: 1.08 }, alpha: { from: 1, to: 0.55 }, duration: 650, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
     }
     if (ready) {
       // lista para girar: aura dorada fija (sin latir) y el "!"
-      const aura = this.scene.add.circle(0, 0, MINI_R + 10, GOLD, 0.3).setBlendMode(Phaser.BlendModes.ADD);
+      const aura = this.scene.add.circle(0, 0, framed ? MINI_R + 14 : MINI_R + 10, GOLD, 0.3).setBlendMode(Phaser.BlendModes.ADD);
       c.add(aura);
     }
-    const rim = this.scene.add.graphics();
-    rim.fillStyle(NAVY, 1).fillCircle(0, 0, MINI_R + 5);
-    rim.fillStyle(s === 'done' ? 0x55607a : GOLD, 1).fillCircle(0, 0, MINI_R + 2.5);
-    c.add(rim);
+    if (!framed) {
+      const rim = this.scene.add.graphics();
+      rim.fillStyle(NAVY, 1).fillCircle(0, 0, MINI_R + 5);
+      rim.fillStyle(s === 'done' ? 0x55607a : GOLD, 1).fillCircle(0, 0, MINI_R + 2.5);
+      c.add(rim);
+    }
     const face = this.scene.add.graphics();
     drawWheelFace(face, MINI_R, false);
     c.add(face);
-    const hub = this.scene.add.graphics();
-    hub.fillStyle(NAVY, 1).fillCircle(0, 0, 8);
-    hub.fillStyle(GOLD, 1).fillCircle(0, 0, 5.5);
-    c.add(hub);
-    // indicador
-    const ptr = this.scene.add.graphics();
-    ptr.fillStyle(NAVY, 1).fillTriangle(-7, -MINI_R - 9, 7, -MINI_R - 9, 0, -MINI_R + 4);
-    ptr.fillStyle(0xff3b4f, 1).fillTriangle(-4.5, -MINI_R - 7, 4.5, -MINI_R - 7, 0, -MINI_R + 1);
-    c.add(ptr);
+    if (framed) {
+      // el marco va ENCIMA del disco (que gira por debajo): trae el aro, el indicador y el centro
+      const d = (FRAME.size * MINI_R) / FRAME.disc;
+      c.add(this.scene.add.image(0, 0, FRAME.key).setDisplaySize(d, d));
+    } else {
+      const hub = this.scene.add.graphics();
+      hub.fillStyle(NAVY, 1).fillCircle(0, 0, 8);
+      hub.fillStyle(GOLD, 1).fillCircle(0, 0, 5.5);
+      c.add(hub);
+      // indicador
+      const ptr = this.scene.add.graphics();
+      ptr.fillStyle(NAVY, 1).fillTriangle(-7, -MINI_R - 9, 7, -MINI_R - 9, 0, -MINI_R + 4);
+      ptr.fillStyle(0xff3b4f, 1).fillTriangle(-4.5, -MINI_R - 7, 4.5, -MINI_R - 7, 0, -MINI_R + 1);
+      c.add(ptr);
+    }
 
     if (s === 'done') {
       // ya cobrada: deshabilitada (gris y atenuada), sin animación
-      c.add(this.scene.add.circle(0, 0, MINI_R + 3, 0x1a2238, 0.68));
+      c.add(this.scene.add.circle(0, 0, framed ? MINI_R + 10 : MINI_R + 3, 0x1a2238, 0.68));
       c.setAlpha(0.75);
     } else if (s === 'locked') {
       // por ganar: a color, sin candado; solo la que viene (la seleccionada) se mueve (vaivén suave); las demás, quietas
@@ -220,7 +233,7 @@ export class DailyWheels extends Phaser.GameObjects.Container {
       if (selected) this.scene.tweens.add({ targets: face, angle: face.angle + 14, duration: 1400, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
     } else if (ready) {
       // lista para girar: quieta (16-11-2026), se distingue por el aura dorada y el "!"
-      const badge = this.scene.add.container(MINI_R - 2, -MINI_R + 4);
+      const badge = this.scene.add.container(framed ? MINI_R + 5 : MINI_R - 2, framed ? -MINI_R + 1 : -MINI_R + 4);
       const bg = this.scene.add.graphics();
       bg.fillStyle(NAVY, 1).fillCircle(0, 0, 12.5);
       bg.fillStyle(0xff3b4f, 1).fillCircle(0, 0, 10);
@@ -229,7 +242,7 @@ export class DailyWheels extends Phaser.GameObjects.Container {
       c.add(badge);
     }
 
-    c.setSize(MINI_R * 2 + 16, MINI_R * 2 + 16).setInteractive({ useHandCursor: true });
+    c.setSize(MINI_R * 2 + (framed ? 28 : 16), MINI_R * 2 + (framed ? 28 : 16)).setInteractive({ useHandCursor: true });
     c.on('pointerup', () => {
       this.scene.tweens.add({ targets: c, scale: { from: 0.88, to: 1 }, duration: 220, ease: 'Back.easeOut' });
       if (ready) this.opts.onOpen(i);

@@ -1,1 +1,0 @@
-..\_temp\moneda-2v2-256.png -> public\assets\moneda-2v2.webp (256x256)

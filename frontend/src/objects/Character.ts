@@ -519,6 +519,11 @@ export class Character extends Phaser.GameObjects.Container {
     return this.nxo?.remateJump() ?? false;
   }
 
+  /** (20-11-2026) el golpe en curso se queda `ms` en su frame de impacto (ESPECIAL; ver NxoActor.holdImpact) */
+  holdImpact(ms: number) {
+    this.nxo?.holdImpact(ms);
+  }
+
   /** (21-11-2026) ULTI HURACAN: deja el golpe en curso congelado en su frame `frame` (indice) hasta releaseFollowThrough (ver NxoActor). */
   holdFollowThrough(frame: number, ms = 0) {
     this.nxo?.holdFollowThrough(frame, ms);

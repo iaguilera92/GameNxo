@@ -14,6 +14,7 @@
  */
 import { addCash, addCoins, addXp, grantItem } from './operations';
 import { gainChest } from './chest';
+import { addCoins2v2 } from './coins2v2';
 import type { OpResult } from './operations';
 import { type ItemId, type PlayerState, clonePlayer, owns } from './player';
 import { COSMETIC_CATALOG, WEIGHT_TOTAL, WHEEL, type WheelSlot } from './wheelConfig';
@@ -172,7 +173,7 @@ export function markPresented(s: PlayerState, index: number, now: number): Wheel
 /** Resuelve el premio de un sector (épico: elige opción; cosmético: elige del catálogo). */
 export function resolvePrize(slot: WheelSlot, s: PlayerState, rng: Rng): WheelReward {
   const p = slot.prize;
-  if (p.kind === 'coins' || p.kind === 'xp' || p.kind === 'cash') return { kind: p.kind, amount: p.amount };
+  if (p.kind === 'coins' || p.kind === 'coins2v2' || p.kind === 'xp' || p.kind === 'cash') return { kind: p.kind, amount: p.amount };
   if (p.kind === 'chest') return { kind: 'chest' };
   if (p.kind === 'epic') {
     const o = pickWeighted(p.options, rng);
@@ -268,6 +269,7 @@ function applyReward(s: PlayerState, r: WheelReward, now = Date.now()): { state:
     } else res = grantItem(s, r.item);
   } else if (r.kind === 'xp') res = addXp(s, r.amount);
   else if (r.kind === 'cash') res = addCash(s, r.amount);
+  else if (r.kind === 'coins2v2') res = { ok: true, state: addCoins2v2(s, r.amount) };
   else res = addCoins(s, r.amount);
   return { state: res.ok ? res.state : s, given };
 }
@@ -375,6 +377,7 @@ function validReward(v: unknown): WheelReward | null {
   }
   if (r.kind === 'xp' && amt) return { kind: 'xp', amount: amt };
   if (r.kind === 'cash' && amt) return { kind: 'cash', amount: amt };
+  if (r.kind === 'coins2v2' && amt) return { kind: 'coins2v2', amount: amt };
   if (r.kind === 'item' && typeof r.item === 'string' && COSMETIC_CATALOG.some((c) => c.id === r.item))
     return { kind: 'item', item: r.item as ItemId, name: typeof r.name === 'string' ? r.name : '' };
   return null;

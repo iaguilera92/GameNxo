@@ -75,6 +75,7 @@ export function playMatchFinale(scene: Phaser.Scene, o: MatchFinaleOpts): number
     hl.fillStyle(r.color, 1).fillRoundedRect(-pw / 2 + 14, y - 18, 10, 36, 4);
     panel.add(hl);
     const name = scene.add.text(-pw / 2 + 40, y, r.name.toUpperCase(), { fontFamily: FONT, fontSize: '30px', color: r.winner ? '#ffe680' : '#cfd8ee', stroke: '#0a1638', strokeThickness: 5 }).setOrigin(0, 0.5);
+    if (name.width > pw - 200) name.setScale((pw - 200) / name.width); // 2v2: dos nombres juntos
     panel.add(name);
     // cifra: el ganador empieza con un juego menos y sube con salto
     const box = scene.add.graphics();
@@ -84,9 +85,16 @@ export function playMatchFinale(scene: Phaser.Scene, o: MatchFinaleOpts): number
     const n = scene.add.text(pw / 2 - 54, y + 1, String(r.winner ? Math.max(0, r.games - 1) : r.games), { fontFamily: FONT, fontSize: '40px', color: r.winner ? '#ffd23f' : '#ffffff', stroke: '#0a1638', strokeThickness: 6 }).setOrigin(0.5);
     panel.add(n);
     numbers.push(n);
-    if (r.winner) {
-      // corona sobre el nombre del ganador
-      const crown = scene.add.graphics({ x: -pw / 2 + 40 + Math.min(name.width, pw - 200) + 26, y: y - 4 });
+    if (r.winner && scene.textures.exists('ui-trofeo')) {
+      // (21-11-2026, usuario) TROFEO (trofeo.png, textura 'ui-trofeo' que carga MatchScene) en lugar de la corona dibujada, junto al nombre del ganador
+      const tr = scene.add.image(-pw / 2 + 40 + name.displayWidth + 34, y - 2, 'ui-trofeo');
+      const k = 46 / tr.height;
+      tr.setScale(0).setAngle(-20);
+      panel.add(tr);
+      scene.tweens.add({ targets: tr, scale: k, angle: 0, delay: 900, duration: 380, ease: 'Back.easeOut' });
+    } else if (r.winner) {
+      // corona sobre el nombre del ganador (sin la imagen del trofeo)
+      const crown = scene.add.graphics({ x: -pw / 2 + 40 + name.displayWidth + 26, y: y - 4 });
       crown.fillStyle(GOLD, 1).fillPoints(
         [
           new Phaser.Geom.Point(-16, 10),

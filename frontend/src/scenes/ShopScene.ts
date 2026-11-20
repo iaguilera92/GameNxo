@@ -1,3 +1,4 @@
+import { isDevMode } from '../domain/devMode';
 import { installTapSound } from '../fx/uiSound';
 import Phaser from 'phaser';
 import { FONT, restartOnResize, textStyle } from '../ui/theme';
@@ -18,10 +19,10 @@ import { drawCashIcon } from './BattlePassScene';
 import { type ItemId, type ItemKind, type StyleId, owns } from '../domain/player';
 import { drawRarityFrame } from '../ui/rarity';
 import { bakeGraphics, dropBaked } from '../ui/bakeGraphics';
-import { CASH_PACKS, SHOP_ITEMS, clpLabel, type CashPack, type ItemRarity, type ShopItem } from '../domain/shopCatalog';
+import { CASH_PACKS, LEGENDARY_EMOTE_CLP, SHOP_ITEMS, clpLabel, type CashPack, type ItemRarity, type ShopItem } from '../domain/shopCatalog';
 import { openShopPreview } from '../ui/ShopPreviewDialog';
 import { createZoneDemo } from '../fx/zoneDemo';
-import { ZONE_SKINS, ZONE_SKIN_IDS, type ZoneSkinId, zoneSkinOwned } from '../domain/zoneSkins';
+import { ZONE_SKINS, type ZoneSkinId, zoneSkinOwned } from '../domain/zoneSkins';
 import { createDefensiveDemo, createSpecialDemo, createStyleDemo } from '../fx/powerDemo';
 import { addBallPreview, ensureBallAnims, queueInfernoArt } from '../fx/InfernoFx';
 import { infernoPowerDef, type InfernoPower } from '../domain/infernoPowers';
@@ -33,7 +34,10 @@ import { createTrailPreview } from '../fx/ballTrailFx';
 import { DASH_COOLDOWN, SMASH_COOLDOWN } from '../config';
 import { INFERNO } from '../logic/InfernoDrive';
 import { claimShopGift, shopGiftStatus } from '../logic/Ranked';
-import { coinIcon, drawGiftIcon } from '../ui/wheelArt';
+import { coin2v2Image, coinIcon, drawGiftIcon } from '../ui/wheelArt';
+import { EMOTE_ANIM, EMOTE_TEXTURE, ensureEmoteAnims, queueEmoteArt } from '../ui/Emotes';
+import { LEGENDARY_EMOTES, type EmoteKind } from '../domain/emotes';
+import { shopBlurb } from '../domain/shopBlurbs';
 
 /**
  * TIENDA: todo se compra con DINERO (billetes); la cabecera solo muestra ese saldo.
@@ -136,6 +140,8 @@ export class ShopScene extends Phaser.Scene {
     if (!this.textures.exists('icon-zona')) this.load.image('icon-zona', 'assets/icon-zona.webp'); // cards de ZONA (recoloreada por estilo)
     if (!this.textures.exists('cash-pack')) this.load.image('cash-pack', 'assets/dinero-fardo-chico.webp'); // precios de más de 1
     // retrato de Mai (premio mayor del Pase, en OFERTAS): ya lo carga BootScene; solo se descarga si falta
+    if (!this.textures.exists('oferta-emotes')) this.load.image('oferta-emotes', 'assets/oferta-emotes.webp'); // fondo de la oferta de EMOTES LEGENDARIOS
+    queueEmoteArt(this.load); // emotes legendarios animados de esa oferta
     queuePassPortraits(this); // retrato del personaje del Pase (tarjeta del Pase)
     queueInfernoArt(this.load); // bolas de los poderes (vista previa)
     queueChargeFxArt(this.load, ['fire', 'energy', 'tulip']); // aros de carga (vista previa)
@@ -235,6 +241,13 @@ export class ShopScene extends Phaser.Scene {
       this.reg(y, ch);
       y += ch + 52;
     }
+    // (21-11-2026, usuario) oferta de EMOTES LEGENDARIOS: arte de fondo y, a la derecha, los emotes que van cambiando
+    ensureEmoteAnims(this);
+    this.sectionTitle(W, y, 'EMOTES LEGENDARIOS');
+    y += titleGap;
+    this.emoteOffer(30, y, W - 60, ch);
+    this.reg(y, ch);
+    y += ch + 52;
 
     // lo que rota (CARGANDO GOLPE, ESPECIAL, DEFENSIVO cada 12 h; ULTI cada 24 h): 3 a la vez, igual para todos (domain/shopRotation.ts)
     const now = Date.now();
@@ -318,12 +331,14 @@ export class ShopScene extends Phaser.Scene {
     });
     y += dh + 52;
     // ---------------------------------------------------------------- ESTILOS DE ZONA (16-11-2026): Eléctrica (de todos), Fuego (épica), Sombra (legendaria)
-    this.sectionTitle(W, y, 'ZONA', INFO.zone);
+    // (21-11-2026, usuario) 2 cards que cambian cada SEMANA (domingo), con su contador (domain/shopRotation.ts)
+    this.sectionTitle(W, y, 'ZONA', INFO.zone, { kind: 'zone', now });
     y += titleGap;
-    const zc = cols3(ZONE_SKIN_IDS.length);
+    const zoneItems = shopOffers('zone', now);
+    const zc = cols3(zoneItems.length);
     const zh = 270;
-    ZONE_SKIN_IDS.forEach((zid, i) => {
-      this.zoneCard(zc.x(i), y, zc.w, zh, zid, SHOP_ITEMS.find((it) => it.id === `zone:${zid}`));
+    zoneItems.forEach((zit, i) => {
+      this.zoneCard(zc.x(i), y, zc.w, zh, zit.id.split(':')[1] as ZoneSkinId, zit);
       this.reg(y, zh);
     });
     y += zh + 52;
@@ -359,7 +374,7 @@ export class ShopScene extends Phaser.Scene {
 
   /** Qué muestra ahora cada categoría que rota (para saber si hay que reconstruir la Tienda al cambiar). */
   private rotationSignature(now: number) {
-    return (['charge', 'inferno', 'smash', 'defensive'] as ItemKind[]).map((k) => shopOffers(k, now).map((i) => i.id).join(',')).join('|');
+    return (['charge', 'inferno', 'smash', 'defensive', 'zone'] as ItemKind[]).map((k) => shopOffers(k, now).map((i) => i.id).join(',')).join('|');
   }
 
   /** ancho de la píldora del contador de ofertas (a la derecha del título de las categorías que rotan) */
@@ -474,25 +489,38 @@ export class ShopScene extends Phaser.Scene {
     const st = shopGiftStatus();
     const c = this.add.container(0, 0);
     this.body.add(c);
-    // como una celda del PASE DE BATALLA, sin brillo ni dorado: card verde, regalo al centro y toda la card es táctil
+    // (21-11-2026, usuario) fondo VERDE con degradado completo, sin bordes; el premio es sorpresa (no se dice cuántas monedas)
     const GIFT = 0x35c85a;
-    c.add(this.card(x, y, w, h, { line: st.available ? GIFT : NEON, glow: st.available ? 0.3 : 0.18 }));
-    if (st.available) {
-      const tint = this.add.graphics();
-      tint.fillStyle(GIFT, 0.14).fillRoundedRect(x, y, w, h, 20);
-      c.add(tint);
+    const gk = `gift-grad-${Math.round(w)}x${Math.round(h)}`;
+    if (!this.textures.exists(gk)) {
+      const tex = this.textures.createCanvas(gk, Math.round(w), Math.round(h));
+      if (tex) {
+        const ctx = tex.getContext();
+        const bw = Math.round(w);
+        const bh = Math.round(h);
+        const r = 20;
+        ctx.beginPath();
+        ctx.moveTo(r, 0);
+        ctx.arcTo(bw, 0, bw, bh, r);
+        ctx.arcTo(bw, bh, 0, bh, r);
+        ctx.arcTo(0, bh, 0, 0, r);
+        ctx.arcTo(0, 0, bw, 0, r);
+        ctx.closePath();
+        const lin = ctx.createLinearGradient(0, 0, bw * 0.3, bh);
+        lin.addColorStop(0, '#6fe88a');
+        lin.addColorStop(0.5, '#2fae4f');
+        lin.addColorStop(1, '#0f5a2a');
+        ctx.fillStyle = lin;
+        ctx.fill();
+        tex.refresh();
+      }
     }
+    c.add(this.add.image(x + w / 2, y + h / 2, gk).setDisplaySize(w, h));
     const cx = x + w / 2;
-    const ic = this.add.graphics({ x: cx, y: y + h * 0.47 }).setScale(1.25);
+    const ic = this.add.graphics({ x: cx, y: y + h * 0.55 }).setScale(1.25);
     drawGiftIcon(ic, 40);
     c.add(ic);
     if (st.available) this.tweens.add({ targets: ic, angle: { from: -6, to: 6 }, duration: 380, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
-    // monedas que trae, bajo el regalo
-    const sub = this.add.text(0, y + h - 30, '5 a 15 monedas gratis', { fontFamily: FONT, fontSize: '20px', color: '#ffe680' }).setOrigin(0, 0.5);
-    const subW = 30 + sub.width;
-    const coin = coinIcon(this, cx - subW / 2 + 12, y + h - 30, 12); // (17-11-2026) moneda: imagen moneda-1.webp
-    sub.setX(cx - subW / 2 + 30);
-    c.add([coin, sub]);
     this.giftTimer?.remove();
     this.giftTimer = undefined;
     if (st.available) {
@@ -509,7 +537,9 @@ export class ShopScene extends Phaser.Scene {
       c.add(hit);
     } else {
       // ya recogido: atenuada y con la cuenta atrás arriba
-      c.add(this.add.rectangle(cx, y + h / 2, w, h, 0x02060f, 0.35));
+      const dim = this.add.graphics();
+      dim.fillStyle(0x02060f, 0.35).fillRoundedRect(x, y, w, h, 20);
+      c.add(dim);
       const left = this.add.text(cx, y + 30, '', { fontFamily: FONT, fontSize: '20px', color: '#9fb2da' }).setOrigin(0.5);
       c.add(left);
       const paint = () => {
@@ -531,18 +561,36 @@ export class ShopScene extends Phaser.Scene {
   private claimGift() {
     const res = claimShopGift();
     if (!res.ok) return;
-    const amount = (res as unknown as { amount: number }).amount;
+    const { amount, kind } = res;
     const W = this.scale.width;
     const H = this.scale.height;
-    const t = this.add.text(W / 2, H * 0.45, '+' + amount + ' MONEDAS', textStyle(44, '#ffd23f')).setOrigin(0.5).setDepth(9000).setScale(0.4);
+    const two = kind === 'coins2v2';
+    const t = this.add.text(W / 2, H * 0.45, '+' + amount + (two ? ' MONEDAS 2V2' : ' MONEDAS'), textStyle(44, two ? '#d2b0ff' : '#ffd23f')).setOrigin(0.5).setDepth(9000).setScale(0.4);
     this.tweens.add({ targets: t, scale: 1, duration: 320, ease: 'Back.easeOut' });
     this.tweens.add({ targets: t, alpha: 0, y: t.y - 40, delay: 1100, duration: 300, onComplete: () => t.destroy() });
-    for (let i = 0; i < 12; i++) {
-      const g = coinIcon(this, W / 2, H * 0.45 + 40, 12).setDepth(8999); // (17-11-2026) moneda: imagen moneda-1.webp
-      const a = Phaser.Math.FloatBetween(-Math.PI, 0);
-      const d = Phaser.Math.FloatBetween(90, 220);
-      this.tweens.add({ targets: g, x: W / 2 + Math.cos(a) * d, y: H * 0.45 + 40 + Math.sin(a) * d, alpha: 0, duration: Phaser.Math.Between(600, 900), ease: 'Cubic.easeOut', onComplete: () => g.destroy() });
+    // las monedas salen del premio y se van al monedero (arriba a la derecha); el MEN? las hace llegar a su contador (menu.wheelGain)
+    const mk = two ? coin2v2Image : coinIcon;
+    const tx = W - 70;
+    const ty = 56;
+    for (let i = 0; i < 14; i++) {
+      const sx = W / 2 + Phaser.Math.Between(-60, 60);
+      const sy = H * 0.45 + 40 + Phaser.Math.Between(-20, 20);
+      const g = mk(this, sx, sy, 12).setDepth(8999).setVisible(false);
+      const arc = Phaser.Math.Between(40, 110);
+      const k = { v: 0 };
+      this.tweens.add({
+        targets: k,
+        v: 1,
+        delay: 500 + i * 70,
+        duration: 750,
+        ease: 'Sine.easeInOut',
+        onStart: () => g.setVisible(true),
+        onUpdate: () => g.setPosition(sx + (tx - sx) * k.v, sy + (ty - sy) * k.v - Math.sin(k.v * Math.PI) * arc),
+        onComplete: () => g.destroy(),
+      });
     }
+    const cur = (this.registry.get('menu.wheelGain') as { coins: number; xp: number; coins2v2?: number } | undefined) ?? { coins: 0, xp: 0 };
+    this.registry.set('menu.wheelGain', { coins: cur.coins + (two ? 0 : amount), xp: cur.xp, coins2v2: (cur.coins2v2 ?? 0) + (two ? amount : 0) });
     this.celebrate();
     this.build();
     this.freeArrow?.destroy();
@@ -762,6 +810,142 @@ export class ShopScene extends Phaser.Scene {
     c.add(hit);
   }
 
+  /**
+   * OFERTA DE EMOTES LEGENDARIOS: el arte oferta-emotes de fondo (recortado a la tarjeta) y, a la derecha, un panel
+   * translúcido con el emote legendario animado, su nombre y su precio en dinero real; cambia solo cada pocos segundos.
+   */
+  private emoteOffer(x: number, y: number, w: number, h: number) {
+    const c = this.add.container(0, 0);
+    this.body.add(c);
+    const pad = 8;
+    const iw = w - pad * 2;
+    const ih = h - pad * 2;
+    const sh = this.add.graphics();
+    sh.fillStyle(0x000000, 0.35).fillRoundedRect(x + 3, y + 6, w, h, 14);
+    sh.fillStyle(0x8a5a00, 1).fillRoundedRect(x, y, w, h, 14);
+    c.add(sh);
+    if (this.textures.exists('oferta-emotes')) {
+      // recorte "cover" centrado: la imagen llena la tarjeta sin deformarse
+      const tex = this.textures.get('oferta-emotes').getSourceImage() as { width: number; height: number };
+      const k = Math.max(iw / tex.width, ih / tex.height);
+      const cw = iw / k;
+      const chh = ih / k;
+      const cx = (tex.width - cw) / 2;
+      const cy = (tex.height - chh) / 2;
+      const img = this.add.image(x + pad - cx * k, y + pad - cy * k, 'oferta-emotes').setOrigin(0, 0).setScale(k).setCrop(cx, cy, cw, chh);
+      c.add(img);
+    }
+    // marco dorado (su borde grueso tapa las esquinas del recorte)
+    const fr = this.add.graphics();
+    fr.lineStyle(8, 0xffc42e, 1).strokeRoundedRect(x + 4, y + 4, w - 8, h - 8, 6);
+    fr.lineStyle(3, 0xfff1b8, 1).strokeRoundedRect(x, y, w, h, 14);
+    c.add(fr);
+
+    // panel derecho translúcido
+    const pw = Math.min(250, w * 0.36);
+    const pxl = x + w - pad - 10 - pw;
+    const pt = y + pad + 10;
+    const ph = h - pad * 2 - 20;
+    const px = pxl + pw / 2;
+    const pg = this.add.graphics();
+    pg.fillStyle(0x0a1638, 0.62).fillRoundedRect(pxl, pt, pw, ph, 14);
+    pg.lineStyle(2, 0xffffff, 0.35).strokeRoundedRect(pxl, pt, pw, ph, 14);
+    c.add(pg);
+    // lo que cambia (emote, nombre y precio) va en su propio contenedor: sale deslizándose y entra el siguiente
+    const slide = this.add.container(0, 0);
+    c.add(slide);
+    const boxS = Math.min(144, pw - 70);
+    const by0 = pt + 18 + boxS / 2;
+    const glow = this.add.graphics().setBlendMode(Phaser.BlendModes.ADD);
+    glow.fillStyle(0xffd23f, 0.3).fillCircle(px, by0, boxS * 0.75);
+    slide.add(glow);
+    this.tweens.add({ targets: glow, alpha: { from: 0.4, to: 1 }, duration: 900, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
+    const bg = this.add.graphics();
+    bg.fillStyle(0x1a1030, 0.9).fillRoundedRect(px - boxS / 2, by0 - boxS / 2, boxS, boxS, 18);
+    bg.lineStyle(5, 0xffc42e, 1).strokeRoundedRect(px - boxS / 2, by0 - boxS / 2, boxS, boxS, 18);
+    slide.add(bg);
+    const first = LEGENDARY_EMOTES[0];
+    const sp = this.add.sprite(px, by0, EMOTE_TEXTURE[first], EMOTE_ANIM[first]?.still).setDisplaySize(boxS - 12, boxS - 12);
+    slide.add(sp);
+    // nombre en una barra dorada
+    const ny = by0 + boxS / 2 + 28;
+    const nb = this.add.graphics();
+    nb.fillStyle(0x8a5a00, 1).fillRoundedRect(pxl + 20, ny - 20, pw - 40, 40, 12);
+    nb.fillStyle(0xffc42e, 1).fillRoundedRect(pxl + 23, ny - 17, pw - 46, 34, 10);
+    nb.fillStyle(0xffe27a, 1).fillRoundedRect(pxl + 23, ny - 17, pw - 46, 15, { tl: 10, tr: 10, bl: 3, br: 3 });
+    slide.add(nb);
+    const nameT = this.add.text(px, ny, '', { fontFamily: FONT, fontSize: '24px', color: '#ffffff', stroke: '#5a3200', strokeThickness: 5 }).setOrigin(0.5);
+    const priceT = this.add.text(px, pt + ph - 26, '', { fontFamily: FONT, fontSize: '28px', color: '#ffffff', stroke: '#0a1638', strokeThickness: 5 }).setOrigin(0.5);
+    slide.add([nameT, priceT]);
+    // puntos: cuál de los emotes se ve
+    const dots = this.add.graphics();
+    c.add(dots);
+
+    const NAMES: Partial<Record<EmoteKind, string>> = { shades: 'LENTES', treasure: 'TESORO' };
+    let idx = 0;
+    const N = LEGENDARY_EMOTES.length;
+    const show = (i: number) => {
+      idx = ((i % N) + N) % N;
+      const k = LEGENDARY_EMOTES[idx];
+      const key = EMOTE_TEXTURE[k];
+      nameT.setText(NAMES[k] ?? k.toUpperCase());
+      fitText(nameT, pw - 56);
+      priceT.setText(clpLabel(LEGENDARY_EMOTE_CLP));
+      if (this.anims.exists(`${key}-intro`)) {
+        sp.setTexture(key).play(`${key}-intro`);
+        sp.once('animationcomplete', () => {
+          if (sp.active && this.anims.exists(`${key}-loop`) && sp.texture.key === key) sp.play(`${key}-loop`);
+        });
+      } else sp.setTexture(key, EMOTE_ANIM[k]?.still);
+      sp.setDisplaySize(boxS - 12, boxS - 12);
+      dots.clear();
+      LEGENDARY_EMOTES.forEach((_, j) => {
+        dots.fillStyle(j === idx ? 0xffc42e : 0xffffff, j === idx ? 1 : 0.4).fillCircle(px + (j - (LEGENDARY_EMOTES.length - 1) / 2) * 16, pt + ph - 6, 4);
+      });
+    };
+    show(0);
+    // cambio con deslizamiento: dir 1 = el actual se va a la derecha y el nuevo entra por la izquierda; -1, al revés
+    let busy = false;
+    const go = (step: number, dir: 1 | -1) => {
+      if (busy || N < 2) return;
+      busy = true;
+      const off = pw * 0.7;
+      this.tweens.add({
+        targets: slide,
+        x: dir * off,
+        alpha: 0,
+        duration: 220,
+        ease: 'Cubic.easeIn',
+        onComplete: () => {
+          show(idx + step);
+          slide.x = -dir * off;
+          this.tweens.add({ targets: slide, x: 0, alpha: 1, duration: 280, ease: 'Cubic.easeOut', onComplete: () => (busy = false) });
+        },
+      });
+    };
+    // el cambio de emote: cada 5 s (solo si la tarjeta est? a la vista)
+    const timer = this.time.addEvent({ delay: 5000, loop: true, callback: () => { if (c.visible) go(1, 1); } });
+    c.once(Phaser.GameObjects.Events.DESTROY, () => timer.remove());
+
+    // toda la tarjeta: el pago con dinero real llega con la pasarela
+    const hit = this.add.zone(x + w / 2, y + h / 2, w, h).setInteractive({ useHandCursor: true });
+    // deslizar la tarjeta a los lados cambia de emote (derecha = siguiente, entra por la izquierda; izquierda = volver)
+    const onTap = this.tap(() => {
+      const k = LEGENDARY_EMOTES[idx];
+      this.toast(owns(getPlayer(), `emote:${k}` as ItemId) ? 'Ya tienes este emote' : 'El pago con dinero real (CLP) llega pronto');
+    });
+    hit.on('pointerup', (p: Phaser.Input.Pointer) => {
+      const dx = p.upX - p.downX;
+      if (Math.abs(dx) > 40 && Math.abs(dx) > Math.abs(p.upY - p.downY)) {
+        go(dx > 0 ? 1 : -1, dx > 0 ? 1 : -1);
+        timer.elapsed = 0; // el reloj de los 5 s vuelve a empezar
+        return;
+      }
+      onTap();
+    });
+    c.add(hit);
+  }
+
   /** Tarjeta de estilo: muestra de color, nombre y botón (precio / nivel / USAR / EN USO). */
   private styleCard(x: number, y: number, w: number, h: number, it: ShopItem) {
     const s = getPlayer();
@@ -810,12 +994,13 @@ export class ShopScene extends Phaser.Scene {
     const has = owns(s, it.id);
         const c = this.add.container(0, 0);
     this.body.add(c);
-    this.ultiCardBg(c, x, y, w, h);
+    const legend = it.rarity === 'legendaria'; // (21-11-2026, usuario) la card de una ULTI LEGENDARIA es DORADA y brillante (no morada)
+    this.ultiCardBg(c, x, y, w, h, legend);
     const sx = x + w / 2;
     // su bola animada (y su rastro detrás, si lo trae: tulipán)
     c.add(addBallPreview(this, sx, y + 78, power, w - 12, 112, true, def.color));
     c.add(this.add.text(sx, y + 150, def.name, { fontFamily: FONT, fontSize: '24px', color: def.css, stroke: '#1a0640', strokeThickness: 5 }).setOrigin(0.5));
-    const desc = this.add.text(sx, y + 178, has ? 'COMPRADO' : def.desc, { fontFamily: FONT, fontSize: '13px', color: has ? '#9fe8a0' : '#e2d3ff', align: 'center', wordWrap: { width: w - 16 } }).setOrigin(0.5, 0);
+    const desc = this.add.text(sx, y + 178, has ? 'COMPRADO' : shopBlurb('inferno', power, def.desc), { fontFamily: FONT, fontSize: '13px', color: has ? '#9fe8a0' : legend ? '#fff3cf' : '#e2d3ff', align: 'center', wordWrap: { width: w - 16 } }).setOrigin(0.5, 0);
     c.add(desc);
     const by = y + h - 64;
     const bw = w - 24;
@@ -846,7 +1031,7 @@ export class ShopScene extends Phaser.Scene {
       c.add(ic);
     }
     c.add(this.add.text(sx, y + 128, def.name, { fontFamily: FONT, fontSize: '24px', color: def.css }).setOrigin(0.5));
-    c.add(this.add.text(sx, y + 154, has ? (it ? 'COMPRADO' : 'INCLUIDO') : def.desc, { fontFamily: FONT, fontSize: '13px', color: has ? '#9fe8a0' : '#9fb4e0', align: 'center', wordWrap: { width: w - 16 } }).setOrigin(0.5, 0));
+    c.add(this.add.text(sx, y + 154, has ? (it ? 'COMPRADO' : 'INCLUIDO') : shopBlurb('smash', id, def.desc), { fontFamily: FONT, fontSize: '13px', color: has ? '#9fe8a0' : '#9fb4e0', align: 'center', wordWrap: { width: w - 16 } }).setOrigin(0.5, 0));
     const by = y + h - 64;
     const bw = w - 24;
     // (21-11-2026) el botón de abajo es VER (EN ACCIÓN): dentro se compra o se usa. Lo legendario que no tienes: botones de siempre
@@ -934,7 +1119,7 @@ export class ShopScene extends Phaser.Scene {
       c.add(ic);
     }
     c.add(this.add.text(sx, y + 140, def.name.toUpperCase(), { fontFamily: FONT, fontSize: '24px', color: '#' + def.hot.toString(16).padStart(6, '0') }).setOrigin(0.5));
-    c.add(this.add.text(sx, y + 164, has ? (it ? 'COMPRADO' : 'INCLUIDO') : def.desc, { fontFamily: FONT, fontSize: '13px', color: has ? '#9fe8a0' : '#9fb4e0', align: 'center', wordWrap: { width: w - 16 } }).setOrigin(0.5, 0));
+    c.add(this.add.text(sx, y + 164, has ? (it ? 'COMPRADO' : 'INCLUIDO') : shopBlurb('zone', zid, def.desc), { fontFamily: FONT, fontSize: '13px', color: has ? '#9fe8a0' : '#9fb4e0', align: 'center', wordWrap: { width: w - 16 } }).setOrigin(0.5, 0));
     const by = y + h - 64;
     const bw = w - 24;
     // (21-11-2026) lo que ya es tuyo también se VE (dentro se usa): sin botón USAR en la tarjeta
@@ -959,7 +1144,7 @@ export class ShopScene extends Phaser.Scene {
     drawDefensiveIcon(ic, id, 36);
     c.add(ic);
     c.add(this.add.text(sx, y + 128, def.name, { fontFamily: FONT, fontSize: '24px', color: def.css }).setOrigin(0.5));
-    c.add(this.add.text(sx, y + 154, has ? 'COMPRADO' : def.desc, { fontFamily: FONT, fontSize: '13px', color: has ? '#9fe8a0' : '#9fb4e0', align: 'center', wordWrap: { width: w - 16 } }).setOrigin(0.5, 0));
+    c.add(this.add.text(sx, y + 154, has ? 'COMPRADO' : shopBlurb('defensive', id, def.desc), { fontFamily: FONT, fontSize: '13px', color: has ? '#9fe8a0' : '#9fb4e0', align: 'center', wordWrap: { width: w - 16 } }).setOrigin(0.5, 0));
     const by = y + h - 64;
     const bw = w - 24;
     // (16-11-2026) el botón de abajo es VER (EN ACCIÓN): dentro se compra o se usa. Lo legendario: botones de siempre
@@ -984,7 +1169,7 @@ export class ShopScene extends Phaser.Scene {
     const sx = x + w / 2;
     c.add(chargePreview(this, id, sx, y + 128, Math.min(w - 10, 170)));
     c.add(this.add.text(sx, y + 166, def.name, { fontFamily: FONT, fontSize: '24px', color: def.css }).setOrigin(0.5));
-    c.add(this.add.text(sx, y + 190, has && !bought ? 'DE TU PERSONAJE' : has ? 'COMPRADO' : def.desc, { fontFamily: FONT, fontSize: '13px', color: has ? '#9fe8a0' : '#9fb4e0', align: 'center', wordWrap: { width: w - 16 } }).setOrigin(0.5, 0));
+    c.add(this.add.text(sx, y + 190, has && !bought ? 'DE TU PERSONAJE' : has ? 'COMPRADO' : shopBlurb('charge', id, def.desc), { fontFamily: FONT, fontSize: '13px', color: has ? '#9fe8a0' : '#9fb4e0', align: 'center', wordWrap: { width: w - 16 } }).setOrigin(0.5, 0));
     const by = y + h - 64;
     const bw = w - 24;
     // (21-11-2026) el botón de abajo es VER (EN ACCIÓN): dentro se compra o se usa. Lo legendario que no tienes: botones de siempre
@@ -1147,10 +1332,11 @@ export class ShopScene extends Phaser.Scene {
       rarity: it?.rarity,
       demo: p.demo,
       owned: p.owned,
+      showPrices: isDevMode() && !!it, // (21-11-2026, usuario) en modo desarrollo se ven los precios (virtual y CLP) aunque ya sea tuyo
       price: !it || it.realMoneyOnly || !it.available ? null : it.price,
       priceDim: !it || s.level < it.minLevel || s.gems < it.price,
       clp: it?.clp ?? 0,
-      onBuyCash: () => it && this.confirmBuy(it),
+      onBuyCash: () => it && (p.owned ? this.toast('Modo desarrollo: ya lo tienes (solo se muestra el precio)') : this.confirmBuy(it)),
       onBuyReal: () => this.toast(it && s.level < it.minLevel ? `Necesitas nivel ${it.minLevel}` : 'El pago con dinero real (CLP) llega pronto'),
     });
     // (17-11-2026) mientras la demostración está abierta, la Tienda de atrás no se dibuja: la demostración usa los efectos del partido
@@ -1332,10 +1518,10 @@ export class ShopScene extends Phaser.Scene {
    * Fondo de tarjeta de PODER ULTI: degradado morado con brillo (sin borde). El degradado y el reflejo superior
    * se pintan una vez en un canvas (por tamaño); encima pasa cada tanto un destello diagonal recortado a la tarjeta.
    */
-  private ultiCardBg(c: Phaser.GameObjects.Container, x: number, y: number, w: number, h: number) {
+  private ultiCardBg(c: Phaser.GameObjects.Container, x: number, y: number, w: number, h: number, legend = false) {
     const r = 20;
     const cw = Math.round(w);
-    const key = `shop-ulti-bg-${cw}x${h}`;
+    const key = `shop-ulti-bg-${legend ? 'g' : 'p'}-${cw}x${h}`;
     const shadow = this.add.graphics();
     shadow.fillStyle(0x000000, 0.35).fillRoundedRect(x + 3, y + 5, w, h, r);
     c.add(shadow);
@@ -1354,9 +1540,10 @@ export class ShopScene extends Phaser.Scene {
         };
         path();
         const lin = ctx.createLinearGradient(0, 0, cw * 0.35, h);
-        lin.addColorStop(0, ULTI_TOP);
-        lin.addColorStop(0.5, ULTI_MID);
-        lin.addColorStop(1, ULTI_BOT);
+        // (21-11-2026, usuario) LEGENDARIA: dorada (mismos tonos que el botón dorado de la ULTI legendaria) en vez del morado
+        lin.addColorStop(0, legend ? '#ffe27a' : ULTI_TOP);
+        lin.addColorStop(0.5, legend ? '#d99400' : ULTI_MID);
+        lin.addColorStop(1, legend ? '#6a3d00' : ULTI_BOT);
         ctx.fillStyle = lin;
         ctx.fill();
         ctx.save();
@@ -1364,8 +1551,8 @@ export class ShopScene extends Phaser.Scene {
         ctx.clip();
         // halo claro tras la bola
         const rad = ctx.createRadialGradient(cw / 2, 78, 4, cw / 2, 78, Math.max(cw, 150) * 0.75);
-        rad.addColorStop(0, 'rgba(214,170,255,0.55)');
-        rad.addColorStop(1, 'rgba(214,170,255,0)');
+        rad.addColorStop(0, legend ? 'rgba(255,244,196,0.7)' : 'rgba(214,170,255,0.55)');
+        rad.addColorStop(1, legend ? 'rgba(255,244,196,0)' : 'rgba(214,170,255,0)');
         ctx.fillStyle = rad;
         ctx.fillRect(0, 0, cw, h);
         // reflejo superior (brillo "de vidrio")
@@ -1381,20 +1568,23 @@ export class ShopScene extends Phaser.Scene {
     if (this.textures.exists(key)) c.add(this.add.image(x, y, key).setOrigin(0).setDisplaySize(w, h));
     else c.add(this.add.graphics().fillStyle(0x5a22b8, 1).fillRoundedRect(x, y, w, h, r));
 
+    // LEGENDARIA: aro dorado brillante alrededor de la card
+    if (legend) c.add(this.add.graphics().lineStyle(3, 0xffe27a, 1).strokeRoundedRect(x, y, w, h, r));
     // destello diagonal que cruza la tarjeta (recortado al contorno redondeado)
     const shape = roundedPoly(x, y, w, h, r);
     const shine = this.add.graphics().setBlendMode(Phaser.BlendModes.ADD);
     c.add(shine);
     const st = { t: 0 };
-    const band = 34;
+    // LEGENDARIA: destello más ancho, más fuerte y más seguido ("shiny")
+    const band = legend ? 52 : 34;
     const slant = h * 0.45;
     const tw = this.tweens.add({
       targets: st,
       t: { from: 0, to: 1 },
-      duration: 1100,
-      delay: Phaser.Math.Between(300, 1800),
+      duration: legend ? 900 : 1100,
+      delay: Phaser.Math.Between(300, legend ? 900 : 1800),
       repeat: -1,
-      repeatDelay: 2600,
+      repeatDelay: legend ? 1100 : 2600,
       ease: 'Sine.easeInOut',
       onUpdate: () => {
         if (!shine.active) {
@@ -1411,14 +1601,14 @@ export class ShopScene extends Phaser.Scene {
           { x: bx + slant, y },
         ];
         const pts = clipConvex(quad, shape);
-        if (pts.length >= 3) shine.fillStyle(0xffffff, 0.2).fillPoints(pts, true);
+        if (pts.length >= 3) shine.fillStyle(0xffffff, legend ? 0.42 : 0.2).fillPoints(pts, true);
       },
     });
     this.cardTweens.push(tw);
-    // chispas que titilan sobre la tarjeta
-    for (let i = 0; i < 3; i++) {
+    // chispas que titilan sobre la tarjeta (la legendaria, más y doradas)
+    for (let i = 0; i < (legend ? 6 : 3); i++) {
       const sp = this.add
-        .star(x + Phaser.Math.Between(16, Math.max(17, w - 16)), y + Phaser.Math.Between(16, 130), 4, 1.5, 6, 0xf3e6ff, 1)
+        .star(x + Phaser.Math.Between(16, Math.max(17, w - 16)), y + Phaser.Math.Between(16, legend ? Math.max(40, h - 70) : 130), 4, legend ? 2 : 1.5, legend ? 8 : 6, legend ? 0xfff3b0 : 0xf3e6ff, 1)
         .setBlendMode(Phaser.BlendModes.ADD)
         .setAlpha(0);
       c.add(sp);
@@ -1522,8 +1712,8 @@ export class ShopScene extends Phaser.Scene {
     // título largo + contador: se encoge para no tocar la píldora
     const room = x1 - 40 - extra - 24;
     if (t.width > room) t.setScale(room / t.width);
-    // texto + icono centrados juntos
-    const left = (40 + x1) / 2 - (t.displayWidth + extra) / 2;
+    // texto + icono centrados juntos; con contador a la derecha, el t?tulo parte a la IZQUIERDA (21-11-2026, usuario)
+    const left = ms !== null ? 40 : (40 + x1) / 2 - (t.displayWidth + extra) / 2;
     t.setX(left + t.displayWidth / 2);
     const right = left + t.displayWidth + extra;
     const g = this.add.graphics();

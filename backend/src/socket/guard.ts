@@ -159,7 +159,9 @@ export function sanitizePoint(d: unknown): PointMsg | null {
 
 /** mensajes por segundo (rate) y ráfaga permitida (burst) de cada tipo */
 export const LIMITS = {
-  state: { rate: 30, burst: 40 }, // el cliente manda ~20/s
+  // (20-11-2026) el cliente del 1v1 manda ~20/s, pero el ANFITRIÓN del 2v2 manda su estado y el de sus 2 bots (hasta ~60/s): con 30 se
+  // descartaban los del 2.º bot (el invitado lo veía saltar / sin datos, log AWS del 19-11-2026) y sumaban faltas hacia el corte por abuso
+  state: { rate: 70, burst: 90 },
   hit: { rate: 8, burst: 12 },
   action: { rate: 15, burst: 25 },
   point: { rate: 4, burst: 8 },

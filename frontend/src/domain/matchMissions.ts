@@ -19,9 +19,10 @@ export interface MissionDef {
 }
 
 export const MISSIONS: readonly MissionDef[] = [
-  { id: 'dropZero', title: 'Dejada Mortal', coins: 20 },
-  { id: 'skyLaunch', title: '¡A las Estrellas!', coins: 40 },
-  { id: 'netDuel', title: 'Rey de la Red', coins: 20 },
+  // (20-11-2026, usuario) nombres: Drop Shot 0, Hasta la vista!, Duelo RED (antes Dejada Mortal, ¡A las Estrellas!, Rey de la Red)
+  { id: 'dropZero', title: 'Drop Shot 0', coins: 20 },
+  { id: 'skyLaunch', title: '¡Hasta la vista!', coins: 40 },
+  { id: 'netDuel', title: 'Duelo RED', coins: 20 },
   { id: 'specialLob', title: 'Combo Globo', coins: 20 },
 ];
 

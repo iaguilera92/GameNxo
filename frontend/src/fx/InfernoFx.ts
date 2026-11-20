@@ -696,6 +696,8 @@ export class InfernoFire {
   private hurricane?: HurricaneBallFx;
   /** (19-11-2026, usuario) tamaño de la bola del HURACÁN (× la esfera de la ULTI): 1,25 el smash final; el 1.er golpe la pone más grande (HURRICANE.firstHit.ball) */
   hurricaneScale = 1.25;
+  /** (20-11-2026, usuario) sentido del giro de la bola del HURACÁN: 1 el smash final, -1 el 1.er golpe (gira al revés) */
+  hurricaneSpin = 1;
   /**
    * (17-11-2026, usuario) la BOLA DE ENERGÍA sale CHICA y crece en vuelo hasta su tamaño máximo (ENERGY_BALL_SCALE) al llegar al rival:
    * `energyGrowSec` = segundos de vuelo en los que crece (el que la lanza pone su tiempo de vuelo); `energyT` = tiempo volando
@@ -772,6 +774,7 @@ export class InfernoFire {
     }
     if (this.el === 'hurricane') {
       this.hurricane ??= new HurricaneBallFx(this.scene);
+      this.hurricane.spinDir = this.hurricaneSpin;
       this.hurricane.draw(dt, air.sx, air.sy, R * this.hurricaneScale, d);
       return;
     }
@@ -1224,6 +1227,39 @@ const ULTI_SOUND_SEEK: Record<string, number> = { 'ulti-fuego': 0.95 };
 /** volumen por archivo (el de fuego viene más fuerte que los otros) */
 const ULTI_SOUND_VOL: Record<string, number> = { 'ulti-fuego': 0.8 };
 
+/**
+ * Suena un archivo de golpe de ULTI recortado (salta su silencio inicial y se desvanece a los ULTI_SOUND_MAX_MS). false = no está cargado.
+ * (20-11-2026) también lo usa el golpe del ESPECIAL DRAGÓN con ulti-fuego (MatchScene.hitFx, powerDemo).
+ */
+export function playUltiFile(scene: Phaser.Scene, key: string, volume = 1): boolean {
+  if (!scene.cache.audio.exists(key)) return false;
+  // (13-11-2026) ulti-fuego.m4a dura 9,6 s (las otras ~2-3 s): seguía sonando mucho después del golpe. Se corta a
+  // ULTI_SOUND_MAX_MS con un desvanecido corto. Reloj real (la cinemática pausa el reloj de la escena).
+  // ulti-fuego.m4a (14-11-2026): ~1 s de SILENCIO al inicio (sonaba tarde), el fuego REPETIDO dos veces (a los 1 y 5,3 s)
+  // y más fuerte que los otros. Se salta el silencio (ULTI_SOUND_SEEK) y se corta antes de la repetición.
+  const snd = scene.sound.add(key, { volume: (ULTI_SOUND_VOL[key] ?? 1) * volume });
+  snd.play({ seek: ULTI_SOUND_SEEK[key] ?? 0 });
+  const fadeAt = ULTI_SOUND_MAX_MS - 400;
+  window.setTimeout(() => {
+    if (!snd.isPlaying) return;
+    const t0 = performance.now();
+    const v0 = (snd as Phaser.Sound.WebAudioSound).volume ?? 1;
+    const fade = () => {
+      const k = 1 - (performance.now() - t0) / 400;
+      if (k <= 0 || !snd.isPlaying) {
+        snd.stop();
+        snd.destroy();
+        return;
+      }
+      (snd as Phaser.Sound.WebAudioSound).setVolume?.(k * v0);
+      requestAnimationFrame(fade);
+    };
+    fade();
+  }, fadeAt);
+  snd.once('complete', () => snd.destroy());
+  return true;
+}
+
 export const infernoSound = {
   charge(scene: Phaser.Scene) {
     // mp3 cargando (se corta al golpear); si falta, el zumbido sintetizado de siempre
@@ -1252,32 +1288,7 @@ export const infernoSound = {
     // (18-11-2026) ULTRA EFECTO: ulti-epica-1; HURACÁN (smash final): ulti-legendaria-1; SOMBRA y LUZ: ulti-sombra-luz
     const own = el === 'fire' ? 'ulti-fuego' : el === 'lightning' ? 'ulti-rayo' : el === 'ice' ? 'ulti-hielo' : el === 'ultra' ? 'ulti-epica-1' : el === 'hurricane' ? 'ulti-legendaria-1' : el === 'energy' ? 'ulti-legendaria-energia' : el === 'shadow' || el === 'light' ? 'ulti-sombra-luz' : '';
     const key = own && scene.cache.audio.exists(own) ? own : 'inferno-hit';
-    if (scene.cache.audio.exists(key)) {
-      // (13-11-2026) ulti-fuego.m4a dura 9,6 s (las otras ~2-3 s): seguía sonando mucho después del golpe. Se corta a
-      // ULTI_SOUND_MAX_MS con un desvanecido corto. Reloj real (la cinemática pausa el reloj de la escena).
-      // ulti-fuego.m4a (14-11-2026): ~1 s de SILENCIO al inicio (sonaba tarde), el fuego REPETIDO dos veces (a los 1 y 5,3 s)
-      // y más fuerte que los otros. Se salta el silencio (ULTI_SOUND_SEEK) y se corta antes de la repetición.
-      const snd = scene.sound.add(key, { volume: ULTI_SOUND_VOL[key] ?? 1 });
-      snd.play({ seek: ULTI_SOUND_SEEK[key] ?? 0 });
-      const fadeAt = ULTI_SOUND_MAX_MS - 400;
-      window.setTimeout(() => {
-        if (!snd.isPlaying) return;
-        const t0 = performance.now();
-        const fade = () => {
-          const k = 1 - (performance.now() - t0) / 400;
-          if (k <= 0 || !snd.isPlaying) {
-            snd.stop();
-            snd.destroy();
-            return;
-          }
-          (snd as Phaser.Sound.WebAudioSound).setVolume?.(k);
-          requestAnimationFrame(fade);
-        };
-        fade();
-      }, fadeAt);
-      snd.once('complete', () => snd.destroy());
-      return;
-    }
+    if (playUltiFile(scene, key)) return;
     const c = audio(scene);
     if (!c) return;
     tone(c, 160, 40, c.currentTime, 0.45, 'square', 0.12);

@@ -69,3 +69,6 @@ Los dos di�logos usan `bigTv` + `demo` como el DEFENSIVO: p�gina de informac
 - Los slots llevan `id` y `demoName`. Rarezas y "POR DEFECTO" como antes.
 
 - TIENDA (21-11-2026): solo comprar y ver. Sin EN USO / USAR; equipar es solo en PERSONALIZAR.
+
+- ESPECIAL DRAGÓN (20-11-2026, usuario): en la vista previa el sprite del dragón sale 1,8 veces más grande (`SmashElementFx.dragonScale`, puesto en `powerDemo`); en el partido no cambia.
+- ESPECIAL DRAGÓN (20-11-2026, usuario): su golpe suena con `ulti-fuego` recortado como en la ULTI (`InfernoFx.playUltiFile`) en el partido (usuario, bot y rival online, `MatchScene.hitFx`) y en la vista previa.

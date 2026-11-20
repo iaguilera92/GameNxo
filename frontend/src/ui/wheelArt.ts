@@ -40,6 +40,13 @@ export function coinIcon(scene: Phaser.Scene, x: number, y: number, r: number): 
   return g;
 }
 
+/** (21-11-2026) Moneda 2V2 (textura 'coin-2v2', morada) del mismo tamaño que coinIcon; sin textura, la dibuja morada. */
+export function coin2v2Image(scene: Phaser.Scene, x: number, y: number, r: number): Phaser.GameObjects.Image | Phaser.GameObjects.Graphics {
+  if (scene.textures.exists('coin-2v2')) return scene.add.image(x, y, 'coin-2v2').setDisplaySize(2 * (r + 2.5), 2 * (r + 2.5));
+  const g = scene.add.graphics({ x, y });
+  g.fillStyle(0x1d0a3d, 1).fillCircle(0, 0, r + 2).fillStyle(0x6b2fe0, 1).fillCircle(0, 0, r).fillStyle(0xa77bff, 1).fillCircle(-r * 0.12, -r * 0.16, r * 0.62).fillStyle(0x6b2fe0, 1).fillCircle(0, 0, r * 0.5);
+  return g;
+}
 function starPts(x: number, y: number, r: number, inner = 0.48, n = 5, rot = -Math.PI / 2) {
   const pts: { x: number; y: number }[] = [];
   for (let i = 0; i < n * 2; i++) {
@@ -103,7 +110,7 @@ export function drawGiftIcon(g: Phaser.GameObjects.Graphics, r: number, x = 0, y
 
 export function drawSlotIcon(g: Phaser.GameObjects.Graphics, s: WheelSlot, r: number, x = 0, y = 0) {
   const k = s.prize.kind;
-  if (k === 'coins') drawCoinIcon(g, r, x, y);
+  if (k === 'coins' || k === 'coins2v2') drawCoinIcon(g, r, x, y);
   else if (k === 'xp') drawXpIcon(g, r * 1.12, x, y);
   else if (k === 'cash') drawCashIcon(g, (r / 22) * 0.95, x, y); // billetes: mismo dibujo que el contador del menú
   // (15-11-2026) el COFRE es del COFRE EVOLUTIVO; el premio ÉPICO pasa a una estrella dorada (para no confundirlos)
@@ -299,7 +306,10 @@ export function addSectorContent(scene: Phaser.Scene, parent: Phaser.GameObjects
     const maxW = 2 * r * 0.8 * Math.sin(SECTOR / 2) * 0.82;
     if (label.width > maxW) label.setScale(maxW / label.width);
     c.add(label);
-    if (s.prize.kind === 'coins' || s.prize.kind === 'xp' || s.prize.kind === 'cash') amounts.push({ slot: s, label, maxW });
+    if (s.prize.kind === 'coins' || s.prize.kind === 'coins2v2' || s.prize.kind === 'xp' || s.prize.kind === 'cash') amounts.push({ slot: s, label, maxW });
+    if (s.prize.kind === 'coins2v2') {
+      c.add(scene.add.text(0, -r * 0.7, '2V2', { fontFamily: FONT, fontSize: `${Math.round(r * 0.055)}px`, color: '#e6d2ff', stroke: '#0a1638', strokeThickness: 3 }).setOrigin(0.5));
+    }
     if (s.prize.kind === 'cash') {
       c.add(scene.add.text(0, -r * 0.7, 'DINERO', { fontFamily: FONT, fontSize: `px`, color: '#b8ffc8', stroke: '#0a1638', strokeThickness: 3 }).setOrigin(0.5));
     }
@@ -309,6 +319,7 @@ export function addSectorContent(scene: Phaser.Scene, parent: Phaser.GameObjects
     // (17-11-2026) moneda: imagen moneda-1.webp en el sector de MONEDAS; el resto, dibujado
     const cashKey = s.prize.kind === 'cash' ? (s.prize.amount > 1 ? 'cash-pack' : 'cash-1') : null;
     if (s.prize.kind === 'coins' && scene.textures.exists('coin-1')) c.add(coinIcon(scene, 0, -r * 0.52, r * 0.105));
+    else if (s.prize.kind === 'coins2v2') c.add(coin2v2Image(scene, 0, -r * 0.52, r * 0.105));
     // (17-11-2026) DINERO: billete (1) o fardo chico (más de 1)
     else if (cashKey && scene.textures.exists(cashKey)) c.add(scene.add.image(0, -r * 0.52, cashKey).setDisplaySize(r * 0.27, r * 0.27));
     // (17-11-2026, usuario) COFRE: la imagen del cofre normal (assets/cofre-normal.webp)

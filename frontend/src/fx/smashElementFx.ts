@@ -64,6 +64,8 @@ export class SmashElementFx {
 
   /** sprite de la PELOTA DRAGÓN (se crea al primer uso si su hoja cargó) */
   private dragonImg?: Phaser.GameObjects.Sprite;
+  /** (20-11-2026, usuario) tamaño extra del sprite del dragón (la vista previa de PERSONALIZAR lo agranda; el partido usa 1) */
+  dragonScale = 1;
 
   constructor(private scene: Phaser.Scene) {
     this.g = scene.add.graphics().setBlendMode(Phaser.BlendModes.ADD);
@@ -666,7 +668,7 @@ export class SmashElementFx {
     }
     // cabeza: el hocico (arriba en la imagen) apunta hacia donde vuela; se adelanta para que la cabeza quede sobre la pelota
     const img = this.dragonImg.setVisible(true);
-    const hgt = DRAGON_BALL.size * k;
+    const hgt = DRAGON_BALL.size * k * this.dragonScale;
     img.setScale(hgt / DRAGON_BALL.cell);
     img.setRotation(Math.atan2(dy, dx) + Math.PI / 2);
     img.setPosition(x - dx * hgt * DRAGON_BALL.lead, y - dy * hgt * DRAGON_BALL.lead);

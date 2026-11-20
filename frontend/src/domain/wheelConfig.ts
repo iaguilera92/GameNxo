@@ -14,6 +14,8 @@ export type WheelRarity = 'common' | 'uncommon' | 'rare' | 'epic' | 'special';
 
 export type WheelPrize =
   | { kind: 'coins'; amount: number }
+  /** (21-11-2026, usuario) MONEDAS 2V2 (PlayerState.coins2v2) */
+  | { kind: 'coins2v2'; amount: number }
   | { kind: 'xp'; amount: number }
   /** DINERO virtual (billetes) */
   | { kind: 'cash'; amount: number }
@@ -94,7 +96,7 @@ export const WHEEL = {
   slots: [
     { id: 'd1', label: '1', prize: { kind: 'cash', amount: 1 }, weight: 2700, rarity: 'common' },
     { id: 'd5', label: '5', prize: { kind: 'cash', amount: 5 }, weight: 300, rarity: 'rare' },
-    { id: 'c50', label: '50', prize: { kind: 'coins', amount: 50 }, weight: 2600, rarity: 'common' },
+    { id: 'c50', label: '50', prize: { kind: 'coins', amount: 50 }, weight: 2000, rarity: 'common' },
     { id: 'cos1', label: 'ESPECIAL', prize: { kind: 'cosmetic' }, weight: 200, rarity: 'special' },
     { id: 'x25', label: '25', prize: { kind: 'xp', amount: 25 }, weight: 1000, rarity: 'uncommon' },
     { id: 'c100', label: '100', prize: { kind: 'coins', amount: 100 }, weight: 1500, rarity: 'uncommon' },
@@ -109,7 +111,8 @@ export const WHEEL = {
     // (15-11-2026) COFRE EVOLUTIVO en el lugar del 2.º ESPECIAL (el ESPECIAL que queda tiene su peso: misma probabilidad de cosmético).
     // 5 %: sale ~1 de cada 20 giros. Peso tomado de '50 monedas'.
     { id: 'chest', label: 'COFRE', prize: { kind: 'chest' }, weight: 500, rarity: 'epic' },
-    { id: 'x50', label: '50', prize: { kind: 'xp', amount: 50 }, weight: 300, rarity: 'rare' },
+    // (21-11-2026, usuario) la ruleta da MONEDAS 2V2: este sector reemplaza a '50 EXP' (id 'x50'); su peso y 600 de '50 monedas' (3 % + 6 %)
+    { id: 'v30', label: '30', prize: { kind: 'coins2v2', amount: 30 }, weight: 900, rarity: 'uncommon' },
   ] as WheelSlot[],
 };
 
@@ -127,7 +130,7 @@ export function validateWheelConfig(): string[] {
   if (!Number.isInteger(WHEEL.tiers.maxTaps) || WHEEL.tiers.maxTaps < 1) errs.push('maxTaps inválido');
   for (const s of WHEEL.slots) {
     if (!Number.isInteger(s.weight) || s.weight < 0) errs.push(`peso inválido en ${s.id}`);
-    if ((s.prize.kind === 'coins' || s.prize.kind === 'xp' || s.prize.kind === 'cash') && (!Number.isInteger(s.prize.amount) || s.prize.amount <= 0)) errs.push(`cantidad inválida en ${s.id}`);
+    if ((s.prize.kind === 'coins' || s.prize.kind === 'coins2v2' || s.prize.kind === 'xp' || s.prize.kind === 'cash') && (!Number.isInteger(s.prize.amount) || s.prize.amount <= 0)) errs.push(`cantidad inválida en ${s.id}`);
   }
   return errs;
 }

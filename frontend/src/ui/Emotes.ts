@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { C } from './theme';
+import { BUTTON_ART } from './buttonArt';
 import { EMOTES, type EmoteKind } from '../domain/emotes';
 
 /**
@@ -101,6 +102,7 @@ export class Emotes {
   private readonly options: Phaser.GameObjects.Container[] = [];
   private readonly cdShade: Phaser.GameObjects.Graphics;
   private readonly cdText: Phaser.GameObjects.Text;
+  private btnArt?: Phaser.GameObjects.Image;
   private bubble?: Phaser.GameObjects.Container;
   private bubbleUntil = 0;
   /** globo del emote del rival (multijugador) */
@@ -111,6 +113,12 @@ export class Emotes {
   private open = false;
   private closeTimer?: Phaser.Time.TimerEvent;
   private static readonly R = 30;
+  /** (21-11-2026, usuario) con la imagen del botón (btn-emotes) se ve OPACO en reposo (no estorba la vista) y se aclara del todo al pulsarlo */
+  private static readonly IDLE_ALPHA = 0.4;
+  /** (21-11-2026, usuario) panel en CUADRÍCULA de 4 columnas × 2 filas (hasta 8 emotes) y más grande (antes una fila de 6 con caritas de 54 px): paso entre celdas, cara y zona táctil */
+  private static readonly COLS = 4;
+  private static readonly CELL = 88;
+  private static readonly FACE = 68;
   /** personaje del jugador y del rival: el globo lleva la cara de cada uno (Mai / NXO); el panel, la del jugador */
   mySkin = 'nxo';
   rivalSkin = 'nxo';
@@ -140,22 +148,29 @@ export class Emotes {
     for (const x of [-8, 0, 8]) g.fillCircle(x, -2, 3);
     this.cdShade = scene.add.graphics();
     this.cdText = scene.add.text(0, 0, '', { fontFamily: '"Lilita One", "Arial Black", sans-serif', fontSize: '26px', color: '#ffffff', stroke: '#1a1033', strokeThickness: 5 }).setOrigin(0.5);
-    this.button.add([g, this.cdShade, this.cdText]);
+    // (21-11-2026, usuario) la imagen del botón (BUTTON_ART.emotes) en vez del dibujo; sin ella, el dibujo de siempre
+    if (scene.textures.exists(BUTTON_ART.emotes.key)) {
+      g.destroy();
+      this.btnArt = scene.add.image(0, 0, BUTTON_ART.emotes.key).setDisplaySize(R * 2 + 12, R * 2 + 12).setAlpha(Emotes.IDLE_ALPHA);
+      this.button.add([this.btnArt, this.cdShade, this.cdText]);
+    } else this.button.add([g, this.cdShade, this.cdText]);
     this.button.setSize(R * 2 + 16, R * 2 + 16);
     this.button.setInteractive({ useHandCursor: true });
     this.button.on('pointerdown', () => this.toggle());
 
-    // panel con las 3 caritas, desplegado hacia la izquierda del botón
+    // panel con las caritas en cuadrícula (4 por fila, hasta 2 filas): la 1.ª fila a la izquierda del botón y la 2.ª debajo
     this.panel = scene.add.container(0, 0).setScrollFactor(0).setDepth(depth + 1).setVisible(false);
-    kinds.forEach((kind, i) => {
-      const o = scene.add.container(-(i + 1) * 76, 0);
+    const CELL = Emotes.CELL;
+    const FACE = Emotes.FACE;
+    kinds.slice(0, Emotes.COLS * 2).forEach((kind, i) => {
+      const o = scene.add.container(-((i % Emotes.COLS) + 1) * CELL, Math.floor(i / Emotes.COLS) * CELL);
       const bg = scene.add.graphics();
-      bg.fillStyle(C.outline, 0.85).fillCircle(0, 3, 33);
-      const face = emoteStill(scene, 0, 0, kind).setDisplaySize(54, 54);
-      if (isAnim(kind)) bg.lineStyle(3, 0xffd23f, 1).strokeCircle(0, 3, 33); // LEGENDARIO: aro dorado
+      bg.fillStyle(C.outline, 0.88).fillCircle(0, 3, 41);
+      const face = emoteStill(scene, 0, 0, kind).setDisplaySize(FACE, FACE);
+      if (isAnim(kind)) bg.lineStyle(3.5, 0xffd23f, 1).strokeCircle(0, 3, 41); // LEGENDARIO: aro dorado
       o.setData('face', face).setData('kind', kind);
       o.add([bg, face]);
-      o.setSize(66, 66);
+      o.setSize(CELL - 4, CELL - 4);
       o.setInteractive({ useHandCursor: true });
       o.on('pointerdown', () => this.send(kind));
       if (o.input) o.input.enabled = false; // cerrado: no recoge toques
@@ -175,7 +190,7 @@ export class Emotes {
     this.rivalSkin = rival;
     for (const o of this.options) {
       const face = o.getData('face') as Phaser.GameObjects.Image | undefined;
-      if (face) face.setTexture(emoteTexture(this.scene, o.getData('kind') as EmoteKind, me), EMOTE_ANIM[o.getData('kind') as EmoteKind]?.still).setDisplaySize(54, 54);
+      if (face) face.setTexture(emoteTexture(this.scene, o.getData('kind') as EmoteKind, me), EMOTE_ANIM[o.getData('kind') as EmoteKind]?.still).setDisplaySize(Emotes.FACE, Emotes.FACE);
     }
   }
 
@@ -194,10 +209,21 @@ export class Emotes {
     return performance.now() >= this.readyAt;
   }
 
+  /** aclara el botón (al pulsarlo) o lo devuelve a su opacidad de reposo */
+  private light(on: boolean) {
+    if (!this.btnArt) return;
+    this.scene.tweens.killTweensOf(this.btnArt);
+    this.scene.tweens.add({ targets: this.btnArt, alpha: on ? 1 : Emotes.IDLE_ALPHA, duration: on ? 120 : 350 });
+  }
+
   private toggle() {
     this.scene.tweens.add({ targets: this.button, scale: { from: 0.88, to: 1 }, duration: 220, ease: 'Back.easeOut' });
+    this.light(true);
     if (this.open) return this.close();
-    if (!this.ready) return;
+    if (!this.ready) {
+      this.scene.time.delayedCall(900, () => !this.open && this.light(false)); // en espera: se aclara un momento y vuelve a su opacidad
+      return;
+    }
     this.open = true;
     this.panel.setVisible(true);
     this.options.forEach((o) => o.input && (o.input.enabled = true));
@@ -211,6 +237,7 @@ export class Emotes {
 
   private close() {
     this.open = false;
+    this.light(false);
     this.closeTimer?.remove();
     this.panel.setVisible(false);
     this.options.forEach((o) => o.input && (o.input.enabled = false));

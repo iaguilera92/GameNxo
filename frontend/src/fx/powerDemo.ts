@@ -26,7 +26,7 @@ import { getProfile } from '../logic/Profile';
 import type { DefensivePower } from '../domain/defensivePowers';
 import type { SmashPower } from '../domain/smashPowers';
 import { SMASH_LOOK, smashCine } from './smashFx';
-import { INFERNO_LOOK, InfernoFire, type FxElement, type InfernoElement, infernoCine, infernoImpactFx, infernoSound } from './InfernoFx';
+import { INFERNO_LOOK, InfernoFire, type FxElement, type InfernoElement, infernoCine, infernoImpactFx, infernoSound, playUltiFile } from './InfernoFx';
 import { powerImpactFx } from './ImpactFx';
 import type { DemoRect, PowerDemo } from '../ui/PowerDialog';
 import { type TrailFx, type TrailLook, TrailParticles, drawRibbon } from './ballTrailFx';
@@ -268,6 +268,7 @@ class DefensiveDemo implements PowerDemo {
       this.ball = this.rb.s;
       this.smoke = new SmokeTrail(this.st);
       this.elFx = new SmashElementFx(this.st);
+      this.elFx.dragonScale = 1.8; // (20-11-2026, usuario) en la vista previa el dragón casi no se veía
       this.fireBall = new InfernoFire(this.st);
       this.cine = new SmashCinematic(this.st);
       this.flashR = this.st.add.rectangle(VIEW.W / 2, this.crop.cy, VIEW.W * 3, 3000, 0xffffff, 0).setDepth(5000).setBlendMode(Phaser.BlendModes.ADD);
@@ -1499,7 +1500,8 @@ class DefensiveDemo implements PowerDemo {
       rb.setKind('normal', true);
       // (18-11-2026, usuario) ESPECIAL de SOMBRA o de LUZ: su propio golpe (especial-sombra-luz)
       const own = (el === 'shadow' || el === 'light') && this.scene.cache.audio.exists('especial-sombra-luz');
-      this.snd(own ? 'especial-sombra-luz' : 'golpe-fuerte', 0.9);
+      // (20-11-2026, usuario) ESPECIAL DRAGÓN: ulti-fuego recortado como en la ULTI
+      if (!(el === 'dragon' && playUltiFile(this.scene, 'ulti-fuego', 0.9))) this.snd(own ? 'especial-sombra-luz' : 'golpe-fuerte', 0.9);
       this.shake(5);
     }
   }

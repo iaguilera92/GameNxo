@@ -12,7 +12,8 @@ import { EnergyCineFx } from './energyBallCine';
 import { ENERGY_COL, EnergyImpactFx } from './energyBallFx';
 import { type InfernoFire, infernoImpactFx, infernoSound } from './InfernoFx';
 import { powerImpactFx } from './ImpactFx';
-import { shockFx } from './shotFx';
+import { playImpact, shockFx } from './shotFx';
+import { windBlast } from './elementImpactFx';
 import { getPlayer } from '../domain/playerStore';
 import type { PlayerState } from '../domain/player';
 import { zoneSkinOf } from '../domain/zoneSkins';
@@ -118,6 +119,19 @@ export interface EnergyDemoHost {
   done(): void;
 }
 
+/** Destello del contacto del golpe cargado al máximo (copia de MatchScene.maxContactFlash): núcleo blanco, halo y dos destellos en cruz. */
+function contactFlash(scene: Phaser.Scene, x: number, y: number, k: number) {
+  const s = Math.max(0.7, k);
+  const ADD = Phaser.BlendModes.ADD;
+  const core = scene.add.circle(x, y, 16 * s, 0xffffff, 1).setDepth(3600).setBlendMode(ADD);
+  scene.tweens.add({ targets: core, scale: { from: 0.6, to: 2.2 }, alpha: { from: 1, to: 0 }, duration: 160, ease: 'Quad.easeOut', onComplete: () => core.destroy() });
+  const halo = scene.add.circle(x, y, 26 * s, 0xfff3a0, 0.55).setDepth(3599).setBlendMode(ADD);
+  scene.tweens.add({ targets: halo, scale: { from: 0.8, to: 2.6 }, alpha: { from: 0.6, to: 0 }, duration: 220, ease: 'Cubic.easeOut', onComplete: () => halo.destroy() });
+  for (const [rot, len] of [[0, 1], [Math.PI / 4, 0.55]] as const) {
+    const st = scene.add.star(x, y, 4, 3 * s, 46 * s * len, 0xffffff, 1).setDepth(3601).setBlendMode(ADD).setRotation(rot);
+    scene.tweens.add({ targets: st, scale: { from: 0.4, to: 1.15 }, angle: st.angle + 35, alpha: { from: 1, to: 0 }, duration: 190, ease: 'Cubic.easeOut', onComplete: () => st.destroy() });
+  }
+}
 interface Machine {
   c: Phaser.GameObjects.Container;
   light: Phaser.GameObjects.Arc;
@@ -434,8 +448,11 @@ export class EnergyDemo {
 
   private swing() {
     this.swung = true;
-    this.h.pl.facing = 1;
+    // (21-11-2026, usuario) BOLA DE ENERGÍA: el SEGUNDO golpe (round 1) es de REVÉS (facing -1), como en el partido; los demás, de derecha
+    const back = !this.hur && this.round === 1;
+    this.h.pl.facing = back ? -1 : 1;
     this.h.pl.swing(true, false, false, false);
+    if (back) this.h.scene.time.delayedCall(300, () => (this.h.pl.facing = 1));
   }
 
   // ------------------------------------------------------------------ la carga (la del partido, 1,8 s)
@@ -480,7 +497,13 @@ export class EnergyDemo {
         pl.setCharging(false);
         pl.facing = 1;
         pl.swing(true, false, false, false);
-        this.strike();
+        // (21-11-2026, usuario) HURACÁN, como en el partido: la raqueta arranca ENERGY_RALLY.swingLeadMs ANTES del contacto; la pelota y todos los efectos del
+        // golpe salen en el contacto (antes salían a la vez que el swing, con la raqueta aún lejos)
+        if (this.hur) {
+          this.h.scene.time.delayedCall(ENERGY_RALLY.swingLeadMs, () => {
+            if (this.hur && this.phase === 'cine') this.strike();
+          });
+        } else this.strike();
       },
     });
   }
@@ -558,11 +581,17 @@ export class EnergyDemo {
         // (19-11-2026, usuario) vuela como BOLA DE ENERGÍA del huracán, algo más grande que la del smash; explota en la máquina (hurKnock)
         h.fire.setElement('hurricane');
         h.fire.hurricaneScale = HURRICANE.firstHit.ball;
+        h.fire.hurricaneSpin = -1; // gira al revés que en el smash final
         h.setBall(true, true);
         // (21-11-2026, usuario) 1.er golpe MAS POTENTE, como en el partido: efecto al doble, sonido de inferno.mp3, mas sacudida y destello
-        windShotFx(h.st, p.sx, p.sy, p.s * HURRICANE.firstHit.k, (to.sx - p.sx) / len, (to.sy - p.sy) / len);
-        h.snd(HURRICANE.firstHit.sound, 1);
-        h.shake(12); // (sin flash completo, como en el partido: tapaba el golpe)
+        // (21-11-2026, usuario) EXACTAMENTE el golpe del partido (MatchScene.legendHitFx): impacto de la pelota, choque eléctrico y destello de contacto, además del viento
+        const FH = HURRICANE.firstHit;
+        playImpact(h.st, p.sx, p.sy, 0.15);
+        shockFx(h.st, p.sx, p.sy, p.s * FH.k);
+        contactFlash(h.st, p.sx, p.sy, p.s * FH.k);
+        windShotFx(h.st, p.sx, p.sy, p.s * FH.k, (to.sx - p.sx) / len, (to.sy - p.sy) / len);
+        h.snd(FH.sound, 1);
+        this.rumble(FH.shakeMs, 12); // (sin flash completo, como en el partido: tapaba el golpe)
         // (18-11-2026, usuario) 0,3 s después del golpe se va corriendo a la T de su campo: desde ahí salta a por el globo
         h.scene.time.delayedCall(H_T.toT * 1000, () => {
           if (!this.hur || this.phase === 'idle') return;
@@ -611,8 +640,9 @@ export class EnergyDemo {
   private stepOut(dt: number) {
     this.t += dt;
     const final = this.hur ? this.hStage === 1 : TARGET[this.round] === -1;
-    const dur = final ? T.final : T.out;
-    this.placeBall(arcAt(this.from, this.aim, this.t / dur, final ? 30 : 40, this.pos), this.from, this.aim, dur);
+    // (21-11-2026, usuario) HURACÁN: el golpe de viento vuela HURRICANE.shotMs (0,65 s) en arco bajo, como en el partido (antes 0,26 s con el arco del peloteo)
+    const dur = final ? T.final : this.hur ? HURRICANE.shotMs / 1000 : T.out;
+    this.placeBall(arcAt(this.from, this.aim, this.t / dur, final ? 30 : this.hur ? 26 : 40, this.pos), this.from, this.aim, dur);
     if (this.t < dur) return;
     if (this.hur) {
       if (final) {
@@ -645,6 +675,13 @@ export class EnergyDemo {
   }
 
   // ------------------------------------------------------------------ HURACÁN
+  /** Sacudida sostenida (el partido sacude la cámara `ms` ms; aquí se repite la del escenario cada 40 ms mientras dura). */
+  private rumble(ms: number, amp: number) {
+    const h = this.h;
+    const n = Math.max(1, Math.round(ms / 40));
+    for (let i = 0; i < n; i++) h.scene.time.delayedCall(i * 40, () => this.phase !== 'idle' && h.shake(amp * (1 - i / (n + 1))));
+  }
+
   /** El rival sale despedido al FONDO (contra la pared), choca y queda tendido en el suelo. */
   private hurKnock() {
     const h = this.h;
@@ -653,9 +690,12 @@ export class EnergyDemo {
     const bk = back.s * VIEW.CHAR_K;
     // (19-11-2026, usuario) la bola de energía EXPLOTA en la máquina: impacto del huracán y sacudida fuerte
     const hit = project(h.machineX - 30, m.y, HIT_Z);
+    // (21-11-2026, usuario) como en el partido: ráfaga de viento sobre el rival (windBlast), el impacto del huracán y la sacudida larga
+    windBlast(h.st, hit.sx, hit.sy, Math.max(0.7, hit.s) * 0.9 * HURRICANE.firstHit.blast, 3800);
     infernoImpactFx(h.st, hit.sx, hit.sy, Math.max(0.7, hit.s) * HURRICANE.firstHit.impactK, 'hurricane');
-    h.shake(14);
-    h.fire.hurricaneScale = 1.25; // el smash final vuelve a su tamaño
+    this.rumble(HURRICANE.firstHit.impactShakeMs, 14);
+    h.fire.hurricaneScale = 1.25;
+    h.fire.hurricaneSpin = 1; // el smash final vuelve a su tamaño
     m.ko = true;
     m.koT = 0;
     m.smokeT = 0;
@@ -708,9 +748,10 @@ export class EnergyDemo {
 
   private startLift() {
     this.hStage = 1;
-    this.from.x = this.aim.x; // sale de la máquina en el momento del golpe
-    this.from.y = this.aim.y;
-    this.from.z = this.aim.z;
+    // (21-11-2026, usuario) como en el partido: el globito sale del rival cuando éste ya está en el FONDO (tras HURRICANE.knockMs), no de donde recibió el golpe
+    this.from.x = this.h.machineX + H_BACK_X;
+    this.from.y = this.m[H_VIC].y;
+    this.from.z = 40;
     this.racket.z = 34 + H_LIFT + H_SMASH_Z; // contacto del smash: por encima de la cabeza, en lo alto del salto
     // el globo cae en la T (donde va a estar el personaje al saltar)
     this.racket.x = T_POS.x + 22;
@@ -778,7 +819,9 @@ export class EnergyDemo {
     const t = this.t;
     const hov = this.racket;
     const jumpAt = H_T.fly - H_T.tornado - H_T.hover;
-    this.placeBall(arcAt(this.from, hov, t / H_T.fly, H_LOB_ARC, this.pos), this.from, hov, H_T.fly);
+    // el globito espera en el fondo hasta que el rival termina de salir despedido (knockMs) y llega a la misma hora de siempre
+    const kS = H_T.knockMs / 1000;
+    this.placeBall(arcAt(this.from, hov, Math.max(0, (t - kS) / (H_T.fly - kS)), H_LOB_ARC, this.pos), this.from, hov, H_T.fly - kS);
     if (t >= jumpAt) {
       if (!this.jumped) {
         this.jumped = true;
@@ -869,6 +912,7 @@ export class EnergyDemo {
     h.rb.setPower(false);
     h.fire.clear();
     h.fire.hurricaneScale = 1.25;
+    h.fire.hurricaneSpin = 1;
     if (this.hur) {
       // (18-11-2026, usuario) el SMASH del HURACÁN: el impacto de su ULTI (oro y viento), el choque de viento en el suelo y ráfagas
       infernoImpactFx(h.st, cx, ey, s * 1.6, 'hurricane'); // (trae hurricaneBurst: no se repite)

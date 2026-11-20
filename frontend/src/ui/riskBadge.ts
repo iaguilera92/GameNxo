@@ -9,8 +9,10 @@ import { rankedState } from '../logic/Ranked';
  */
 export function addRiskBadge(scene: Phaser.Scene, board: Phaser.GameObjects.Container) {
   if (rankedState().pending?.risk !== 2) return;
-  const x = -(98 + 111); // centro del panel izquierdo (ScoreBoard: CW / 2 + PW / 2)
-  const y = 70 + 20;
+  // (21-11-2026) con la imagen del marcador, el ScoreBoard dice dónde va (bajo el panel azul); si no, el sitio del dibujo de siempre
+  const anchor = board.getData('riskAnchor') as { x: number; y: number } | undefined;
+  const x = anchor?.x ?? -(98 + 111); // centro del panel izquierdo (ScoreBoard: CW / 2 + PW / 2)
+  const y = anchor?.y ?? 70 + 20;
   const t = scene.add.text(x, y, 'x2 RIESGO', { fontFamily: FONT, fontSize: '17px', color: '#ffffff', stroke: '#4a0d00', strokeThickness: 4 }).setOrigin(0.5).setLetterSpacing(1);
   const w = t.width + 26;
   const g = scene.add.graphics();

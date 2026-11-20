@@ -60,7 +60,7 @@ function ambientesFor(scene: Phaser.Scene, doubles: boolean): Ambiente[] {
 /** y en pantalla donde debe quedar el muro del fondo (un poco por detrás de la cancha) */
 const WALL_AT_Y = 302;
 /** Relleno común al pie de todos los ambientes y detrás de los controles. */
-const SHARED_FOOTER = 0x07152f;
+export const SHARED_FOOTER = 0x07152f;
 /** ancho mínimo a cubrir (la cámara sigue al jugador en lateral) */
 const COVER_W = VIEW.W + 400;
 

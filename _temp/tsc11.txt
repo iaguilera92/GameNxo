@@ -1,0 +1,1 @@
+src/scenes/ShopScene.ts(25,22): error TS6133: 'ZONE_SKIN_IDS' is declared but its value is never read.

@@ -29,16 +29,26 @@ export class Joystick {
     this.base = scene.add.container(0, 0).setScrollFactor(0).setDepth(5000);
     const g = scene.add.graphics();
     g.fillStyle(C.outline, 0.45).fillCircle(0, 0, this.radius + 14);
-    g.lineStyle(6, 0xffffff, 0.55).strokeCircle(0, 0, this.radius + 6);
-    g.fillStyle(0xffffff, 0.08).fillCircle(0, 0, this.radius);
+    // (21-11-2026, usuario) la base (aro y relleno) en AZUL en vez de blanco
+    g.lineStyle(6, 0x3a8dff, 0.75).strokeCircle(0, 0, this.radius + 6);
+    g.fillStyle(0x2f7bff, 0.14).fillCircle(0, 0, this.radius);
     this.base.add(g);
 
     this.knob = scene.add.container(0, 0).setScrollFactor(0).setDepth(5001);
     const k = scene.add.graphics();
-    k.fillStyle(C.outline).fillCircle(0, 4, 44);
-    k.fillStyle(C.blueDark).fillCircle(0, 4, 38);
-    k.fillStyle(C.blue).fillCircle(0, 0, 38);
-    k.fillStyle(0xffffff, 0.4).fillEllipse(-8, -14, 40, 18);
+    // (21-11-2026, usuario) perilla PLATEADA: aro biselado (más claro arriba, más oscuro abajo) con un disco central liso y claro, como la referencia.
+    // Sin degradados nativos en los círculos: se apilan círculos desplazados (la luz viene de arriba).
+    k.fillStyle(0x000000, 0.4).fillCircle(0, 5, 44); // sombra
+    k.fillStyle(0x6f757e).fillCircle(0, 0, 44); // borde inferior oscuro del aro
+    k.fillStyle(0xa9afb7).fillCircle(0, -1, 43);
+    k.fillStyle(0xd3d7dc).fillCircle(0, -2.2, 41.5);
+    k.fillStyle(0xf3f5f7).fillCircle(0, -3.4, 39.5); // brillo del aro (arriba)
+    k.fillStyle(0xc4c9cf).fillCircle(0, 1, 29.5); // canal que separa el aro del disco
+    k.lineStyle(1.5, 0x80868f, 0.9).strokeCircle(0, 1, 29.5);
+    k.fillStyle(0xb4bac1).fillCircle(0, 0.5, 28); // disco central: más oscuro abajo...
+    k.fillStyle(0xe9ecef).fillCircle(0, -1.2, 26.5); // ...y claro arriba
+    k.fillStyle(0xf7f8fa, 0.9).fillEllipse(-2, -7, 36, 24); // luz suave del disco
+    k.fillStyle(0xffffff, 0.55).fillEllipse(-12, -26, 22, 7); // destello del aro
     this.knob.add(k);
 
     this.layout();

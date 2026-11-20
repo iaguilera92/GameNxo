@@ -25,6 +25,8 @@ export interface ShopPreviewOpts {
   demo: (parent: Phaser.GameObjects.Container, outer: DemoRect, inner: DemoRect) => PowerDemo;
   /** ya lo tienes: en vez de comprar sale el botón gris COMPRADO (la Tienda no equipa) */
   owned: boolean;
+  /** MODO DESARROLLO: aunque ya sea tuyo, salen los precios (dinero virtual y CLP) en vez de COMPRADO */
+  showPrices?: boolean;
   /** precio en dinero virtual; null = solo dinero real (épico) */
   price: number | null;
   /** el botón de dinero virtual sale apagado (nivel o saldo insuficiente) */
@@ -54,7 +56,8 @@ export function openShopPreview(scene: Phaser.Scene, o: ShopPreviewOpts) {
   const bg = scene.add.graphics();
   bg.fillStyle(0x000000, 0.45).fillRoundedRect(px + 4, py + 8, pw, ph, 24);
   bg.fillStyle(0x0b1a3d, 1).fillRoundedRect(px, py, pw, ph, 24);
-  bg.fillStyle(0xffffff, 0.06).fillRoundedRect(px + 3, py + 3, pw - 6, 54, { tl: 21, tr: 21, bl: 0, br: 0 });
+  // (21-11-2026, usuario) el brillo de la cabecera llega hasta el cuadro EN ACCIÓN (antes terminaba a los 54 px y dejaba una franja más oscura entre el título y el cuadro)
+  bg.fillStyle(0xffffff, 0.06).fillRoundedRect(px + 3, py + 3, pw - 6, 84 - 3, { tl: 21, tr: 21, bl: 0, br: 0 });
   bg.lineStyle(3, o.color, 1).strokeRoundedRect(px, py, pw, ph, 24);
   panel.add(bg);
 
@@ -128,49 +131,85 @@ export function openShopPreview(scene: Phaser.Scene, o: ShopPreviewOpts) {
 
   // ---------------------------------------------------------------- comprar: dinero virtual y dinero real
   const by = py + ph - 74;
-  if (o.owned) {
+  if (o.owned && !o.showPrices) {
     // ya es tuyo: en la Tienda solo se compra y se ve; se equipa en PERSONALIZAR. Botón gris apagado "COMPRADO" (sin interacción)
     panel.add(arcadeButton(scene, px + pw / 2, by, Math.min(360, pw - 56), 64, 'COMPRADO', () => undefined, { palette: 'grey', disabled: true }));
   } else {
     const gap = 16;
     const two = o.price != null;
     const bw = two ? (pw - 56 - gap) / 2 : Math.min(360, pw - 56);
-    if (two) {
-      // dinero virtual: botón amarillo con el billete y la cifra
-      const cx = px + 28 + bw / 2;
-      const c = scene.add.container(cx, by);
-      const g = scene.add.graphics();
-      const h = 64;
-      g.fillStyle(0x0a1638, 1).fillRoundedRect(-bw / 2 - 3, -h / 2 - 3, bw + 6, h + 6, 18);
-      g.fillStyle(o.priceDim ? 0x5a4a20 : 0xf29a0c, 1).fillRoundedRect(-bw / 2, -h / 2, bw, h, 16);
-      g.fillStyle(o.priceDim ? 0x6e5c2a : 0xffcc1f, 1).fillRoundedRect(-bw / 2, -h / 2, bw, h * 0.62, { tl: 16, tr: 16, bl: 6, br: 6 });
-      g.fillStyle(0xffffff, o.priceDim ? 0.08 : 0.3).fillRoundedRect(-bw / 2 + 8, -h / 2 + 5, bw - 16, 9, 4);
-      // (16-11-2026) la imagen del billete (cash-1, la carga la Tienda); si no está, el dibujo de siempre
-      let icon: Phaser.GameObjects.Image | Phaser.GameObjects.Graphics;
-      // precio de más de 1: el fardo chico (cash-pack); de 1, el billete
-      const ck = o.price! > 1 && scene.textures.exists('cash-pack') ? 'cash-pack' : 'cash-1';
-      if (scene.textures.exists(ck)) icon = scene.add.image(0, 0, ck).setDisplaySize(34, 34);
-      else drawCashIcon((icon = scene.add.graphics()), 0.85);
-      const t = scene.add.text(0, 0, `COMPRAR  ${o.price!.toLocaleString('es-CL')}`, { fontFamily: FONT, fontSize: '24px', color: o.priceDim ? '#c9b98a' : '#0a1638' }).setOrigin(0, 0.5);
-      fitText(t, bw - 64);
-      const tot = 34 + t.displayWidth;
-      icon.setPosition(-tot / 2 + 14, 0);
-      t.setX(-tot / 2 + 34);
-      c.add([g, icon, t]);
+    const h = 68;
+    const press = (c: Phaser.GameObjects.Container, fn: () => void) => {
       c.setSize(bw, h).setInteractive({ useHandCursor: true });
       c.on('pointerup', () => {
         scene.tweens.add({ targets: c, scale: { from: 0.92, to: 1 }, duration: 200, ease: 'Back.easeOut' });
+        fn();
+      });
+    };
+    if (two) {
+      // (21-11-2026, usuario) DINERO VIRTUAL: PÍLDORA redonda, amarilla, con la insignia circular del billete a la izquierda; "COMPRAR" chico y la cifra grande
+      const c = scene.add.container(px + 28 + bw / 2, by);
+      const g = scene.add.graphics();
+      const dim = o.priceDim;
+      g.fillStyle(0x0a1638, 1).fillRoundedRect(-bw / 2 - 3, -h / 2 - 3, bw + 6, h + 6, h / 2 + 3);
+      g.fillStyle(dim ? 0x5a4a20 : 0xf29a0c, 1).fillRoundedRect(-bw / 2, -h / 2, bw, h, h / 2);
+      g.fillStyle(dim ? 0x6e5c2a : 0xffcc1f, 1).fillRoundedRect(-bw / 2 + 4, -h / 2 + 3, bw - 8, h * 0.55, { tl: h / 2 - 3, tr: h / 2 - 3, bl: 12, br: 12 });
+      g.fillStyle(0xffffff, dim ? 0.08 : 0.3).fillRoundedRect(-bw / 2 + 30, -h / 2 + 7, bw - 60, 8, 4);
+      // insignia circular (azul oscuro) con el billete
+      const bx = -bw / 2 + h / 2;
+      g.fillStyle(0x0a1638, 1).fillCircle(bx, 0, h / 2 - 7);
+      g.lineStyle(3, dim ? 0x8a7840 : 0xffe680, 1).strokeCircle(bx, 0, h / 2 - 7);
+      let icon: Phaser.GameObjects.Image | Phaser.GameObjects.Graphics;
+      const ck = o.price! > 1 && scene.textures.exists('cash-pack') ? 'cash-pack' : 'cash-1';
+      if (scene.textures.exists(ck)) icon = scene.add.image(bx, 0, ck).setDisplaySize(36, 36);
+      else drawCashIcon((icon = scene.add.graphics({ x: bx, y: 0 })), 0.85);
+      const tx = bx + h / 2 - 2;
+      const area = bw - (tx + bw / 2) - 16;
+      const t1 = scene.add.text(tx + area / 2, -16, 'COMPRAR', { fontFamily: FONT, fontSize: '13px', color: dim ? '#c9b98a' : '#7a4a00' }).setOrigin(0.5).setLetterSpacing(2);
+      const t2 = scene.add.text(tx + area / 2, 9, o.price!.toLocaleString('es-CL'), { fontFamily: FONT, fontSize: '30px', color: dim ? '#c9b98a' : '#0a1638' }).setOrigin(0.5);
+      fitText(t2, area);
+      c.add([g, icon, t1, t2]);
+      press(c, () => {
         close();
         o.onBuyCash();
       });
       panel.add(c);
     }
+    // (21-11-2026, usuario) DINERO REAL: boceto de TICKET verde de esquinas cortadas, con la talonera oscura del "$" a la izquierda (otra forma que la píldora)
     const rx = two ? px + 28 + bw + gap + bw / 2 : px + pw / 2;
-    panel.add(arcadeButton(scene, rx, by, bw, 64, clpLabel(o.clp), () => o.onBuyReal(), { palette: 'green' }));
-    panel.add(scene.add.text(rx, by + 44, 'DINERO REAL', { fontFamily: FONT, fontSize: '12px', color: '#9fe8a0' }).setOrigin(0.5).setLetterSpacing(1.5));
-    if (two) panel.add(scene.add.text(px + 28 + bw / 2, by + 44, 'DINERO VIRTUAL', { fontFamily: FONT, fontSize: '12px', color: '#ffe680' }).setOrigin(0.5).setLetterSpacing(1.5));
+    const rc = scene.add.container(rx, by);
+    const rg = scene.add.graphics();
+    const cut = 16;
+    const hw = bw / 2;
+    const hh = h / 2;
+    const poly = (ox: number, k: number) => [
+      { x: -hw - ox + cut, y: -hh - ox },
+      { x: hw + ox - cut, y: -hh - ox },
+      { x: hw + ox, y: -hh - ox + cut },
+      { x: hw + ox, y: hh + ox - cut },
+      { x: hw + ox - cut, y: hh + ox },
+      { x: -hw - ox + cut, y: hh + ox },
+      { x: -hw - ox, y: hh + ox - cut },
+      { x: -hw - ox, y: -hh - ox + cut },
+    ].map((p) => ({ x: p.x * k, y: p.y }));
+    rg.fillStyle(0x0a1638, 1).fillPoints(poly(3, 1), true);
+    rg.fillStyle(0x1f9a3c, 1).fillPoints(poly(0, 1), true);
+    rg.fillStyle(0x4cd964, 1).fillPoints([{ x: -hw + cut, y: -hh }, { x: hw - cut, y: -hh }, { x: hw, y: -hh + cut }, { x: hw, y: 2 }, { x: -hw, y: 2 }, { x: -hw, y: -hh + cut }], true);
+    rg.fillStyle(0xffffff, 0.28).fillRoundedRect(-hw + 90, -hh + 6, bw - 130, 8, 4);
+    // talonera oscura con borde inclinado + línea punteada
+    const sw = 64;
+    rg.fillStyle(0x0f5a24, 1).fillPoints([{ x: -hw + cut, y: -hh }, { x: -hw + sw + 12, y: -hh }, { x: -hw + sw - 12, y: hh }, { x: -hw + cut, y: hh }, { x: -hw, y: hh - cut }, { x: -hw, y: -hh + cut }], true);
+    for (let k = 0; k < 6; k++) rg.fillStyle(0xbff5c8, 0.9).fillRect(-hw + sw + 12 - (24 * (8 + k * 10)) / h - 5, -hh + 6 + k * 10, 3, 5);
+    const dollar = scene.add.text(-hw + 30, 0, '$', { fontFamily: FONT, fontSize: '38px', color: '#d8ffe0', stroke: '#06381a', strokeThickness: 5 }).setOrigin(0.5);
+    const rtx = -hw + sw + 12;
+    const rarea = hw - rtx - 14;
+    const r1 = scene.add.text(rtx + rarea / 2, -16, 'COMPRAR', { fontFamily: FONT, fontSize: '13px', color: '#0d4a1f' }).setOrigin(0.5).setLetterSpacing(2);
+    const r2 = scene.add.text(rtx + rarea / 2, 9, clpLabel(o.clp), { fontFamily: FONT, fontSize: '26px', color: '#ffffff', stroke: '#0a3a18', strokeThickness: 5 }).setOrigin(0.5);
+    fitText(r2, rarea);
+    rc.add([rg, dollar, r1, r2]);
+    press(rc, () => o.onBuyReal());
+    panel.add(rc);
   }
-
   // el borde del diálogo por encima de la pantalla (que va de borde a borde y lo tapaba por los lados)
   const frame = scene.add.graphics();
   frame.lineStyle(3, o.color, 1).strokeRoundedRect(px, py, pw, ph, 24);

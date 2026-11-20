@@ -1,6 +1,0 @@
-intro-2v2 mai: 1568x446 (celda 196x446)
-intro-2v2 nxo: 1704x446 (celda 213x446)
-listo: src/ui/intro-2v2.json
-intro-2 mai: 2800x446 (celda 350x446)
-intro-2 nxo: 3120x317 (celda 390x317)
-listo: src/ui/intro-2.json

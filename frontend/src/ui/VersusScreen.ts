@@ -76,7 +76,9 @@ const INTRO = INTRO_2V2 as Record<string, IntroMeta>;
  */
 const INTRO2 = INTRO_2 as Record<string, IntroMeta>;
 /** (21-11-2026, usuario) cuánto SUBE cada personaje en el cuadro de la intro 2 (fracción del alto del cuadro; sin dato = centrado) */
-const INTRO2_ZOOM: Record<string, number> = { mai: 1.12 }; // (21-11-2026, usuario) Mai un poco más cerca
+/** (20-11-2026, usuario) personajes MUJER: en la intro 2 salen primero (desde lo oscuro) */
+const INTRO2_FEMALE = new Set<string>(['mai']);
+const INTRO2_ZOOM: Record<string, number> = { mai: 1.12, nxo: 1.12 }; // (21-11-2026, usuario) NXO también más cerca; // (21-11-2026, usuario) Mai un poco más cerca
 const INTRO2_HOLD_MS: Record<string, number> = { mai: 200 }; // Mai se queda 0,2 s más en su último cuadro nítido
 const INTRO2_LIFT: Record<string, number> = { nxo: 0.26 }; // (0,07 → 0,11 → 0,15: "un poco más arriba", usuario)
 /** cuánto BAJA el aura respecto al personaje en la intro 2 (fracción del alto del cuadro): MAI */
@@ -203,14 +205,14 @@ export function showVersus(scene: Phaser.Scene, player: VersusSide, rival: Versu
    * Placa de nombre. `slot` (2v2 con las parejas, 19-11-2026): card CHICA en su sitio, con su etiqueta (TÚ / COMPAÑERO / RIVAL). Sin él, la de
    * siempre (grande, arriba a la derecha el rival y abajo a la izquierda tú).
    */
-  const plate = (side: VersusSide, top: boolean, slot?: { x: number; tag: string }) => {
+  const plate = (side: VersusSide, top: boolean, slot?: { x: number; tag: string; dy?: number }) => {
     const me = !top; // tú abajo
     const pal = me ? BLUE : RED;
     const pw = slot ? Math.min(250, (W - 56) / 2) : Math.min(330, W * 0.46);
     const ph = slot ? DUO_PLATE_H : 132;
     const sc = ph / 132; // todo lo de dentro se achica con la card
     const x = slot ? slot.x : top ? W - pw / 2 - 20 : pw / 2 + 20;
-    const y = slot ? (top ? DUO_PLATE_H / 2 + 22 : H - DUO_PLATE_H / 2 - 22) : top ? H * 0.2 : H * 0.72;
+    const y = slot ? (top ? DUO_PLATE_H / 2 + 22 : H - DUO_PLATE_H / 2 - 22) + (slot.dy ?? 0) : top ? H * 0.2 : H * 0.72;
     const c = scene.add.container(top ? W + pw : -pw, y).setDepth(8);
     const k = 18 * sc;
     const shape = roundedPoly([[-pw / 2 + k, -ph / 2], [pw / 2, -ph / 2], [pw / 2 - k, ph / 2], [-pw / 2, ph / 2]], 14);
@@ -259,12 +261,12 @@ export function showVersus(scene: Phaser.Scene, player: VersusSide, rival: Versu
   const cx1 = W / 2 + cardW / 2 + 8;
   const cards = duo?.cards;
   if (rivalsOn && cards) {
-    plate(cards.rival1, true, { x: cx0, tag: 'RIVAL' });
-    plate(cards.rival2, true, { x: cx1, tag: 'RIVAL' });
+    plate(cards.rival1, true, { x: cx0, tag: 'RIVAL', dy: twoTop ? DUO_CARD_SHIFT : 0 });
+    plate(cards.rival2, true, { x: cx1, tag: 'RIVAL', dy: twoTop ? DUO_CARD_SHIFT : 0 });
   } else plate(rival, true);
   if (duoOn && cards) {
-    plate(cards.mate, false, { x: cx0, tag: 'COMPAÑERO' });
-    plate(cards.me, false, { x: cx1, tag: 'TÚ' });
+    plate(cards.mate, false, { x: cx0, tag: 'COMPAÑERO', dy: twoBot ? -DUO_CARD_SHIFT : 0 });
+    plate(cards.me, false, { x: cx1, tag: 'TÚ', dy: twoBot ? -DUO_CARD_SHIFT : 0 });
   } else plate(player, false);
 
   // ---------------------------------------------------------------- corte diagonal + VS
@@ -327,12 +329,31 @@ export function showVersus(scene: Phaser.Scene, player: VersusSide, rival: Versu
 }
 
 /** alto de la placa del nombre (también la usa la entrada del 2v2 para dejarle sitio abajo) */
+const DUO_CARD_SHIFT = 16; // (21-11-2026, usuario) con la INTRO 2 las cards se acercan al centro: las de abajo suben y las de arriba bajan (px)
 const DUO_PLATE_H = 100; // (19-11-2026, usuario) cards del 2v2 más chicas (dos por mitad)
 
 /** (19-11-2026, usuario) color del AURA de cada personaje en la INTRO 2 (fondo oscuro): NXO roja, Mai rosada */
 const INTRO_AURA: Record<string, number> = { nxo: 0xff2a1a, mai: 0xff4fb0 };
 /** (21-11-2026) color de la PUNTA de las llamas del aura (más claro): NXO naranja, Mai rosa claro */
 const INTRO_AURA_TIP: Record<string, number> = { nxo: 0xff9a3c, mai: 0xffb3dd };
+
+/** (21-11-2026) franja vertical de degradado de un color (opaca arriba, transparente abajo): los huecos sobre y bajo el cuadro de la INTRO 2. Una textura por color. */
+function glowStrip(scene: Phaser.Scene, color: number) {
+  const key = `vs-glow-${color.toString(16)}`;
+  if (scene.textures.exists(key)) return key;
+  const tex = scene.textures.createCanvas(key, 4, 256);
+  const ctx = tex?.getContext();
+  if (!tex || !ctx) return key;
+  const rgb = `${(color >> 16) & 255},${(color >> 8) & 255},${color & 255}`;
+  const g = ctx.createLinearGradient(0, 0, 0, 256);
+  g.addColorStop(0, `rgba(${rgb},0.6)`);
+  g.addColorStop(0.45, `rgba(${rgb},0.22)`);
+  g.addColorStop(1, `rgba(${rgb},0)`);
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, 4, 256);
+  tex.refresh();
+  return key;
+}
 
 /** textura del SOL de la entrada del 2v2 (degradado radial cálido) */
 function ensureSun(scene: Phaser.Scene) {
@@ -439,8 +460,8 @@ function duoScene(scene: Phaser.Scene, pair: { right: string; left: string }, to
     // CUADRO NEGRO de lado a lado (todo el ancho de la VS), entre las cards y la diagonal, con un filo arriba y abajo: ahí salen los dos
     // (19-11-2026, usuario) el cuadro es MÁS BAJO que el espacio libre (72 %, centrado) y los personajes MÁS GRANDES que él: el cuadro les
     // corta parte de arriba y de abajo
-    const freeTop = top ? 22 + DUO_PLATE_H + 14 : Math.max(yL, yR) + 18;
-    const freeBot = top ? Math.min(yL, yR) - 18 : H - DUO_PLATE_H - 36;
+    const freeTop = top ? 22 + DUO_PLATE_H + 14 + DUO_CARD_SHIFT : Math.max(yL, yR) + 18;
+    const freeBot = top ? Math.min(yL, yR) - 18 : H - DUO_PLATE_H - 36 - DUO_CARD_SHIFT;
     const freeH = freeBot - freeTop;
     // (21-11-2026, usuario) cuadro un poco más pequeño (64 % del espacio libre, antes 72 %) y personajes más grandes: el cuadro les corta más alto
     // (21-11-2026, usuario) los cuadros del RIVAL (mitad de ARRIBA) un poco más abajo: todo el cuadro baja 7 % del espacio libre
@@ -449,6 +470,12 @@ function duoScene(scene: Phaser.Scene, pair: { right: string; left: string }, to
     const areaBot = freeBot - freeH * (0.18 - sd);
     const boxH = areaBot - areaTop;
     const cy = (areaTop + areaBot) / 2;
+    // (21-11-2026, usuario) los huecos sobre y bajo el cuadro (hasta las cards y la diagonal) eran negro puro: degradado del color del equipo (azul tú, rojo rival)
+    // que nace en el borde del cuadro y se apaga hacia afuera
+    const glowKey = glowStrip(scene, top ? 0xff4f5e : 0x2f7bff);
+    const glowUp = scene.add.image(0, freeTop, glowKey).setOrigin(0).setDisplaySize(W, Math.max(1, areaTop - freeTop)).setFlipY(true);
+    const glowDn = scene.add.image(0, areaBot, glowKey).setOrigin(0).setDisplaySize(W, Math.max(1, freeBot - areaBot));
+    bg.add([glowUp, glowDn]);
     const box = scene.add.graphics();
     box.fillStyle(0x000000, 1).fillRect(0, areaTop, W, boxH);
     box.lineStyle(3, 0x2c3350, 1).lineBetween(0, areaTop, W, areaTop).lineBetween(0, areaBot, W, areaBot);
@@ -459,9 +486,12 @@ function duoScene(scene: Phaser.Scene, pair: { right: string; left: string }, to
     boxMaskG.fillStyle(0xffffff).fillRect(0, areaTop, W, boxH);
     const boxMask = boxMaskG.createGeometryMask();
     bg.once(Phaser.GameObjects.Events.DESTROY, () => boxMaskG.destroy());
-    const ids = Math.random() < 0.5 ? [pair.left, pair.right] : [pair.right, pair.left];
-    const fps = 7;
-    const one = (id: string, at: number, last: boolean) => {
+    // (20-11-2026, usuario) si en la pareja hay una MUJER (Mai), sale PRIMERO; si no (o si son dos), el orden es al azar
+    const fem = (id: string) => INTRO2_FEMALE.has(id);
+    const ids = fem(pair.left) !== fem(pair.right) ? (fem(pair.left) ? [pair.left, pair.right] : [pair.right, pair.left]) : Math.random() < 0.5 ? [pair.left, pair.right] : [pair.right, pair.left];
+    const fps = 10; // (20-11-2026, usuario) más rápido (antes 7): no se alcanzaban a ver; el tiempo que sobra va a las transiciones
+    /** `entry`: 'dark' = aparece EN SU SITIO saliendo de lo OSCURO (negro → su color); 'top' = entra RÁPIDO desde arriba */
+    const one = (id: string, at: number, last: boolean, entry: 'dark' | 'top') => {
       const m2 = INTRO2[id];
       const key2 = intro2Key(id);
       const s2 = Math.min((freeH * 1.15) / m2.cell.h, (W * 1.0) / m2.cell.w) * (INTRO2_ZOOM[id] ?? 1); // (21-11-2026) más grande (antes 1,0 y 0,95): se ve recortado arriba y abajo
@@ -469,12 +499,15 @@ function duoScene(scene: Phaser.Scene, pair: { right: string; left: string }, to
       if (!scene.anims.exists(anim2)) scene.anims.create({ key: anim2, frames: scene.anims.generateFrameNumbers(key2, { start: 0, end: m2.frames - 1 }).map((fr, i) => (i === m2.frames - 2 && INTRO2_HOLD_MS[id] ? { ...fr, duration: INTRO2_HOLD_MS[id] } : fr)) as Phaser.Types.Animations.AnimationFrame[], frameRate: fps, repeat: 0 });
       // (19-11-2026, usuario) ENTRA desde ARRIBA y SALE por ABAJO del cuadro, BORROSO en la transición: el cuadro 1 y el 8 de su hoja ya son
       // difusos y además deja una ESTELA de movimiento (copias suyas detrás) mientras se desliza
-      const slideMs = 260;
+      const slideMs = entry === 'dark' ? 0 : 180; // desde arriba, rápido
+      const darkMs = 520; // desde lo oscuro
+      const exitMs = 300; // salida por abajo
+      const animAt = entry === 'dark' ? 120 : slideMs; // cuándo empieza su animación (desde lo oscuro, casi enseguida)
       const offY = boxH * 0.7;
       // (21-11-2026, usuario) NXO un poco más arriba en el cuadro (INTRO2_LIFT: fracción del alto del cuadro); el resto, centrado
       const cyc = cy - boxH * (INTRO2_LIFT[id] ?? 0);
       const auraDy = boxH * (INTRO2_AURA_DY[id] ?? 0);
-      const spr = scene.add.sprite(W / 2, cyc - offY, key2, 0).setOrigin(0.5).setScale(s2 * 0.96).setDepth(5).setAlpha(0).setMask(boxMask);
+      const spr = scene.add.sprite(W / 2, entry === 'dark' ? cyc : cyc - offY, key2, 0).setOrigin(0.5).setScale(s2 * 0.96).setDepth(5).setAlpha(0).setMask(boxMask);
       const trail = [0.45, 0.25, 0.12].map((a) => ({ a, sp: scene.add.sprite(W / 2, cy, key2, 0).setOrigin(0.5).setDepth(4.9).setAlpha(0).setMask(boxMask) }));
       let lastY = spr.y;
       // AURA de su color ALREDEDOR del personaje (NXO roja, Mai rosada; el resto, dorada): copias de su silueta pintadas de ese color, un poco más
@@ -586,19 +619,30 @@ function duoScene(scene: Phaser.Scene, pair: { right: string; left: string }, to
         glow.destroy();
       };
       spr.once(Phaser.GameObjects.Events.DESTROY, cleanup);
-      // entra desde arriba (con su cuadro 1, borroso) y se ENCIENDE; al llegar empieza su animación
-      scene.tweens.add({ targets: spr, y: cyc, alpha: 1, delay: at, duration: slideMs, ease: 'Cubic.easeOut' });
-      // (21-11-2026, usuario) el "acercamiento" (0,96 → 1) solo ocurre al ENTRAR (mientras se desliza); durante los cuadros queda QUIETA (antes seguía creciendo
-      // durante todo el recorrido y parecía que se movía)
-      scene.tweens.add({ targets: spr, scaleX: s2, scaleY: s2, delay: at, duration: slideMs, ease: 'Sine.easeOut' });
-      scene.time.delayedCall(at + slideMs, () => spr.active && spr.play(anim2));
+      if (entry === 'dark') {
+        // (20-11-2026, usuario) aparece en su sitio SALIENDO DE LO OSCURO: del negro a sus colores, a la vez que se enciende
+        spr.setTint(0x000000);
+        scene.tweens.add({ targets: spr, alpha: 1, delay: at, duration: darkMs, ease: 'Sine.easeOut' });
+        scene.tweens.addCounter({
+          from: 0, to: 255, delay: at, duration: darkMs, ease: 'Sine.easeIn',
+          onUpdate: (tw) => { if (spr.active) { const v = Math.round(tw.getValue() ?? 255); spr.setTint(Phaser.Display.Color.GetColor(v, v, v)); } },
+          onComplete: () => spr.active && spr.clearTint(),
+        });
+        scene.tweens.add({ targets: spr, scaleX: s2, scaleY: s2, delay: at, duration: darkMs, ease: 'Sine.easeOut' });
+      } else {
+        // entra RÁPIDO desde arriba (con su cuadro 1, borroso) y se ENCIENDE; al llegar empieza su animación
+        scene.tweens.add({ targets: spr, y: cyc, alpha: 1, delay: at, duration: slideMs, ease: 'Cubic.easeOut' });
+        // (21-11-2026, usuario) el "acercamiento" (0,96 → 1) solo ocurre al ENTRAR; durante los cuadros queda QUIETA
+        scene.tweens.add({ targets: spr, scaleX: s2, scaleY: s2, delay: at, duration: slideMs, ease: 'Sine.easeOut' });
+      }
+      scene.time.delayedCall(at + animAt, () => spr.active && spr.play(anim2));
       // sale por abajo cuando llega a su cuadro 8 (borroso) y se APAGA
-      const exitAt = slideMs + ((m2.frames - 1) / fps) * 1000 + (INTRO2_HOLD_MS[id] ?? 0);
+      const exitAt = animAt + ((m2.frames - 1) / fps) * 1000 + (INTRO2_HOLD_MS[id] ?? 0);
       if (!last) {
-        scene.tweens.add({ targets: spr, y: cyc + offY, alpha: 0, delay: at + exitAt, duration: slideMs, ease: 'Cubic.easeIn', onComplete: () => spr.destroy() });
+        scene.tweens.add({ targets: spr, y: cyc + offY, alpha: 0, delay: at + exitAt, duration: exitMs, ease: 'Cubic.easeIn', onComplete: () => spr.destroy() });
       } else {
         // el último se queda en su cuadro 7 (nítido), no en el 8 (difuso)
-        scene.time.delayedCall(at + slideMs + ((m2.frames - 2) / fps) * 1000 + 30, () => {
+        scene.time.delayedCall(at + animAt + ((m2.frames - 2) / fps) * 1000 + (INTRO2_HOLD_MS[id] ?? 0) + 30, () => {
           if (!spr.active) return;
           spr.anims.stop();
           spr.setFrame(m2.frames - 2);
@@ -607,9 +651,9 @@ function duoScene(scene: Phaser.Scene, pair: { right: string; left: string }, to
       return exitAt;
     };
     const t0 = top ? 150 : 200;
-    // el segundo entra desde arriba justo cuando el primero sale por abajo
-    const firstExit = one(ids[0], t0, false);
-    one(ids[1], t0 + firstExit, true);
+    // el primero sale de lo OSCURO en su sitio; el segundo entra rápido desde arriba justo cuando el primero sale por abajo
+    const firstExit = one(ids[0], t0, false, 'dark');
+    one(ids[1], t0 + firstExit + 60, true, 'top');
     return;
   }
   // los DOS, cerca sin tocarse; cada uno con SU hoja (la de su personaje); el gesto mira hacia el compañero

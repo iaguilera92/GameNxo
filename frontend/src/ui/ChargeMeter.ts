@@ -154,7 +154,13 @@ export class ChargeMeter extends Phaser.GameObjects.Container {
     const fillBase = (r: number, color: number, a: number) => {
       g.fillStyle(color, a).beginPath().arc(0, 0, r, Math.PI, Math.PI * 2).closePath().fillPath();
     };
-    fillBase(R_OUT + 8, NEON_EDGE, this.full ? 0.55 + 0.35 * beat : 0.75);
+    // (20-11-2026, usuario) AL MÁXIMO la barra BRILLA: halo dorado que late alrededor del arco (sin textos)
+    if (this.full) {
+      fillBase(R_OUT + 24, GOLD, 0.1 + 0.12 * beat);
+      fillBase(R_OUT + 18, GOLD, 0.18 + 0.2 * beat);
+      fillBase(R_OUT + 13, 0xfff2a8, 0.3 + 0.3 * beat);
+    }
+    fillBase(R_OUT + 8, this.full ? 0xfff2a8 : NEON_EDGE, this.full ? 0.7 + 0.3 * beat : 0.75);
     fillBase(R_OUT + 4, C.outline, 1);
     fillBase(R_IN - 3, 0x0d1d44, 0.95);
 
@@ -172,6 +178,14 @@ export class ChargeMeter extends Phaser.GameObjects.Container {
         const c = this.full ? lerpColor(GOLD, 0xfff2a8, beat * 0.7) : col;
         g.lineStyle(w, c, 0.55 + 0.45 * fill).beginPath().arc(0, 0, rMid, a0, a1).strokePath();
         g.lineStyle(3, 0xffffff, 0.45 * fill).beginPath().arc(0, 0, R_OUT - 3, a0 + 0.02, a1 - 0.02).strokePath();
+      }
+    }
+    // al máximo: un destello blanco recorre el arco de izquierda a derecha una y otra vez
+    if (this.full) {
+      const sweep = ((this.t * 1.6) % 1.3) - 0.15; // 0..1 sobre el arco (con pausa corta entre pasadas)
+      if (sweep >= 0 && sweep <= 1) {
+        const a = Math.PI + sweep * Math.PI;
+        g.lineStyle(R_OUT - R_IN, 0xffffff, 0.55).beginPath().arc(0, 0, (R_OUT + R_IN) / 2, a - 0.12, a + 0.12).strokePath();
       }
     }
 

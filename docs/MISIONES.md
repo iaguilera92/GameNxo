@@ -6,9 +6,9 @@ Cada una cuenta **una sola vez** por partida. Lógica: `frontend/src/domain/matc
 
 | Misión | Cuándo se cumple | Monedas |
 |---|---|---|
-| Dejada Mortal (DROP SHOT 0) | Ganas un punto cuyo motivo es `'¡DROP SHOT 0!'` (`MatchScene.pointTo`) | 20 |
-| ¡A las Estrellas! (sacar volando) | ¡A LAS ESTRELLAS!: el rival sin raqueta (tu ULTI) recibe tu ESPECIAL y sale volando (`skyLaunch`); cuenta al darte el punto (`bot.launched`) | 40 |
-| Rey de la Red (duelo en la red) | Ganas el punto en el que hubo DUELO EN LA RED (`duelUsed`) | 20 |
+| Drop Shot 0 | Ganas un punto cuyo motivo es `'¡DROP SHOT 0!'` (`MatchScene.pointTo`) | 20 |
+| ¡Hasta la vista! (sacar volando) | ¡A LAS ESTRELLAS!: el rival sin raqueta (tu ULTI) recibe tu ESPECIAL y sale volando (`skyLaunch`); cuenta al darte el punto (`bot.launched`) | 40 |
+| Duelo RED (duelo en la red) | Ganas el punto en el que hubo DUELO EN LA RED (`duelUsed`) | 20 |
 | Combo Globo (ESPECIAL + GLOBO máximo) | Tiras tu ESPECIAL (no la ULTI), el rival lo devuelve y tú respondes con el GLOBO cargado al máximo (GLOBO DISPARADO) y ganas el punto sin que el rival la vuelva a tocar | 20 |
 | **Las 4** | | **100** |
 
@@ -41,3 +41,5 @@ Cada una cuenta **una sola vez** por partida. Lógica: `frontend/src/domain/matc
   (`_missionCoins` en los datos de la escena), también si pierdes o te rindes.
 - No pasan por el backend (los premios de partida tampoco) ni por `settleCurrentRanked`: no cambian el resultado del Ranked
   ni de la apuesta (ni el modo RIESGO x2).
+
+- (20-11-2026, usuario) Nombres nuevos: Drop Shot 0, ¡Hasta la vista!, Duelo RED (Combo Globo igual). La alerta dice "¡MISIÓN CUMPLIDA!" (antes "¡LOGRO!") y el "+N" va 2 px a la izquierda y más grande (23 px).

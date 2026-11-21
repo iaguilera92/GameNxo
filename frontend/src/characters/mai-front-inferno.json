@@ -2,7 +2,7 @@
   "source": "pj-mai-rival-ulti.png (6 filas x 9: ULTI completa)",
   "view": "front",
   "cell": {
-    "w": 132,
+    "w": 178,
     "h": 177
   },
   "origin": {
@@ -20,12 +20,12 @@
   "animations": {
     "inferno-swing": {
       "file": "inferno-swing.webp",
-      "frames": 9,
+      "frames": 8,
       "fps": 15,
       "loop": false,
       "impact": 6,
       "cell": {
-        "w": 132,
+        "w": 178,
         "h": 177
       },
       "origin": {
@@ -40,11 +40,11 @@
       "loop": false,
       "cell": {
         "w": 130,
-        "h": 175
+        "h": 176
       },
       "origin": {
         "x": 0.5,
-        "y": 0.97714
+        "y": 0.97727
       }
     },
     "ulti-stun": {
@@ -68,11 +68,11 @@
       "loop": true,
       "cell": {
         "w": 122,
-        "h": 170
+        "h": 171
       },
       "origin": {
         "x": 0.5,
-        "y": 0.97647
+        "y": 0.97661
       }
     },
     "run-nr": {
@@ -81,12 +81,12 @@
       "fps": 14,
       "loop": true,
       "cell": {
-        "w": 118,
-        "h": 162
+        "w": 120,
+        "h": 163
       },
       "origin": {
         "x": 0.5,
-        "y": 0.97531
+        "y": 0.97546
       }
     },
     "pickup": {
@@ -96,11 +96,11 @@
       "loop": false,
       "cell": {
         "w": 122,
-        "h": 163
+        "h": 164
       },
       "origin": {
         "x": 0.5,
-        "y": 0.97546
+        "y": 0.97561
       }
     }
   }

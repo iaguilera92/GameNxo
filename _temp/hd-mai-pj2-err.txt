@@ -1,0 +1,18 @@
+node:buffer:255
+      throw new ERR_OUT_OF_RANGE('sourceStart', `>= 0 && <= ${source.byteLength}`, sourceStart);
+            ^
+
+RangeError [ERR_OUT_OF_RANGE]: The value of "sourceStart" is out of range. It must be >= 0 && <= 1789760. Received 1791028
+    at copyImpl (node:buffer:255:13)
+    at Buffer.copy (node:buffer:901:12)
+    at file:///C:/Users/IAGUILERA/Documents/00%20Trabajos/GameNxo/frontend/tools/build-hd.mjs:266:40
+    at Array.from (<anonymous>)
+    at framesOld (file:///C:/Users/IAGUILERA/Documents/00%20Trabajos/GameNxo/frontend/tools/build-hd.mjs:255:16)
+    at file:///C:/Users/IAGUILERA/Documents/00%20Trabajos/GameNxo/frontend/tools/build-hd.mjs:350:57
+    at ModuleJob.run (node:internal/modules/esm/module_job:439:25)
+    at async node:internal/modules/esm/loader:633:26
+    at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:101:5) {
+  code: 'ERR_OUT_OF_RANGE'
+}
+
+Node.js v24.16.0

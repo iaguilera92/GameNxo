@@ -381,6 +381,13 @@ for (const [clip, d] of Object.entries(data)) {
 // rival salía 1,5 veces más grande hacia un lado y casi la mitad hacia el otro)
 for (const d of Object.values(data)) if (d.k === null) d.k = data[d.ref].k * ((data[d.ref].frames.imgW ?? 1) / (d.frames.imgW ?? 1));
 for (const clip of RUN_LIKE) if (data[clip]?.hd && !data[clip].old && data.run?.hd) data[clip].k = data.run.k * ((data.run.frames.imgW ?? 1) / (data[clip].frames.imgW ?? 1)); // sin referencia: al tamaño de `run` (corregido por el tamaño de la imagen)
+// (21-11-2026, usuario: "la estirada de MAI se ve más pequeña") las ESTIRADAS nuevas traen la levantada y la guardia (cuadros de pie): copiar el alto
+// mediano de la tira VIEJA (solo el personaje tirado) las achicaba enteras. Se escalan para que su cuadro 1 (la guardia, de pie) mida lo mismo
+// en pantalla que el cuadro 1 de `idle` (sin depender del tamaño en píxeles con que la IA dibujó cada hoja)
+for (const clip of ['dive-right', 'dive-left']) {
+  const d = data[clip];
+  if (d?.hd && data.idle) d.k = (data.idle.k * standOf('idle', data.idle.frames)) / standOf(clip, d.frames);
+}
 
 // (14-11-2026) CELDA PROPIA POR TIRA (simétrica: el ancla en el centro): cada animación ocupa solo lo que dibuja. Antes había
 // una celda común (la de la más ancha) y cada tira pagaba ese tamaño en la memoria del teléfono.

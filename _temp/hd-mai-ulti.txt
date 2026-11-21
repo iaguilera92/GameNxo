@@ -1,0 +1,2 @@
+stand 150  ·  memoria de las tiras ≈ 4.7 MB  ·  HD: inferno-swing, ulti-hit, ulti-stun, idle-nr, run-nr, pickup
+listo: 6 tiras en C:\Users\IAGUILERA\Documents\00 Trabajos\GameNxo\frontend\public\assets\characters\mai-front-inferno

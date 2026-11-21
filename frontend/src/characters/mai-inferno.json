@@ -2,12 +2,12 @@
   "source": "pj-mai-ulti.png (6 filas x 9: ULTI completa)",
   "view": "back",
   "cell": {
-    "w": 230,
-    "h": 227
+    "w": 248,
+    "h": 231
   },
   "origin": {
     "x": 0.5,
-    "y": 0.98238
+    "y": 0.98268
   },
   "standHeight": 190,
   "cols": 3,
@@ -20,17 +20,17 @@
   "animations": {
     "inferno-swing": {
       "file": "inferno-swing.webp",
-      "frames": 9,
+      "frames": 8,
       "fps": 15,
       "loop": false,
       "impact": 6,
       "cell": {
-        "w": 230,
-        "h": 227
+        "w": 248,
+        "h": 231
       },
       "origin": {
         "x": 0.5,
-        "y": 0.98238
+        "y": 0.98268
       }
     },
     "ulti-hit": {
@@ -82,11 +82,11 @@
       "loop": true,
       "cell": {
         "w": 130,
-        "h": 206
+        "h": 207
       },
       "origin": {
         "x": 0.5,
-        "y": 0.98058
+        "y": 0.98068
       }
     },
     "pickup": {
@@ -95,12 +95,12 @@
       "fps": 14,
       "loop": false,
       "cell": {
-        "w": 158,
-        "h": 196
+        "w": 160,
+        "h": 197
       },
       "origin": {
         "x": 0.5,
-        "y": 0.97959
+        "y": 0.9797
       }
     }
   }

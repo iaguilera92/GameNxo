@@ -1,0 +1,2 @@
+src/scenes/MatchScene.ts(383,130): error TS2304: Cannot find name 'NET_BALL_JUMP'.
+src/scenes/MatchScene.ts(10498,34): error TS2304: Cannot find name 'NET_BALL_JUMP'.

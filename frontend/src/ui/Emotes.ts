@@ -199,6 +199,11 @@ export class Emotes {
     this.panel.setPosition(x, y);
   }
 
+  /** (21-11-2026, usuario) atenúa el botón de emotes (mientras dura la ULTI); el panel abierto no se toca. */
+  setAlpha(a: number) {
+    this.button.setAlpha(a);
+  }
+
   setVisible(on: boolean) {
     this.button.setVisible(on && !this.none);
     if (!on) this.close();

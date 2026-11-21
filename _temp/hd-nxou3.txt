@@ -1,0 +1,2 @@
+stand 190  ·  memoria de las tiras ≈ 7.2 MB  ·  HD: inferno-swing, ulti-hit, ulti-stun, idle-nr, run-nr, pickup
+listo: 6 tiras en C:\Users\IAGUILERA\Documents\00 Trabajos\GameNxo\frontend\public\assets\characters\nxo-inferno

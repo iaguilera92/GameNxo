@@ -29,7 +29,8 @@ const game = new Phaser.Game({
   },
   input: { activePointers: 4 },
   render: { antialias: true, powerPreference: 'high-performance', batchSize: 4096 },
-  fps: { target: 60 },
+  // (21-11-2026, usuario) tope de 60 fps: en pantallas de 90/120 Hz no dibuja de más (batería, calor, cuadros parejos y misma sensación en todos)
+  fps: { target: 60, limit: 60 },
   scene: [BootScene, MenuScene, CustomizeScene, ShopScene, BattlePassScene, MatchmakingScene, MatchScene, ResultScene, RankedScene, LanSearchScene],
 });
 

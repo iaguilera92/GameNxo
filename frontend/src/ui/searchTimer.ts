@@ -6,6 +6,8 @@ import { FONT } from './theme';
  * Sin la imagen, solo el texto celeste de siempre.
  */
 const KEY = 'search-timer';
+/** separación entre el borde del título y el centro de cada flecha » « (px) */
+const GAP_CHEV = 62;
 /** dibujo visible de la imagen y centro del hueco del tiempo (px de contador.webp) */
 const ART = { x0: 19, y0: 95, x1: 1977, y1: 564, textX: 1000, textY: 338, imgW: 2000, imgH: 667 }; // (21-11-2026) placa sin cronómetro: el tiempo al centro
 
@@ -39,13 +41,15 @@ export function searchTimer(scene: Phaser.Scene, parent: Phaser.GameObjects.Cont
  * colores se reacomodan solos.
  */
 export function styleSearchTitle(scene: Phaser.Scene, parent: Phaser.GameObjects.Container, label: Phaser.GameObjects.Text) {
-  label.setFontSize(44).setFontStyle('italic').setColor('#ffffff').setStroke('#0a1638', 8).setShadow(0, 4, '#000000', 6, true, true).setLetterSpacing(1.5);
+  label.setFontSize(36).setFontStyle('italic').setColor('#ffffff').setStroke('#0a1638', 8).setShadow(0, 4, '#000000', 6, true, true).setLetterSpacing(1.5);
   const deco = scene.add.graphics();
-  const chevL = scene.add.text(0, label.y, '»', { fontFamily: FONT, fontSize: '46px', color: '#ffc42e', stroke: '#4a2a00', strokeThickness: 4 }).setOrigin(0.5);
-  const chevR = scene.add.text(0, label.y, '«', { fontFamily: FONT, fontSize: '46px', color: '#ffc42e', stroke: '#4a2a00', strokeThickness: 4 }).setOrigin(0.5);
+  const chevL = scene.add.text(0, label.y, '»', { fontFamily: FONT, fontSize: '38px', color: '#ffc42e', stroke: '#4a2a00', strokeThickness: 4 }).setOrigin(0.5);
+  const chevR = scene.add.text(0, label.y, '«', { fontFamily: FONT, fontSize: '38px', color: '#ffc42e', stroke: '#4a2a00', strokeThickness: 4 }).setOrigin(0.5);
   parent.add([deco, chevL, chevR]);
   parent.bringToTop(label);
   let last = '';
+  let baseL = 0;
+  let baseR = 0;
   const refresh = () => {
     if (!label.active) return;
     const txt = label.text;
@@ -53,6 +57,10 @@ export function styleSearchTitle(scene: Phaser.Scene, parent: Phaser.GameObjects
     deco.setVisible(visible);
     chevL.setVisible(visible);
     chevR.setVisible(visible);
+    // vaivén HACIA AFUERA calculado cada fotograma desde la posición base (un tween guardaba posiciones viejas si el título cambiaba de ancho)
+    const wob = 4 * (1 + Math.sin(scene.time.now / 190));
+    chevL.x = baseL - wob;
+    chevR.x = baseR + wob;
     const key = `${txt}|${label.displayWidth.toFixed(1)}|${label.x.toFixed(1)}`;
     if (key === last) return;
     last = key;
@@ -60,7 +68,7 @@ export function styleSearchTitle(scene: Phaser.Scene, parent: Phaser.GameObjects
     const sp = txt.indexOf(' ');
     if (sp > 0) {
       const ctx = label.context;
-      ctx.font = `italic 44px ${FONT}`;
+      ctx.font = `italic 36px ${FONT}`;
       const r = Phaser.Math.Clamp((ctx.measureText(txt.slice(0, sp + 1)).width + label.style.strokeThickness / 2) / Math.max(1, label.width), 0, 1);
       const grd = ctx.createLinearGradient(0, 0, label.width, 0);
       grd.addColorStop(0, '#ffffff');
@@ -70,8 +78,10 @@ export function styleSearchTitle(scene: Phaser.Scene, parent: Phaser.GameObjects
       label.setFill(grd);
     } else label.setColor('#ffffff');
     const half = label.displayWidth / 2;
-    chevL.setPosition(label.x - half - 34, label.y);
-    chevR.setPosition(label.x + half + 34, label.y);
+    baseL = label.x - half - GAP_CHEV; // (21-11-2026, usuario) bien separadas: la cursiva sobresale del ancho medido
+    baseR = label.x + half + GAP_CHEV;
+    chevL.setPosition(baseL, label.y);
+    chevR.setPosition(baseR, label.y);
     // línea de luz dorada bajo el título
     const lw = label.displayWidth + 120;
     const ly = label.y + label.displayHeight / 2 + 6;
@@ -82,7 +92,4 @@ export function styleSearchTitle(scene: Phaser.Scene, parent: Phaser.GameObjects
   refresh();
   scene.events.on(Phaser.Scenes.Events.UPDATE, refresh);
   scene.events.once(Phaser.Scenes.Events.SHUTDOWN, () => scene.events.off(Phaser.Scenes.Events.UPDATE, refresh));
-  // vaivén suave de las flechas hacia el centro
-  scene.tweens.add({ targets: chevL, x: '+=8', duration: 600, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
-  scene.tweens.add({ targets: chevR, x: '-=8', duration: 600, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
 }

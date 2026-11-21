@@ -2,12 +2,12 @@
   "source": "pj-nxo-ulti.png (6 filas x 9: ULTI completa)",
   "view": "back",
   "cell": {
-    "w": 196,
-    "h": 237
+    "w": 262,
+    "h": 238
   },
   "origin": {
     "x": 0.5,
-    "y": 0.98312
+    "y": 0.98319
   },
   "standHeight": 190,
   "cols": 3,
@@ -20,31 +20,31 @@
   "animations": {
     "inferno-swing": {
       "file": "inferno-swing.webp",
-      "frames": 9,
+      "frames": 8,
       "fps": 15,
       "loop": false,
       "impact": 6,
       "cell": {
-        "w": 196,
-        "h": 237
+        "w": 262,
+        "h": 238
       },
       "origin": {
         "x": 0.5,
-        "y": 0.98312
+        "y": 0.98319
       }
     },
     "ulti-hit": {
       "file": "ulti-hit.webp",
-      "frames": 9,
+      "frames": 8,
       "fps": 14,
       "loop": false,
       "cell": {
-        "w": 168,
-        "h": 235
+        "w": 160,
+        "h": 234
       },
       "origin": {
         "x": 0.5,
-        "y": 0.98298
+        "y": 0.98291
       }
     },
     "ulti-stun": {
@@ -68,11 +68,11 @@
       "loop": true,
       "cell": {
         "w": 134,
-        "h": 214
+        "h": 216
       },
       "origin": {
         "x": 0.5,
-        "y": 0.98131
+        "y": 0.98148
       }
     },
     "run-nr": {
@@ -81,12 +81,12 @@
       "fps": 14,
       "loop": true,
       "cell": {
-        "w": 162,
-        "h": 217
+        "w": 164,
+        "h": 219
       },
       "origin": {
         "x": 0.5,
-        "y": 0.98157
+        "y": 0.98174
       }
     },
     "pickup": {

@@ -1,0 +1,2 @@
+(sin JSON, se ignoran: recover-right, recover-left, serve-bounce, serve-toss, victory-big, point-sad)
+stand 190  ·  memoria de las tiras ≈ 47.3 MB  ·  HD: idle, run, runstop, victory, brake-turn, dash, defeat, forehand, backhand, forehand-power, backhand-power, serve, serve-spin, smash, smash-power, dive-right, dive-left, stunned, point-won, point-lost, walk, inferno-hit, volley, walk-intro, point-doubt, point-cheer

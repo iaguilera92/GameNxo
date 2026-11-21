@@ -77,8 +77,16 @@ export class Joystick {
 
   // opacidad baja para no tapar la cancha
   private setIdleLook() {
-    this.base.setAlpha(0.28);
-    this.knob.setAlpha(0.38);
+    this.base.setAlpha(0.28 * this.dim);
+    this.knob.setAlpha(0.38 * this.dim);
+  }
+
+  /** (21-11-2026, usuario) atenúa más el joystick mientras dura la ULTI (1 = normal, p. ej. 0.35 = más opaco). */
+  private dim = 1;
+  setDim(k: number) {
+    this.dim = k;
+    this.base.setAlpha((this.pointerId === null ? 0.28 : 0.55) * k);
+    this.knob.setAlpha((this.pointerId === null ? 0.38 : 0.75) * k);
   }
 
   private onDown(p: Phaser.Input.Pointer) {

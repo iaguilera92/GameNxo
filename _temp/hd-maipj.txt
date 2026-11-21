@@ -1,0 +1,4 @@
+(sin JSON, se ignoran: recover-right, recover-left, serve-bounce, serve-toss, victory-big, point-sad)
+stand 190  ·  memoria de las tiras ≈ 47.2 MB  ·  HD: idle, run, runstop, victory, brake-turn, dash, defeat, forehand, backhand, forehand-power, backhand-power, serve, serve-spin, smash, smash-power, dive-right, dive-left, stunned, point-won, point-lost, walk, inferno-hit, volley, walk-intro, point-doubt, point-cheer
+OJO: cambió serve, serve-spin: volver a medir serveRacket (hits.json) y/o BOUNCE en NxoActor.ts (docs/COMO-TRABAJAR-SPRITES-MOVIMIENTOS.md §5).
+listo: 31 tiras en C:\Users\IAGUILERA\Documents\00 Trabajos\GameNxo\frontend\public\assets\characters\mai-v2

@@ -42,9 +42,22 @@ export function createDuelGaze(scene: Phaser.Scene, o: { centerY: number; mySkin
     g.fillStyle(0x000000, 0.35).fillRect(5, 6, pw, ph); // sombra
     g.fillStyle(0x0a1638, 1).fillRect(0, 0, pw, ph);
     const img = scene.add.image(0, 0, art.key).setOrigin(0, 0).setDisplaySize(pw, ph).setFlipX(flip);
+    // (21-11-2026, usuario) pegadas a la pantalla como la alerta lateral: SIN borde del lado de la pantalla (la izquierda no lleva borde
+    // izquierdo y la derecha no lleva el derecho); solo arriba, abajo y el lado de adentro. Las líneas siguen hasta el canto de la pantalla
     const edge = scene.add.graphics();
-    edge.lineStyle(5, 0x000000, 1).strokeRect(0, 0, pw, ph);
-    edge.lineStyle(3, color, 1).strokeRect(2, 2, pw - 4, ph - 4);
+    const frame3 = (lw: number, col: number, inset: number) => {
+      edge.lineStyle(lw, col, 1);
+      const outer = left ? -2 : pw + 2; // canto de la pantalla (un poco fuera, para que no se vea el final de la línea)
+      const inner = left ? pw - inset : inset; // lado de adentro
+      edge.beginPath();
+      edge.moveTo(outer, inset);
+      edge.lineTo(inner, inset);
+      edge.lineTo(inner, ph - inset);
+      edge.lineTo(outer, ph - inset);
+      edge.strokePath();
+    };
+    frame3(5, 0x000000, 0);
+    frame3(3, color, 2);
     // la del rival entra por la DERECHA; la tuya por la IZQUIERDA (mirándose)
     const xIn = left ? margin : W - pw - margin;
     const xOut = left ? -pw - 10 : W + 10;

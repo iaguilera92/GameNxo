@@ -2,12 +2,12 @@
   "source": "pj-mai-1.png (fila 5)",
   "view": "back",
   "cell": {
-    "w": 156,
-    "h": 232
+    "w": 158,
+    "h": 234
   },
   "origin": {
     "x": 0.5,
-    "y": 0.98276
+    "y": 0.98291
   },
   "standHeight": 190,
   "turnExit": 5,

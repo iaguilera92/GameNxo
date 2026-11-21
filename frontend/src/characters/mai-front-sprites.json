@@ -2,12 +2,12 @@
   "source": "personajes/Mai/rival/hd/mai-rival-*.png (tools/build-hd.mjs mai-front; JSON base copiado de nxo-front-sprites.json el 17-11-2026)",
   "view": "front",
   "cell": {
-    "w": 118,
-    "h": 169
+    "w": 122,
+    "h": 176
   },
   "origin": {
     "x": 0.5,
-    "y": 0.97633
+    "y": 0.97727
   },
   "standHeight": 150,
   "hold": 1,
@@ -21,12 +21,12 @@
       "loop": true,
       "scale": 1,
       "cell": {
-        "w": 118,
-        "h": 169
+        "w": 122,
+        "h": 176
       },
       "origin": {
         "x": 0.5,
-        "y": 0.97633
+        "y": 0.97727
       }
     },
     "run": {
@@ -36,12 +36,12 @@
       "loop": true,
       "scale": 1,
       "cell": {
-        "w": 116,
-        "h": 170
+        "w": 118,
+        "h": 174
       },
       "origin": {
         "x": 0.5,
-        "y": 0.97647
+        "y": 0.97701
       }
     },
     "runstop": {
@@ -51,12 +51,12 @@
       "loop": false,
       "scale": 1,
       "cell": {
-        "w": 138,
-        "h": 171
+        "w": 178,
+        "h": 177
       },
       "origin": {
         "x": 0.5,
-        "y": 0.97661
+        "y": 0.97175
       }
     },
     "forehand": {
@@ -67,12 +67,12 @@
       "impact": 5,
       "scale": 1,
       "cell": {
-        "w": 128,
-        "h": 167
+        "w": 132,
+        "h": 172
       },
       "origin": {
         "x": 0.5,
-        "y": 0.97605
+        "y": 0.97674
       }
     },
     "backhand": {
@@ -83,12 +83,12 @@
       "impact": 5,
       "scale": 1,
       "cell": {
-        "w": 136,
-        "h": 169
+        "w": 148,
+        "h": 170
       },
       "origin": {
         "x": 0.5,
-        "y": 0.97633
+        "y": 0.97647
       }
     },
     "serve": {
@@ -99,12 +99,12 @@
       "impact": 4,
       "scale": 1,
       "cell": {
-        "w": 140,
-        "h": 172
+        "w": 144,
+        "h": 178
       },
       "origin": {
         "x": 0.5,
-        "y": 0.97674
+        "y": 0.97753
       }
     },
     "smash": {
@@ -130,12 +130,12 @@
       "loop": false,
       "scale": 1,
       "cell": {
-        "w": 126,
-        "h": 179
+        "w": 132,
+        "h": 186
       },
       "origin": {
         "x": 0.5,
-        "y": 0.97765
+        "y": 0.97849
       }
     }
   }

@@ -94,6 +94,8 @@ const BOT_REMATE_LEAD_S = 0.13;
 const RIVAL_REMATE_JUMP_K = 1.35;
 /** (20-11-2026, usuario) el que lanza el ESPECIAL se queda este tiempo en el frame del golpe (usuario, bot y rival online) */
 const SPECIAL_IMPACT_HOLD_MS = 800;
+/** (21-11-2026, usuario) el ESPECIAL se queda en el ÚLTIMO cuadro del golpe potenciado (cuadro 8 = índice 7), no en el del impacto */
+const SPECIAL_HOLD_FRAME = 7;
 /** (18-11-2026, usuario) en ZONA se RESISTE el ESPECIAL: aturdido solo este tiempo (ms) */
 const RESIST_STUN_MS = 1000;
 /** (18-11-2026, usuario: "el bot con el DASH no alcanza mi ESPECIAL") alcance del rival (× HIT_RANGE) en la pelota para la que usó su DEFENSIVO */
@@ -378,6 +380,12 @@ const MAX_LOB = { speed: 1.35, margin: 100, zoomOut: 0.3 };
 const DIRECT = { botNear: 230, apex: 100, step: 1.12, tries: 7 };
 /** (red) el rival se desliza hasta el punto de su golpe en este tiempo (ms) en vez de saltar */
 const NET_SNAP_MS = 110;
+/** (21-11-2026) al empezar cada punto, el rival se desliza hasta su sitio de saque en este tiempo (antes saltaba de golpe) */
+const NET_POINT_SLIDE_MS = 320;
+/** (21-11-2026) máximo que la pelota de un golpe rival se adelanta DE GOLPE al llegar (s); el resto se recupera acelerándola */
+const NET_BALL_JUMP = 0.07;
+/** (21-11-2026, usuario) opacidad de los controles del jugador (joystick, botones) mientras dura la ULTI; 1 = normal */
+const ULTI_HUD_DIM = 0.35;
 const SERVE_JUMP = { max: 235, hangMs: 70, fallMs: 300, maxShift: 45 };
 /** Solo animación: distancia (suelo) a la que el jugador se pone en guardia esperando la pelota. */
 const READY_DIST = 200;
@@ -759,7 +767,9 @@ export class MatchScene extends Phaser.Scene {
   private netPlaced = false;
   private netPlacedAt = 0;
   /** (red) desfase del dibujo del rival respecto al punto de su golpe, que se apaga en NET_SNAP_MS */
-  private netSnap: { x: number; y: number; at: number } | null = null;
+  private netSnap: { x: number; y: number; at: number; ms?: number } | null = null;
+  /** (red) segundos de atraso de la pelota del golpe rival que aún faltan por recuperar (se recuperan acelerándola un poco) */
+  private netBallCatch = 0;
   /** (red) acaba de enviar "se detuvo": se repite pronto por si se pierde */
   private netStopRepeat = false;
   /** (red) filtro por número de punto desactivado (tras una reconexión el conteo puede no cuadrar) */
@@ -1109,6 +1119,7 @@ export class MatchScene extends Phaser.Scene {
   create() {
     // estado (la escena se reutiliza en revanchas)
     this.phase = 'intro';
+    this.warmUpShaders(); // (21-11-2026) compila ya los efectos que se compilaban al primer uso (tirones de ~90 ms en el log online)
     this.missions = createMissionTracker(); // misiones de cero en cada partida
     this.missionShot = null;
     this.lastHitter = null;
@@ -1265,6 +1276,7 @@ export class MatchScene extends Phaser.Scene {
     this.stunFog = new StunFog(this, () => this.player.ch); // niebla del aturdido (solo el jugador la ve; su personaje queda nítido)
     // (16-11-2026, usuario) botones de PRUEBA de la ULTI y del DUELO RED OCULTOS (queda solo AUTO); para volver a usarlos, quitar el setVisible(false)
     this.testBtn = this.makeTestButton().setVisible(false); // PRUEBA: ULTI + ESPECIAL → ¡A LAS ESTRELLAS! (solo contra el bot)
+    this.skyMeBtn = this.makeSkyMeButton(); // (21-11-2026) PRUEBA: ¡A LAS ESTRELLAS! que te llega a TI (ULTI + ESPECIAL del rival)
     this.duelTestBtn = this.makeDuelTestButton().setVisible(false); // PRUEBA: entrar al DUELO RED (solo contra el bot)
     // solo los emotes desbloqueados (premios del Pase de Batalla); sin ninguno no hay botón
     this.emotes = new Emotes(this, () => this.headPos(this.player), ownedEmotes(getPlayer().owned));
@@ -1509,6 +1521,7 @@ export class MatchScene extends Phaser.Scene {
     this.emotes.setPosition(W - 46, 226);
     this.autoBtn.setPosition(W - 46, 302); // AUTO, bajo el botón de emojis
     this.testBtn.setPosition(W - 46, 374); // PRUEBA, bajo AUTO
+    this.skyMeBtn.setPosition(W - 46, 374); // PRUEBA ¡A LAS ESTRELLAS! recibido, bajo AUTO (el de arriba está oculto)
     this.duelTestBtn.setPosition(W - 46, 440); // PRUEBA DUELO RED, bajo el de la ULTI
     this.serveNormalBtn.setPosition(W - 110, H - 225);
     this.serveSpinBtn.setPosition(W - 250, H - 115);
@@ -1653,11 +1666,85 @@ export class MatchScene extends Phaser.Scene {
     });
   }
 
-  // ---------------------------------------------------------------- AUTO (piloto automático para pruebas)
+  /**
+   * (21-11-2026, usuario) Botón de PRUEBA bajo AUTO (estrella roja): ¡A LAS ESTRELLAS! RECIBIDO: el rival te manda su ULTI y luego su ESPECIAL,
+   * para ver cómo se ve cuando le llega al JUGADOR. Solo contra el bot (en red rompería la sincronía).
+   */
+  private makeSkyMeButton() {
+    const R = 26;
+    const c = this.add.container(0, 0).setScrollFactor(0).setDepth(5600);
+    const g = this.add.graphics();
+    g.fillStyle(C.outline).fillCircle(0, 4, R + 6);
+    g.fillStyle(0x8a1f2a).fillCircle(0, 5, R);
+    g.fillStyle(0xff4f5e).fillCircle(0, 0, R - 2);
+    g.fillStyle(0xffffff, 0.25).fillEllipse(-4, -11, 30, 10);
+    // estrella (icono de ¡A LAS ESTRELLAS!)
+    const pts: { x: number; y: number }[] = [];
+    for (let i = 0; i < 10; i++) {
+      const a = -Math.PI / 2 + (i * Math.PI) / 5;
+      const r = i % 2 ? 6 : 14;
+      pts.push({ x: Math.cos(a) * r, y: Math.sin(a) * r + 1 });
+    }
+    g.fillStyle(0xffffff, 1).fillPoints(pts, true);
+    g.lineStyle(2, C.outline, 1).strokePoints(pts, true);
+    c.add(g);
+    c.setSize(R * 2 + 14, R * 2 + 14).setInteractive({ useHandCursor: true });
+    c.on('pointerdown', (_p: Phaser.Input.Pointer, _x: number, _y: number, e: Phaser.Types.Input.EventData) => {
+      e?.stopPropagation?.();
+      this.tweens.add({ targets: c, scale: { from: 0.88, to: 1 }, duration: 200, ease: 'Back.easeOut' });
+      this.devSkyMeTest();
+    });
+    if (this.net) c.setVisible(false);
+    return c;
+  }
+
+  /** PRUEBA: 1) TÚ recibes la ULTI del rival (impacto, aturdido sin raqueta); 2) ~1,3 s después su ESPECIAL directo a ti → ¡A LAS ESTRELLAS! */
+  private devSkyMeTest() {
+    if (this.net || this.phase === 'over' || this.phase === 'intro' || this.cineLock || this.duel) return;
+    const bt = this.bot;
+    const pl = this.player;
+    this.endRemate();
+    this.phase = 'rally';
+    this.serving = false;
+    this.serveCtl.state = 'SERVE_RESULT';
+    this.serveClock = 0;
+    this.serveCountdown.hide();
+    this.board?.setInfo(null);
+    this.setServeUi(false);
+    // 1) ULTI recibida por TI
+    const feet = project(pl.x, pl.y);
+    powerImpactFx(this, 'inferno', feet.sx, feet.sy - 40 * feet.s, feet.s, this.infernoEl);
+    pl.stun = 2.6; // quieto hasta que llegue su ESPECIAL
+    pl.ch.impactStun('inferno', 2600, false);
+    this.ultiStunOn(pl, 2600);
+    this.loseRacket(pl);
+    const h = this.headPos(pl);
+    this.popText(h.x, h.y - 10, 'PRUEBA: ULTI DEL RIVAL', '#ff9aa4', 24);
+    // 2) su ESPECIAL directo a ti (al llegarte sin raqueta, sales volando)
+    this.time.delayedCall(1300, () => {
+      if (this.phase !== 'rally' || !pl.racket || pl.launched) return;
+      const s = this.ball.s;
+      s.x = bt.x - 20;
+      s.y = bt.y;
+      s.z = 60;
+      this.lastHitter = 'bot';
+      this.bounces = 0;
+      this.infernoFlight = false;
+      this.setSmashFlight(this.botKit.smash);
+      this.ball.setPower(true);
+      this.ball.setKind('normal', true);
+      aimShot(s, pl.x, pl.y, SHOT_SPEED * 1.6, 20);
+      bt.ch.swing(true);
+      const hb = this.headPos(bt);
+      this.popText(hb.x, hb.y - 10, 'PRUEBA: ESPECIAL DEL RIVAL', '#ff9aa4', 24);
+    });
+  }
+
   /** AUTO encendido: el jugador se mueve, saca y usa habilidades solo (para probar el online sin otra persona) */
   private autoPlay = false;
   private autoBtn!: Phaser.GameObjects.Container;
   private testBtn!: Phaser.GameObjects.Container;
+  private skyMeBtn!: Phaser.GameObjects.Container;
   private stunFog!: StunFog;
   private duelTestBtn!: Phaser.GameObjects.Container;
   /** dirección de golpe del AUTO (se renueva cada ~0,9 s) y distancia a su punto de golpeo */
@@ -3196,7 +3283,10 @@ export class MatchScene extends Phaser.Scene {
 
   /** Cada fotograma: la ULTI en juego se libera sola si su golpe no llegó a nadie (fuera, rebote…) o ya se recuperó la raqueta. */
   private ultiTick() {
-    if (!this.ultiOwner) return;
+    if (!this.ultiOwner) {
+      if (this.controlsDim !== 1) this.setControlsDim(1); // terminó la ULTI: los controles vuelven a su opacidad
+      return;
+    }
     if (this.cineLock || this.infernoFlight) this.ultiSeenAt = this.time.now;
     else if (this.ultiLanded) {
       if (this.ultiRecovered()) this.ultiOwner = null;
@@ -3226,6 +3316,8 @@ export class MatchScene extends Phaser.Scene {
     if (this.serveLock) return this.serveLockHint();
     if (!this.inferno.arm()) return false;
     this.smashBtn.setArmed(true);
+    // (21-11-2026, usuario) al armar la ULTI estando cargando, se quita YA el panel de carga (no debe ensuciar la pantalla ni la ULTI)
+    if (this.charging) this.stopCharge(false);
     return true;
   }
 
@@ -3255,6 +3347,7 @@ export class MatchScene extends Phaser.Scene {
    */
   private startInferno(c: { x: number; y: number }) {
     this.ultiStart('player', this.bot); // la tuya salió primero: la ULTI del rival queda bloqueada hasta que recupere la raqueta
+    this.setControlsDim(ULTI_HUD_DIM); // (21-11-2026, usuario) controles más opacos mientras dura la ULTI
     // (17-11-2026) ULTI LEGENDARIA (BOLA DE ENERGÍA): su cinemática extra (carga de 6 s, peloteo automático y bola final)
     if (isLegendaryInferno(getProfile().inferno)) {
       this.startLegend(c);
@@ -4313,6 +4406,50 @@ export class MatchScene extends Phaser.Scene {
     const fly = ch as unknown as { skyU: number };
     fly.skyU = 0;
     let glowAt = 0;
+    if (isPlayer) {
+      // (21-11-2026, usuario) a TI te lanza HACIA LA PANTALLA: sales disparado girando hacia la cámara, te haces GIGANTE y pasas de largo
+      // (no choca contra la pantalla: la atraviesa y desaparece). Al rival se le sigue viendo irse al cielo.
+      const FLY_ME = 1150;
+      const tgx = cam.worldView.centerX + side * cam.worldView.width * 0.05;
+      const tgy = cam.worldView.centerY - cam.worldView.height * 0.08;
+      ch.setDepth(6500); // por encima del marcador y los botones: viene "hacia ti"
+      this.tweens.add({
+        targets: ch,
+        skyU: 1,
+        delay: HIT_MS,
+        duration: FLY_ME,
+        ease: 'Linear',
+        onUpdate: () => {
+          const u = fly.skyU;
+          const e = u * u * (3 - 2 * u); // hacia el centro de la pantalla
+          const px = c0.x + (tgx - c0.x) * e;
+          const py = c0.y + (tgy - c0.y) * e;
+          const k = 1 + 13 * Math.pow(u, 2.6); // se acerca: crece cada vez más rápido (perspectiva)
+          const ang = side * 900 * ((u * FLY_ME) / 1000);
+          const rad = (ang * Math.PI) / 180;
+          const m = midOff * k;
+          ch.setScale(s0 * k, s0y * k).setAngle(ang).setPosition(px + m * Math.sin(rad), py - m * Math.cos(rad));
+          // al final ya "pasó" la pantalla: se desvanece mientras sigue creciendo
+          ch.setAlpha(u < 0.78 ? 1 : Math.max(0, 1 - (u - 0.78) / 0.22));
+          if (u < 0.85 && this.time.now - glowAt > 45) {
+            glowAt = this.time.now;
+            const gl = this.add.circle(px, py, 24 * Math.min(k, 6), Phaser.Utils.Array.GetRandom([0xfff1b8, 0xffffff, 0xffd23f]), 0.35).setDepth(6490).setBlendMode(Phaser.BlendModes.ADD);
+            this.tweens.add({ targets: gl, scale: 1.8, alpha: 0, duration: 300, ease: 'Quad.easeOut', onComplete: () => gl.destroy() });
+          }
+        },
+        onComplete: () => {
+          ch.setAlpha(0);
+          // pasó de largo: ráfaga de aire y un destello suave de toda la pantalla
+          const W2 = this.scale.width;
+          const H2 = this.scale.height;
+          const wash = this.add.rectangle(0, 0, W2, H2, 0xffffff, 0.55).setOrigin(0).setScrollFactor(0).setDepth(6600).setBlendMode(Phaser.BlendModes.ADD);
+          this.tweens.add({ targets: wash, alpha: 0, duration: 380, ease: 'Cubic.easeOut', onComplete: () => wash.destroy() });
+          this.cameras.main.shake(260, 0.02);
+        },
+      });
+      if (!remote) this.pointTo('bot', '¡BUEN PUNTO!', '#ffd23f');
+      return;
+    }
     this.tweens.add({
       targets: ch,
       skyU: 1,
@@ -5440,6 +5577,9 @@ export class MatchScene extends Phaser.Scene {
       this.tweens.killTweensOf(a);
     }
     this.netEndBotFly(false); // SOMBRA / SUPERSALTO del rival cortados por el fin del punto
+    // (21-11-2026, log de la partida online) dónde se VEÍA al rival antes de colocarlo para el saque: desde ahí se desliza (ver abajo)
+    const prevBot = { x: this.bot.x, y: this.bot.y };
+    this.netBallCatch = 0;
     this.ball.setMaxCharge(false); // el brillo y los rayos del golpe cargado al máximo no pasan al punto siguiente
     if (this.server === 'player') {
       this.setActor(this.player, COURT.left - 40, LAT_C + side * 70);
@@ -5537,8 +5677,34 @@ export class MatchScene extends Phaser.Scene {
     } else if (this.net) {
       this.netAnchor(this.bot.x, this.bot.y);
       this.diagCause = 'saque';
+      // (21-11-2026, log online: saltos de 80-290 px en CADA punto) el rival ya no aparece de golpe en su sitio de saque: el dibujo se
+      // desliza desde donde se le veía (NET_POINT_SLIDE_MS); la posición real ya es la del saque (solo cambia lo que se ve)
+      const ox = prevBot.x - this.bot.x;
+      const oy = prevBot.y - this.bot.y;
+      const d = Math.hypot(ox, oy);
+      this.netSnap = d > 6 && d < 520 ? { x: ox, y: oy, at: performance.now(), ms: NET_POINT_SLIDE_MS } : null;
     }
     this.holdBall();
+  }
+
+  /**
+   * (21-11-2026, log online: tirones de ~90 ms en los DOS teléfonos a la vez, a mitad del partido) Precalienta los efectos que la GPU
+   * compila la PRIMERA vez que se usan: el desenfoque de la cámara del aturdido (fx/stunFog.ts: postFX blur) y la matriz de color del
+   * INFERNO (fx/InfernoFx.ts: preFX colorMatrix). Se encienden ~2 fotogramas al crear el partido, casi invisibles (en red, bajo la pantalla
+   * VS; contra el bot, durante la presentación) y se quitan; así el shader ya está compilado cuando aparecen de verdad.
+   */
+  private warmUpShaders() {
+    if (this.renderer.type !== Phaser.WEBGL) return;
+    const cam = this.cameras.main;
+    const blur = cam.postFX?.addBlur(0, 0.01, 0.01, 0);
+    const probe = this.add.rectangle(4, 4, 8, 8, 0xffffff, 0.01).setScrollFactor(0).setDepth(-1000);
+    const dot = this.textures.exists('__WHITE') ? this.add.image(4, 4, '__WHITE').setAlpha(0.01).setScrollFactor(0).setDepth(-1000) : null;
+    dot?.preFX?.addColorMatrix();
+    this.time.delayedCall(80, () => {
+      if (blur) cam.postFX?.remove(blur);
+      dot?.destroy();
+      probe.destroy();
+    });
   }
 
   private setActor(a: Actor, x: number, y: number) {
@@ -5624,6 +5790,7 @@ export class MatchScene extends Phaser.Scene {
     this.inferno.onPointStart();
     this.infernoFlight = false;
     this.ultiOwner = null; // punto nuevo: las dos ULTIS vuelven a estar libres
+    this.setControlsDim(1);
     this.ultiVictim = null;
     this.ultiLanded = false;
     this.ball.clearTrail();
@@ -6650,6 +6817,15 @@ export class MatchScene extends Phaser.Scene {
     this.chargeSparks.hide();
   }
 
+  /** (21-11-2026, usuario) atenúa los controles del jugador (joystick, DASH/ESPECIAL, saques, emotes, rendirse, AUTO) mientras dura la ULTI. */
+  private controlsDim = 1;
+  private setControlsDim(k: number) {
+    this.controlsDim = k;
+    this.joy?.setDim(k);
+    for (const b of [this.dashBtn, this.smashBtn, this.serveNormalBtn, this.serveSpinBtn, this.surrenderBtn, this.autoBtn] as unknown as ({ setAlpha(a: number): unknown } | undefined)[]) b?.setAlpha(k);
+    this.emotes?.setAlpha(k);
+  }
+
   private updateCharge(dt: number) {
     if (!this.charging) return;
     const prev = this.charge;
@@ -7163,7 +7339,7 @@ export class MatchScene extends Phaser.Scene {
     // ESPECIAL: golpe fuerte de derecha / revés, nunca el remate con salto (la ULTI conserva su regla)
     const overhead = remate || (power ? (inferno ? this.powerOverhead(s) : false) : s.z > OVERHEAD_Z);
     const fxDelay = this.player.ch.swing(power || charged || remate, overhead, (power && overhead) || (remate && lobRemate), netVolley && !overhead);
-    if (power && !inferno) this.player.ch.holdImpact(SPECIAL_IMPACT_HOLD_MS); // (20-11-2026, usuario) ESPECIAL: 0,8 s en el frame del golpe
+    if (power && !inferno) this.player.ch.holdFollowThrough(SPECIAL_HOLD_FRAME, SPECIAL_IMPACT_HOLD_MS); // (21-11-2026, usuario) ESPECIAL: 0,8 s en el cuadro 8 (final del golpe)
     // en red: los datos REALES de este golpe (el rival repite exactamente la misma animación); `charged` = carga o remate
     if (this.net) this.netHit = { charged: charged || remate, overhead, volley: netVolley && !overhead, special: (power && overhead) || (remate && lobRemate), shock: charged && !power && c >= 0.995 };
 
@@ -7551,7 +7727,7 @@ export class MatchScene extends Phaser.Scene {
     // (la ULTI del rival conserva el remate por arriba si la pelota viene alta)
     const ultiOver = ulti && this.ball.s.z > OVERHEAD_Z;
     const fxDelay = power ? this.bot.ch.swing(true, ultiOver, ultiOver) : this.bot.ch.swing();
-    if (power && !ulti) this.bot.ch.holdImpact(SPECIAL_IMPACT_HOLD_MS); // (20-11-2026, usuario) ESPECIAL del rival: 0,8 s en el frame del golpe
+    if (power && !ulti) this.bot.ch.holdFollowThrough(SPECIAL_HOLD_FRAME, SPECIAL_IMPACT_HOLD_MS); // (21-11-2026, usuario) ESPECIAL del rival: 0,8 s en el cuadro 8
     s.z = Math.max(s.z, 22);
     let shotSpeed = shot.speed * (this.zone.active('bot') && shot.kind !== 'lob' && shot.kind !== 'drop' ? ZONE.shotMult * this.zoneStatMultiplier('bot', 'strength') : 1);
     if (this.zone.active('player')) shotSpeed *= 1 - zoneStatPercent(this.zoneLevels.player.resistance);
@@ -8197,10 +8373,18 @@ export class MatchScene extends Phaser.Scene {
       }
     } else if (this.phase === 'rally' || this.phase === 'pointover') {
       const sub = 3;
+      // (21-11-2026, log online) golpe del rival que llegó tarde: la pelota recupera el atraso que falta corriendo un poco más rápido unos
+      // fotogramas (máx. +60 %), con la física normal (botes y red incluidos), en vez de saltar de golpe hasta 250 ms hacia adelante
+      let ballDt = dt;
+      if (this.netBallCatch > 0 && this.lastHitter === 'bot') {
+        const extra = Math.min(this.netBallCatch, dt * 0.6);
+        this.netBallCatch -= extra;
+        ballDt += extra;
+      } else this.netBallCatch = 0;
       for (let i = 0; i < sub; i++) {
         const px = this.ball.s.x;
         const pvx = this.ball.s.vx;
-        const ev = stepBall(this.ball.s, dt / sub);
+        const ev = stepBall(this.ball.s, ballDt / sub);
         // red visual: pega en la malla (ondula + golpe sordo) o roza la cinta por encima (vibra + "tic")
         if (ev === 'net') this.netView.hit(this.ball.s.y, this.ball.s.z, pvx);
         else if ((px - NET_X) * (this.ball.s.x - NET_X) < 0 && this.ball.s.z >= NET_HEIGHT && this.ball.s.z <= NET_HEIGHT + SERVE.letBand) {
@@ -9302,7 +9486,7 @@ export class MatchScene extends Phaser.Scene {
       // tras un golpe del rival: el desfase con el punto del contacto se va apagando (deslizamiento, sin salto)
       const sn = this.netSnap;
       if (sn) {
-        const k = 1 - (performance.now() - sn.at) / NET_SNAP_MS;
+        const k = 1 - (performance.now() - sn.at) / (sn.ms ?? NET_SNAP_MS);
         if (k <= 0) this.netSnap = null;
         else {
           const e = k * k; // sale rápido y frena al llegar
@@ -10471,7 +10655,11 @@ export class MatchScene extends Phaser.Scene {
     // la pelota llega con el retraso de la red: se avanza lo que tardó el mensaje (sin pasar su bote ni la red)
     if (recvAt !== undefined) {
       const adv = this.netHitDelay(h, recvAt);
-      this.netAdvanceBall(adv);
+      // (21-11-2026, log online: adelantos de hasta 178 ms = la pelota saltaba un trecho) se adelanta de golpe solo hasta NET_BALL_JUMP;
+      // el resto lo recupera el rally corriendo un poco más rápido (netBallCatch)
+      const now0 = Math.min(adv, NET_BALL_JUMP);
+      this.netAdvanceBall(now0);
+      this.netBallCatch = adv - now0;
       this.diag?.log('hit-apply', { kind: h.kind, adv: adv * 1000, rtt: this.netRtt, off: this.netInterp.minOffset ?? -1, t: h.t, bx: h.x, by: h.y, from: this.diagBotPos() });
     }
     this.diagCause = 'hit';
@@ -10522,7 +10710,7 @@ export class MatchScene extends Phaser.Scene {
       // animación exacta: los mismos datos (cargado / remate / volea / smash) que usó el emisor
       this.serving = false;
       fx = bt.ch.swing(h.power || h.charged, h.overhead, h.special ?? (h.power && h.overhead), h.volley);
-      if (h.power && !h.inferno && !h.impact) bt.ch.holdImpact(SPECIAL_IMPACT_HOLD_MS); // (20-11-2026, usuario) ESPECIAL del rival online
+      if (h.power && !h.inferno && !h.impact) bt.ch.holdFollowThrough(SPECIAL_HOLD_FRAME, SPECIAL_IMPACT_HOLD_MS); // (20-11-2026, usuario) ESPECIAL del rival online
     }
     // sonido propio: saque y remate del globo; el resto, golpe-fuerte
     const netSnd = h.kind === 'serve' ? 'ball-saque-1' : h.special && h.overhead && !h.power && !h.inferno ? 'ball-saque-2' : undefined;

@@ -854,9 +854,8 @@ export class MenuScene extends Phaser.Scene {
     // (21-11-2026) con MAESTRÍA ganada: 2 oleadas de EXP (barras de nivel y pase) y la 3.ª es la maestría, que vuela al personaje y lo
     // ilumina como una subida de nivel. Los 3 sonidos siguen igual (uno por oleada)
     const mastery = this.masteryGain && this.hero && passiveOf(this.masteryGain.skin) ? this.masteryGain : null;
-    // (18-11-2026, usuario) la EXP sale en 2 oleadas (200 → queda 100 → sale el resto, sin mostrar "+0") y, si la hay, la maestría.
-    // 3 sonidos en total: al aparecer el total, en la 1.ª oleada y en la maestría (sin maestría: en la 2.ª oleada)
-    const XP_WAVES = 2;
+    // (21-11-2026, usuario) la EXP sale en UNA sola oleada (antes 2); si hay maestría, es la 2.ª (y última) oleada.
+    const XP_WAVES = 1;
     const WAVES_ALL = mastery ? 3 : 2;
     const WAVE_MS = 650; // entre oleadas
     const MASTERY_AFTER_MS = 300; // la maestría, tras la última oleada de EXP
@@ -904,8 +903,9 @@ export class MenuScene extends Phaser.Scene {
     let arrivals = 0;
     for (let w = 0; w < WAVES_ALL; w++) {
       // las oleadas empiezan cuando el total ya se leyó. (18-11-2026, usuario: "la maestría tarda en salir") la MAESTRÍA sale justo cuando se va
-      // lo último de la EXP (300 ms después de esa oleada), no una oleada entera más tarde: los 3 tiempos quedan seguidos y parejos
-      const t0 = mastery && w >= XP_WAVES ? 650 + (XP_WAVES - 1) * WAVE_MS + MASTERY_AFTER_MS : 650 + w * WAVE_MS;
+      // (21-11-2026, usuario) la oleada de EXP arranca al mismo ritmo que las monedas (antes 650 ms); la MAESTRÍA, un poco después de la última oleada
+      const EXP_START = 350;
+      const t0 = mastery && w >= XP_WAVES ? EXP_START + (XP_WAVES - 1) * WAVE_MS + MASTERY_AFTER_MS : EXP_START + w * WAVE_MS;
       if (mastery && w >= XP_WAVES) {
         // 3.ª oleada: la MAESTRÍA va al personaje
         this.time.delayedCall(t0, () => {
@@ -1075,10 +1075,14 @@ export class MenuScene extends Phaser.Scene {
     const N = Phaser.Math.Clamp(Math.round(4 + amount / 8), 4, 12);
     const gap = Math.min(50, 520 / N);
     const FLY = 540;
-    const TOTAL_MS = 1600;
+    // (21-11-2026, usuario) mismo tiempo que las monedas 1v1 y la EXP: aparecer y asignarse dura lo mismo (la maestría va un poco después, al final)
+    const TOTAL_MS = 1500;
     const prevDepth = card.depth;
     card.setDepth(195);
-    const glow = this.add.circle(src.x, src.y, 110, 0xb06bff, 0.25).setBlendMode(Phaser.BlendModes.ADD).setDepth(200).setScale(0.2);
+    // (21-11-2026, usuario) oscurecer la pantalla mientras llegan las monedas 2v2 (como la EXP); la card de la liga 2v2 queda encima
+    const dim = this.add.rectangle(0, 0, W, this.scale.height, 0x02060f, 0).setOrigin(0).setDepth(190);
+    this.tweens.add({ targets: dim, fillAlpha: 0.6, duration: 280 });
+    // (21-11-2026, usuario) sin el círculo/glow detrás del "+N" (igual que las monedas 1v1)
     const total = this.add.text(src.x, src.y, `+${amount.toLocaleString('es-CL')}`, { fontFamily: FONT, fontSize: '72px', color: '#e6d2ff', stroke: '#2a1458', strokeThickness: 10 }).setOrigin(0.5).setDepth(201).setScale(0.3);
     const ICON = 84;
     const icon = this.textures.exists('coin-2v2') ? this.add.image(0, src.y, 'coin-2v2').setDisplaySize(ICON, ICON).setDepth(201) : null;
@@ -1091,7 +1095,6 @@ export class MenuScene extends Phaser.Scene {
       this.tweens.add({ targets: icon, scale: icon.scaleX / 0.3, duration: 300, delay: 60, ease: 'Back.easeOut' });
     }
     total.setScale(ts * 0.3);
-    this.tweens.add({ targets: glow, scale: 1, duration: 300, ease: 'Cubic.easeOut' });
     this.tweens.add({ targets: total, scale: ts, duration: 260, ease: 'Back.easeOut' });
     sfx(this, 'recolectar-monedas');
     const dx = rect.x + rect.w * 0.3;
@@ -1099,7 +1102,7 @@ export class MenuScene extends Phaser.Scene {
     const start = this.hold2v2;
     let arrived = 0;
     for (let o = 0; o < N; o++) {
-      this.time.delayedCall(260 + o * gap, () => {
+      this.time.delayedCall(180 + o * gap, () => {
         if (!this.sys.isActive()) return;
         const coin = this.textures.exists('coin-2v2') ? this.add.image(0, 0, 'coin-2v2').setDisplaySize(34, 34) : this.add.circle(0, 0, 15, 0x8a4dff).setStrokeStyle(3, 0x2a1458);
         const orb = this.add.container((icon ? icon.x : src.x) + Phaser.Math.Between(-36, 36), src.y + Phaser.Math.Between(-16, 16), [coin]).setDepth(202).setScale(0.5);
@@ -1133,12 +1136,13 @@ export class MenuScene extends Phaser.Scene {
     }
     // fin fijo (aunque alguna moneda se atrase): se apagan los textos, el contador queda completo y vuelve a las monedas de siempre
     this.time.delayedCall(TOTAL_MS, () => {
-      if (!this.sys.isActive()) return;
+      if (!this.sys.isActive()) return void dim.destroy();
       this.hold2v2 = 0;
       this.coin2v2Refresh?.();
       this.leagueRepaint?.();
       card.setDepth(prevDepth);
-      const outs = [total, glow, ...(icon ? [icon] : [])];
+      this.tweens.add({ targets: dim, fillAlpha: 0, duration: 300, onComplete: () => dim.destroy() });
+      const outs = [total, ...(icon ? [icon] : [])];
       this.tweens.add({ targets: outs, alpha: 0, duration: 200, onComplete: () => outs.forEach((x) => x.destroy()) });
       const flash = this.add.graphics().setDepth(196).setBlendMode(Phaser.BlendModes.ADD);
       flash.fillStyle(0xb06bff, 0.45).fillRoundedRect(rect.x, rect.y, rect.w, rect.h, rect.h / 2);
@@ -1174,7 +1178,10 @@ export class MenuScene extends Phaser.Scene {
     set(base);
     const prevDepth = card.depth;
     card.setDepth(195);
-    const glow = this.add.circle(src.x, src.y, 110, 0xffd23f, 0.22).setBlendMode(Phaser.BlendModes.ADD).setDepth(200).setScale(0.2);
+    // (21-11-2026, usuario) oscurecer la pantalla mientras llegan las monedas (como la EXP), para verlas mejor; la card de monedas queda encima
+    const dim = this.add.rectangle(0, 0, W, this.scale.height, 0x02060f, 0).setOrigin(0).setDepth(190);
+    this.tweens.add({ targets: dim, fillAlpha: 0.6, duration: 280 });
+    // (21-11-2026, usuario) sin el círculo/glow dorado detrás del "+N" de las monedas
     const total = this.add.text(src.x, src.y, `+${amount.toLocaleString('es-CL')}`, { fontFamily: FONT, fontSize: '72px', color: '#ffd23f', stroke: '#0a1638', strokeThickness: 10 }).setOrigin(0.5).setDepth(201).setScale(0.3);
     // (18-11-2026, usuario) la cifra lleva al lado el icono de MONEDAS (monedas.webp), el par centrado; las monedas salen del icono
     const ICON = 92;
@@ -1189,7 +1196,6 @@ export class MenuScene extends Phaser.Scene {
       this.tweens.add({ targets: icon, scale: is, duration: 300, delay: 60, ease: 'Back.easeOut' });
     }
     total.setScale(ts * 0.3);
-    this.tweens.add({ targets: glow, scale: 1, duration: 300, ease: 'Cubic.easeOut' });
     this.tweens.add({ targets: total, scale: ts, duration: 260, ease: 'Back.easeOut' });
     sfx(this, 'recolectar-monedas');
     const dx = rect.x + rect.w * 0.3;
@@ -1226,7 +1232,7 @@ export class MenuScene extends Phaser.Scene {
               const flash = this.add.graphics().setDepth(196).setBlendMode(Phaser.BlendModes.ADD);
               flash.fillStyle(0xffd23f, 0.45).fillRoundedRect(rect.x, rect.y, rect.w, rect.h, rect.h / 2);
               this.tweens.add({ targets: flash, alpha: 0, duration: 420, onComplete: () => flash.destroy() });
-              const outs = [total, glow, ...(icon ? [icon] : [])];
+              const outs = [total, ...(icon ? [icon] : [])];
               this.tweens.add({ targets: outs, alpha: 0, duration: 200, onComplete: () => outs.forEach((x) => x.destroy()) });
             }
           },
@@ -1287,8 +1293,9 @@ export class MenuScene extends Phaser.Scene {
     }
     // fin fijo a los 1,5 s (aunque alguna moneda se atrase): la EXP no espera más
     this.time.delayedCall(TOTAL_MS, () => {
-      if (!this.sys.isActive()) return;
+      if (!this.sys.isActive()) return void dim.destroy();
       card.setDepth(prevDepth);
+      this.tweens.add({ targets: dim, fillAlpha: 0, duration: 300, onComplete: () => dim.destroy() });
       if (arrived < N) set(base + amount);
       if (this.leagueHold > 0) {
         this.leagueHold = 0;

@@ -81,8 +81,9 @@ export const LUNGE_ARM = 90;
 /**
  * ESPECIAL armado: alcance extra de la raqueta para golpear la pelota que viene cerca (×, sobre HIT_RANGE). Vale para el
  * jugador, el BOT y el rival en red (el rival lo aplica en su propio teléfono, que es quien decide su golpe).
+ * (21-11-2026, usuario) bajado de 1.25 a 1.08: el golpe sale con la raqueta JUNTO a la pelota (antes salía con la pelota a ~1 m).
  */
-export const SMASH_REACH = 1.25;
+export const SMASH_REACH = 1.08;
 /** Límites de movimiento lateral (más allá de las líneas laterales). */
 export const SIDE_MARGIN = 50;
 

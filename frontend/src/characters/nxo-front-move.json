@@ -2,12 +2,12 @@
   "source": "pj-nxo-rival-1.png (fila 5)",
   "view": "front",
   "cell": {
-    "w": 122,
-    "h": 197
+    "w": 124,
+    "h": 198
   },
   "origin": {
     "x": 0.5,
-    "y": 0.9797
+    "y": 0.9798
   },
   "standHeight": 150,
   "turnExit": 5,
@@ -23,12 +23,12 @@
       "fps": 14,
       "loop": false,
       "cell": {
-        "w": 168,
-        "h": 186
+        "w": 170,
+        "h": 187
       },
       "origin": {
         "x": 0.5,
-        "y": 0.97849
+        "y": 0.97861
       }
     }
   }

@@ -2,12 +2,12 @@
   "source": "pj-nxo-rival-2.png (fila 8)",
   "view": "front",
   "cell": {
-    "w": 122,
-    "h": 197
+    "w": 124,
+    "h": 198
   },
   "origin": {
     "x": 0.5,
-    "y": 0.9797
+    "y": 0.9798
   },
   "standHeight": 150,
   "start": 2,
@@ -21,11 +21,11 @@
       "scale": 1,
       "cell": {
         "w": 150,
-        "h": 208
+        "h": 210
       },
       "origin": {
         "x": 0.5,
-        "y": 0.98077
+        "y": 0.98095
       }
     }
   }

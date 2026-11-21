@@ -10,8 +10,8 @@ import { sfx } from './sfx';
  * Varias a la vez van en fila (una detrás de otra). Fija en pantalla (scrollFactor 0). Solo la ve el usuario local en 1v1.
  */
 const ALERT = {
-  /** centro: px sobre el borde de abajo (ESPECIAL en H-225 con radio ~64 → su borde de arriba en H-289) */
-  lift: 350,
+  /** centro: px sobre el borde de abajo (21-11-2026, usuario: un poco más arriba, 350 → 420) */
+  lift: 420,
   /** ancho en pantalla; el alto sale de la proporción de la imagen (MARKER_ART.w × MARKER_ART.h). (19-11-2026, usuario) más grande: 330 → 420 */
   w: 420,
   holdMs: 2100,

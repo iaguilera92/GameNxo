@@ -20,13 +20,12 @@ import { formatRiskLeft } from '../domain/riskMode';
 import { dailyLoginButton } from '../ui/DailyLoginButton';
 import { friendsButton } from '../ui/FriendsButton';
 import { globalRankingButton } from '../ui/GlobalRanking';
-import { rank2v2 } from '../domain/league2v2';
-import { doublesPlayButton, openDoublesDialog } from '../ui/PlayEntry2v2';
+import { leagueView2v2 } from '../logic/League2v2';
+import { doublesPlayButton, league2v2Id, openDoublesDialog } from '../ui/PlayEntry2v2';
 import { openFriendsDialog } from '../ui/FriendsDialog';
 import { COINS_2V2 } from '../domain/coins2v2';
-import { navLigaLabel } from '../ui/navLabel';
 import { drawProfileFrame, openProfileDialog } from '../ui/ProfileDialog';
-import { equippedFrame } from '../domain/profileFrames';
+import { equippedFrame, equippedFrame2v2 } from '../domain/profileFrames';
 import { addProfileFrameArt, queueProfileFrameArt } from '../ui/profileFrameArt';
 import { chestButton } from '../ui/ChestButton';
 import { loadBet, rankedPlayButton } from '../ui/PlayEntry';
@@ -58,7 +57,9 @@ const COUNTER_TEXT_W = 92;
  */
 const PROFILE_H = 100;
 /** fin del widget del PASE (y 58 + perfil + 12 + 76): nada de los botones laterales sube más */
-const PASS_BOTTOM = 58 + PROFILE_H + 12 + 76;
+/** alto de las cards del PASE y de la LIGA (21-11-2026, usuario: 76 -> 88) */
+const PASS_H = 88;
+const PASS_BOTTOM = 58 + PROFILE_H + 12 + PASS_H;
 /** alto de cada contador: la columna de 2 (MONEDAS · DINERO) cabe en el alto de la card del perfil, con aire entre ellos */
 const COUNTER_H = 40;
 const COUNTER_GAP = 10;
@@ -81,7 +82,7 @@ const HERO_SHIFT_X = 112;
 const BG_ZOOM = 1.12;
 
 /**
- * Barra inferior en imagen (public/assets/nav-bar.webp). `box` = contenido visible en píxeles
+ * Barra inferior en imagen (public/assets/barra-inicio.webp). `box` = contenido visible en píxeles
  * de la imagen (sin el margen transparente); `split` = límites entre las 3 pestañas (0..1).
  * Si la imagen no existe se dibuja la barra vectorial de antes.
  */
@@ -127,6 +128,10 @@ export class MenuScene extends Phaser.Scene {
     if (!this.textures.exists('menu-liga')) this.load.image('menu-liga', 'assets/liga.webp'); // trofeo de la card de LIGA
     if (!this.textures.exists('coin-2v2')) this.load.image('coin-2v2', 'assets/moneda-2v2.webp'); // MONEDA 2V2 (morada); si el archivo no está, se dibuja una
     preloadRankBadges(this.load, [myLeague()]);
+    // (21-11-2026, usuario) cards del PASE y de la LIGA con imagen (assets/menu/); la de la liga lleva el emblema de tu liga (normal o 2v2)
+    preloadRankBadges(this.load, [league2v2Id()], true);
+    for (const [k, f] of [['menu-pass-card', 'pase-batalla'], ['menu-liga-card', 'liga-card'], ['menu-liga-card-2v2', 'liga-card-2v2']] as const)
+      if (!this.textures.exists(k)) this.load.image(k, `assets/menu/${f}.webp`);
   }
 
   /** EXP ganada en la partida que acaba de terminar (MatchEndScene): se anima al volver; 0 = nada pendiente */
@@ -260,17 +265,21 @@ export class MenuScene extends Phaser.Scene {
     // (16-11-2026) bajo DIARIO va la card GLOBAL (mismo tamaño): una fila más (84 + 12) que también se descuenta
     const globalRow = 84 + 12;
     const dailyMaxY = playY - 124 - 52 - 30 - 84 / 2 - globalRow;
-    const sideY = Math.max(PASS_BOTTOM + 16 + 68, Math.min(H * 0.4, feetY - 300, dailyMaxY - 84 / 2 - 30 - 136 / 2 - 166));
-    this.sideButton(128, sideY + 2, 'PERSONAJE', 'user', false, () => go('Customize')); // (21-11-2026, usuario) 2 px más abajo, más cerca de TIENDA
-    this.sideButton(128, sideY + 166, 'TIENDA', 'shop', false, () => go('Shop'));
+    // (21-11-2026, usuario) toda la columna (PERSONAJE, TIENDA, DIARIO, AMIGOS, GLOBAL) 22 px más arriba y PERSONAJE–TIENDA más juntas
+    // (152 entre centros = 16 de hueco; antes 164). Nunca encima del PASE (10 px de margen)
+    const SIDE_STEP = 152;
+    const SIDE_LIFT = 22;
+    const sideY = Math.max(PASS_BOTTOM + 10 + 68, Math.min(H * 0.4, feetY - 300, dailyMaxY - 84 / 2 - 30 - 136 / 2 - SIDE_STEP) - SIDE_LIFT);
+    this.sideButton(128, sideY, 'PERSONAJE', 'user', false, () => go('Customize'));
+    this.sideButton(128, sideY + SIDE_STEP, 'TIENDA', 'shop', false, () => go('Shop'));
     // premio diario: bajo TIENDA, mitad de su ancho (214/2); se marca en dorado pero NUNCA se abre solo
     // (sin pisar el panel de ruletas en pantallas bajas)
     const dailyH = 84;
     const dailyGap = 10; // hueco entre DIARIO y AMIGOS
     const dailyW = (214 - dailyGap) / 2; // entre los dos ocupan lo mismo que TIENDA
-    // misma separación que PERSONAJE–TIENDA (166 entre centros con 136 de alto = 30 de hueco)
-    const gapSide = 166 - 136;
-    const dailyY = Math.min(sideY + 166 + 136 / 2 + gapSide + dailyH / 2, dailyMaxY);
+    // misma separación que PERSONAJE–TIENDA
+    const gapSide = SIDE_STEP - 136;
+    const dailyY = Math.min(sideY + SIDE_STEP + 136 / 2 + gapSide + dailyH / 2, dailyMaxY - SIDE_LIFT);
     // alineado a la izquierda con TIENDA (su borde izquierdo está en 128 − 214/2)
     dailyLoginButton(this, 128 - 214 / 2 + dailyW / 2, dailyY, (m) => this.toast(m), dailyW, dailyH);
     // AMIGOS: a su derecha, mismo diseño pero bloqueado (la sección aún no existe)
@@ -372,7 +381,23 @@ export class MenuScene extends Phaser.Scene {
     c.add([g, hot, x2, name, ring, tag, tagText]);
     c.setSize(w, h).setInteractive({ useHandCursor: true });
     // el borde se llena desde arriba, justo a la derecha de la etiqueta "10 MIN" (mide ~90 de ancho)
-    this.holdPress(c, ring, modeShape(w, h), 0xffd23f, () => this.riskInfo(), () => this.tryActivateRisk(() => paint()), TAG_X + 46, () => riskModeStatus().phase !== 'active');
+    // (21-11-2026, usuario) al MANTENER presionada la card, además del borde que se llena, la etiqueta muestra "10 MIN" y crece/brilla con el avance
+    this.holdPress(
+      c,
+      ring,
+      modeShape(w, h),
+      0xffd23f,
+      () => this.riskInfo(),
+      () => this.tryActivateRisk(() => paint()),
+      TAG_X + 46,
+      () => riskModeStatus().phase !== 'active',
+      (f) => {
+        if (!c.active) return;
+        if (f > 0 && riskModeStatus().phase !== 'active') tagText.setText('10 MIN'); // lo que va a durar, mientras se mantiene
+        tagText.setScale(1 + 0.35 * f).setColor(f > 0 ? '#fff3a0' : '#ffd23f');
+        tagText.setShadow(0, 0, '#ffb13b', 8 * f, false, true);
+      },
+    );
     const glow = this.riskGlow();
     let shown = '';
     const paint = () => {
@@ -388,6 +413,8 @@ export class MenuScene extends Phaser.Scene {
       // la máscara del destello sigue a la card (posición en pantalla)
       hotMask.clear().fillStyle(0xffffff).fillPoints(modeShape(w, h).map((p) => ({ x: p.x + c.x, y: p.y + c.y })), true);
       const live = rs.phase !== 'closed';
+      // activo o en reposo: la etiqueta a su tamaño normal (el hold la agranda mientras se mantiene; al activarse vuelve a 1)
+      if (active) tagText.setScale(1).setShadow(0, 0, '#000', 0, false, false);
       tagText.setText(active ? formatRiskLeft(rs.msLeft) : '10 MIN');
       const key = `${live}|${active}|${Math.ceil(tagText.width)}`;
       if (key === shown) return;
@@ -439,6 +466,7 @@ export class MenuScene extends Phaser.Scene {
     onDone: () => void,
     startX = 0,
     canHold: () => boolean = () => true,
+    onProgress: (f: number) => void = () => {},
   ) {
     let t0 = -1;
     // `r` número = anillo circular (botón del diálogo); lista de puntos = se llena el BORDE de esa forma (card del menú), empezando en el
@@ -486,11 +514,13 @@ export class MenuScene extends Phaser.Scene {
         t0 = -1;
         stopSnd();
         draw(0);
+        onProgress(1);
         target.setScale(1);
         onDone();
         return;
       }
       draw(f);
+      onProgress(f); // feedback mientras se mantiene (la card de riesgo resalta su etiqueta "10 MIN")
       target.setScale(1 - 0.06 * f);
     };
     this.events.on(Phaser.Scenes.Events.UPDATE, tick);
@@ -505,6 +535,7 @@ export class MenuScene extends Phaser.Scene {
       const held = this.time.now - t0;
       t0 = -1;
       draw(0);
+      onProgress(0); // soltó: la etiqueta vuelve a su estado normal
       this.tweens.add({ targets: target, scale: 1, duration: 160, ease: 'Back.easeOut' });
       if (tap && held < RISK_TAP_MS) onTap();
     };
@@ -783,9 +814,8 @@ export class MenuScene extends Phaser.Scene {
     const bottom = H - NAV.bottom;
     const top = bottom - (y1 - y0) * s;
     // origen = esquina inferior izquierda del contenido visible (la imagen trae margen transparente)
+    // (21-11-2026, usuario) el arte nuevo (nav-bar.png -> barra-inicio.webp) ya trae LIGA / INICIO / TORNEO escritos: ya no se escribe nada encima
     this.add.image(NAV.side, bottom, NAV.key).setOrigin(x0 / NAV.w, y1 / NAV.h).setScale(s).setDepth(100);
-    // pestaña LIGA (antes "RANKING" dentro de la imagen)
-    navLigaLabel(this, (ox, oy) => ({ x: NAV.side + (ox - x0) * s, y: bottom + (oy - y1) * s }), s, false, 447);
 
     const zone = (from: number, to: number, onClick: () => void) => {
       const zx = NAV.side + (W - NAV.side * 2) * from;
@@ -808,7 +838,7 @@ export class MenuScene extends Phaser.Scene {
       return;
     }
     this.cameras.main.fadeOut(200, 0, 0, 0);
-    this.cameras.main.once('camerafadeoutcomplete', () => this.scene.start('Ranked'));
+    this.cameras.main.once('camerafadeoutcomplete', () => this.scene.start('Ranked', { tab: this.leagueMode === '2v2' ? '2v2' : '1v1' })); // abre la pestaña de la liga que se ve en la card
   }
 
   // ---------------------------------------------------------------- ruletas diarias
@@ -1729,7 +1759,7 @@ export class MenuScene extends Phaser.Scene {
     this.passWidget(24, passY, Math.min(380, Math.min(440, countersLeft - 24 - 14)));
     // MONEDAS DE LA LIGA (neto de la semana): en la fila del PASE, a la derecha, del borde de los contadores al del botón de ajustes
     // (21-11-2026; antes eran la 1.ª fila de la columna de contadores)
-    this.leagueCoins(countersLeft, gx + gs / 2, passY, 76);
+    this.leagueCoins(countersLeft, gx + gs / 2, passY, PASS_H);
     // columna de 2 filas en el alto de la card del perfil: monedas de la cuenta · dinero virtual. A su derecha, ajustes.
     this.coinCounter(gx - gs / 2 - 10, y + COUNTER_TOP);
     // dinero (billetes): saldo real, en vivo; al tocarlo lleva a la Tienda
@@ -1747,7 +1777,7 @@ export class MenuScene extends Phaser.Scene {
 
   /** PASE DE BATALLA terminado (fin de mes): bloqueado con candado hasta que llegue otro. */
   private passWidgetLocked(x: number, y: number, w: number) {
-    const h = 76;
+    const h = PASS_H;
     const c = this.add.container(x, y);
     const g = this.add.graphics();
     g.fillStyle(0x000000, 0.35).fillRoundedRect(3, 6, w, h, 20);
@@ -1782,42 +1812,62 @@ export class MenuScene extends Phaser.Scene {
     // (16-11-2026) la bienvenida (fila XP) no cuenta hasta jugar la primera partida (BattlePassScene la bloquea)
     const welcomeLocked = !(totalPlayed() > 0 || s.bp.xp > 0);
     const ready = bpClaimable(s) - (welcomeLocked ? (s.bp.welcomeFreeClaimed ? 0 : 1) + (s.bp.premium && !s.bp.welcomePremClaimed ? 1 : 0) : 0);
-    const h = 76;
+    const h = PASS_H;
     const c = this.add.container(x, y);
+    // (21-11-2026, usuario) CARD CON IMAGEN (assets/menu/pase-batalla.webp: marco dorado, escudo con corona y flecha, sin textos ni relleno):
+    // encima van el nivel en el escudo, los textos y el relleno de la barra (en su riel). Sin la imagen, la card dibujada de siempre.
+    const art = this.textures.exists('menu-pass-card');
+    // medidas de la imagen (px de la imagen original 2000x667): cuerpo del marco, escudo y riel de la barra
+    const A = { bx: 21, by: 126, bw: 1958, bh: 431, shieldX: 290, nivY: 345, numY: 420, textX: 530, railX0: 537, railX1: 1698, railY0: 420, railY1: 490 };
+    const sx = w / A.bw;
+    const sy = h / A.bh;
+    const ax = (px: number) => (px - A.bx) * sx;
+    const ay = (py: number) => (py - A.by) * sy;
     // (21-11-2026, usuario) sin el halo dorado que latía alrededor del botón
     const g = this.add.graphics();
-    // cuerpo DORADO brillante (capas: base ámbar, mitad alta oro, reflejo claro) + doble borde
-    g.fillStyle(0x000000, 0.35).fillRoundedRect(3, 6, w, h, 20);
-    g.fillStyle(0xe58a00, 1).fillRoundedRect(0, 0, w, h, 20);
-    g.fillStyle(0xffc42e, 1).fillRoundedRect(0, 0, w, h * 0.62, { tl: 20, tr: 20, bl: 8, br: 8 });
-    g.fillStyle(0xffe680, 1).fillRoundedRect(4, 3, w - 8, h * 0.3, { tl: 17, tr: 17, bl: 6, br: 6 });
-    g.fillStyle(0xffffff, 0.45).fillRoundedRect(14, 5, w - 28, 6, 3);
-    g.lineStyle(3, 0x7a4a00, 1).strokeRoundedRect(0, 0, w, h, 20);
-    g.lineStyle(2, 0xfff1b8, 0.9).strokeRoundedRect(3, 3, w - 6, h - 6, 17);
-    // insignia (corona + nivel del pase): disco azul noche con corona dorada
-    const bx0 = 10 + 43;
-    c.add(g);
-    // (21-11-2026, usuario) la insignia del nivel es el MISMO escudo dorado con corona de la pantalla del PASE (assets/insignia-pase-batalla.webp),
-    // con "NIV" y el nivel encima, como allí
-    const BH = 68;
-    if (this.textures.exists('battle-pass-insignia')) c.add(this.add.image(bx0, h / 2 + 1, 'battle-pass-insignia').setDisplaySize((BH * 240) / 287, BH));
-    c.add(this.add.text(bx0, h / 2 - 5, 'NIV', { fontFamily: FONT, fontSize: '9px', color: '#0a1638', stroke: '#fff0a8', strokeThickness: 2 }).setOrigin(0.5));
-    const lvNum = this.add.text(bx0, h / 2 + 9, String(level), { fontFamily: FONT, fontSize: '21px', color: '#0a1638', stroke: '#fff0a8', strokeThickness: 3 }).setOrigin(0.5);
+    if (art) {
+      g.fillStyle(0x000000, 0.3).fillRoundedRect(3, 6, w, h, 20);
+      c.add(g);
+      c.add(this.add.image(-A.bx * sx, -A.by * sy, 'menu-pass-card').setOrigin(0).setScale(sx, sy));
+    }
+    const bx0 = art ? ax(A.shieldX) : 10 + 43;
+    if (!art) {
+      // cuerpo DORADO brillante (capas: base ámbar, mitad alta oro, reflejo claro) + doble borde
+      g.fillStyle(0x000000, 0.35).fillRoundedRect(3, 6, w, h, 20);
+      g.fillStyle(0xe58a00, 1).fillRoundedRect(0, 0, w, h, 20);
+      g.fillStyle(0xffc42e, 1).fillRoundedRect(0, 0, w, h * 0.62, { tl: 20, tr: 20, bl: 8, br: 8 });
+      g.fillStyle(0xffe680, 1).fillRoundedRect(4, 3, w - 8, h * 0.3, { tl: 17, tr: 17, bl: 6, br: 6 });
+      g.fillStyle(0xffffff, 0.45).fillRoundedRect(14, 5, w - 28, 6, 3);
+      g.lineStyle(3, 0x7a4a00, 1).strokeRoundedRect(0, 0, w, h, 20);
+      g.lineStyle(2, 0xfff1b8, 0.9).strokeRoundedRect(3, 3, w - 6, h - 6, 17);
+      c.add(g);
+      // (21-11-2026, usuario) la insignia del nivel es el MISMO escudo dorado con corona de la pantalla del PASE (assets/insignia-pase-batalla.webp)
+      const BH = 68;
+      if (this.textures.exists('battle-pass-insignia')) c.add(this.add.image(bx0, h / 2 + 1, 'battle-pass-insignia').setDisplaySize((BH * 240) / 287, BH));
+    }
+    // "NIV" y el nivel sobre el escudo (el de la imagen o el de la insignia)
+    c.add(this.add.text(bx0, art ? ay(A.nivY) : h / 2 - 5, 'NIV', { fontFamily: FONT, fontSize: '9px', color: '#3a2200', stroke: '#fff0a8', strokeThickness: 2 }).setOrigin(0.5));
+    const lvNum = this.add.text(bx0, art ? ay(A.numY) : h / 2 + 9, String(level), { fontFamily: FONT, fontSize: '21px', color: '#3a2200', stroke: '#fff0a8', strokeThickness: 3 }).setOrigin(0.5);
     c.add(lvNum);
-    // chevron que empuja hacia la derecha
-    const chev = this.add.graphics({ x: w - 22, y: h / 2 });
-    chev.lineStyle(5, 0x5a3200, 1).beginPath().moveTo(-5, -10).lineTo(5, 0).lineTo(-5, 10).strokePath();
-    c.add(chev);
-    this.tweens.add({ targets: chev, x: w - 16, duration: 420, yoyo: true, repeat: -1, repeatDelay: 500, ease: 'Sine.easeInOut' });
-    // textos + barra alineados con los del perfil
-    const tx = bx0 + 43 + 10;
-    const tw = w - tx - 40;
-    const title = this.add.text(tx, 12, 'PASE DE BATALLA', { fontFamily: FONT, fontSize: '23px', color: '#ffffff', stroke: '#7a4a00', strokeThickness: 5 }).setOrigin(0, 0);
+    if (!art) {
+      // chevron que empuja hacia la derecha (la imagen ya trae el suyo)
+      const chev = this.add.graphics({ x: w - 22, y: h / 2 });
+      chev.lineStyle(5, 0x5a3200, 1).beginPath().moveTo(-5, -10).lineTo(5, 0).lineTo(-5, 10).strokePath();
+      c.add(chev);
+      this.tweens.add({ targets: chev, x: w - 16, duration: 420, yoyo: true, repeat: -1, repeatDelay: 500, ease: 'Sine.easeInOut' });
+    }
+    // textos + barra (con imagen: sobre el hueco liso y en el riel de la imagen)
+    const tx = art ? ax(A.textX) : bx0 + 43 + 10;
+    const tw = art ? ax(A.railX1) - tx : w - tx - 40;
+    const title = this.add.text(tx, art ? 8 : 12, 'PASE DE BATALLA', { fontFamily: FONT, fontSize: '23px', color: '#ffffff', stroke: '#7a4a00', strokeThickness: 5 }).setOrigin(0, 0);
     fitText(title, tw);
     c.add(title);
-    const sub = this.add.text(tx, 40, '', { fontFamily: FONT, fontSize: '14px', color: '#5a3200' }).setOrigin(0, 0).setLetterSpacing(1);
+    const sub = this.add.text(tx, art ? 37 : 40, '', { fontFamily: FONT, fontSize: '14px', color: '#5a3200' }).setOrigin(0, 0).setLetterSpacing(1);
     c.add(sub);
-    const by = 58;
+    const by = art ? ay(A.railY0) : 58;
+    const rx = art ? ax(A.railX0) : tx;
+    const rw = art ? ax(A.railX1) - rx : tw;
+    const rh = art ? ay(A.railY1) - by : 10;
     const bar = this.add.graphics();
     c.add(bar);
     // dibuja nivel, texto y barra para una EXP del pase dada (se anima al volver de una partida)
@@ -1833,8 +1883,16 @@ export class MenuScene extends Phaser.Scene {
       lvNum.setText(String(b.level));
       sub.setText(dn ? 'COMPLETADO' : `NIVEL ${b.level + 1} DE ${BP_TIERS}`);
       bar.clear();
+      const r2 = rh / 2;
+      const fw = Math.max(rh, rw * (dn ? 1 : b.progress));
+      if (art) {
+        // relleno AMARILLO dentro del riel de la imagen (con reflejo arriba)
+        bar.fillStyle(0xffd21f, 1).fillRoundedRect(rx, by, fw, rh, r2);
+        bar.fillStyle(0xfff27a, 1).fillRoundedRect(rx, by, fw, rh * 0.5, { tl: r2, tr: r2, bl: 0, br: 0 });
+        bar.fillStyle(0xffffff, 0.5).fillRoundedRect(rx + 4, by + 2, Math.max(0, fw - 8), 2, 1);
+        return;
+      }
       bar.fillStyle(0x5a3200, 1).fillRoundedRect(tx, by, tw, 10, 5).lineStyle(1, 0x7a4a00, 1).strokeRoundedRect(tx, by, tw, 10, 5);
-      const fw = Math.max(10, tw * (dn ? 1 : b.progress));
       bar.fillStyle(0xffffff, 1).fillRoundedRect(tx, by, fw, 10, 5);
       bar.fillStyle(0xfff1b8, 1).fillRoundedRect(tx, by + 5, fw, 5, { tl: 0, tr: 0, bl: 5, br: 5 });
     };
@@ -1928,8 +1986,10 @@ export class MenuScene extends Phaser.Scene {
       frameG.clear();
       frameImg?.destroy();
       frameImg = null;
-      const fid = equippedFrame(getPlayer() as PlayerState);
-      frameImg = fid ? addProfileFrameArt(this, cw, ch, fid) : null;
+      // el marco 2v2 (de la LIGA 2v2) manda sobre el de liga si es el elegido
+      const f2 = equippedFrame2v2(getPlayer() as PlayerState);
+      const fid = f2 ?? equippedFrame(getPlayer() as PlayerState);
+      frameImg = fid ? addProfileFrameArt(this, cw, ch, fid, f2 ? '2v2' : '1v1') : null;
       if (frameImg) card.addAt(frameImg, card.getIndex(frameG));
       else drawProfileFrame(frameG, cw, ch, 20, fid);
     };
@@ -1937,7 +1997,7 @@ export class MenuScene extends Phaser.Scene {
     paintFrame();
     const offFrame = onPlayerChange(() => frameG.active && paintFrame());
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => offFrame());
-    // tocar la card (fuera de la insignia, que abre la lista de rangos) abre el PERFIL: datos de la cuenta y marcos
+    // tocar CUALQUIER parte de la card (insignia incluida; 20-11-2026, usuario) abre el PERFIL: datos de la cuenta y marcos
     const cardHit = this.add.rectangle(0, 0, cw, ch, 0x000000, 0.001).setOrigin(0).setInteractive({ useHandCursor: true });
     cardHit.on('pointerup', () => {
       this.tweens.add({ targets: card, scale: { from: 0.97, to: 1 }, duration: 180, ease: 'Back.easeOut' });
@@ -1956,9 +2016,7 @@ export class MenuScene extends Phaser.Scene {
         level: p.level,
         size: badgeH,
         position,
-        // tocar la insignia abre la lista de rangos (informativa si aún no se desbloqueó Ranked)
-        openWhenLocked: true,
-        onOpen: () => showRankList(this, { current: rank, level: p.level, position }),
+        // (20-11-2026, usuario) la insignia ya NO abre la lista de rangos: sin onOpen, el toque llega a la card (perfil)
       }),
     );
 
@@ -2215,54 +2273,74 @@ export class MenuScene extends Phaser.Scene {
       // (21-11-2026, usuario) tocar la card ALTERNA entre la LIGA de siempre y la LIGA 2V2 (monedas 2v2 y rango 2v2); antes abría el TOP 100
       const m2 = this.leagueMode === '2v2';
       const accent = m2 ? 0xb06bff : 0x3a7bff;
-      const total2 = Math.max(0, Math.floor(getPlayer().coins2v2 ?? 0) - this.hold2v2); // (21-11-2026) menos lo que aún no llegó (playCoins2v2)
-      const rk2 = rank2v2(total2);
+      // LIGA 2V2 (21-11-2026): igual que la liga normal, el NETO de la semana en MONEDAS 2v2 hacia la meta de ascenso (domain/league2v2.ts)
+      const v2 = leagueView2v2();
+      const net2 = Math.max(0, v2.weekNet - this.hold2v2); // menos lo que aún no llegó (playCoins2v2)
       // (21-11-2026, 3.er diseño, referencia del usuario) card azul del menú con trofeo dorado a la izquierda, "LIGA <NOMBRE> · SEMANAL" en
       // dorado y UNA barra con las monedas que llevas esta semana en la liga. La barra se llena hacia la meta de ascenso (15.000 de 30.000 =
       // mitad) SIN escribir la meta, para no llenar la card de datos. Liga máxima o meta cumplida: llena.
+      // (21-11-2026, usuario) CARD CON IMAGEN (assets/menu/liga-card[-2v2].webp: azul LIGA / morada LIGA 2V2, hueco a la izquierda y riel vacío):
+      // en el hueco, el EMBLEMA de tu liga (2v2: el emblema 2v2); encima el título, tus monedas y el relleno de la barra. Sin imagen, la card dibujada.
+      const artKey = m2 ? 'menu-liga-card-2v2' : 'menu-liga-card';
+      const art = this.textures.exists(artKey);
+      const A = { bx: 17, by: 127, bw: 1739, bh: 653, embX: 262, railX0: 506, railX1: 1660, railY0: 567, railY1: 667 };
+      const sx = w / A.bw;
+      const sy = h / A.bh;
+      const ax = (px: number) => (px - A.bx) * sx;
+      const ay = (py: number) => (py - A.by) * sy;
       const g = this.add.graphics();
       g.fillStyle(0x000000, 0.35).fillRoundedRect(3, 6, w, h, R);
-      g.lineStyle(8, accent, 0.2).strokeRoundedRect(0, 0, w, h, R);
-      g.fillStyle(0x0b1733, 0.96).fillRoundedRect(0, 0, w, h, R);
-      g.fillStyle(m2 ? 0x2a1d5c : 0x1b2d5c, 0.55).fillRoundedRect(3, 3, w - 6, h * 0.45, { tl: R - 3, tr: R - 3, bl: 0, br: 0 });
-      g.lineStyle(3, accent, 1).strokeRoundedRect(0, 0, w, h, R);
+      if (art) {
+        c.add(g);
+        c.add(this.add.image(-A.bx * sx, -A.by * sy, artKey).setOrigin(0).setScale(sx, sy));
+      } else {
+        g.lineStyle(8, accent, 0.2).strokeRoundedRect(0, 0, w, h, R);
+        g.fillStyle(0x0b1733, 0.96).fillRoundedRect(0, 0, w, h, R);
+        g.fillStyle(m2 ? 0x2a1d5c : 0x1b2d5c, 0.55).fillRoundedRect(3, 3, w - 6, h * 0.45, { tl: R - 3, tr: R - 3, bl: 0, br: 0 });
+        g.lineStyle(3, accent, 1).strokeRoundedRect(0, 0, w, h, R);
+        c.add(g);
+      }
       // dos puntos arriba a la derecha: indican que la card cambia al tocarla (el encendido es la liga que se ve)
-      for (let i = 0; i < 2; i++) g.fillStyle(i === (m2 ? 1 : 0) ? 0xffc24a : 0x4a5f93, 1).fillCircle(w - 30 + i * 13, 17, 4);
-      c.add(g);
-      // trofeo (assets/liga.webp); si no cargó, solo el hueco
-      const tcx = 14 + 26;
-      if (this.textures.exists('menu-liga')) {
+      const dots = this.add.graphics();
+      for (let i = 0; i < 2; i++) dots.fillStyle(0x05112c, 0.7).fillCircle(w - 30 + i * 13, 15, 5.5).fillStyle(i === (m2 ? 1 : 0) ? 0xffc24a : 0x4a5f93, 1).fillCircle(w - 30 + i * 13, 15, 4);
+      c.add(dots);
+      // izquierda: con imagen, el EMBLEMA de la liga; sin ella, el trofeo (assets/liga.webp)
+      const tcx = art ? ax(A.embX) : 14 + 26;
+      if (art) {
+        const emb = m2 ? league2v2Id() : r.league;
+        c.add(new RankBadge(this, tcx, h / 2 + 1, { rank: emb, level: 99, size: h - 12, doubles: m2 }));
+      } else if (this.textures.exists('menu-liga')) {
         const tro = this.add.image(tcx, h / 2 + 1, 'menu-liga');
         tro.setScale(Math.min(58 / tro.width, (h - 12) / tro.height));
         c.add(tro);
       }
-      const tx = tcx + 26 + 12;
-      const tw = w - tx - 14;
-      const lbl = this.add.text(tx, 11, m2 ? 'LIGA 2V2 · SEMANAL' : `LIGA ${rankDef(r.league).name.toUpperCase()} · SEMANAL`, { fontFamily: FONT, fontSize: '15px', color: '#ffc24a', stroke: '#2a1600', strokeThickness: 3 }).setOrigin(0, 0).setLetterSpacing(1);
-      fitText(lbl, tw - 30, 0.6); // (deja sitio a los dos puntos de la derecha)
+      const tx = art ? ax(A.railX0) : tcx + 26 + 12;
+      const tw = art ? ax(A.railX1) - tx : w - tx - 14;
+      // (21-11-2026, usuario) el texto de la liga ("LIGA BRONCE") CENTRADO horizontalmente en su banda; ya no se muestra la cifra de monedas (el "número")
+      const lblTxt = m2 ? `LIGA 2V2 ${rankDef(league2v2Id()).name.toUpperCase()}` : `LIGA ${rankDef(r.league).name.toUpperCase()}`;
+      const lbl = this.add.text(tx + tw / 2, art ? 16 : 13, lblTxt, { fontFamily: FONT, fontSize: '17px', color: '#ffc24a', stroke: '#2a1600', strokeThickness: 4 }).setOrigin(0.5, 0).setLetterSpacing(1);
+      fitText(lbl, tw - 16);
       c.add(lbl);
-      // la barra: lo que llevas, hacia la meta (sin mostrarla)
-      const bh = 24;
-      const by = h - 14 - bh;
+      // la barra: lo que llevas, hacia la meta (sin mostrarla). Con imagen: en su riel (más fino; las monedas van sobre la barra)
+      const bh = art ? ay(A.railY1) - ay(A.railY0) : 24;
+      const by = art ? ay(A.railY0) : h - 14 - bh;
       const net = Math.max(0, r.weekNet - this.leagueHold); // (monedas de la liga aún en vuelo: playMatchCoins)
       // LIGA 2V2: la barra va del rango 2v2 actual al siguiente (monedas 2v2 acumuladas); rango máximo: llena
-      const prog = m2 ? (rk2.next ? Math.max(0, Math.min(1, (total2 - rk2.from) / (rk2.next.from - rk2.from))) : 1) : r.target == null || r.promoting ? 1 : Math.max(0, Math.min(1, net / r.target));
-      const full = m2 ? !rk2.next : r.promoting;
+      const tgt = m2 ? v2.target : r.target;
+      const prog = tgt == null || (m2 ? v2.promoting : r.promoting) ? 1 : Math.max(0, Math.min(1, (m2 ? net2 : net) / tgt));
+      const full = m2 ? v2.promoting : r.promoting;
       const bar = this.add.graphics();
-      bar.fillStyle(0x05112c, 1).fillRoundedRect(tx, by, tw, bh, bh / 2);
+      if (!art) bar.fillStyle(0x05112c, 1).fillRoundedRect(tx, by, tw, bh, bh / 2);
       if (prog > 0) {
         const fw = Math.max(bh, tw * prog);
-        bar.fillStyle(full ? 0x2fbf6a : m2 ? 0x7a3dff : 0x1f6bff, 1).fillRoundedRect(tx, by, fw, bh, bh / 2);
-        bar.fillStyle(full ? 0x7ff0a8 : m2 ? 0xb98aff : 0x5fa8ff, 1).fillRoundedRect(tx, by, fw, bh * 0.5, { tl: bh / 2, tr: bh / 2, bl: 0, br: 0 });
+        // (21-11-2026, usuario) barra de la liga normal AMARILLA (como JUGAR) y la de la liga 2v2 MORADA
+        bar.fillStyle(full ? 0x2fbf6a : m2 ? 0x7a3dff : 0xffcc1f, 1).fillRoundedRect(tx, by, fw, bh, bh / 2);
+        bar.fillStyle(full ? 0x7ff0a8 : m2 ? 0xb98aff : 0xffe55a, 1).fillRoundedRect(tx, by, fw, bh * 0.5, { tl: bh / 2, tr: bh / 2, bl: 0, br: 0 });
         bar.fillStyle(0xffffff, 0.35).fillRoundedRect(tx + 6, by + 3, Math.max(0, fw - 12), 3, 1.5);
       }
-      bar.lineStyle(2, m2 ? 0x4a2a8a : 0x2a4a8a, 1).strokeRoundedRect(tx, by, tw, bh, bh / 2);
+      if (!art) bar.lineStyle(2, m2 ? 0x4a2a8a : 0x8a6a1a, 1).strokeRoundedRect(tx, by, tw, bh, bh / 2);
       c.add(bar);
-      // las monedas que llevas, dentro de la barra (2v2: tus monedas 2v2)
-      const shown = m2 ? total2 : net;
-      const val = this.add.text(tx + tw / 2, by + bh / 2 + 1, shown.toLocaleString('es-CL'), { ...textStyle(17), color: shown < 0 ? '#ffb0a8' : '#ffffff' }).setOrigin(0.5);
-      fitText(val, tw - 16);
-      c.add(val);
+      // (21-11-2026, usuario) ya NO se dibuja la cifra de monedas sobre la barra: solo el texto de la liga, centrado arriba
     };
     paint();
     this.leagueObj = c;
@@ -2464,7 +2542,8 @@ export class MenuScene extends Phaser.Scene {
     }
     c.add(ig);
 
-    c.add(this.add.text(locked ? 0 : -14, locked ? 26 : 34, label, { ...textStyle(24, pal.text), strokeThickness: 0 }).setOrigin(0.5));
+    // (21-11-2026, usuario) el texto centrado bajo el icono (antes corrido a la izquierda)
+    c.add(this.add.text(0, locked ? 26 : 34, label, { ...textStyle(24, pal.text), strokeThickness: 0 }).setOrigin(0.5));
     if (locked) {
       c.add(this.add.text(0, 52, 'PRÓXIMAMENTE', { ...textStyle(15, '#7d8bb0'), strokeThickness: 0 }).setOrigin(0.5));
       // pestaña con candado en la esquina superior derecha
@@ -2476,8 +2555,8 @@ export class MenuScene extends Phaser.Scene {
       tab.fillStyle(0x16223f).fillCircle(0, 9, 3).fillRect(-1.5, 9, 3, 6);
       c.add(tab);
     } else {
-      // chevron ›
-      const ch = this.add.graphics({ x: w / 2 - 30, y: 34 });
+      // chevron › a media altura de la card (21-11-2026, usuario; antes abajo, junto al texto). x corrida por la inclinación del borde
+      const ch = this.add.graphics({ x: w / 2 - 24 - k / 2, y: 0 });
       ch.lineStyle(5, 0xffffff).beginPath().moveTo(-5, -9).lineTo(4, 0).lineTo(-5, 9).strokePath();
       c.add(ch);
     }

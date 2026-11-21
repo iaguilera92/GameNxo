@@ -1,0 +1,2 @@
+src/main.ts(13,1): error TS6133: 'Liga2v2Scene' is declared but its value is never read.
+src/main.ts(13,30): error TS2307: Cannot find module './scenes/Liga2v2Scene' or its corresponding type declarations.

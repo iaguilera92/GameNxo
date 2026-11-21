@@ -17,6 +17,7 @@ import { LEAGUE_ORDER } from '../domain/rankedConfig';
 import { preloadRankBadges } from '../ui/RankBadge';
 import { doublesFill, rankedSearchPanel } from '../ui/searchPanel';
 import { doublesSearchPanelNow, league2v2Id } from '../ui/PlayEntry2v2';
+import { preloadSearchTimer, searchTimer, styleSearchTitle } from '../ui/searchTimer';
 import { searchSpinner } from '../ui/searchSpinner';
 import { startIntroMusic, stopIntroMusic } from '../fx/introMusic';
 import { MAX_LEVEL } from '../config';
@@ -72,7 +73,8 @@ export class MatchmakingScene extends Phaser.Scene {
   preload() {
     if (!this.textures.exists('menu-bg')) this.load.image('menu-bg', 'assets/menu-bg.webp');
     if (this.rankedBet || this.unranked) preloadRankBadges(this.load, [rankedView().league]);
-    if (this.doubles) preloadRankBadges(this.load, [league2v2Id()]); // (21-11-2026) emblema de tu LIGA 2V2 en la búsqueda
+    preloadSearchTimer(this.load);
+    if (this.doubles) preloadRankBadges(this.load, [league2v2Id()], true); // (21-11-2026) emblema de tu LIGA 2V2 en la búsqueda
     if (this.doubles) queueVersusDuoArt(this.load); // (19-11-2026) entrada del equipo en la VS del 2v2
   }
 
@@ -106,21 +108,23 @@ export class MatchmakingScene extends Phaser.Scene {
     // (20-11-2026, usuario) el 2v2 se presenta como la búsqueda con apuesta (sus MONEDAS 2V2) y cuenta los jugadores n/4
     const rk = !!this.rankedBet || this.unranked || this.doubles;
     const label = this.add
-      .text(0, rk ? 196 : 150, rk ? 'BUSCANDO RIVAL' : 'BUSCANDO PARTIDA', { fontFamily: FONT, fontSize: '40px', color: UI.text })
+      .text(0, rk ? 216 : 150, rk ? 'BUSCANDO RIVAL' : 'BUSCANDO PARTIDA', { fontFamily: FONT, fontSize: '40px', color: UI.text })
       .setOrigin(0.5)
       .setLetterSpacing(2);
     const sub = this.add
       .text(0, 196, 'Conectando con un rival…', textStyle(22, UI.textDim))
       .setOrigin(0.5);
     if (rk) sub.setVisible(false);
-    const timer = this.add.text(0, rk ? 148 : 244, '0:00', { fontFamily: FONT, fontSize: '30px', color: '#37e0ff' }).setOrigin(0.5);
-    searching.add([label, sub, timer]);
+    // (21-11-2026) placa con cronómetro (assets/buscando/contador.webp) y el tiempo encima
+    const timer = searchTimer(this, searching, 0, rk ? 142 : 244, 200);
+    searching.add([label, sub]);
+    styleSearchTitle(this, searching, label); // (21-11-2026) título con el estilo del mockup
     this.tweens.add({ targets: sub, alpha: { from: 0.4, to: 1 }, duration: 900, yoyo: true, repeat: -1 });
 
     let secs = 0;
     const clock = this.time.addEvent({ delay: 1000, loop: true, callback: () => timer.setText(`0:${String(++secs).padStart(2, '0')}`) });
 
-    const cancel = flatButton(this, W / 2, H * 0.84, 240, 72, 'CANCELAR', () => this.back(), { fontSize: 28 });
+    const cancel = flatButton(this, W / 2, H * 0.84, 300, 86, 'CANCELAR', () => this.back(), { fontSize: 34 }); // (21-11-2026, usuario) CANCELAR más grande
 
     // --- lógica de búsqueda (sin cambios en tiempos/estados; se pausa mientras se lee la info Ranked)
     const wait = Phaser.Math.Between(1800, 3000);

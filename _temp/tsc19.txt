@@ -1,0 +1,4 @@
+src/scenes/Liga2v2Scene.ts(11,10): error TS2305: Module '"../domain/league2v2"' has no exported member 'ME_2V2'.
+src/scenes/Liga2v2Scene.ts(11,42): error TS2305: Module '"../domain/league2v2"' has no exported member 'Entry2v2'.
+src/scenes/Liga2v2Scene.ts(44,19): error TS2554: Expected 3 arguments, but got 2.
+src/ui/PlayEntry2v2.ts(343,167): error TS2304: Cannot find name 'rank2v2'.

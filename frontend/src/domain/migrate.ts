@@ -22,6 +22,7 @@ import { isTutorialId } from './tutorial';
 import { sanitizeChest } from './chest';
 import { sanitizeRisk } from './riskMode';
 import { sanitizeCoins2v2 } from './coins2v2';
+import { sanitizeLeague2v2 } from './league2v2State';
 import { isFrameId } from './profileFrames';
 
 /** Todos los ítems que existen (los demás ids guardados se descartan). */
@@ -69,6 +70,8 @@ export function migratePlayer(raw: unknown, starter: StarterSkin = 'nxo'): Playe
   if (risk) s.riskMode = risk;
   const c2 = sanitizeCoins2v2(r.coins2v2); // MONEDAS 2v2 (domain/coins2v2.ts)
   if (c2) s.coins2v2 = c2;
+  const l2 = sanitizeLeague2v2(r.league2v2); // LIGA 2v2 (domain/league2v2.ts)
+  if (l2) s.league2v2 = l2;
   const chest = sanitizeChest(r.chest); // cofre evolutivo de la ruleta (domain/chest.ts)
   if (chest) s.chest = chest;
   if (typeof r.giftDay === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(r.giftDay)) s.giftDay = r.giftDay; // regalo gratis de la Tienda
@@ -114,6 +117,7 @@ export function migratePlayer(raw: unknown, starter: StarterSkin = 'nxo'): Playe
     if ((eq.zone === 'fire' || eq.zone === 'shadow') && s.owned.includes(`zone:${eq.zone}` as ItemId)) s.equipped.zone = eq.zone;
     // marco del perfil: id de liga válido (si está desbloqueado lo decide profileFrames.equippedFrame al mostrarlo)
     if (isFrameId(eq.frame)) s.equipped.frame = eq.frame;
+    if (isFrameId(eq.frame2v2)) s.equipped.frame2v2 = eq.frame2v2; // marco 2v2 (se muestra solo si la liga 2v2 ya se alcanzó)
     if (isInfernoPower(eq.inferno)) {
       s.equipped.inferno = eq.inferno;
       if (eq.inferno !== 'fire' && !s.owned.includes(itemId.inferno(eq.inferno))) s.owned.push(itemId.inferno(eq.inferno));

@@ -9,7 +9,7 @@ import { BALL_FELT_KEY, BALL_SHADE_KEY, makeBallArt } from '../objects/Ball';
  */
 export function searchSpinner(scene: Phaser.Scene, parent: Phaser.GameObjects.Container, W: number, H: number) {
   // --- anillo de escaneo (dos arcos girando en sentidos opuestos)
-  const ringR = 92;
+  const ringR = 84; // (21-11-2026) un poco más chico: deja sitio a la placa del contador
   const ring = scene.add.graphics();
   const drawRing = (g: Phaser.GameObjects.Graphics, r: number, col: number, from: number, len: number, lw: number) => {
     g.lineStyle(lw, col, 1).beginPath().arc(0, 0, r, from, from + len).strokePath();
@@ -18,7 +18,7 @@ export function searchSpinner(scene: Phaser.Scene, parent: Phaser.GameObjects.Co
   // pulso luminoso de fondo
   const pulse = scene.add.circle(0, 0, ringR, UI.electric, 0.12);
   parent.add(pulse);
-  scene.tweens.add({ targets: pulse, scale: 1.4, alpha: 0, duration: 1400, repeat: -1, ease: 'Quad.easeOut' });
+  scene.tweens.add({ targets: pulse, scale: 1.18, alpha: 0, duration: 1400, repeat: -1, ease: 'Quad.easeOut' });
 
   // pelota de tenis como detalle central: el mismo arte que la del partido (objects/Ball.makeBallArt): fieltro con
   // costuras que gira, volumen fijo encima, contorno y un halo suave

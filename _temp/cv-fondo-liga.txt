@@ -1,0 +1,1 @@
+public/assets/liga/fondo-liga.png -> public/assets/liga/fondo-liga.webp (1024x1536)

@@ -19,6 +19,7 @@ import { rivalFor } from '../characters/catalog';
 import { MatchNet } from '../net/MatchNet';
 import { doublesFill, rankedSearchPanel } from '../ui/searchPanel';
 import { doublesSearchPanelNow, league2v2Id } from '../ui/PlayEntry2v2';
+import { preloadSearchTimer, searchTimer, styleSearchTitle } from '../ui/searchTimer';
 import { startIntroMusic, stopIntroMusic } from '../fx/introMusic';
 import { preloadRankBadges } from '../ui/RankBadge';
 import { rankedView } from '../logic/Ranked';
@@ -60,7 +61,8 @@ export class LanSearchScene extends Phaser.Scene {
   preload() {
     // liga de la apuesta (la misma pantalla que la búsqueda contra el BOT)
     if (this.rk) preloadRankBadges(this.load, [rankedView().league]);
-    if (this.mode === '2v2') preloadRankBadges(this.load, [league2v2Id()]); // (21-11-2026) emblema de tu LIGA 2V2 en la búsqueda
+    preloadSearchTimer(this.load);
+    if (this.mode === '2v2') preloadRankBadges(this.load, [league2v2Id()], true); // (21-11-2026) emblema de tu LIGA 2V2 en la búsqueda
     if (this.mode === '2v2') queueVersusDuoArt(this.load); // (19-11-2026) entrada del equipo en la VS del 2v2
   }
 
@@ -92,14 +94,15 @@ export class LanSearchScene extends Phaser.Scene {
     const c = this.add.container(W / 2, H * 0.44);
     searchSpinner(this, c, W, H);
     const duo = this.mode === '2v2';
-    const title = this.add.text(0, 196, duo ? 'BUSCANDO PARTIDA 1/4' : 'BUSCANDO RIVAL', { fontFamily: FONT, fontSize: '40px', color: UI.text }).setOrigin(0.5).setLetterSpacing(2);
-    const count = this.add.text(0, 148, '0:00', { fontFamily: FONT, fontSize: '30px', color: '#37e0ff' }).setOrigin(0.5);
-    c.add([title, count]);
+    const title = this.add.text(0, 216, duo ? 'BUSCANDO PARTIDA 1/4' : 'BUSCANDO RIVAL', { fontFamily: FONT, fontSize: '40px', color: UI.text }).setOrigin(0.5).setLetterSpacing(2);
+    c.add(title);
+    styleSearchTitle(this, c, title); // (21-11-2026) título con el estilo del mockup
+    const count = searchTimer(this, c, 0, 142, 200); // (21-11-2026) placa con cronómetro (assets/buscando/contador.webp)
     this.title = title;
     // liga + lo invertido / premio (o AMISTOSO), como en la búsqueda contra el BOT
     // (20-11-2026, usuario) 2v2: la misma presentación con las MONEDAS 2V2 (lo invertido y el premio)
     const panel = duo ? doublesSearchPanelNow(this) : this.rk ? rankedSearchPanel(this, { bet: this.bet, unranked: !this.bet }, () => undefined, () => undefined) : [];
-    const cancel = flatButton(this, W / 2, H * 0.84, 240, 72, 'CANCELAR', () => this.cancelSearch(), { fontSize: 28 });
+    const cancel = flatButton(this, W / 2, H * 0.84, 300, 86, 'CANCELAR', () => this.cancelSearch(), { fontSize: 34 }); // (21-11-2026, usuario) CANCELAR más grande
 
     connect()
       .then((tr) => {

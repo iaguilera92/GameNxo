@@ -1,0 +1,1 @@
+public/assets/liga/botones-liga.png -> public/assets/liga/botones-liga.webp (2000x667)

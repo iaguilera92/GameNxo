@@ -1,0 +1,1 @@
+public/assets/liga/podio-liga.png -> public/assets/liga/podio-liga.webp (1774x887)

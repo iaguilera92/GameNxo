@@ -11,6 +11,7 @@ import type { RankId } from './ranks';
 import { type WheelState, cloneWheel, newWheelState } from './wheelState';
 import { type BattlePassState, cloneBattlePass, newBattlePass } from './battlePassState';
 import { type RankedState, cloneRanked, newRankedState } from './rankedState';
+import { type League2v2State, cloneLeague2v2 } from './league2v2State';
 import { type ZoneProgress, cloneZoneProgress, newZoneProgress } from './zoneProgress';
 import type { InfernoPower } from './infernoPowers';
 import type { ChargeFxId } from './chargeFx';
@@ -61,6 +62,8 @@ export interface Loadout {
   zone?: 'fire' | 'shadow';
   /** MARCO del perfil (domain/profileFrames.ts: el de una liga ya alcanzada); sin elegir = borde azul */
   frame?: RankId;
+  /** MARCO 2v2 del perfil (domain/profileFrames.ts: el de una liga 2v2 ya alcanzada); si está, manda sobre `frame` en la card del perfil */
+  frame2v2?: RankId;
 }
 
 import type { ChestState } from './chest';
@@ -80,6 +83,8 @@ export interface PlayerState {
   bp: BattlePassState;
   /** competitivo: liga, temporada semanal, partidas (domain/ranked.ts) */
   ranked: RankedState;
+  /** LIGA 2v2 (domain/league2v2.ts): liga, neto semanal de MONEDAS 2v2 y recompensas; sin datos = se crea al sincronizar */
+  league2v2?: League2v2State;
   /** recompensa por iniciar sesión (domain/dailyLogin.ts) */
   login: LoginState;
   /** Rayos y atributos que mejoran al entrar en Zona. */
@@ -143,5 +148,5 @@ export function owns(s: PlayerState, id: ItemId) {
 
 /** Copia profunda (las operaciones nunca mutan el estado recibido). */
 export function clonePlayer(s: PlayerState): PlayerState {
-  return { ...s, owned: [...s.owned], equipped: { ...s.equipped, abilities: [...s.equipped.abilities] }, wheel: cloneWheel(s.wheel), bp: cloneBattlePass(s.bp), ranked: cloneRanked(s.ranked), login: { ...s.login, days: [...(s.login.days ?? [])] }, zone: cloneZoneProgress(s.zone), ...(s.tutorial ? { tutorial: [...s.tutorial] } : {}), ...(s.chest ? { chest: { ...s.chest } } : {}), ...(s.mastery ? { mastery: { ...s.mastery } } : {}), ...(s.riskMode ? { riskMode: { ...s.riskMode } } : {}) };
+  return { ...s, owned: [...s.owned], equipped: { ...s.equipped, abilities: [...s.equipped.abilities] }, wheel: cloneWheel(s.wheel), bp: cloneBattlePass(s.bp), ranked: cloneRanked(s.ranked), ...(s.league2v2 ? { league2v2: cloneLeague2v2(s.league2v2) } : {}), login: { ...s.login, days: [...(s.login.days ?? [])] }, zone: cloneZoneProgress(s.zone), ...(s.tutorial ? { tutorial: [...s.tutorial] } : {}), ...(s.chest ? { chest: { ...s.chest } } : {}), ...(s.mastery ? { mastery: { ...s.mastery } } : {}), ...(s.riskMode ? { riskMode: { ...s.riskMode } } : {}) };
 }

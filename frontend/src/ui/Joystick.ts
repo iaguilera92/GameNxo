@@ -36,19 +36,19 @@ export class Joystick {
 
     this.knob = scene.add.container(0, 0).setScrollFactor(0).setDepth(5001);
     const k = scene.add.graphics();
-    // (21-11-2026, usuario) perilla PLATEADA: aro biselado (más claro arriba, más oscuro abajo) con un disco central liso y claro, como la referencia.
+    // (21-11-2026, usuario) perilla AZUL como el botón btn-dash: aro biselado (claro arriba, oscuro abajo) con un disco central azul.
     // Sin degradados nativos en los círculos: se apilan círculos desplazados (la luz viene de arriba).
     k.fillStyle(0x000000, 0.4).fillCircle(0, 5, 44); // sombra
-    k.fillStyle(0x6f757e).fillCircle(0, 0, 44); // borde inferior oscuro del aro
-    k.fillStyle(0xa9afb7).fillCircle(0, -1, 43);
-    k.fillStyle(0xd3d7dc).fillCircle(0, -2.2, 41.5);
-    k.fillStyle(0xf3f5f7).fillCircle(0, -3.4, 39.5); // brillo del aro (arriba)
-    k.fillStyle(0xc4c9cf).fillCircle(0, 1, 29.5); // canal que separa el aro del disco
-    k.lineStyle(1.5, 0x80868f, 0.9).strokeCircle(0, 1, 29.5);
-    k.fillStyle(0xb4bac1).fillCircle(0, 0.5, 28); // disco central: más oscuro abajo...
-    k.fillStyle(0xe9ecef).fillCircle(0, -1.2, 26.5); // ...y claro arriba
-    k.fillStyle(0xf7f8fa, 0.9).fillEllipse(-2, -7, 36, 24); // luz suave del disco
-    k.fillStyle(0xffffff, 0.55).fillEllipse(-12, -26, 22, 7); // destello del aro
+    k.fillStyle(0x123a7e).fillCircle(0, 0, 44); // borde inferior oscuro del aro (azul noche)
+    k.fillStyle(0x2f6bdf).fillCircle(0, -1, 43);
+    k.fillStyle(0x4f93ff).fillCircle(0, -2.2, 41.5);
+    k.fillStyle(0x8fc4ff).fillCircle(0, -3.4, 39.5); // brillo del aro (arriba)
+    k.fillStyle(0x1f55b8).fillCircle(0, 1, 29.5); // canal que separa el aro del disco
+    k.lineStyle(1.5, 0x0d2f6e, 0.9).strokeCircle(0, 1, 29.5);
+    k.fillStyle(0x2f7bff).fillCircle(0, 0.5, 28); // disco central azul: más oscuro abajo...
+    k.fillStyle(0x6fb2ff).fillCircle(0, -1.2, 26.5); // ...y claro arriba
+    k.fillStyle(0xaed6ff, 0.9).fillEllipse(-2, -7, 36, 24); // luz suave del disco
+    k.fillStyle(0xffffff, 0.6).fillEllipse(-12, -26, 22, 7); // destello del aro
     this.knob.add(k);
 
     this.layout();

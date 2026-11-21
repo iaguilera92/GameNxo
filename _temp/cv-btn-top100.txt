@@ -1,0 +1,1 @@
+public/assets/liga/btn-top100.png -> public/assets/liga/btn-top100.webp (2000x667)

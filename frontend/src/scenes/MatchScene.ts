@@ -1305,8 +1305,9 @@ export class MatchScene extends Phaser.Scene {
     this.serveCtl = new ServeController();
     this.serveAI = new ServeAI();
     this.serveLet = false;
-    this.serveNormalBtn = new ServeButton(this, 0, 0, 64, 'serveRacket', 0xffb020, 0xc46a00, () => this.onServeButton('normal'));
-    this.serveSpinBtn = new ServeButton(this, 0, 0, 58, 'serveSpin', 0x8a6bff, 0x4a35b8, () => this.onServeButton('spin'));
+    // (21-11-2026, usuario) tamaños como las habilidades: saque DIRECTO como el ESPECIAL (un poco más grande), saque de EFECTO como el DEFENSIVO
+    this.serveNormalBtn = new ServeButton(this, 0, 0, 70, 'serveRacket', 0xffb020, 0xc46a00, () => this.onServeButton('normal'));
+    this.serveSpinBtn = new ServeButton(this, 0, 0, 56, 'serveSpin', 0x8a6bff, 0x4a35b8, () => this.onServeButton('spin'));
     this.serveNormalBtn.setArt(BUTTON_ART.serve.key);
     this.serveSpinBtn.setArt(BUTTON_ART.spin.key);
     this.serveNormalBtn.show(false);

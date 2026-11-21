@@ -169,7 +169,8 @@ export class AbilityButton extends Phaser.GameObjects.Container {
         const src = img.texture.key;
         if (!img.getData('baseKey')) img.setData('baseKey', src);
         const base = ultiKey ?? (img.getData('baseKey') as string);
-        const key = gold ? goldTexture(this.scene, base) : ultiKey ? ultiKey : hyperTexture(this.scene, base);
+        // (21-11-2026, usuario) la ULTI (no legendaria) usa una copia AZUL MARINO BRILLANTE del arte, para no confundirse con btn-dash
+        const key = gold ? goldTexture(this.scene, base) : ultiKey ? (navyShinyTexture(this.scene, ultiKey) ?? ultiKey) : hyperTexture(this.scene, base);
         img.clearTint();
         if (key) img.setTexture(key);
         else if (gold) img.setTint(0xffe27a, 0xfff1b8, 0xd99400, 0xffc42e);
@@ -433,6 +434,41 @@ export function goldTexture(scene: Phaser.Scene, key: string): string | null {
   g.addColorStop(0.5, 'rgba(255,255,255,0.7)');
   g.addColorStop(0.58, 'rgba(255,250,220,0.5)');
   g.addColorStop(0.75, 'rgba(255,255,255,0)');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, srcImg.width, srcImg.height);
+  ctx.globalCompositeOperation = 'source-over';
+  tex.refresh();
+  return out;
+}
+
+/**
+ * (21-11-2026, usuario) Copia AZUL MARINO BRILLANTE del arte de la ULTI: el botón se parecía demasiado al btn-dash (azul claro plano). Aquí
+ * el fondo se lleva a un azul marino más profundo y con más contraste, y se pasa un barrido de brillo diagonal (como el dorado). El rayo
+ * blanco del centro se mantiene claro. null si no hay filtros de canvas (entonces el botón usa el arte tal cual).
+ */
+export function navyShinyTexture(scene: Phaser.Scene, key: string): string | null {
+  const out = `${key}-navy`;
+  if (scene.textures.exists(out)) return out;
+  const srcImg = scene.textures.get(key)?.getSourceImage() as HTMLImageElement | HTMLCanvasElement | undefined;
+  if (!srcImg || !srcImg.width) return null;
+  const tex = scene.textures.createCanvas(out, srcImg.width, srcImg.height);
+  const ctx = tex?.getContext();
+  if (!tex || !ctx || !('filter' in ctx)) {
+    if (tex) scene.textures.remove(out);
+    return null;
+  }
+  // azul marino más profundo y contrastado (sin virar demasiado el tono para no ensuciar el rayo blanco)
+  ctx.filter = 'saturate(1.5) brightness(0.82) contrast(1.22) hue-rotate(-12deg)';
+  ctx.drawImage(srcImg, 0, 0);
+  ctx.filter = 'none';
+  // barrido de brillo diagonal, solo sobre el dibujo (source-atop)
+  ctx.globalCompositeOperation = 'source-atop';
+  const g = ctx.createLinearGradient(0, 0, srcImg.width, srcImg.height);
+  g.addColorStop(0.28, 'rgba(180,220,255,0)');
+  g.addColorStop(0.46, 'rgba(180,220,255,0.35)');
+  g.addColorStop(0.5, 'rgba(230,245,255,0.6)');
+  g.addColorStop(0.54, 'rgba(180,220,255,0.35)');
+  g.addColorStop(0.72, 'rgba(180,220,255,0)');
   ctx.fillStyle = g;
   ctx.fillRect(0, 0, srcImg.width, srcImg.height);
   ctx.globalCompositeOperation = 'source-over';

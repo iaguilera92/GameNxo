@@ -2,6 +2,8 @@ import type { AbilityId } from './Abilities';
 import { getPlayer, commit } from '../domain/playerStore';
 import * as ops from '../domain/operations';
 import { type Result2v2, apply2v2Result } from '../domain/coins2v2';
+import { recordMatch2v2 } from '../domain/league2v2';
+import { gameClock } from '../domain/timeSource';
 import type { SkinId } from '../characters/skins';
 import { type ZoneStatLevels, zoneStatsOf } from '../domain/zoneProgress';
 import { type PassiveId, passiveOf, passiveValue } from '../domain/characterPassives';
@@ -95,7 +97,8 @@ export function addCoins2v2(r: Result2v2, bet = 1): { before: number; after: num
   commit((s) => {
     const a = apply2v2Result(s, r, bet);
     out = { before: a.before, after: a.after, delta: a.delta, bet: a.bet };
-    return { ok: true as const, state: a.state };
+    // LIGA 2v2: el partido cuenta en el neto de la semana (domain/league2v2.ts)
+    return { ok: true as const, state: recordMatch2v2(a.state, gameClock.now(), r === 'win', a.delta) };
   });
   return out;
 }

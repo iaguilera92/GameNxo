@@ -10,7 +10,6 @@ import { MatchmakingScene } from './scenes/MatchmakingScene';
 import { MatchScene } from './scenes/MatchScene';
 import { ResultScene } from './scenes/ResultScene';
 import { RankedScene } from './scenes/RankedScene';
-import { Liga2v2Scene } from './scenes/Liga2v2Scene';
 import { LanSearchScene } from './scenes/LanSearchScene';
 import { VIEW } from './view/projection';
 import { installSettings } from './logic/Settings';
@@ -31,7 +30,7 @@ const game = new Phaser.Game({
   input: { activePointers: 4 },
   render: { antialias: true, powerPreference: 'high-performance', batchSize: 4096 },
   fps: { target: 60 },
-  scene: [BootScene, MenuScene, CustomizeScene, ShopScene, BattlePassScene, MatchmakingScene, MatchScene, ResultScene, RankedScene, Liga2v2Scene, LanSearchScene],
+  scene: [BootScene, MenuScene, CustomizeScene, ShopScene, BattlePassScene, MatchmakingScene, MatchScene, ResultScene, RankedScene, LanSearchScene],
 });
 
 // Ajustes del jugador (sonido, vibración, temblor de pantalla) aplicados a todo el juego

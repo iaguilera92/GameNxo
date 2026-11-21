@@ -35,7 +35,6 @@ export class BootScene extends Phaser.Scene {
     this.load.image('loading-bg', 'assets/loading-bg.webp');
     // recursos del menú: así el menú aparece al instante detrás del cargando
     this.load.image('menu-bg', 'assets/menu-bg.webp');
-    this.load.image('nav-bar', 'assets/nav-bar.webp');
     // (17-11-2026) moneda: imagen moneda-1.webp (textura global de la moneda)
     if (!this.textures.exists('coin-1')) this.load.image('coin-1', 'assets/moneda-1.webp');
     // (18-11-2026) TORNADO de la ULTI LEGENDARIA HURACÁN (8 cuadros de 192 × 256, fx/hurricaneFx.ts TornadoSprite)

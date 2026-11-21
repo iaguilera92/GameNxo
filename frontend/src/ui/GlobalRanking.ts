@@ -85,7 +85,7 @@ const MEDAL = [GOLD, 0xc0c8d8, 0xd88a4a];
  * para que no se vea vacía (16-11-2026) y los jugadores reales SIEMPRE visibles: la lista se desplaza (arrastrar o rueda), abre
  * centrada en ti y tu fila queda fija abajo.
  */
-export function openGlobalRanking(scene: Phaser.Scene) {
+function openGlobalRankingPlain(scene: Phaser.Scene) {
   const W = scene.scale.width;
   const H = scene.scale.height;
   const v = rankedView();
@@ -163,6 +163,224 @@ export function openGlobalRanking(scene: Phaser.Scene) {
   };
   const btn = arcadeButton(scene, W / 2, top + ph - 56, Math.min(300, pw - 60), 64, 'CERRAR', close, { palette: 'yellow' });
   root.add(btn);
+  dim.once('pointerup', close);
+  root.setAlpha(0);
+  scene.tweens.add({ targets: root, alpha: 1, duration: 180 });
+  return root;
+}
+
+// ============================================================================================================================
+// (21-11-2026, mockup del usuario en _temp/ranking/ranking-mockup.png) RANKING GLOBAL CON IMÁGENES (assets/ranking/): título, marco
+// (9-slice: se estira a lo alto sin deformar las esquinas), placa "TU PUESTO" y un fondo de fila por tipo (oro/plata/bronce/normal/TÚ).
+// Las imágenes van sueltas con margen transparente (sin rayas al escalar). Los textos y cifras se escriben encima. Medidas en px de cada
+// imagen. Si falta alguna imagen, se abre el diálogo dibujado de antes (openGlobalRankingPlain).
+// ============================================================================================================================
+
+const RK_ART = {
+  title: { key: 'rk-title', file: 'assets/ranking/ranking-global-titulo.webp' },
+  frame: { key: 'rk-frame', file: 'assets/ranking/marco-ranking.webp' },
+  plate: { key: 'rk-plate', file: 'assets/ranking/placa-puesto.webp' },
+  gold: { key: 'rk-row-gold', file: 'assets/ranking/fila-oro.webp' },
+  silver: { key: 'rk-row-silver', file: 'assets/ranking/fila-plata.webp' },
+  bronze: { key: 'rk-row-bronze', file: 'assets/ranking/fila-bronce.webp' },
+  normal: { key: 'rk-row-normal', file: 'assets/ranking/fila-normal.webp' },
+  me: { key: 'rk-row-me', file: 'assets/ranking/fila-tu.webp' },
+} as const;
+
+/** Fondo de fila: dónde empieza el archivo en la hoja original (ox, oy), el CUERPO de la fila, el centro de la medalla (si tiene) y el recuadro de la moneda. Todo en px de la hoja (ranking-filas.png). */
+type RowArt = { key: string; ox: number; oy: number; body: readonly [number, number, number, number]; medal: readonly [number, number] | null; box: readonly [number, number, number, number] };
+const ROW_ART: Record<'gold' | 'silver' | 'bronze' | 'normal' | 'me', RowArt> = {
+  gold: { key: RK_ART.gold.key, ox: 26, oy: 143, body: [35, 175, 990, 305], medal: [137, 240], box: [740, 200, 970, 282] },
+  silver: { key: RK_ART.silver.key, ox: 26, oy: 419, body: [35, 428, 990, 558], medal: [137, 490], box: [740, 452, 970, 535] },
+  bronze: { key: RK_ART.bronze.key, ox: 26, oy: 653, body: [35, 662, 990, 797], medal: [137, 728], box: [740, 688, 970, 770] },
+  normal: { key: RK_ART.normal.key, ox: 25, oy: 915, body: [33, 922, 990, 1045], medal: null, box: [738, 945, 972, 1028] },
+  me: { key: RK_ART.me.key, ox: 10, oy: 1153, body: [20, 1168, 1005, 1313], medal: null, box: [738, 1200, 962, 1283] },
+};
+/** Alto de fila (pantalla) para un ancho de fila `rw`: el del cuerpo de la fila normal. */
+const rowHFor = (rw: number) => ((ROW_ART.normal.body[3] - ROW_ART.normal.body[1]) * rw) / (ROW_ART.normal.body[2] - ROW_ART.normal.body[0]);
+
+/** Fila del ranking con su imagen de fondo, centrada en (0,0) (ancho `rw`). */
+function globalRowArt(scene: Phaser.Scene, e: BoardEntry, rw: number) {
+  const c = scene.add.container(0, 0);
+  const me = e.id === 'me';
+  const A = me ? ROW_ART.me : e.position === 1 ? ROW_ART.gold : e.position === 2 ? ROW_ART.silver : e.position === 3 ? ROW_ART.bronze : ROW_ART.normal;
+  const [bx0, by0, bx1, by1] = A.body;
+  const s = rw / (bx1 - bx0);
+  const bcy = (by0 + by1) / 2;
+  const X = (px: number) => -rw / 2 + (px - bx0) * s;
+  const Y = (py: number) => (py - bcy) * s;
+  const src = scene.textures.get(A.key).getSourceImage() as { width: number; height: number };
+  c.add(scene.add.image(X(A.ox), Y(A.oy), A.key).setOrigin(0, 0).setDisplaySize(src.width * s, src.height * s));
+  const bh = (by1 - by0) * s;
+  // puesto: en la medalla (top 3) o en la columna del número
+  const medalCol = ['#fff4b0', '#ffffff', '#ffd9b0'][e.position - 1] ?? '#ffffff';
+  const px = A.medal ? X(A.medal[0]) : X(115);
+  const py = A.medal ? Y(A.medal[1]) + 2 : 0;
+  const pos = scene.add.text(px, py, `${e.position}`, { fontFamily: FONT, fontSize: A.medal ? '30px' : e.position >= 100 ? '20px' : '24px', color: A.medal ? medalCol : me ? '#ffffff' : '#c9d6f5', stroke: '#0a1638', strokeThickness: 5 }).setOrigin(0.5);
+  fitText(pos, 110 * s);
+  // avatar dibujado (círculo del color del jugador con silueta)
+  const ax = X(250);
+  const r = bh * 0.3;
+  const g = scene.add.graphics();
+  g.fillStyle(0x0a1638, 1).fillCircle(ax, 0, r + 4);
+  g.fillStyle(me ? GOLD : 0x2a4a8a, 1).fillCircle(ax, 0, r + 2);
+  g.fillStyle(e.avatar.color, 1).fillCircle(ax, 0, r - 1);
+  g.fillStyle(0x0a1638, 0.85).fillCircle(ax, -r * 0.2, r * 0.32).fillRoundedRect(ax - r * 0.5, r * 0.18, r, r * 0.45, { tl: r * 0.4, tr: r * 0.4, bl: 2, br: 2 });
+  // nombre y nivel (hasta antes del recuadro de la moneda)
+  const nx = X(320);
+  const maxW = X(A.box[0]) - nx - 10;
+  const nm = scene.add.text(nx, -bh * 0.17, me ? `${e.name} (TÚ)` : e.name, { fontFamily: FONT, fontSize: '23px', color: me ? '#ffe066' : '#ffffff', stroke: '#0a1638', strokeThickness: 4 }).setOrigin(0, 0.5);
+  fitText(nm, maxW);
+  const lv = scene.add.text(nx, bh * 0.23, `NV ${e.level} · ${fmtCoins(e.wins)} VICTORIAS`, { fontFamily: FONT, fontSize: '14px', color: '#dbe5ff', stroke: '#0a1638', strokeThickness: 3 }).setOrigin(0, 0.5);
+  fitText(lv, maxW);
+  // monedas centradas en el recuadro oscuro
+  const boxCx = X((A.box[0] + A.box[2]) / 2);
+  const boxW = (A.box[2] - A.box[0]) * s;
+  const boxCy = Y((A.box[1] + A.box[3]) / 2);
+  const ct = scene.add.text(0, boxCy, fmtCoins(e.coins), { fontFamily: FONT, fontSize: '25px', color: '#ffd23f', stroke: '#2a1500', strokeThickness: 4 }).setOrigin(0, 0.5);
+  fitText(ct, boxW - 44, 0.6);
+  const grp = 24 + 6 + ct.displayWidth;
+  const ci = coinIcon(scene, boxCx - grp / 2 + 12, boxCy, 12); // (17-11-2026) moneda: imagen moneda-1.webp
+  ct.setX(boxCx - grp / 2 + 30);
+  c.add([g, pos, nm, lv, ci, ct]);
+  return c;
+}
+
+/**
+ * Ventana del RANKING GLOBAL (encima de todo; se cierra con CERRAR o tocando fuera). Top 100 por saldo de monedas, con bots
+ * para que no se vea vacía (16-11-2026) y los jugadores reales SIEMPRE visibles: la lista se desplaza (arrastrar o rueda), abre
+ * centrada en ti y tu fila queda fija abajo. (21-11-2026) Con las imágenes de assets/ranking/; las carga la primera vez que se abre.
+ */
+export function openGlobalRanking(scene: Phaser.Scene) {
+  const missing = Object.values(RK_ART).filter((a) => !scene.textures.exists(a.key));
+  if (!missing.length) return openGlobalRankingArt(scene);
+  missing.forEach((a) => scene.load.image(a.key, a.file));
+  scene.load.once(Phaser.Loader.Events.COMPLETE, () => {
+    if (!scene.sys.isActive()) return;
+    if (Object.values(RK_ART).every((a) => scene.textures.exists(a.key))) openGlobalRankingArt(scene);
+    else openGlobalRankingPlain(scene);
+  });
+  scene.load.start();
+  return null;
+}
+
+function openGlobalRankingArt(scene: Phaser.Scene) {
+  const W = scene.scale.width;
+  const H = scene.scale.height;
+  const v = rankedView();
+  const board = v.globalBoard;
+  const meEntry = board.find((e) => e.id === 'me');
+  const root = scene.add.container(0, 0).setDepth(9000);
+  const dim = scene.add.rectangle(0, 0, W, H, 0x000000, 0.78).setOrigin(0).setInteractive();
+  root.add(dim);
+
+  // título (recorte de su dibujo: x 45..1727, y 104..782 de 1774x887): sobresale por arriba del marco
+  const TB = [45, 104, 1727, 782] as const;
+  const pw = Math.min(660, W - 28);
+  const titleW = pw * 0.94;
+  const ts = titleW / (TB[2] - TB[0]);
+  const titleH = (TB[3] - TB[1]) * ts;
+  const titleOver = titleH * 0.55; // cuánto del título queda por encima del marco
+  const fh = Math.min(1180, H - 30 - titleOver);
+  const T = (H - fh - titleOver) / 2 + titleOver; // borde de arriba del marco
+  const B = T + fh;
+  const L = W / 2 - pw / 2;
+  // marco 9-slice (archivo 968x1164): esquinas/bordes de 70 px a los lados, 150 arriba y 90 abajo, escalados a `k`
+  const k = pw / 968;
+  const frame = scene.add.nineslice(W / 2, T + fh / 2, RK_ART.frame.key, undefined, 968, fh / k, 70, 70, 150, 90).setScale(k);
+  const block = scene.add.zone(W / 2, (T + B) / 2, pw, fh).setInteractive(); // tocar el panel no cierra
+  root.add([frame, block]);
+  // zona interior (oscura) del marco: x 36..931, y 147.. y hasta 84 px del borde de abajo (px del archivo)
+  const inL = L + 36 * k;
+  const inR = L + 931 * k;
+  const inT = T + 147 * k;
+  const inB = B - 84 * k;
+  const titleTop = T - titleOver;
+  const titleImg = scene.add.image(W / 2 - titleW / 2 - TB[0] * ts, titleTop - TB[1] * ts, RK_ART.title.key).setOrigin(0, 0).setScale(ts);
+  root.add(titleImg);
+  // subtítulo y placa TU PUESTO, bajo el título
+  const subY = titleTop + titleH + 14;
+  const sub = scene.add.text(W / 2, subY, 'Las monedas de cada jugador · nunca se reinicia', { fontFamily: FONT, fontSize: '17px', color: '#dbe5ff', stroke: '#0a1638', strokeThickness: 3 }).setOrigin(0.5);
+  fitText(sub, pw - 80);
+  const plateW = Math.min(400, pw * 0.62);
+  const plSrc = scene.textures.get(RK_ART.plate.key).getSourceImage() as { width: number; height: number };
+  const plateH = (plateW * plSrc.height) / plSrc.width;
+  const plateY = subY + 16 + plateH / 2;
+  const plate = scene.add.image(W / 2, plateY, RK_ART.plate.key).setDisplaySize(plateW, plateH);
+  const mine = scene.add.text(W / 2, plateY, meEntry ? `TU PUESTO: #${meEntry.position}` : 'SIN PUESTO', { fontFamily: FONT, fontSize: '22px', color: '#ffe066', stroke: '#2a1500', strokeThickness: 4 }).setOrigin(0.5).setLetterSpacing(1);
+  fitText(mine, plateW * 0.78);
+  root.add([sub, plate, mine]);
+
+  // lista con desplazamiento (máscara) y tu fila fija abajo, dentro de la zona interior
+  const rw = inR - inL - 24;
+  const rowH = rowHFor(rw);
+  const step = rowH + 8;
+  const btnH = 64;
+  const btnY = inB - 16 - btnH / 2;
+  // (21-11-2026, usuario) el TOP 3 siempre a la vista: fijo arriba; la lista que se desplaza empieza en el 4.º. Tu fila fija abajo
+  // solo si no estás en el top 3 (si lo estás, ya se ve arriba)
+  const top3 = board.slice(0, 3);
+  const rest = board.slice(3);
+  const pinMe = !!meEntry && meEntry.position > 3;
+  const pinnedY = pinMe ? btnY - btnH / 2 - 16 - rowH / 2 : btnY;
+  const top3Top = Math.max(inT + 8, plateY + plateH / 2 + 14);
+  top3.forEach((e, i) => {
+    const row = globalRowArt(scene, e, rw);
+    row.setPosition(W / 2, top3Top + i * step + step / 2);
+    root.add(row);
+  });
+  const sepTop = scene.add.graphics();
+  sepTop.fillStyle(GOLD, 0.45).fillRect(W / 2 - rw / 2, top3Top + top3.length * step + 3, rw, 2);
+  root.add(sepTop);
+  const listTop = top3Top + top3.length * step + 10;
+  const listBottom = pinMe ? pinnedY - rowH / 2 - 16 : btnY - btnH / 2 - 16;
+  const list = scene.add.container(W / 2, listTop);
+  rest.forEach((e, i) => {
+    const row = globalRowArt(scene, e, rw);
+    row.setPosition(0, i * step + step / 2);
+    list.add(row);
+  });
+  const maskG = scene.make.graphics({}, false);
+  maskG.fillRect(inL, listTop, inR - inL, listBottom - listTop);
+  list.setMask(maskG.createGeometryMask());
+  root.add(list);
+  const maxScroll = Math.max(0, rest.length * step - (listBottom - listTop));
+  let scroll = 0;
+  const setScroll = (sv: number) => {
+    scroll = Phaser.Math.Clamp(sv, 0, maxScroll);
+    list.y = listTop - scroll;
+  };
+  if (pinMe && meEntry) setScroll(rest.indexOf(meEntry) * step - (listBottom - listTop) / 2 + step / 2);
+  const zone = scene.add.zone(W / 2, (listTop + listBottom) / 2, inR - inL, listBottom - listTop).setInteractive();
+  root.add(zone);
+  let dragY: number | null = null;
+  let start = 0;
+  zone.on('pointerdown', (ptr: Phaser.Input.Pointer) => {
+    dragY = ptr.y;
+    start = scroll;
+  });
+  const move = (ptr: Phaser.Input.Pointer) => {
+    if (dragY != null && ptr.isDown) setScroll(start - (ptr.y - dragY));
+  };
+  const up = () => (dragY = null);
+  scene.input.on('pointermove', move);
+  scene.input.on('pointerup', up);
+  zone.on('wheel', (_p: unknown, _dx: number, dy: number) => setScroll(scroll + dy));
+  if (pinMe && meEntry) {
+    const sep = scene.add.graphics();
+    sep.fillStyle(GOLD, 0.45).fillRect(W / 2 - rw / 2, listBottom + 8, rw, 2);
+    const pinned = globalRowArt(scene, meEntry, rw);
+    pinned.setPosition(W / 2, pinnedY);
+    root.add([sep, pinned]);
+  }
+
+  const close = () => {
+    scene.input.off('pointermove', move);
+    scene.input.off('pointerup', up);
+    maskG.destroy();
+    root.destroy();
+  };
+  root.add(arcadeButton(scene, W / 2, btnY, Math.min(320, pw - 80), btnH, 'CERRAR', close, { palette: 'yellow' }));
   dim.once('pointerup', close);
   root.setAlpha(0);
   scene.tweens.add({ targets: root, alpha: 1, duration: 180 });

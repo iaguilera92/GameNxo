@@ -1,0 +1,1 @@
+public/assets/liga/cards-stats.png -> public/assets/liga/cards-stats.webp (1942x809)

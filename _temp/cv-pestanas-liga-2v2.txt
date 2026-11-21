@@ -1,0 +1,1 @@
+public/assets/liga/pestanas-liga-2v2.png -> public/assets/liga/pestanas-liga-2v2.webp (2000x667)

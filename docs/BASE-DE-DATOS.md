@@ -78,3 +78,5 @@ Cada personaje tendrá una pasiva (Nxo = Agilidad, Mai = Precisión, hasta +10 %
 (solo desde el nivel 20 de la cuenta), y los atributos de ZONA pasan a guardarse **por personaje**. Nuevos datos por cuenta: `mastery` (puntos por
 `skin`) y `zone.stats` por `skin`. Todo en `domain/`, validado en el servidor con `operations.ts` (`awardMastery`). Definición completa y decisiones
 abiertas: `docs/MAESTRIAS.md`.
+
+Liga 2v2 (neto semanal de monedas 2v2, recompensas, `league2v2`, marcos 2v2): ver `docs/LIGA-2V2.md`. Lo que decide ahí el servidor (sync, anotar partido, cobrar) está en `domain/league2v2.ts`.

@@ -1,0 +1,10 @@
+fondo-liga         caja 1024x1536  dibujo x[0..0.999] y[0..0.999]  topPad=0 botPad=0.001
+pestanas-liga      caja 2000x667  dibujo x[0.007..0.983] y[0.244..0.801]  topPad=0.244 botPad=0.199
+pestanas-liga-2v2  caja 2000x667  dibujo x[0.008..0.983] y[0.237..0.799]  topPad=0.237 botPad=0.201
+escenario-liga     caja 1536x1024  dibujo x[0.014..0.986] y[0.116..0.923]  topPad=0.116 botPad=0.077
+cards-stats        caja 1942x809  dibujo x[0.019..0.971] y[0.168..0.837]  topPad=0.168 botPad=0.163
+panel-recompensa   caja 2000x667  dibujo x[0.025..0.973] y[0.168..0.811]  topPad=0.168 botPad=0.189
+botones-liga       caja 2000x667  dibujo x[0.017..0.983] y[0.312..0.696]  topPad=0.312 botPad=0.304
+titulo-lideres     caja 2000x667  dibujo x[0.044..0.956] y[0.294..0.684]  topPad=0.294 botPad=0.316
+podio-liga         caja 1774x887  dibujo x[0.023..0.976] y[0.136..0.884]  topPad=0.136 botPad=0.116
+btn-top100         caja 2000x667  dibujo x[0.026..0.974] y[0.297..0.687]  topPad=0.297 botPad=0.313

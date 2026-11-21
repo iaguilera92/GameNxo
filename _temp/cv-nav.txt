@@ -1,0 +1,1 @@
+public/assets/nav-bar.png -> public/assets/barra-inicio.webp (2172x724)

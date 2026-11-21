@@ -167,14 +167,25 @@ function simulateWeek(r: () => number, profile: Profile, finalFrac: number, goal
   return { net, wins, losses };
 }
 
-/** Bots de una liga en un momento dado. `realPlayers` = jugadores reales que también están en la tabla. */
-export function botsFor(id: RankId, clock: BotClock, realPlayers = 1): Omit<BoardEntry, 'position'>[] {
+/**
+ * Economía de la tabla cuando NO es la de la liga normal (LIGA 2v2, 21-11-2026): meta de ascenso, paso de un resultado neto (lo que se
+ * gana en una victoria) y una etiqueta para que sus bots (nombres y resultados) sean otros.
+ */
+export interface BoardEcon {
+  goal: number;
+  entry: number;
+  target: number | null;
+  tag: string;
+}
+/** Bots de una liga en un momento dado. `realPlayers` = jugadores reales que también están en la tabla. `econ` = otra economía (2v2). */
+export function botsFor(id: RankId, clock: BotClock, realPlayers = 1, econ?: BoardEcon): Omit<BoardEntry, 'position'>[] {
   const count = Math.max(0, RANKED.tableSize - Math.max(0, realPlayers));
   if (!count || !clock.week) return [];
-  const goal = botGoal(id);
-  const entry = league(id).entry;
+  const goal = econ ? econ.goal : botGoal(id);
+  const entry = econ ? econ.entry : league(id).entry;
+  const tag = econ ? `${econ.tag}:` : '';
   const day = Math.min(6, Math.max(0, Math.floor(clock.day)));
-  const week = rng(hash(`cohort:${id}:${clock.week}`));
+  const week = rng(hash(`cohort:${tag}${id}:${clock.week}`));
   // cuántos llegan a la meta esta semana y quiénes (los primeros de una permutación)
   const reach = Math.min(count, between(week, BOTS.reach[0], BOTS.reach[1]));
   const order = shuffle(Array.from({ length: count }, (_, i) => i), week);
@@ -183,7 +194,7 @@ export function botsFor(id: RankId, clock: BotClock, realPlayers = 1): Omit<Boar
   const t0 = weekStartMs(clock.week);
   const out: Omit<BoardEntry, 'position'>[] = [];
   for (let i = 0; i < count; i++) {
-    const r = rng(hash(`bot:${id}:${clock.week}:${i}`));
+    const r = rng(hash(`bot:${tag}${id}:${clock.week}:${i}`));
     const name = `${PRE[Math.floor(r() * PRE.length)]}${SUF[Math.floor(r() * SUF.length)]}${Math.floor(r() * 90 + 10)}`;
     const skin = r() < 0.5 ? 'nxo' : 'mai';
     const color = AVATAR_COLORS[Math.floor(r() * AVATAR_COLORS.length)];
@@ -206,7 +217,7 @@ export function botsFor(id: RankId, clock: BotClock, realPlayers = 1): Omit<Boar
     // los que llegan a la meta deben terminar en ella (el redondeo por días no puede dejarlos justo debajo)
     if (reachers.has(i) && wk.net[6] < goal) wk.net[6] = Math.ceil(goal / entry) * entry;
     out.push({
-      id: `bot:${id}:${clock.week}:${i}`,
+      id: `bot:${tag}${id}:${clock.week}:${i}`,
       name,
       bot: true,
       level,
@@ -238,12 +249,12 @@ export function compareEntries(a: Omit<BoardEntry, 'position'>, b: Omit<BoardEnt
  * Tabla completa ordenada del RANKING LIGA. Posiciones 1..N. Si un jugador real pasó la meta, ningún bot queda por encima del
  * mejor de ellos (decisión del usuario, 16-11-2026): el neto mostrado del bot se rebaja por debajo de ese real.
  */
-export function buildBoard(id: RankId, clock: BotClock, real: Omit<BoardEntry, 'position'>[]): BoardEntry[] {
-  const target = league(id).target;
-  const entry = league(id).entry;
+export function buildBoard(id: RankId, clock: BotClock, real: Omit<BoardEntry, 'position'>[], econ?: BoardEcon): BoardEntry[] {
+  const target = econ ? econ.target : league(id).target;
+  const entry = econ ? econ.entry : league(id).entry;
   const over = target != null ? real.filter((e) => e.coins >= target) : [];
   const bestReal = over.length ? Math.max(...over.map((e) => e.coins)) : null;
-  const bots = botsFor(id, clock, real.length).map((b) => (bestReal != null && b.coins >= bestReal ? { ...b, coins: bestReal - entry } : b));
+  const bots = botsFor(id, clock, real.length, econ).map((b) => (bestReal != null && b.coins >= bestReal ? { ...b, coins: bestReal - entry } : b));
   const rows = [...bots, ...real];
   rows.sort(compareEntries);
   return rows.slice(0, Math.max(RANKED.tableSize, real.length)).map((e, i) => ({ ...e, position: i + 1 }));

@@ -22,18 +22,23 @@ export interface RankBadgeOpts {
   openWhenLocked?: boolean;
   /** posición global (solo Challenger, 1..999); se escribe en el hueco de la insignia */
   position?: number;
+  /** (20-11-2026) emblema de la LIGA 2V2; precargarlo con preloadRankBadges(load, ids, true) */
+  doubles?: boolean;
 }
 
-const srcKey = (id: RankId) => `rank-${id}`;
-const bakedKey = (id: RankId, grey: boolean, px: number) => `rank-${id}-${grey ? 'g' : 'c'}-${px}`;
+const srcKey = (id: RankId, d = false) => `rank-${id}${d ? '-2v2' : ''}`;
+const bakedKey = (id: RankId, grey: boolean, px: number, d = false) => `rank-${id}${d ? '-2v2' : ''}-${grey ? 'g' : 'c'}-${px}`;
 
 /**
  * Encola insignias (llamar en un preload). Sin `ids` carga todas (~1,2 MB c/u):
  * en el menú basta con el rango del jugador.
  */
-export function preloadRankBadges(load: Phaser.Loader.LoaderPlugin, ids?: RankId[]) {
-  for (const r of RANKS)
-    if (r.image && (!ids || ids.includes(r.id)) && !load.textureManager.exists(srcKey(r.id))) load.image(srcKey(r.id), r.image);
+export function preloadRankBadges(load: Phaser.Loader.LoaderPlugin, ids?: RankId[], doubles = false) {
+  // (20-11-2026) `doubles`: los emblemas de la LIGA 2V2 (image2v2)
+  for (const r of RANKS) {
+    const img = doubles ? r.image2v2 : r.image;
+    if (img && (!ids || ids.includes(r.id)) && !load.textureManager.exists(srcKey(r.id, doubles))) load.image(srcKey(r.id, doubles), img);
+  }
 }
 
 export class RankBadge extends Phaser.GameObjects.Container {
@@ -46,7 +51,8 @@ export class RankBadge extends Phaser.GameObjects.Container {
     this.locked = locked;
     const size = opts.size;
 
-    const key = bake(scene, opts.rank, locked, Math.round(size * 1.5));
+    const d = !!opts.doubles;
+    const key = bake(scene, opts.rank, locked, Math.round(size * 1.5), d) ?? (d ? bake(scene, opts.rank, locked, Math.round(size * 1.5)) : null);
     if (key) {
       const img = scene.add.image(0, 0, key);
       img.setScale(size / img.height);
@@ -54,7 +60,7 @@ export class RankBadge extends Phaser.GameObjects.Container {
       this.add(img);
       // posición Challenger dentro del recuadro de la imagen
       const def = rankDef(opts.rank);
-      const slot = def.numberSlot;
+      const slot = (d && key.includes('-2v2-') && def.numberSlot2v2) || def.numberSlot;
       const pos = formatRankPosition(opts.position, def.topOnly); // Challenger: 1..500
       if (slot && pos) {
         const dw = img.displayWidth;
@@ -101,12 +107,12 @@ export class RankBadge extends Phaser.GameObjects.Container {
 }
 
 /** Reduce la imagen al alto `px` (por mitades, buena calidad) y opcionalmente la desatura. */
-function bake(scene: Phaser.Scene, id: RankId, grey: boolean, px: number): string | null {
+function bake(scene: Phaser.Scene, id: RankId, grey: boolean, px: number, doubles = false): string | null {
   const tm = scene.textures;
-  const out = bakedKey(id, grey, px);
+  const out = bakedKey(id, grey, px, doubles);
   if (tm.exists(out)) return out;
-  if (!tm.exists(srcKey(id))) return null;
-  const src = tm.get(srcKey(id)).getSourceImage() as HTMLImageElement;
+  if (!tm.exists(srcKey(id, doubles))) return null;
+  const src = tm.get(srcKey(id, doubles)).getSourceImage() as HTMLImageElement;
   const th = Math.min(px, src.height);
   const tw = Math.max(1, Math.round((src.width * th) / src.height));
   let cur: HTMLImageElement | HTMLCanvasElement = src;

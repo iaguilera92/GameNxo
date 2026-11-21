@@ -1,0 +1,1 @@
+public/assets/liga/escenario-liga.png -> public/assets/liga/escenario-liga.webp (1536x1024)

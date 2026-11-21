@@ -22,9 +22,10 @@ export function rankedSearchPanel(scene: Phaser.Scene, opts: { bet: number | nul
   const objs: Phaser.GameObjects.GameObject[] = [];
   // liga
   const topY = Math.max(110, H * 0.44 - 92 - 150);
-  objs.push(new RankBadge(scene, W / 2, topY, { rank: v.league, level: 99, size: 120 }));
-  objs.push(scene.add.text(W / 2, topY + 78, `LIGA ${rankDef(v.league).name.toUpperCase()}`, { fontFamily: FONT, fontSize: '26px', color: ls.css, stroke: '#0a1638', strokeThickness: 6 }).setOrigin(0.5).setLetterSpacing(2));
-  const py = H * 0.44 + 262;
+  objs.push(new RankBadge(scene, W / 2, topY - 30, { rank: v.league, level: 99, size: 200 })); // (21-11-2026, usuario) emblema más grande (antes 120)
+  const lt = scene.add.text(W / 2, topY + 102, `LIGA ${rankDef(v.league).name.toUpperCase()}`, { fontFamily: FONT, fontSize: '33px', color: ls.css, stroke: '#0a1638', strokeThickness: 7 }).setOrigin(0.5).setLetterSpacing(2);
+  objs.push(goldSideLines(scene, lt), lt);
+  const py = H * 0.44 + 290; // (21-11-2026) un poco más abajo: el título lleva ahora línea de luz debajo
   if (opts.unranked) return [...objs, ...unrankedPanel(scene, W, py, onInfoOpen, onInfoClose)];
   // apuesta: cinta "ESTAMOS APOSTANDO", píldora + (i) y dos casillas INVERTIDO / SI GANAS
   return [...objs, ...betBoxes(scene, W, py, { bet, entry: st.entry, prize: st.prize, ribbon: bet > 1 ? 'ESTAMOS APOSTANDO x2' : 'ESTAMOS APOSTANDO', icon: (x, y, r) => coinIcon(scene, x, y, r), info: { open: onInfoOpen, close: onInfoClose } })];
@@ -147,13 +148,14 @@ export function doublesSearchPanel(
   const topY = Math.max(110, H * 0.44 - 92 - 150);
   // (21-11-2026, usuario) arriba el EMBLEMA de tu liga 2v2 (p. ej. BRONCE), como el de la liga del 1v1, y debajo "LIGA 2V2 · BRONCE"; sin el emblema, la moneda 2v2 de antes
   if (o.rank) {
-    objs.push(new RankBadge(scene, W / 2, topY, { rank: o.rank, level: 99, size: 120 }));
-    objs.push(scene.add.text(W / 2, topY + 78, `LIGA 2V2 · ${rankDef(o.rank).name.toUpperCase()}`, { fontFamily: FONT, fontSize: '26px', color: LEAGUE_STYLE[o.rank].css, stroke: '#0a1638', strokeThickness: 6 }).setOrigin(0.5).setLetterSpacing(2));
+    objs.push(new RankBadge(scene, W / 2, topY - 30, { rank: o.rank, level: 99, size: 200, doubles: true })); // (21-11-2026, usuario) más grande
+    const lt = scene.add.text(W / 2, topY + 102, `LIGA 2V2 · ${rankDef(o.rank).name.toUpperCase()}`, { fontFamily: FONT, fontSize: '33px', color: LEAGUE_STYLE[o.rank].css, stroke: '#0a1638', strokeThickness: 7 }).setOrigin(0.5).setLetterSpacing(2);
+    objs.push(goldSideLines(scene, lt), lt);
   } else {
     objs.push(o.icon(W / 2, topY, 56));
     objs.push(scene.add.text(W / 2, topY + 78, 'LIGA 2V2', { fontFamily: FONT, fontSize: '26px', color: '#d6b8ff', stroke: '#0a1638', strokeThickness: 6 }).setOrigin(0.5).setLetterSpacing(2));
   }
-  const py = H * 0.44 + 262;
+  const py = H * 0.44 + 290; // (21-11-2026) un poco más abajo: el título lleva ahora línea de luz debajo
   const ribbon = o.friendly ? 'AMISTOSO' : o.bet > 1 ? 'ESTAMOS APOSTANDO x2' : 'ESTAMOS APOSTANDO';
   return [...objs, ...betBoxes(scene, W, py, { bet: o.bet, entry: o.friendly ? 0 : o.risk, prize: o.prize, ribbon, icon: o.icon, entryLabel: o.friendly ? 'Arriesgas:' : 'Invertido:' })];
 }
@@ -178,4 +180,20 @@ export function doublesFill(scene: Phaser.Scene, title: Phaser.GameObjects.Text,
       set(4);
     },
   };
+}
+
+/** (21-11-2026, mockup) líneas doradas que se desvanecen a ambos lados del nombre de la liga ("—— LIGA BRONCE ——"). */
+function goldSideLines(scene: Phaser.Scene, t: Phaser.GameObjects.Text) {
+  const g = scene.add.graphics();
+  const half = t.displayWidth / 2;
+  const len = 90;
+  for (const dir of [-1, 1]) {
+    const x0 = t.x + dir * (half + 14);
+    for (let i = 0; i < 10; i++) {
+      const a = 0.9 - i * 0.085;
+      const xa = x0 + dir * (i * len) / 10;
+      g.fillStyle(0xffc42e, a).fillRect(dir > 0 ? xa : xa - len / 10, t.y - 1.5, len / 10, 3);
+    }
+  }
+  return g;
 }

@@ -7,6 +7,7 @@ import * as login from '../domain/dailyLogin';
 import * as shopGift from '../domain/shopGift';
 import { playerRank } from '../domain/ranks';
 import type { RankedOutcome } from '../domain/rankedState';
+import { syncLeague2v2 } from './League2v2';
 
 /**
  * Fachada de Ranked y del premio diario para las escenas: aplica las operaciones puras de
@@ -21,6 +22,7 @@ export function bootRanked() {
   const before = getPlayer();
   const after = ranked.abandonPending(before as never, now());
   if (after !== before) commit(() => ({ ok: true as const, state: after }));
+  syncLeague2v2(); // LIGA 2v2: cierra su semana igual
 }
 
 /** Pone semana / mes / desbloqueo al día (y guarda si cambió). */

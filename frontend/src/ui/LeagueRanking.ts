@@ -2,12 +2,13 @@ import Phaser from 'phaser';
 import { FONT } from './theme';
 import { fitText } from './fitText';
 import { RankBadge } from './RankBadge';
-import { coinIcon } from './wheelArt';
+import { coin2v2Image, coinIcon } from './wheelArt';
 import { LEAGUE_STYLE, fmtLeft, fmtNet } from './leagueStyle';
 import { rankDef } from '../domain/ranks';
 import { RANKED } from '../domain/rankedConfig';
 import type { BoardEntry } from '../domain/rankedBots';
 import { leagueLeaders, rankedView } from '../logic/Ranked';
+import { leagueView2v2 } from '../logic/League2v2';
 
 const NAVY = 0x0b1733;
 const GOLD = 0xffc42e;
@@ -19,10 +20,11 @@ const GOLD = 0xffc42e;
  * `dim`: false si la escena ya puso su propio oscurecido (LIGA usa su overlay). `onClose`: al tocar ✕ o fuera del panel. La ventana se borra
  * sola al cerrarse (o al destruir el contenedor devuelto) y suelta sus listeners y su máscara.
  */
-export function openLeagueRanking(scene: Phaser.Scene, opts: { onClose?: () => void; dim?: boolean } = {}) {
+export function openLeagueRanking(scene: Phaser.Scene, opts: { onClose?: () => void; dim?: boolean; mode?: '1v1' | '2v2' } = {}) {
+  const two = opts.mode === '2v2'; // LIGA 2v2: su tabla de neto semanal en MONEDAS 2v2 (sin los mejores de cada liga)
   const W = scene.scale.width;
   const H = scene.scale.height;
-  const v = rankedView();
+  const v = two ? leagueView2v2() : rankedView();
   const board = v.board;
   const myPos = board.find((e) => e.id === 'me')?.position ?? null;
   const st = LEAGUE_STYLE[v.league];
@@ -50,12 +52,12 @@ export function openLeagueRanking(scene: Phaser.Scene, opts: { onClose?: () => v
   g.fillStyle(NAVY, 0.98).fillRoundedRect(-pw / 2, 0, pw, ph, 24);
   g.lineStyle(3, st.color, 1).strokeRoundedRect(-pw / 2, 0, pw, ph, 24);
   p.add(g);
-  p.add(scene.add.text(0, 36, `TOP ${RANKED.tableSize} · LIGA ${rankDef(v.league).name.toUpperCase()}`, { fontFamily: FONT, fontSize: '30px', color: st.css, stroke: '#0a1638', strokeThickness: 5 }).setOrigin(0.5).setLetterSpacing(2));
-  p.add(scene.add.text(0, 68, `Neto de la semana · cierra en ${fmtLeft(v.msLeft)} · premios Top 1, 2-3, 4-10 y 11-50`, { fontFamily: FONT, fontSize: '14px', color: '#9fb4e0' }).setOrigin(0.5));
+  p.add(scene.add.text(0, 36, `TOP ${RANKED.tableSize} · LIGA${two ? ' 2V2' : ''} ${rankDef(v.league).name.toUpperCase()}`, { fontFamily: FONT, fontSize: '30px', color: st.css, stroke: '#0a1638', strokeThickness: 5 }).setOrigin(0.5).setLetterSpacing(2));
+  p.add(scene.add.text(0, 68, two ? `Neto de la semana en monedas 2v2 · cierra en ${fmtLeft(v.msLeft)}` : `Neto de la semana · cierra en ${fmtLeft(v.msLeft)} · premios Top 1, 2-3, 4-10 y 11-50`, { fontFamily: FONT, fontSize: '14px', color: '#9fb4e0' }).setOrigin(0.5));
 
   // mejores de cada liga
-  const leaders = leagueLeaders();
-  const lw = (pw - 30) / leaders.length;
+  const leaders = two ? [] : leagueLeaders();
+  const lw = (pw - 30) / Math.max(1, leaders.length);
   leaders.forEach((l, i) => {
     const x = -pw / 2 + 15 + lw * (i + 0.5);
     p.add(new RankBadge(scene, x, 112, { rank: l.league, level: 99, size: 40 }));
@@ -63,10 +65,10 @@ export function openLeagueRanking(scene: Phaser.Scene, opts: { onClose?: () => v
     fitText(nm, lw - 6);
     p.add(nm);
   });
-  p.add(scene.add.text(0, 162, 'MEJOR JUGADOR DE CADA LIGA', { fontFamily: FONT, fontSize: '11px', color: '#7f93bf' }).setOrigin(0.5).setLetterSpacing(1));
+  if (!two) p.add(scene.add.text(0, 162, 'MEJOR JUGADOR DE CADA LIGA', { fontFamily: FONT, fontSize: '11px', color: '#7f93bf' }).setOrigin(0.5).setLetterSpacing(1));
 
   // lista con desplazamiento
-  const listTop = 180;
+  const listTop = two ? 100 : 180;
   const listBottom = ph - 92;
   const rowH = 58;
   const list = scene.add.container(0, listTop);
@@ -74,7 +76,7 @@ export function openLeagueRanking(scene: Phaser.Scene, opts: { onClose?: () => v
   const maskG = scene.make.graphics({}, false);
   maskG.fillRect(W / 2 - pw / 2, top + listTop, pw, listBottom - listTop);
   list.setMask(maskG.createGeometryMask());
-  board.forEach((e, i) => list.add(boardRow(scene, e, i * rowH + rowH / 2, pw - 24, rowH - 6)));
+  board.forEach((e, i) => list.add(boardRow(scene, e, i * rowH + rowH / 2, pw - 24, rowH - 6, false, two)));
   const maxScroll = Math.max(0, board.length * rowH - (listBottom - listTop));
   let scroll = 0;
   const setScroll = (s: number) => {
@@ -101,7 +103,7 @@ export function openLeagueRanking(scene: Phaser.Scene, opts: { onClose?: () => v
 
   // fila fija del jugador
   const me = board.find((e) => e.id === 'me');
-  if (me) p.add(boardRow(scene, me, listBottom + 6 + rowH / 2, pw - 24, rowH - 4, true));
+  if (me) p.add(boardRow(scene, me, listBottom + 6 + rowH / 2, pw - 24, rowH - 4, true, two));
   // cerrar
   const x = scene.add.text(pw / 2 - 30, 34, '✕', { fontFamily: FONT, fontSize: '30px', color: '#9fb4e0' }).setOrigin(0.5).setInteractive({ useHandCursor: true });
   x.on('pointerup', close);
@@ -118,7 +120,7 @@ export function openLeagueRanking(scene: Phaser.Scene, opts: { onClose?: () => v
 }
 
 /** Fila de la tabla del Ranking Liga (neto con signo). */
-function boardRow(scene: Phaser.Scene, e: BoardEntry, y: number, w: number, h: number, pinned = false) {
+function boardRow(scene: Phaser.Scene, e: BoardEntry, y: number, w: number, h: number, pinned = false, two = false) {
   const c = scene.add.container(0, y);
   const me = e.id === 'me';
   const medal = e.position === 1 ? GOLD : e.position <= 10 ? 0xc0c8d8 : e.position <= 50 ? 0xd88a4a : 0;
@@ -153,6 +155,6 @@ function boardRow(scene: Phaser.Scene, e: BoardEntry, y: number, w: number, h: n
   // monedas
   const ct = scene.add.text(w / 2 - 14, 0, fmtNet(e.coins), { fontFamily: FONT, fontSize: '21px', color: e.coins < 0 ? '#ff8174' : '#ffd23f' }).setOrigin(1, 0.5);
   c.add(ct);
-  c.add(coinIcon(scene, w / 2 - 18 - ct.width - 10, 0, 10)); // (17-11-2026) moneda: imagen moneda-1.webp
+  c.add((two ? coin2v2Image : coinIcon)(scene, w / 2 - 18 - ct.width - 10, 0, 10)); // (17-11-2026) moneda: imagen moneda-1.webp (2v2: moneda 2v2)
   return c;
 }

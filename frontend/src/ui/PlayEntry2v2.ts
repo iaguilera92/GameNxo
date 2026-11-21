@@ -6,7 +6,7 @@ import { fmtCoins } from './leagueStyle';
 import { getPlayer } from '../domain/playerStore';
 import { COINS_2V2, effectiveBet2v2, friendly2v2, stakes2v2 } from '../domain/coins2v2';
 import { doublesSearchPanel } from './searchPanel';
-import { rank2v2 } from '../domain/league2v2';
+import { league2v2Of } from '../domain/league2v2';
 import { rankDef, type RankId } from '../domain/ranks';
 import { fitText } from './fitText';
 
@@ -143,7 +143,7 @@ export function openDoublesDialog(scene: Phaser.Scene, opts: { plain: boolean; o
   hg.fillStyle(0x1d0a52, 1).fillRect(-pw / 2 + 3, top + 3 + HEAD - 3, pw - 6, 3);
   p.add(hg);
   // (21-11-2026, usuario) el título dice en qué liga estás ("LIGA 2V2 - BRONCE") y ya no lleva las monedas 2v2 a los lados
-  const league = rankDef(rank2v2(Math.max(0, Math.floor(getPlayer().coins2v2 ?? 0))).id).name.toUpperCase();
+  const league = rankDef(league2v2Of(getPlayer())).name.toUpperCase();
   const title = scene.add.text(0, top + 52, `LIGA 2V2 - ${league}`, { fontFamily: FONT, fontSize: '42px', color: '#ffffff', stroke: '#1d0a52', strokeThickness: 8 }).setOrigin(0.5).setLetterSpacing(3);
   fitText(title, pw - 110); // deja sitio a la X de cerrar
   p.add(title);
@@ -340,8 +340,8 @@ function openDoublesInfo(scene: Phaser.Scene, openPicker: () => void) {
 export function doublesSearchPanelNow(scene: Phaser.Scene): Phaser.GameObjects.GameObject[] {
   const coins = Math.max(0, Math.floor(getPlayer().coins2v2 ?? 0));
   const st = stakeOf(currentBet2v2());
-  return doublesSearchPanel(scene, { bet: st.bet, risk: st.risk, prize: st.prize, friendly: friendly2v2(coins), icon: (x, y, r) => coin2v2Icon(scene, x, y, r), rank: rank2v2(coins).id });
+  return doublesSearchPanel(scene, { bet: st.bet, risk: st.risk, prize: st.prize, friendly: friendly2v2(coins), icon: (x, y, r) => coin2v2Icon(scene, x, y, r), rank: league2v2Of(getPlayer()) });
 }
 
 /** (21-11-2026) liga 2v2 actual (por tus monedas 2v2): para precargar su emblema en la búsqueda */
-export const league2v2Id = (): RankId => rank2v2(Math.max(0, Math.floor(getPlayer().coins2v2 ?? 0))).id;
+export const league2v2Id = (): RankId => league2v2Of(getPlayer());

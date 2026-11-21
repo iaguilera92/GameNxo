@@ -22,6 +22,9 @@ export interface RankDef {
    * Fracciones 0..1 del ancho/alto de la imagen.
    */
   numberSlot?: { cx: number; cy: number; w: number; h: number };
+  /** (20-11-2026) emblema de la LIGA 2V2 (dos pelotas + "2V2"); hueco de la posición si cambia respecto de `numberSlot` */
+  image2v2?: string;
+  numberSlot2v2?: { cx: number; cy: number; w: number; h: number };
 }
 
 /** Máximo de dígitos de la posición Challenger (1..999). */
@@ -38,18 +41,20 @@ export function formatRankPosition(pos: number | undefined | null, max = 999): s
 export const RANK_UNLOCK_LEVEL = 1;
 
 export const RANKS: RankDef[] = [
-  { id: 'bronze', name: 'Bronce', tier: 1, image: 'assets/bronce.webp' },
-  { id: 'silver', name: 'Plata', tier: 2, image: 'assets/plata.webp' },
-  { id: 'gold', name: 'Oro', tier: 3, image: 'assets/oro.webp' },
-  { id: 'platinum', name: 'Platino', tier: 4, image: 'assets/platino.webp' },
-  { id: 'diamond', name: 'Diamante', tier: 5, image: 'assets/diamante.webp' },
+  { id: 'bronze', name: 'Bronce', tier: 1, image: 'assets/bronce.webp', image2v2: 'assets/bronce-2v2.webp' },
+  { id: 'silver', name: 'Plata', tier: 2, image: 'assets/plata.webp', image2v2: 'assets/plata-2v2.webp' },
+  { id: 'gold', name: 'Oro', tier: 3, image: 'assets/oro.webp', image2v2: 'assets/oro-2v2.webp' },
+  { id: 'platinum', name: 'Platino', tier: 4, image: 'assets/platino.webp', image2v2: 'assets/platino-2v2.webp' },
+  { id: 'diamond', name: 'Diamante', tier: 5, image: 'assets/diamante.webp', image2v2: 'assets/diamante-2v2.webp' },
   {
     id: 'challenger',
     name: 'Challenger',
     tier: 6,
     image: 'assets/challenger.webp',
+    image2v2: 'assets/challenger-2v2.webp',
     topOnly: 500,
     numberSlot: { cx: 627 / 1254, cy: 948 / 1254, w: 300 / 1254, h: 130 / 1254 },
+    numberSlot2v2: { cx: 627 / 1254, cy: 962 / 1254, w: 300 / 1254, h: 130 / 1254 },
   },
 ];
 

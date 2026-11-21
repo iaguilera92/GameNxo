@@ -347,16 +347,16 @@ export class MenuScene extends Phaser.Scene {
    * JUGAR y 2v2 brillan en rojo/dorado con "x2".
    */
   private riskCard(W: number, playY: number) {
-    const w = 150;
-    const h = 104;
+    const w = 102; // (21-11-2026, usuario) del tamaño de la card de DIARIO (antes 150x104)
+    const h = 84;
     const gap = 12;
     const xChest = W - 26 - w / 2;
-    const y = playY - 54 - 18 - 52 - 104 - 30; // misma fila que el cofre (dailyWheels)
+    const y = playY - 54 - 18 - 52 - 104 - 30 + (104 - h) / 2; // misma fila que el cofre (dailyWheels); el borde de abajo sigue donde estaba
     const c = this.add.container(xChest, y).setDepth(50).setVisible(false);
     const off = (pts: Phaser.Math.Vector2[], dx: number, dy: number) => pts.map((p) => ({ x: p.x + dx, y: p.y + dy }));
     const g = this.add.graphics();
-    const x2 = this.add.text(0, -4, 'x2', { fontFamily: FONT, fontSize: '50px', color: '#ffffff', stroke: '#4a0d00', strokeThickness: 7 }).setOrigin(0.5);
-    const name = this.add.text(0, 32, 'RIESGO', { fontFamily: FONT, fontSize: '17px', color: '#ffd23f', stroke: '#2a0a00', strokeThickness: 4 }).setOrigin(0.5).setLetterSpacing(2);
+    const x2 = this.add.text(0, -3, 'x2', { fontFamily: FONT, fontSize: '40px', color: '#ffffff', stroke: '#4a0d00', strokeThickness: 6 }).setOrigin(0.5);
+    const name = this.add.text(0, 26, 'RIESGO', { fontFamily: FONT, fontSize: '14px', color: '#ffd23f', stroke: '#2a0a00', strokeThickness: 3 }).setOrigin(0.5).setLetterSpacing(2);
     // ACTIVO: capa naranja brillante con destello que la recorre y borde dorado que late (encima del fondo, debajo del texto)
     const hot = this.add.container(0, 0).setVisible(false);
     const hotG = this.add.graphics();
@@ -1630,8 +1630,9 @@ export class MenuScene extends Phaser.Scene {
     this.registry.set('menu.entered', true);
     // COFRE EVOLUTIVO (15-11-2026): card pequeña con la forma de RULETAS DIARIAS, justo encima a la derecha (ui/ChestButton.ts)
     // solo si hay cofre (ganado en la ruleta); borde derecho alineado con el de la card de ruletas
-    const cw = 150;
-    const makeChest = () => chestButton(this, W - 26 - cw / 2, playY - 54 - 18 - 52 - 104 - 30, (m) => this.toast(m), cw, 104);
+    const cw = 102; // (21-11-2026, usuario) del tamaño de la card de DIARIO (antes 150x104); el borde de abajo sigue donde estaba
+    const ch = 84;
+    const makeChest = () => chestButton(this, W - 26 - cw / 2, playY - 54 - 18 - 52 - 104 - 30 + (104 - ch) / 2, (m) => this.toast(m), cw, ch);
     let chestCard = makeChest();
     // recién ganado en la ruleta (se abre encima del menú): la card aparece sin reiniciar el menú
     const offChest = onPlayerChange((s) => {

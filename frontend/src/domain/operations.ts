@@ -23,6 +23,8 @@ export type OpError =
   | 'not_found'
   | 'not_available'
   | 'not_in_shop'
+ | 'already_rerolled'
+ | 'nothing_to_change'
   | 'level_too_low'
   | 'already_owned'
   | 'not_owned'

@@ -60,7 +60,7 @@ const LIGA_PIECES = {
   card0: [36, 136, 626, 542],
   card1: [649, 136, 623, 542],
   card2: [1259, 136, 627, 542],
-  reward: [51, 119, 1894, 422],
+  reward: [48, 118, 1908, 420],
   btn0: [34, 209, 957, 254],
   btn1: [1008, 209, 957, 254],
   leaders: [88, 196, 1823, 259],
@@ -103,6 +103,7 @@ export class RankedScene extends Phaser.Scene {
   preload() {
     if (!this.textures.exists('menu-bg')) this.load.image('menu-bg', 'assets/menu-bg.webp');
     for (const a of Object.values(LIGA_ART)) if (!this.textures.exists(a.key)) this.load.image(a.key, a.file); // (21-11-2026) arte de la pantalla LIGA
+    if (!this.textures.exists('liga-chest-week')) this.load.image('liga-chest-week', 'assets/cofre-semanal.webp'); // (21-11-2026) cofre del panel de la recompensa semanal
     preloadRankBadges(this.load); // todas: tabla de líderes y lista de ligas
     preloadRankBadges(this.load, undefined, true); // y los emblemas de la LIGA 2V2 (assets/<liga>-2v2.webp)
     if (!this.textures.exists('coin-2v2')) this.load.image('coin-2v2', 'assets/moneda-2v2.webp'); // moneda de la liga 2v2
@@ -422,16 +423,38 @@ export class RankedScene extends Phaser.Scene {
       rg.lineStyle(3, goldLine, 1).strokeRoundedRect(rx0, rTop, rw, rh, 20);
       rg.lineStyle(2, goldLine, 0.8).lineBetween(rx0 + 2, rTop + ribbonH, rx0 + rw - 2, rTop + ribbonH);
     }
+    // (21-11-2026, usuario) COFRE SEMANAL dentro del círculo oscuro del panel (el arte ya no trae cofre): centro (273, 334) y radio interior ~150 en px del
+    // arte; el cofre mide el 80 % del diámetro. Lista para cobrar: vibra (±4° y ±2,5 px, 3 ciclos de 60 ms por lado) y pausa de 1,5 s; si no, quieto a 0.75.
+    if (hasReward) {
+      const chestSize = 300 * 0.8 * (rw / RP[2]);
+      const ccx = rX(273);
+      const ccy = panVisTop + ((334 - RP[1]) / RP[3]) * rh;
+      let chestObj: Phaser.GameObjects.Image | Phaser.GameObjects.Graphics;
+      if (this.textures.exists('liga-chest-week')) chestObj = this.add.image(ccx, ccy, 'liga-chest-week').setDisplaySize(chestSize, chestSize);
+      else {
+        chestObj = this.add.graphics({ x: ccx, y: ccy + 2 });
+        drawChestIcon(chestObj, 24, 0, 0);
+        chestObj.setScale(chestSize / 56);
+      }
+      if (!elig) chestObj.setAlpha(0.75);
+      else {
+        const steps: { angle?: number; x: number; duration: number }[] = [];
+        for (let k = 0; k < 6; k++) steps.push({ angle: k % 2 ? 4 : -4, x: ccx + (k % 2 ? 2.5 : -2.5), duration: 60 });
+        steps.push({ angle: 0, x: ccx, duration: 60 });
+        steps.push({ x: ccx, duration: 1500 }); // pausa
+        this.tweens.chain({ targets: chestObj, tweens: steps, loop: -1 });
+      }
+    }
     // la franja del título va en la parte alta del dibujo
     // con imagen: el título en la franja de arriba (tras el círculo del cofre, y 192 px) y el estado en la etiqueta amarilla (x 1560..1900, y 187)
     const rYp = (py: number) => panVisTop + ((py - RP[1]) / RP[3]) * rh;
-    const titleY = hasReward ? rYp(192) : rTop + ribbonH / 2;
+    const titleY = hasReward ? rYp(189) : rTop + ribbonH / 2;
     const weeklyTitle = this.add.text(hasReward ? rX(470) : rx0 + 24, titleY, `RECOMPENSA SEMANAL · ${rankDef(v.league).name.toUpperCase()}`, { fontFamily: FONT, fontSize: '18px', color: '#ffffff', stroke: '#4a2c00', strokeThickness: 4 }).setOrigin(0, 0.5).setLetterSpacing(1);
     const stTxt = hasReward
-      ? this.add.text(rX(1735), rYp(187), elig ? '¡LISTA!' : 'EN CURSO', { fontFamily: FONT, fontSize: '16px', color: '#4a2600', stroke: '#fff1b8', strokeThickness: 2 }).setOrigin(0.5).setLetterSpacing(1)
+      ? this.add.text(rX(1746), rYp(184), elig ? '¡LISTA!' : 'EN CURSO', { fontFamily: FONT, fontSize: '16px', color: '#4a2600', stroke: '#fff1b8', strokeThickness: 2 }).setOrigin(0.5).setLetterSpacing(1)
       : this.add.text(rx0 + rw - 22, titleY, elig ? '¡LISTA!' : 'EN CURSO', { fontFamily: FONT, fontSize: '14px', color: elig ? '#fff4b0' : '#5a3200', stroke: elig ? '#4a2c00' : '#ffe9a8', strokeThickness: 3 }).setOrigin(1, 0.5).setLetterSpacing(1);
-    if (hasReward) fitText(stTxt, rX(1880) - rX(1585));
-    fitText(weeklyTitle, hasReward ? rX(1545) - rX(470) : rw - 56 - stTxt.width);
+    if (hasReward) fitText(stTxt, rX(1890) - rX(1595));
+    fitText(weeklyTitle, hasReward ? rX(1568) - rX(470) : rw - 56 - stTxt.width);
 
     // cuerpo: cofre (izquierda) · texto y progreso (centro) · premio (derecha). Con imagen, el cofre y el recuadro del premio YA vienen en el arte,
     // así que el texto va en la banda central y el premio dentro del recuadro de la derecha. `bodyY` un pelo bajo el título.
@@ -439,7 +462,7 @@ export class RankedScene extends Phaser.Scene {
     const cx0 = rx0 + 52;
     // bandas horizontales (fracción del ancho de la caja ≈ dibujo): cofre 0..0.22 · texto 0.24..0.66 · premio 0.68..0.97
     const contentX = hasReward ? rX(480) : cx0 + 46;
-    const prizeBandCx = hasReward ? rX(1658) : rx0 + rw * 0.835; // centro del recuadro del premio del arte (x 1450..1870)
+    const prizeBandCx = hasReward ? rX(1681) : rx0 + rw * 0.835; // centro del recuadro del premio del arte (x 1450..1870)
     // el cofre y los rayos solo se dibujan si NO hay imagen (el arte ya trae su cofre)
     if (!hasReward) {
       if (elig) {
@@ -464,7 +487,7 @@ export class RankedScene extends Phaser.Scene {
     const items: { kind: 'coin' | 'cash' | 'rays'; text: string; color: string }[] = [{ kind: 'coin', text: fmtCoins(v.estimate.coins), color: '#ffd23f' }];
     if (v.estimate.cash > 0) items.push({ kind: 'cash', text: `${v.estimate.cash}`, color: '#9fe8a0' });
     if (v.estimate.rays > 0) items.push({ kind: 'rays', text: `+${v.estimate.rays}`, color: '#66e8ff' });
-    const maxPrizeW = hasReward ? rX(1855) - rX(1462) : rw * 0.46; // con imagen: lo que cabe dentro del recuadro
+    const maxPrizeW = hasReward ? rX(1878) - rX(1485) : rw * 0.46; // con imagen: lo que cabe dentro del recuadro
     let fs = 22;
     // (21-11-2026, usuario) con imagen, fichas compactas (menos relleno) y la cifra puede achicarse más: moneda y rayo caben en el recuadro
     const PADL = hasReward ? 2 : 10;
@@ -490,10 +513,10 @@ export class RankedScene extends Phaser.Scene {
     }
     // "PREMIO ESTIMADO" solo sin imagen (el arte ya lo trae); con imagen, el texto del label iría sobre el del arte
     // "PREMIO ESTIMADO": sobre el recuadro (con imagen, en y 292 px, que el arte deja libre)
-    if (hasReward) this.add.text(prizeBandCx, rYp(292), 'PREMIO ESTIMADO', { fontFamily: FONT, fontSize: '13px', color: '#ffe9a8', stroke: '#2a1500', strokeThickness: 3 }).setOrigin(0.5).setLetterSpacing(1);
+    if (hasReward) this.add.text(prizeBandCx, rYp(289), 'PREMIO ESTIMADO', { fontFamily: FONT, fontSize: '13px', color: '#ffe9a8', stroke: '#2a1500', strokeThickness: 3 }).setOrigin(0.5).setLetterSpacing(1);
     else this.add.text(prizeX + prizeW / 2, bodyY - prizeH / 2 - 9, 'PREMIO ESTIMADO', { fontFamily: FONT, fontSize: '11px', color: '#c9b98a' }).setOrigin(0.5).setLetterSpacing(1);
     // la ficha del premio va centrada en el recuadro del arte (y 330..460 px)
-    const prizeY = hasReward ? rYp(395) : bodyY;
+    const prizeY = hasReward ? rYp(391) : bodyY;
     let cxp = prizeX + (hasReward ? 0 : 6);
     for (const c of chips) {
       if (!hasReward) rg.fillStyle(elig ? 0x2a1c00 : 0x1e1a10, 1).fillRoundedRect(cxp, prizeY - 17, c.w, 34, 12);
@@ -514,17 +537,17 @@ export class RankedScene extends Phaser.Scene {
 
     // texto y progreso: un punto por partida, unidos por una línea; los completados con ✓. Con imagen arrancan en la banda central (tras el cofre).
     const tx = contentX;
-    const textW = Math.max(80, (hasReward ? rX(1360) : prizeX) - tx - 14); // con imagen: hasta la línea separadora (x 1380)
+    const textW = Math.max(80, (hasReward ? rX(1383) : prizeX) - tx - 14); // con imagen: hasta la línea separadora (x 1380)
     const left = v.minWins - v.weekWins;
     const estSub = elig ? `¡Meta cumplida! Se cobra el domingo${v.estimate.label ? ` · ${v.estimate.label}` : ''}` : `Gana ${left} partida${left === 1 ? '' : 's'} más y se cobra el domingo`;
     // con imagen: el texto en la banda alta del dibujo y los pasos en la baja; sin ella, como antes (±18 de bodyY)
-    const estY = hasReward ? rYp(300) : bodyY - 18;
+    const estY = hasReward ? rYp(297) : bodyY - 18;
     const est = this.add.text(tx, estY, estSub, { fontFamily: FONT, fontSize: hasReward ? '16px' : '14px', color: '#f2e7c1', stroke: '#2a1c00', strokeThickness: 3 }).setOrigin(0, 0.5);
     fitText(est, textW);
     const segments = Math.max(1, v.minWins);
     // (21-11-2026, usuario) con imagen, los pasos más grandes y separados (sin salirse: el tramo se limita al ancho del texto)
     const dotR = hasReward ? 15 : 11;
-    const pgY = hasReward ? rYp(410) : bodyY + 18;
+    const pgY = hasReward ? rYp(407) : bodyY + 18;
     const span = Math.max(0, Math.min(textW - dotR * 2 - 60, (segments - 1) * (hasReward ? 78 : 40)));
     const step = segments > 1 ? span / (segments - 1) : 0;
     const pg = this.add.graphics();

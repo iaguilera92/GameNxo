@@ -770,6 +770,25 @@ export class NxoActor {
     this.sprite.setTexture(infernoKey(this.P.key), this.P.inf.hold);
     return true;
   }
+  /**
+   * (21-11-2026, usuario) Muestra UN fotograma fijo de la hoja de la ULTI (inferno-swing), sin animar: la demo de ZONA de la Tienda usa el 4 (índice 3).
+   * false = sin hoja (el llamador deja la pose de siempre).
+   */
+  showInfernoFrame(frame: number): boolean {
+    if (!this.pk || !infernoReady(this.scene, this.P.key)) return false;
+    this.stopShake();
+    this.stopLean();
+    // estado 'inferno': sin esto, cada refresh (p. ej. al fijar acing) vuelve a poner el reposo y el frame fijo se pierde
+    this.state = 'inferno';
+    this.infernoSince = performance.now();
+    this.swingInferno = false;
+    this.sprite.anims.stop();
+    this.sprite.anims.timeScale = 1;
+    this.sprite.setFlipX(false);
+    this.fitTo(infernoKey(this.P.key));
+    this.sprite.setTexture(infernoKey(this.P.key), frame);
+    return true;
+  }
 
   /** INFERNO DRIVE: Ãºltimo fotograma de preparaciÃ³n, unos ms antes del contacto (la pose sigue congelada, solo cambia el frame). */
   infernoPre() {

@@ -1,0 +1,1 @@
+src/objects/Character.ts(461,22): error TS2339: Property 'showInfernoFrame' does not exist on type 'NxoActor'.

@@ -30,7 +30,10 @@ const game = new Phaser.Game({
   input: { activePointers: 4 },
   render: { antialias: true, powerPreference: 'high-performance', batchSize: 4096 },
   // (21-11-2026, usuario) tope de 60 fps: en pantallas de 90/120 Hz no dibuja de más (batería, calor, cuadros parejos y misma sensación en todos)
-  fps: { target: 60, limit: 60 },
+  // (21-11-2026, log online) NO usar limit: 60: Phaser (TimeStep.stepLimitFPS) exige delta >= 1000/limit y borra el sobrante, así que
+  // en 60 Hz un cuadro de 16,6 ms (jitter) se salta -> 30 fps (invitado) y en 120 Hz ~45. Con 100 (10 ms): 60 Hz -> 60, 120 Hz -> 60
+  // (8,3 ms no llega, 16,7 sí), 90 Hz -> 90, 144 Hz -> 72; margen de 1+ ms contra el jitter en todas.
+  fps: { target: 60, limit: 100 },
   scene: [BootScene, MenuScene, CustomizeScene, ShopScene, BattlePassScene, MatchmakingScene, MatchScene, ResultScene, RankedScene, LanSearchScene],
 });
 

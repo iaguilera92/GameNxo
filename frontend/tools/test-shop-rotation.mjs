@@ -31,8 +31,11 @@ test('EFECTO PELOTA no rota: están todos los que se venden', () => {
   assert.equal(R.shopOffers('style', t0).length, count('style'));
   assert.equal(R.offersChangeIn('style', t0), null);
 });
-test('CARGANDO GOLPE tiene 3: no hay otros que mostrar, no cambia', () => {
-  if (count('charge') <= 3) assert.equal(R.offersChangeIn('charge', t0), null);
+test('CARGANDO GOLPE tiene 3: se ven todas siempre y el contador sale igual (21-11-2026)', () => {
+  if (count('charge') <= 3) {
+    assert.notEqual(R.offersChangeIn('charge', t0), null);
+    assert.deepEqual(ids('charge', t0), ids('charge', t0 + 13 * HOUR));
+  }
 });
 test('la misma hora da lo mismo (igual para todos)', () => {
   assert.deepEqual(ids('smash', t0), ids('smash', t0 + 1000));
@@ -90,4 +93,41 @@ test('ZONA: 2 a la vez, ventana semanal que cambia el domingo y contador siempre
   assert.equal(R.rotationWindow(sun, 168).id, R.rotationWindow(nextSat, 168).id);
   assert.equal(R.rotationWindow(sat, 168).id + 1, R.rotationWindow(sun, 168).id);
 });
-console.log(`${ok} pruebas OK`);
+test('CAMBIO de ofertas: cobra 100, trae otros ítems y solo una vez por categoría y semana', () => {
+  const s = { ...newPlayer(), gems: 250 };
+  const before = ids('smash', t0);
+  const r = R.rerollShop(s, 'smash', t0);
+  assert.ok(r.ok);
+  assert.equal(r.state.gems, 250 - R.REROLL_PRICE);
+  const after = R.shopOffers('smash', t0, r.state).map((i) => i.id);
+  assert.notDeepEqual(after, before); // otros ítems
+  assert.equal(R.rerollShop(r.state, 'smash', t0 + 1000).error, 'already_rerolled');
+  assert.equal(r.state.gems, 150);
+  // otra categoría sí se puede cambiar esa semana
+  assert.ok(R.rerollShop(r.state, 'defensive', t0 + 1000).ok);
+});
+test('CAMBIO: sin más ítems que mostrar o sin dinero no cobra', () => {
+  const s = { ...newPlayer(), gems: 250 };
+  assert.equal(R.rerollShop(s, 'charge', t0).error, 'nothing_to_change');
+  assert.equal(R.rerollShop(s, 'zone', t0).error, 'nothing_to_change');
+  assert.equal(R.rerollShop({ ...s, gems: 99 }, 'smash', t0).error, 'not_enough_cash');
+  assert.equal(s.gems, 250);
+});
+test('CAMBIO: lo que se ve ahora es lo comprable (purchaseOffered usa el cambio)', () => {
+  const s = { ...newPlayer(), gems: 5000, level: 30 };
+  const r = R.rerollShop(s, 'smash', t0);
+  const shown = R.shopOffers('smash', t0, r.state)[0];
+  const old = ids('smash', t0).find((id) => !R.shopOffers('smash', t0, r.state).some((o) => o.id === id));
+  assert.ok(R.purchaseOffered(r.state, shown.id, t0).ok);
+  assert.equal(R.purchaseOffered(r.state, old, t0).error, 'not_in_shop');
+});
+test('CAMBIO: se reinicia el lunes (semana siguiente se puede de nuevo y vuelve la rotación normal)', () => {
+  const s = { ...newPlayer(), gems: 500 };
+  const r = R.rerollShop(s, 'smash', t0);
+  const nextWeek = t0 + 8 * 24 * HOUR;
+  assert.equal(R.rerolledThisWeek(r.state, 'smash', nextWeek), false);
+  assert.deepEqual(R.shopOffers('smash', nextWeek, r.state).map((i) => i.id), ids('smash', nextWeek));
+  const again = R.rerollShop(r.state, 'smash', nextWeek);
+  assert.ok(again.ok);
+  assert.deepEqual(again.state.shopReroll.kinds, ['smash']); // de la semana nueva solo
+});console.log(`${ok} pruebas OK`);

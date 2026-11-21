@@ -1,0 +1,1 @@
+src/scenes/ShopScene.ts(1182,13): error TS6133: 'pcy' is declared but its value is never read.

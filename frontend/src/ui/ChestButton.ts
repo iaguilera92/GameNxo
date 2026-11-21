@@ -9,21 +9,21 @@ import { arcadeButton } from './modeButtons';
 import { canShowRewardedAds, showRewarded } from '../ads/ads';
 
 /**
- * CARD del COFRE del menú principal (15-11-2026, ajustada a pedido del usuario): card pequeña con la forma de RULETAS DIARIAS,
+ * CARD del COFRE del menú principal (15-11-2026, ajustada a pedido del usuario; 21-11-2026 del tamaño de la card de DIARIO, 102x84): card pequeña con la forma de RULETAS DIARIAS,
  * encima de ella y alineada a su borde derecho. Solo el COFRE dibujado (sin texto dentro); en la etiqueta de arriba, el tiempo
  * que falta para abrirlo (o "¡ABRIR!"). SOLO aparece si el cofre se ganó en la ruleta (sin cofre = null, no se dibuja).
  * Al abrirlo muestra el premio y la card desaparece.
  * (16-11-2026) Con el cofre aún cerrado, tocarlo ofrece ABRIR YA viendo un ANUNCIO (se salta el tiempo).
  */
-export function chestButton(scene: Phaser.Scene, x: number, y: number, onToast: (m: string) => void, w = 150, h = 104): Phaser.GameObjects.Container | null {
+export function chestButton(scene: Phaser.Scene, x: number, y: number, onToast: (m: string) => void, w = 102, h = 84): Phaser.GameObjects.Container | null {
   if (chestStatus(getPlayer() as never, gameClock.now()).kind === 'none') return null;
   const c = scene.add.container(x, y).setDepth(50);
   const off = (pts: Phaser.Math.Vector2[], dx: number, dy: number) => pts.map((p) => ({ x: p.x + dx, y: p.y + dy }));
   const g = scene.add.graphics();
-  const glow = scene.add.circle(0, 4, 42, 0xffffff, 0).setBlendMode(Phaser.BlendModes.ADD);
-  const icon = scene.add.graphics({ x: 0, y: 4 });
+  const glow = scene.add.circle(0, 3, 30, 0xffffff, 0).setBlendMode(Phaser.BlendModes.ADD);
+  const icon = scene.add.graphics({ x: 0, y: 3 });
   // (17-11-2026, usuario) el COFRE en imagen, del nivel actual (normal / oro / épico); sin textura, el dibujado (icon)
-  const iconImg = scene.textures.exists(CHEST_TEX[0]) ? scene.add.image(0, 4, CHEST_TEX[0]).setDisplaySize(84, 84) : null;
+  const iconImg = scene.textures.exists(CHEST_TEX[0]) ? scene.add.image(0, 3, CHEST_TEX[0]).setDisplaySize(60, 60) : null;
   // etiqueta de arriba (como "RULETAS DIARIAS"), centrada: el tiempo que falta
   const tag = scene.add.graphics();
   const tagText = scene.add.text(0, -h / 2 - 2, '', { fontFamily: FONT, fontSize: '17px', color: '#ffd23f' }).setOrigin(0.5).setLetterSpacing(1);
@@ -45,7 +45,7 @@ export function chestButton(scene: Phaser.Scene, x: number, y: number, onToast: 
     g.lineStyle(2.5, col, 0.95).strokePoints(modeShape(w, h), true, true);
     icon.clear();
     if (iconImg) iconImg.setTexture(CHEST_TEX[st.level]);
-    else drawChestIcon(icon, 30);
+    else drawChestIcon(icon, 22);
     glow.setFillStyle(col, st.kind === 'ready' ? 0.4 : 0.12);
     tagText.setText(st.kind === 'ready' ? '¡ABRIR!' : formatChestTime(st.msLeft)).setColor(st.kind === 'ready' ? '#ffe680' : '#ffd23f');
     const tw = Math.max(80, tagText.width + 30);

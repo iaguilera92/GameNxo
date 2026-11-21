@@ -456,6 +456,10 @@ export class Character extends Phaser.GameObjects.Container {
   infernoHold(): boolean {
     return this.nxo?.infernoHold() ?? false;
   }
+  /** (21-11-2026) un fotograma fijo de la hoja de la ULTI (demo de ZONA); false = este personaje no la tiene */
+  showUltiFrame(frame: number): boolean {
+    return this.nxo?.showInfernoFrame(frame) ?? false;
+  }
 
   /** INFERNO DRIVE: último fotograma de preparación, justo antes del golpe. */
   infernoPre() {

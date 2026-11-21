@@ -5,7 +5,7 @@ import { FONT, restartOnResize, textStyle } from '../ui/theme';
 import { UI, stadiumBg } from '../ui/ui';
 import { arcadeButton } from '../ui/modeButtons';
 import { commit, getPlayer, onPlayerChange } from '../domain/playerStore';
-import { offersChangeIn, purchaseOffered, shopOffers } from '../domain/shopRotation';
+import { REROLL_PRICE, canReroll, offersChangeIn, purchaseOffered, rerollShop, rerolledThisWeek, shopOffers } from '../domain/shopRotation';
 import { type SmashPower, smashOwned, smashPowerDef } from '../domain/smashPowers';
 import { BUTTON_ART, queueButtonArt } from '../ui/buttonArt';
 import { elementTexture } from '../ui/AbilityButton';
@@ -13,7 +13,7 @@ import { type DefensivePower, defensiveOwned, defensivePowerDef } from '../domai
 import { drawDefensiveIcon, drawDisc } from '../ui/icons';
 import { BP_SEASON, syncSeason } from '../domain/battlePass';
 import { bpSeasonInfo } from '../domain/battlePassConfig';
-import { passHeroSkin, passPortrait, queuePassPortraits } from '../characters/passPortrait';
+import { passHeroSkin, passPortrait, queuePassPortraits, rosterPortrait, SOON_PORTRAITS } from '../characters/passPortrait';
 import type { PlayerState } from '../domain/player';
 import { drawCashIcon } from './BattlePassScene';
 import { type ItemId, type ItemKind, type StyleId, owns } from '../domain/player';
@@ -53,7 +53,7 @@ const NAVY = 0x0b1733;
 const NEON = 0x3a7bff;
 const GOLD = 0xffc42e;
 /** alto de la cabecera fija (volver, saldos): el contenido se desplaza por debajo */
-const HEADER_H = 112;
+const HEADER_H = 106; // (21-11-2026, usuario) antes 112: el contenido sube y queda mas junto al titulo
 /** prefijo de las texturas de fondos pintados una vez (tarjetas, botones): se quitan al salir de la Tienda */
 const SHOP_BAKE = 'shop-bake-';
 /** (17-11-2026) artículos LEGENDARIOS que SÍ tienen botón VER en la Tienda (los demás legendarios, no) */
@@ -102,6 +102,8 @@ const ERRORS: Record<string, string> = {
   real_money_only: 'Solo con dinero real',
   not_found: 'Artículo no disponible',
   not_in_shop: 'Ya no está en la Tienda (cambió la selección)',
+  already_rerolled: 'Ya cambiaste esta sección esta semana (se reinicia el lunes)',
+  nothing_to_change: 'Por ahora no hay más ofertas para mostrar aquí',
 };
 
 export class ShopScene extends Phaser.Scene {
@@ -139,10 +141,14 @@ export class ShopScene extends Phaser.Scene {
     if (!this.textures.exists('cash-1')) this.load.image('cash-1', 'assets/dinero-virtual-1.webp'); // icono de DINERO (16-11-2026)
     if (!this.textures.exists('icon-zona')) this.load.image('icon-zona', 'assets/icon-zona.webp'); // cards de ZONA (recoloreada por estilo)
     if (!this.textures.exists('cash-pack')) this.load.image('cash-pack', 'assets/dinero-fardo-chico.webp'); // precios de más de 1
+    // (21-11-2026, usuario) imagen de cada card de DINERO desde la 3.ª: 3.ª = virtual-2, 4.ª y 5.ª = virtual-3, 6.ª = virtual-5
+    for (const n of [2, 3, 5]) if (!this.textures.exists(`cash-${n}`)) this.load.image(`cash-${n}`, `assets/dinero-virtual-${n}.webp`);
     // retrato de Mai (premio mayor del Pase, en OFERTAS): ya lo carga BootScene; solo se descarga si falta
     if (!this.textures.exists('oferta-emotes')) this.load.image('oferta-emotes', 'assets/oferta-emotes.webp'); // fondo de la oferta de EMOTES LEGENDARIOS
     queueEmoteArt(this.load); // emotes legendarios animados de esa oferta
     queuePassPortraits(this); // retrato del personaje del Pase (tarjeta del Pase)
+    if (!this.textures.exists('shop-pj-card')) this.load.image('shop-pj-card', 'assets/tienda-pj.webp'); // (21-11-2026) marco de las tarjetas de PERSONAJES
+    for (const p of Object.values(SOON_PORTRAITS)) if (!this.textures.exists(p.key)) this.load.image(p.key, p.file); // retratos de personajes aún no jugables (NET)
     queueInfernoArt(this.load); // bolas de los poderes (vista previa)
     queueChargeFxArt(this.load, ['fire', 'energy', 'tulip']); // aros de carga (vista previa)
     queueButtonArt(this.load); // botón SMASH (vista previa de sus poderes)
@@ -226,29 +232,20 @@ export class ShopScene extends Phaser.Scene {
     this.body.removeAll(true);
     this.cull = [];
     this.body.y = 0;
-    let y = 150;
+    let y = 120; // (21-11-2026, usuario) antes 150: el Pase (y todo lo de abajo) sube, mas junto al titulo
     // cada título lleva su línea; los de estilos y poderes, además, un (i) que abre su explicación (INFO)
-    const titleGap = 44; // del título a sus tarjetas
+    const titleGap = 34; // del título a sus tarjetas (21-11-2026, usuario: antes 44, menos aire bajo el título)
 
     const ch = 300;
     // ---------------------------------------------------------------- ofertas: el Pase de Batalla, primero y en grande
     // (una sola tarjeta del alto y el ancho de la fila de EFECTO PELOTA)
     // (con el Pase terminado no hay oferta: la sección no sale)
     if (!bpSeasonInfo().over) {
-      this.sectionTitle(W, y, 'OFERTAS');
-      y += titleGap;
+      // (21-11-2026, usuario) sin título OFERTAS: la tarjeta del Pase sube a su lugar
       this.passOffer(30, y, W - 60, ch, syncSeason(getPlayer() as PlayerState).bp.premium);
       this.reg(y, ch);
       y += ch + 52;
     }
-    // (21-11-2026, usuario) oferta de EMOTES LEGENDARIOS: arte de fondo y, a la derecha, los emotes que van cambiando
-    ensureEmoteAnims(this);
-    this.sectionTitle(W, y, 'EMOTES LEGENDARIOS');
-    y += titleGap;
-    this.emoteOffer(30, y, W - 60, ch);
-    this.reg(y, ch);
-    y += ch + 52;
-
     // lo que rota (CARGANDO GOLPE, ESPECIAL, DEFENSIVO cada 12 h; ULTI cada 24 h): 3 a la vez, igual para todos (domain/shopRotation.ts)
     const now = Date.now();
     this.rotLabels = [];
@@ -262,6 +259,73 @@ export class ShopScene extends Phaser.Scene {
       return { w, x: (i: number) => x0 + i * (w + gap) };
     };
 
+    // ---------------------------------------------------------------- personajes (21-11-2026, usuario)
+    // los que se pueden comprar, sin el del Pase y sin los que ya tienes (con MODO DESARROLLO sí salen los tuyos, nunca el del Pase)
+    const heroes = this.shopCharacters(now);
+    if (heroes.length) {
+      this.sectionTitle(W, y, 'NUEVOS PERSONAJES', undefined, { kind: 'skin', now: now });
+      y += titleGap;
+      // tarjetas altas (marco tienda-pj: 961x1451), de a 2 como mucho, centradas
+      const hw = Math.min(330, (W - 60 - gap) / 2);
+      const hh = (hw * 1451) / 961;
+      const hx0 = 30 + (W - 60 - (heroes.length * hw + (heroes.length - 1) * gap)) / 2;
+      heroes.forEach((it, i) => {
+        this.characterCard(hx0 + i * (hw + gap), y, hw, hh, it);
+        this.reg(y, hh);
+      });
+      y += hh + 52;
+    }
+    // (21-11-2026, usuario) oferta de EMOTES LEGENDARIOS: arte de fondo y, a la derecha, los emotes que van cambiando
+    ensureEmoteAnims(this);
+    this.sectionTitle(W, y, 'EMOTES LEGENDARIOS');
+    y += titleGap;
+    this.emoteOffer(30, y, W - 60, ch);
+    this.reg(y, ch);
+    y += ch + 52;
+    // ---------------------------------------------------------------- cargando golpe (aro al cargar)
+    this.sectionTitle(W, y, 'CARGANDO GOLPE', INFO.charge, { kind: 'charge', now });
+    y += titleGap;
+    const charges = shopOffers('charge', now, getPlayer());
+    const cc = cols3(charges.length);
+    charges.forEach((it, i) => {
+      this.chargeCard(cc.x(i), y, cc.w, ch, it);
+      this.reg(y, ch);
+    });
+    y += ch + 52;
+
+    // ---------------------------------------------------------------- poderes de la ULTI (antes INFERNO)
+    this.sectionTitle(W, y, 'PODERES ULTI', INFO.ulti, { kind: 'inferno', now });
+    y += titleGap;
+    const powers = shopOffers('inferno', now, getPlayer());
+    const pc = cols3(powers.length);
+    powers.forEach((it, i) => {
+      this.powerCard(pc.x(i), y, pc.w, ch, it);
+      this.reg(y, ch);
+    });
+    y += ch + 52;
+
+    // ---------------------------------------------------------------- poderes del ESPECIAL y del DEFENSIVO
+    this.sectionTitle(W, y, 'PODERES ESPECIALES', INFO.special, { kind: 'smash', now });
+    y += titleGap;
+    // 3 a la vez (el FUEGO es gratis y no entra en la rotación: se elige en PERSONALIZAR)
+    const smashItems = shopOffers('smash', now, getPlayer());
+    const sc = cols3(smashItems.length);
+    const smashH = 270;
+    smashItems.forEach((it, i) => {
+      this.smashCard(sc.x(i), y, sc.w, smashH, it.id.split(':')[1] as SmashPower, it);
+      this.reg(y, smashH);
+    });
+    y += smashH + 52;
+    this.sectionTitle(W, y, 'PODERES DEFENSIVOS', INFO.defensive, { kind: 'defensive', now });
+    y += titleGap;
+    const defs = shopOffers('defensive', now, getPlayer());
+    const dc = cols3(defs.length);
+    const dh = 270;
+    defs.forEach((it, i) => {
+      this.defensiveCard(dc.x(i), y, dc.w, dh, it);
+      this.reg(y, dh);
+    });
+    y += dh + 52;
     // ---------------------------------------------------------------- efecto pelota (estela de los golpes)
     this.sectionTitle(W, y, 'EFECTO PELOTA', INFO.style);
     y += titleGap;
@@ -286,56 +350,15 @@ export class ShopScene extends Phaser.Scene {
     this.drawStripBar(this.strips[0], W);
     y += ch + 52;
 
-    // ---------------------------------------------------------------- cargando golpe (aro al cargar)
-    this.sectionTitle(W, y, 'CARGANDO GOLPE', INFO.charge, { kind: 'charge', now });
-    y += titleGap;
-    const charges = shopOffers('charge', now);
-    const cc = cols3(charges.length);
-    charges.forEach((it, i) => {
-      this.chargeCard(cc.x(i), y, cc.w, ch, it);
-      this.reg(y, ch);
-    });
-    y += ch + 52;
-
-    // ---------------------------------------------------------------- poderes de la ULTI (antes INFERNO)
-    this.sectionTitle(W, y, 'PODERES ULTI', INFO.ulti, { kind: 'inferno', now });
-    y += titleGap;
-    const powers = shopOffers('inferno', now);
-    const pc = cols3(powers.length);
-    powers.forEach((it, i) => {
-      this.powerCard(pc.x(i), y, pc.w, ch, it);
-      this.reg(y, ch);
-    });
-    y += ch + 52;
-
-    // ---------------------------------------------------------------- poderes del ESPECIAL y del DEFENSIVO
-    this.sectionTitle(W, y, 'PODERES ESPECIALES', INFO.special, { kind: 'smash', now });
-    y += titleGap;
-    // 3 a la vez (el FUEGO es gratis y no entra en la rotación: se elige en PERSONALIZAR)
-    const smashItems = shopOffers('smash', now);
-    const sc = cols3(smashItems.length);
-    const smashH = 270;
-    smashItems.forEach((it, i) => {
-      this.smashCard(sc.x(i), y, sc.w, smashH, it.id.split(':')[1] as SmashPower, it);
-      this.reg(y, smashH);
-    });
-    y += smashH + 52;
-    this.sectionTitle(W, y, 'PODERES DEFENSIVOS', INFO.defensive, { kind: 'defensive', now });
-    y += titleGap;
-    const defs = shopOffers('defensive', now);
-    const dc = cols3(defs.length);
-    const dh = 270;
-    defs.forEach((it, i) => {
-      this.defensiveCard(dc.x(i), y, dc.w, dh, it);
-      this.reg(y, dh);
-    });
-    y += dh + 52;
     // ---------------------------------------------------------------- ESTILOS DE ZONA (16-11-2026): Eléctrica (de todos), Fuego (épica), Sombra (legendaria)
     // (21-11-2026, usuario) 2 cards que cambian cada SEMANA (domingo), con su contador (domain/shopRotation.ts)
     this.sectionTitle(W, y, 'ZONA', INFO.zone, { kind: 'zone', now });
     y += titleGap;
-    const zoneItems = shopOffers('zone', now);
-    const zc = cols3(zoneItems.length);
+    const zoneItems = shopOffers('zone', now, getPlayer());
+    // (21-11-2026, usuario) las 2 cards ocupan TODO el ancho (el mismo que 3 cards de DEFENSIVO), no 2 tercios centrados
+    const zn = Math.max(1, zoneItems.length);
+    const zw = (W - 60 - gap * (zn - 1)) / zn;
+    const zc = { w: zw, x: (i: number) => 30 + i * (zw + gap) };
     const zh = 270;
     zoneItems.forEach((zit, i) => {
       this.zoneCard(zc.x(i), y, zc.w, zh, zit.id.split(':')[1] as ZoneSkinId, zit);
@@ -349,7 +372,7 @@ export class ShopScene extends Phaser.Scene {
     // cuadrícula de 3 columnas (como la tienda de gemas de Brawl Stars)
     const packCols = 3;
     const packW = (W - 60 - gap * (packCols - 1)) / packCols;
-    const packH = Math.round(packW * 0.92);
+    const packH = Math.round(packW * 1.1); // (21-11-2026, usuario) antes 0.92: más alto de la parte morada para que la imagen no choque con la cantidad (la blanca sigue en 30 %)
     CASH_PACKS.forEach((p, i) => {
       const py = y + Math.floor(i / packCols) * (packH + gap);
       this.cashPackCard(30 + (i % packCols) * (packW + gap), py, packW, packH, p, i);
@@ -374,7 +397,7 @@ export class ShopScene extends Phaser.Scene {
 
   /** Qué muestra ahora cada categoría que rota (para saber si hay que reconstruir la Tienda al cambiar). */
   private rotationSignature(now: number) {
-    return (['charge', 'inferno', 'smash', 'defensive', 'zone'] as ItemKind[]).map((k) => shopOffers(k, now).map((i) => i.id).join(',')).join('|');
+    return (['skin', 'charge', 'inferno', 'smash', 'defensive', 'zone'] as ItemKind[]).map((k) => shopOffers(k, now, getPlayer()).map((i) => i.id).join(',')).join('|');
   }
 
   /** ancho de la píldora del contador de ofertas (a la derecha del título de las categorías que rotan) */
@@ -410,6 +433,9 @@ export class ShopScene extends Phaser.Scene {
     this.tweens.add({ targets: clock, scale: { from: 1, to: 1.15 }, duration: 500, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
     this.rotLabels.push({ t, kind });
     this.setRotationText(t, ms);
+    // (21-11-2026, usuario) tocar el reloj: CAMBIAR las ofertas de esta categoría pagando dinero (una vez por semana)
+    c.setSize(pw, ph).setInteractive({ useHandCursor: true });
+    c.on('pointerup', this.tap(() => this.rerollDialog(kind)));
   }
 
   private setRotationText(t: Phaser.GameObjects.Text, ms: number) {
@@ -781,7 +807,7 @@ export class ShopScene extends Phaser.Scene {
     fitText(who, colW);
     c.add([title, season, prize, who]);
     const by = y + h - 62;
-    if (active) c.add(this.pill(tx, by, 170, 'ACTIVO', 0x1f6b35, '#9fe8a0'));
+    if (active && !isDevMode()) c.add(this.pill(tx, by, 170, 'ACTIVO', 0x1f6b35, '#9fe8a0')); // (21-11-2026, usuario) en MODO DESARROLLO se ve el precio del Pase aunque esté activo
     else {
       const price = this.add.container(tx, by);
       const pb = this.add.graphics();
@@ -1129,7 +1155,66 @@ export class ShopScene extends Phaser.Scene {
     else if (it) c.add(arcadeButton(this, sx, by, bw, 48, clpLabel(it.clp), this.tap(() => this.toast(s.level < it.minLevel ? `Necesitas nivel ${it.minLevel}` : 'El pago con dinero real (CLP) llega pronto')), { palette: 'green', disabled: s.level < it.minLevel }));
   }
 
-  /** Tarjeta de un poder del DEFENSIVO: su icono, nombre, descripción y botón (precio / USAR / EN USO). */
+  /** Personajes que la Tienda ofrece ahora (2 cada 24 h): nunca el del Pase; los que ya tienes solo con MODO DESARROLLO. */
+  private shopCharacters(now: number): ShopItem[] {
+    const s = getPlayer();
+    const pass = passHeroSkin();
+    return shopOffers('skin', now, s).filter((i) => i.id !== `skin:${pass}` && (isDevMode() || !s.owned.includes(i.id)));
+  }
+  /**
+   * Tarjeta de un personaje con el marco tienda-pj (amarillo arriba con el nombre, azul con el retrato, verde abajo con los precios: dinero virtual a la
+   * izquierda, CLP a la derecha). Si ya es tuyo: COMPRADO (con MODO DESARROLLO se ven los dos precios igual).
+   */
+  private characterCard(x: number, y: number, w: number, h: number, it: ShopItem) {
+    const s = getPlayer();
+    const skin = it.id.split(':')[1];
+    const has = s.owned.includes(it.id);
+    const k = w / 961; // px del arte -> pantalla
+    const c = this.add.container(0, 0);
+    this.body.add(c);
+    const cx = x + w / 2;
+    if (this.textures.exists('shop-pj-card')) c.add(this.add.image(x, y, 'shop-pj-card').setOrigin(0, 0).setDisplaySize(w, h));
+    else c.add(this.card(x, y, w, h, { line: 0x2c3d66, glow: 0.1 }));
+    // nombre en la franja amarilla
+    const nm = this.add.text(cx, y + 200 * k, it.name.toUpperCase(), { fontFamily: FONT, fontSize: '40px', color: '#ffffff', stroke: '#6a3a00', strokeThickness: 7 }).setOrigin(0.5).setLetterSpacing(2);
+    fitText(nm, w * 0.72);
+    c.add(nm);
+    // retrato en el fondo azul (por su caja visible), con zoom: sube un poco sobre la franja amarilla y se CORTA donde empieza el verde (no lo toca)
+    const p = rosterPortrait(skin);
+    if (p && this.textures.exists(p.key)) {
+      const sc = (900 * k) / (p.box.y1 - p.box.y0);
+      const pcx = (p.box.x0 + p.box.x1) / 2;
+      const boxTop = y + 330 * k; // arriba de la caja visible: asoma sobre el amarillo
+      const iy = boxTop + (p.h / 2 - p.box.y0) * sc; // centro de la imagen entera
+      const ix = cx + (p.w / 2 - pcx) * sc;
+      const img = this.add.image(ix, iy, p.key).setScale(sc);
+      const cutRow = p.h / 2 + (y + 1190 * k - iy) / sc; // fila de la imagen que cae en el borde de abajo del azul
+      img.setCrop(0, 0, p.w, Math.min(p.h, cutRow));
+      c.add(img);
+    }    // franja verde: precios
+    const gy = y + 1322 * k;
+    if (has && !isDevMode()) {
+      c.add(this.add.text(cx, gy, 'COMPRADO', { fontFamily: FONT, fontSize: '26px', color: '#ffffff', stroke: '#0a5a2a', strokeThickness: 5 }).setOrigin(0.5));
+      return;
+    }
+    const halfW = w * 0.44;
+    const lx = x + w * 0.27;
+    const rxp = x + w * 0.73;
+    const cant = s.level < it.minLevel || s.gems < it.price;
+    const virt = this.add.container(lx, gy);
+    virt.add(this.cashIcon(-halfW / 2 + 14, 0, 34, it.price));
+    const vt = this.add.text(-halfW / 2 + 36, 0, it.price.toLocaleString('es-CL'), { fontFamily: FONT, fontSize: '26px', color: cant ? '#c9ffe0' : '#ffffff', stroke: '#0a5a2a', strokeThickness: 5 }).setOrigin(0, 0.5);
+    fitText(vt, halfW - 44);
+    virt.add(vt);
+    virt.setSize(halfW, 56).setInteractive({ useHandCursor: true });
+    virt.on('pointerup', this.tap(() => (has ? this.toast('Modo desarrollo: ya lo tienes (solo se muestra el precio)') : this.confirmBuy(it))));
+    const clp = this.add.text(rxp, gy, clpLabel(it.clp), { fontFamily: FONT, fontSize: '22px', color: '#000000', stroke: '#8dffb0', strokeThickness: 5 }).setOrigin(0.5);
+    fitText(clp, halfW - 8);
+    clp.setInteractive({ useHandCursor: true }).on('pointerup', this.tap(() => this.toast('El pago con dinero real (CLP) llega pronto')));
+    const div = this.add.graphics();
+    div.lineStyle(3, 0x0a5a2a, 0.55).lineBetween(cx, gy - 22 * 1, cx, gy + 22);
+    c.add([virt, clp, div]);
+  }  /** Tarjeta de un poder del DEFENSIVO: su icono, nombre, descripción y botón (precio / USAR / EN USO). */
   private defensiveCard(x: number, y: number, w: number, h: number, it: ShopItem) {
     const s = getPlayer();
     const id = it.id.split(':')[1] as DefensivePower;
@@ -1197,63 +1282,88 @@ export class ShopScene extends Phaser.Scene {
   }
 
   /**
-   * Paquete de DINERO virtual que se compra con CLP (pendiente de la pasarela de pago), al estilo de la tienda de gemas de
-   * Brawl Stars: tarjeta verde con un montón de billetes que crece con el paquete (`i` = 0 el más chico), la cantidad
-   * arriba a la derecha, el precio abajo y, si tiene, la cinta POPULAR / MEJOR VALOR.
+   * Paquete de DINERO virtual que se compra con CLP (pendiente de la pasarela de pago). (21-11-2026, usuario) Al estilo de la tienda de gemas de
+   * Brawl Stars: arriba (70 %) un fondo morado degradado con el montón de billetes (más grande en cada paquete, `i` = 0 el más chico), la cantidad
+   * y, si tiene, la etiqueta POPULAR / MEJOR VALOR en la esquina; abajo (30 %) la parte blanca con el precio en CLP en una píldora negra.
    */
   private cashPackCard(x: number, y: number, w: number, h: number, p: CashPack, i: number) {
     const c = this.add.container(0, 0);
     this.body.add(c);
     const r = 14;
-    const barH = Math.round(h * 0.22);
+    const barH = Math.round(h * 0.3); // parte blanca: 30 % del alto
+    const topH = h - barH;
+    const lerp = (a: number, b: number, t: number) => Phaser.Display.Color.Interpolate.ColorWithColor(Phaser.Display.Color.IntegerToColor(a), Phaser.Display.Color.IntegerToColor(b), 100, Math.round(t * 100));
     const g = this.add.graphics();
     g.fillStyle(0x000000, 0.35).fillRoundedRect(x + 3, y + 5, w, h, r);
     g.fillStyle(0x0a1638, 1).fillRoundedRect(x - 3, y - 3, w + 6, h + 6, r + 2);
-    g.fillStyle(0x3fae2a, 1).fillRoundedRect(x, y, w, h, r);
-    g.fillStyle(0x6ad13a, 1).fillRoundedRect(x, y, w, h - barH, { tl: r, tr: r, bl: 0, br: 0 });
-    g.fillStyle(0x92e85e, 1).fillRoundedRect(x + 4, y + 4, w - 8, (h - barH) * 0.4, { tl: r - 3, tr: r - 3, bl: 6, br: 6 });
-    // barra del precio
-    g.fillStyle(0x26335e, 1).fillRoundedRect(x, y + h - barH, w, barH, { tl: 0, tr: 0, bl: r, br: r });
-    g.fillStyle(0x34457a, 1).fillRect(x, y + h - barH, w, barH * 0.4);
+    g.fillStyle(0xffffff, 1).fillRoundedRect(x, y, w, h, r);
+    // morado degradado: franjas de arriba (claro) a abajo (oscuro); las esquinas de arriba, redondeadas con el primer color
+    const c0 = 0xb55cff;
+    const c1 = 0x5a1fb0;
+    g.fillStyle(c0, 1).fillRoundedRect(x, y, w, r * 2, { tl: r, tr: r, bl: 0, br: 0 });
+    const steps = 28;
+    const y0 = y + r;
+    const sh = (topH - r) / steps;
+    for (let s = 0; s < steps; s++) {
+      const cc = lerp(c0, c1, s / (steps - 1));
+      g.fillStyle(Phaser.Display.Color.GetColor(cc.r, cc.g, cc.b), 1).fillRect(x, y0 + s * sh, w, Math.ceil(sh) + 1);
+    }
+    // brillo suave arriba
+    g.fillStyle(0xffffff, 0.14).fillRoundedRect(x + 5, y + 5, w - 10, topH * 0.28, { tl: r - 3, tr: r - 3, bl: 8, br: 8 });
     c.add(g);
-
-    // montón de billetes: más billetes y más grande en cada paquete
-    // filas de abajo hacia arriba (pirámide)
+    // montón de billetes: más billetes y más grande en cada paquete (pirámide, de abajo hacia arriba), sobre la mitad de arriba
     const layers = [[1], [2], [2, 1], [3, 2], [4, 3], [4, 3, 2]][Math.min(i, 5)];
-    const k = 1 + Math.min(i, 5) * 0.12;
-    const midX = x + w * 0.44;
-    const baseY = y + (h - barH) * 0.72;
+    const k = (1 + Math.min(i, 5) * 0.12) * Math.min(1, topH / 130);
+    const midX = x + w / 2;
+    const baseY = y + topH * 0.62;
     const pile = this.add.container(0, 0);
-    layers.forEach((n, row) => {
-      for (let j = 0; j < n; j++) pile.add(this.cashIcon(midX + (j - (n - 1) / 2) * 26 * k, baseY - row * 15 * k + (j % 2) * 3, 40 * k));
-    });
+    const packImg = i === 2 ? 'cash-2' : i === 5 ? 'cash-5' : i >= 3 ? 'cash-3' : null; // la 1.ª y la 2.ª, la pirámide de billetes
+    if (packImg && this.textures.exists(packImg)) {
+      // (21-11-2026, usuario) imagen propia sobre la cantidad
+      const src = this.textures.get(packImg).getSourceImage() as { width: number; height: number };
+      const iw = Math.min(w * 0.86, topH * 0.6 * (src.width / src.height));
+      pile.add(this.add.image(midX, y + topH * 0.4, packImg).setDisplaySize(iw, iw * (src.height / src.width)));
+    } else if (i < 2 && this.textures.exists('cash-pack')) {
+      // (21-11-2026, usuario) 1.ª card: un fardo chico (dinero-fardo-chico); 2.ª: dos
+      const n = i + 1;
+      const fs = Math.min(topH * 0.5, w * (n === 1 ? 0.5 : 0.42));
+      for (let j = 0; j < n; j++) pile.add(this.add.image(midX + (j - (n - 1) / 2) * fs * 0.85, y + topH * 0.4 + (j % 2) * 5, 'cash-pack').setDisplaySize(fs, fs));
+    } else {
+      layers.forEach((n, row) => {
+        for (let j = 0; j < n; j++) pile.add(this.cashIcon(midX + (j - (n - 1) / 2) * 26 * k, baseY - row * 15 * k + (j % 2) * 3, 40 * k));
+      });
+    }
     c.add(pile);
-
-    // cantidad arriba a la derecha
-    const amount = this.add.text(x + w - 10, y + 8, p.cash.toLocaleString('es-CL'), { fontFamily: FONT, fontSize: '30px', color: '#ffffff', stroke: '#0a1638', strokeThickness: 6 }).setOrigin(1, 0);
-    fitText(amount, w * 0.6);
+    // cantidad, centrada abajo de la parte morada
+    const amount = this.add.text(x + w / 2, y + topH - 8, p.cash.toLocaleString('es-CL'), { fontFamily: FONT, fontSize: '28px', color: '#ffffff', stroke: '#2a0a5a', strokeThickness: 6 }).setOrigin(0.5, 1);
+    fitText(amount, w - 16);
     c.add(amount);
-    // precio
-    const price = this.add.text(x + w / 2, y + h - barH / 2, clpLabel(p.clp), { fontFamily: FONT, fontSize: '20px', color: '#ffffff', stroke: '#0a1638', strokeThickness: 4 }).setOrigin(0.5);
-    fitText(price, w - 14);
+    // precio: píldora negra en la parte blanca
+    const pw = w - 22;
+    const ph = Math.min(barH - 14, 44);
+    const py = y + topH + barH / 2;
+    const pill = this.add.graphics();
+    pill.fillStyle(0x000000, 1).fillRoundedRect(x + (w - pw) / 2, py - ph / 2, pw, ph, ph / 2);
+    c.add(pill);
+    const price = this.add.text(x + w / 2, py, clpLabel(p.clp), { fontFamily: FONT, fontSize: '20px', color: '#ffffff' }).setOrigin(0.5);
+    fitText(price, pw - 16);
     c.add(price);
-    // cinta POPULAR / MEJOR VALOR sobre la barra del precio
+    // etiqueta POPULAR / MEJOR VALOR: pastilla naranja en la esquina de arriba a la izquierda
     if (p.tag) {
-      const ry = y + h - barH - 13;
+      const rt = this.add.text(x + 14, y + 14, p.tag === 'best' ? 'MEJOR VALOR' : 'POPULAR', { fontFamily: FONT, fontSize: '13px', color: '#ffffff', stroke: '#7a2a00', strokeThickness: 3 }).setOrigin(0, 0.5).setLetterSpacing(1);
+      fitText(rt, w - 36);
       const rb = this.add.graphics();
-      rb.fillStyle(0x8a1020, 1).fillRect(x, ry - 12, w, 24);
-      rb.fillStyle(0xe8323f, 1).fillRect(x, ry - 12, w, 20);
+      const tw = rt.displayWidth + 16;
+      rb.fillStyle(0x7a2a00, 1).fillRoundedRect(x + 6, y + 3, tw, 24, 12);
+      rb.fillStyle(0xff8a1f, 1).fillRoundedRect(x + 8, y + 5, tw - 4, 20, 10);
       c.add(rb);
-      const rt = this.add.text(x + w / 2, ry - 2, p.tag === 'best' ? 'MEJOR VALOR' : 'POPULAR', { fontFamily: FONT, fontSize: '14px', color: '#ffffff', stroke: '#5a0a12', strokeThickness: 3 }).setOrigin(0.5).setLetterSpacing(1);
-      fitText(rt, w - 10);
+      rt.setX(x + 14);
       c.add(rt);
     }
     const hit = this.add.zone(x + w / 2, y + h / 2, w, h).setInteractive({ useHandCursor: true });
     hit.on('pointerup', this.tap(() => this.toast('El pago con dinero real (CLP) llega pronto')));
     c.add(hit);
-  }
-
-  /** Pelota que cruza la tarjeta dejando la estela del efecto (fx/ballTrailFx.ts: cinta, partículas y chispas del Oro). Se repite sola. */
+  }  /** Pelota que cruza la tarjeta dejando la estela del efecto (fx/ballTrailFx.ts: cinta, partículas y chispas del Oro). Se repite sola. */
   private trailPreview(c: Phaser.GameObjects.Container, cx: number, cy: number, span: number, id: StyleId) {
     // solo se anima mientras se ve: la tarjeta visible, su fila visible y dentro de la pantalla a lo ancho (la fila se desliza)
     const onScreen = () => {
@@ -1382,7 +1492,51 @@ export class ShopScene extends Phaser.Scene {
     };
   }
   // ================================================================ compra
-  private confirmBuy(it: ShopItem) {
+  /** nombre de cada categoría para el aviso del cambio de ofertas */
+  private static readonly KIND_LABEL: Partial<Record<ItemKind, string>> = { skin: 'Nuevos personajes', charge: 'Cargando golpe', inferno: 'Poderes ULTI', smash: 'Poderes especiales', defensive: 'Poderes defensivos', zone: 'Zona' };
+  /**
+   * (21-11-2026, usuario) CAMBIAR las ofertas de una categoría (se toca su reloj): REROLL_PRICE de dinero virtual, una vez por semana y por
+   * categoría (se reinicia el lunes); trae otros ítems. Si no hay más que mostrar o ya se usó esta semana, solo avisa (no cobra).
+   */
+  private rerollDialog(kind: ItemKind) {
+    const s = getPlayer();
+    const now = Date.now();
+    if (!canReroll(kind)) return this.toast(ERRORS.nothing_to_change);
+    if (rerolledThisWeek(s, kind, now)) return this.toast(ERRORS.already_rerolled);
+    if (s.gems < REROLL_PRICE) return this.toast(`Te faltan ${(REROLL_PRICE - s.gems).toLocaleString('es-CL')} de dinero`);
+    const W = this.scale.width;
+    const H = this.scale.height;
+    const close = () => {
+      this.modal.forEach((o) => o.destroy());
+      this.modal = [];
+    };
+    const shade = this.add.rectangle(0, 0, W, H, 0x02060f, 0.72).setOrigin(0).setDepth(8000).setInteractive();
+    shade.on('pointerdown', close);
+    const pw = Math.min(560, W - 60);
+    const ph = 400;
+    const panel = this.add.container(W / 2, H / 2).setDepth(8001);
+    panel.add(this.add.rectangle(0, 0, pw, ph, 0x000000, 0.001).setInteractive());
+    panel.add(this.card(-pw / 2, -ph / 2, pw, ph, { line: GOLD, glow: 0.3, r: 24 }));
+    panel.add(this.add.text(0, -ph / 2 + 50, '¿CAMBIAR OFERTAS?', { fontFamily: FONT, fontSize: '34px', color: '#ffffff', stroke: '#0a1638', strokeThickness: 6 }).setOrigin(0.5).setLetterSpacing(1));
+    panel.add(this.add.text(0, -ph / 2 + 98, ShopScene.KIND_LABEL[kind] ?? '', { fontFamily: FONT, fontSize: '24px', color: '#dbe5ff' }).setOrigin(0.5));
+    panel.add(this.add.text(0, -ph / 2 + 142, 'Salen otros ítems. Una vez por semana\npor sección (se reinicia el lunes).', { fontFamily: FONT, fontSize: '17px', color: '#9fb4e0', align: 'center' }).setOrigin(0.5));
+    panel.add(this.cashIcon(-46, -ph / 2 + 206, 40, REROLL_PRICE));
+    panel.add(this.add.text(-22, -ph / 2 + 206, REROLL_PRICE.toLocaleString('es-CL'), { fontFamily: FONT, fontSize: '32px', color: '#ffd23f', stroke: '#0a1638', strokeThickness: 6 }).setOrigin(0, 0.5));
+    panel.add(this.add.text(0, -ph / 2 + 244, `Te quedarán ${(s.gems - REROLL_PRICE).toLocaleString('es-CL')} de dinero`, { fontFamily: FONT, fontSize: '17px', color: '#7f93bf' }).setOrigin(0.5));
+    const bw = (pw - 70) / 2;
+    const by = ph / 2 - 62;
+    panel.add(arcadeButton(this, -bw / 2 - 10, by, bw, 76, 'CANCELAR', close, { palette: 'blue' }));
+    panel.add(arcadeButton(this, bw / 2 + 10, by, bw, 76, 'CAMBIAR', () => {
+      close();
+      const res = commit((st) => rerollShop(st, kind, Date.now()));
+      if (!res.ok) return this.toast(ERRORS[res.error] ?? 'No se pudo cambiar');
+      this.celebrate();
+      this.build();
+    }, { palette: 'yellow' }));
+    panel.setScale(0.85).setAlpha(0);
+    this.tweens.add({ targets: panel, scale: 1, alpha: 1, duration: 220, ease: 'Back.easeOut' });
+    this.modal = [shade, panel];
+  }  private confirmBuy(it: ShopItem) {
     const s = getPlayer();
     if (it.realMoneyOnly) return this.toast('Solo con dinero real (CLP): llega pronto');
     if (s.level < it.minLevel) return this.toast(`Necesitas nivel ${it.minLevel}`);
@@ -1401,7 +1555,7 @@ export class ShopScene extends Phaser.Scene {
     panel.add(this.add.rectangle(0, 0, pw, ph, 0x000000, 0.001).setInteractive());
     panel.add(this.card(-pw / 2, -ph / 2, pw, ph, { line: GOLD, glow: 0.3, r: 24 }));
     panel.add(this.add.text(0, -ph / 2 + 50, '¿COMPRAR?', { fontFamily: FONT, fontSize: '38px', color: '#ffffff', stroke: '#0a1638', strokeThickness: 6 }).setOrigin(0.5).setLetterSpacing(2));
-    panel.add(this.add.text(0, -ph / 2 + 104, `${it.kind === 'style' ? 'Estilo' : it.kind === 'inferno' ? 'Poder ULTI' : it.kind === 'charge' ? 'Cargando golpe' : it.kind === 'defensive' ? 'Poder defensivo' : it.kind === 'smash' ? 'SMASH' : 'Habilidad'} ${it.name}`, { fontFamily: FONT, fontSize: '26px', color: '#dbe5ff' }).setOrigin(0.5));
+    panel.add(this.add.text(0, -ph / 2 + 104, `${it.kind === 'style' ? 'Estilo' : it.kind === 'inferno' ? 'Poder ULTI' : it.kind === 'charge' ? 'Cargando golpe' : it.kind === 'defensive' ? 'Poder defensivo' : it.kind === 'smash' ? 'SMASH' : it.kind === 'skin' ? 'Personaje' : 'Habilidad'} ${it.name}`, { fontFamily: FONT, fontSize: '26px', color: '#dbe5ff' }).setOrigin(0.5));
     // precio y saldo después
     const coin = this.cashIcon(-46, -ph / 2 + 158, 40, it.price);
     panel.add(coin);

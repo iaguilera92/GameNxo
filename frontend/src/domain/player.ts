@@ -42,7 +42,7 @@ export const newLoginState = (): LoginState => ({ last: '', streak: 0, adBonusDa
 export type StyleId = 'classic' | 'red' | 'green' | 'gold' | 'pink' | 'rainbow' | 'ember' | 'frost' | 'tulip' | 'hearts' | 'stars' | 'neon' | 'smoke';
 export type ItemKind = 'ability' | 'skin' | 'style' | 'inferno' | 'charge' | 'defensive' | 'smash' | 'emote' | 'color' | 'zone';
 /** Id único de ítem: `<tipo>:<id>` (ej. 'ability:wall', 'skin:mai'). Los `emote:` solo se ganan en el Pase de Batalla. */
-export type ItemId = `ability:${AbilityId}` | `skin:${SkinId}` | `style:${StyleId}` | `inferno:${InfernoPower}` | `charge:${ChargeFxId}` | `defensive:${DefensivePower}` | `smash:${SmashPower}` | `emote:${EmoteKind}` | `color:${CharColorId}` | `color:${CharColorId}:${'nxo' | 'mai'}` | `zone:${'fire' | 'shadow'}`;
+export type ItemId = `ability:${AbilityId}` | `skin:${SkinId}` | `skin:net` | `style:${StyleId}` | `inferno:${InfernoPower}` | `charge:${ChargeFxId}` | `defensive:${DefensivePower}` | `smash:${SmashPower}` | `emote:${EmoteKind}` | `color:${CharColorId}` | `color:${CharColorId}:${'nxo' | 'mai'}` | `zone:${'fire' | 'shadow'}`;
 
 export interface Loadout {
   skin: SkinId;
@@ -101,6 +101,13 @@ export interface PlayerState {
   riskMode?: RiskModeState;
   /** MONEDAS 2v2 (domain/coins2v2.ts): contador propio del ranking del 2v2; 0 = undefined */
   coins2v2?: number;
+  /** CAMBIO de ofertas de la Tienda (domain/shopRotation.ts): semana (su lunes) y categorías ya cambiadas pagando dinero; vale una vez por categoría y semana */
+  shopReroll?: ShopRerollState;
+}
+/** categorías de la Tienda ya cambiadas en una semana (week = lunes AAAA-MM-DD) */
+export interface ShopRerollState {
+  week: string;
+  kinds: ItemKind[];
 }
 import type { RiskModeState } from './riskMode';
 
@@ -148,5 +155,5 @@ export function owns(s: PlayerState, id: ItemId) {
 
 /** Copia profunda (las operaciones nunca mutan el estado recibido). */
 export function clonePlayer(s: PlayerState): PlayerState {
-  return { ...s, owned: [...s.owned], equipped: { ...s.equipped, abilities: [...s.equipped.abilities] }, wheel: cloneWheel(s.wheel), bp: cloneBattlePass(s.bp), ranked: cloneRanked(s.ranked), ...(s.league2v2 ? { league2v2: cloneLeague2v2(s.league2v2) } : {}), login: { ...s.login, days: [...(s.login.days ?? [])] }, zone: cloneZoneProgress(s.zone), ...(s.tutorial ? { tutorial: [...s.tutorial] } : {}), ...(s.chest ? { chest: { ...s.chest } } : {}), ...(s.mastery ? { mastery: { ...s.mastery } } : {}), ...(s.riskMode ? { riskMode: { ...s.riskMode } } : {}) };
+  return { ...s, owned: [...s.owned], equipped: { ...s.equipped, abilities: [...s.equipped.abilities] }, wheel: cloneWheel(s.wheel), bp: cloneBattlePass(s.bp), ranked: cloneRanked(s.ranked), ...(s.league2v2 ? { league2v2: cloneLeague2v2(s.league2v2) } : {}), login: { ...s.login, days: [...(s.login.days ?? [])] }, zone: cloneZoneProgress(s.zone), ...(s.tutorial ? { tutorial: [...s.tutorial] } : {}), ...(s.chest ? { chest: { ...s.chest } } : {}), ...(s.mastery ? { mastery: { ...s.mastery } } : {}), ...(s.riskMode ? { riskMode: { ...s.riskMode } } : {}), ...(s.shopReroll ? { shopReroll: { week: s.shopReroll.week, kinds: [...s.shopReroll.kinds] } } : {}) };
 }

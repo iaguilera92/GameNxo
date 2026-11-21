@@ -21,7 +21,16 @@ const DEMO_EYE_ADJUST: Record<string, { up: number; dx: number }> = {
   mai: { up: 3, dx: -2 },
 };
 
+/**
+ * (21-11-2026, usuario) NXO se muestra con el frame 4 de su ULTI (hoja nxo-rival-ulti-1, índice 3: raqueta arriba, en cuclillas). Ojo IZQUIERDO de la pantalla en esa
+ * pose, medido sobre la celda de 212x174 (ojo en x 90, y 76; pies en 106, 170): up sobre los pies y dx respecto a ellos (unidades del personaje, escala 1).
+ * Si cambia esa hoja, volver a medir.
+ */
+const ULTI_FRAME = 3;
+const ULTI_EYE = { up: 95, dx: -16 };
 class ZoneDemo implements PowerDemo {
+  /** true = el personaje se ve con el fotograma de la ULTI (solo NXO) */
+  private ultiPose = false;
   private readonly stage: Phaser.GameObjects.Container;
   private readonly ch: Character;
   private aura: HyperAura;
@@ -62,6 +71,7 @@ class ZoneDemo implements PowerDemo {
     const k = (inner.h * 0.78) / 150;
     this.ch = new Character(scene, inner.x + inner.w / 2, inner.y + inner.h * 0.9, playerLook(skin), 'front').setScale(k);
     stage.add(this.ch);
+    this.ultiPose = skin === 'nxo' && this.ch.showUltiFrame(ULTI_FRAME);
     const color = getProfile().color;
     if (color !== 'classic') applyCharColor(this.ch, color, skin);
     // (16-11-2026) en REPOSO, no en guardia: setReady pone la pose de carga del golpe (agachado) y el rayo, medido en el reposo
@@ -141,6 +151,8 @@ class ZoneDemo implements PowerDemo {
       t.y = 0;
       t.scaleY = 1;
     }
+    // con el fotograma fijo de la ULTI no se toca la animación: pausar en el frame 0 de la animación anterior (el reposo) lo cambiaba de vuelta
+    if (this.ultiPose) return;
     const walk = (o: Phaser.GameObjects.GameObject) => {
       if (o instanceof Phaser.GameObjects.Sprite) {
         const a = o.anims.currentAnim;
@@ -167,7 +179,7 @@ class ZoneDemo implements PowerDemo {
     const o = DEMO_EYE_ADJUST[this.skin] ?? DEMO_EYE_ADJUST.nxo;
     // (21-11-2026, usuario: "los rayos no salen de los ojos") el ojo de la pose congelada de la demo, medido sobre captura ampliada: ZONE_EYES (del partido)
     // + el ajuste propio de la demo por personaje. Antes: up − 4 y dx + 3 para todos, que ya no cuadraban tras remedir los ojos (quedaba en la sien / la mejilla)
-    this.fx.update(dt, head, { x: this.ch.x, y: this.ch.y }, k, this.ch.depth, 1, false, { up: e.up + o.up, dx: -e.dx + o.dx });
+    this.fx.update(dt, head, { x: this.ch.x, y: this.ch.y }, k, this.ch.depth, 1, false, this.ultiPose ? ULTI_EYE : { up: e.up + o.up, dx: -e.dx + o.dx });
   }
 }
 

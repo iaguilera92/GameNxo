@@ -4,7 +4,7 @@
  * nombre, skin y habilidades.
  */
 import { MAX_LEVEL } from '../config';
-import { type ItemId, type PlayerState, type StarterSkin, type StyleId, STARTER_ITEMS, itemId, newPlayer } from './player';
+import { type ItemId, type ItemKind, type PlayerState, type StarterSkin, type StyleId, STARTER_ITEMS, itemId, newPlayer } from './player';
 import { SHOP_ITEMS } from './shopCatalog';
 import { sanitizeWheel } from './dailyWheel';
 import { bpGrantClaimedItemsInPlace, sanitizeBattlePass } from './battlePass';
@@ -75,6 +75,12 @@ export function migratePlayer(raw: unknown, starter: StarterSkin = 'nxo'): Playe
   const chest = sanitizeChest(r.chest); // cofre evolutivo de la ruleta (domain/chest.ts)
   if (chest) s.chest = chest;
   if (typeof r.giftDay === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(r.giftDay)) s.giftDay = r.giftDay; // regalo gratis de la Tienda
+  // cambio de ofertas de la Tienda (domain/shopRotation.ts)
+  const sr = r.shopReroll as { week?: unknown; kinds?: unknown } | undefined;
+  if (sr && typeof sr.week === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(sr.week) && Array.isArray(sr.kinds)) {
+    const okKinds = ['skin', 'charge', 'inferno', 'smash', 'defensive', 'zone'];
+    s.shopReroll = { week: sr.week, kinds: sr.kinds.filter((k): k is ItemKind => typeof k === 'string' && okKinds.includes(k)) };
+  }
 
   s.name = str(r.name, s.name);
   s.level = Math.min(MAX_LEVEL, Math.max(1, Math.floor(num(r.level, 1))));

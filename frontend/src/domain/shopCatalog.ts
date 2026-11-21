@@ -37,7 +37,12 @@ export interface ShopItem {
   realMoneyOnly?: boolean;
 }
 
+/** (21-11-2026, usuario) PERSONAJES de la Tienda: $6.990 CLP cada uno y también con dinero virtual. El virtual es PROVISIONAL (~3 semanas jugando): se cambia solo aquí. */
+export const CHARACTER_PRICE = { clp: 6990, price: 1000 } as const;
 const BASE_ITEMS: ShopItem[] = [
+  // personajes (rareza sin clasificar: preguntar al usuario)
+  { id: 'skin:mai', kind: 'skin', name: 'Mai', ...CHARACTER_PRICE, minLevel: 1, available: true },
+  { id: 'skin:net', kind: 'skin', name: 'Net', ...CHARACTER_PRICE, minLevel: 1, available: true }, // (21-11-2026) aún no jugable: solo queda en propiedad
   // estilos (estela de los golpes)
   { id: 'style:red', kind: 'style', name: 'Rojo', price: 40, clp: 490, minLevel: 1, available: true },
   { id: 'style:green', kind: 'style', name: 'Verde', price: 40, clp: 490, minLevel: 2, available: true },

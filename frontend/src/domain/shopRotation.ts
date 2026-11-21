@@ -15,14 +15,17 @@
  */
 import { cycleIdAt, msToNextReset } from './dailyWheel';
 import { type OpResult, purchase } from './operations';
-import type { ItemId, ItemKind, PlayerState } from './player';
+import { type ItemId, type ItemKind, type PlayerState, clonePlayer } from './player';
+import { weekIdAt } from './ranked';
 import { SHOP_ITEMS, type ShopItem, shopItem } from './shopCatalog';
 
 /** cuántos se ven a la vez en una categoría con rotación */
 export const ROTATION_SHOW = 3;
 /** categorías con rotación: cada cuántas horas cambian, cuántos se ven a la vez (por defecto ROTATION_SHOW) y si el contador sale siempre */
 export const ROTATION: Partial<Record<ItemKind, { hours: 12 | 24 | 168; show?: number; alwaysTimer?: boolean }>> = {
-  charge: { hours: 12 },
+  // (21-11-2026, usuario) PERSONAJES: 2 a la vez, cambian cada 24 h (hoy solo hay 2: MAI y NET)
+  skin: { hours: 24, show: 2, alwaysTimer: true },
+  charge: { hours: 12, alwaysTimer: true }, // (21-11-2026, usuario) con contador en el titulo como la ULTI (hoy solo hay 3, se ven todas)
   smash: { hours: 12 },
   defensive: { hours: 12 },
   inferno: { hours: 24 },
@@ -84,14 +87,15 @@ function rotationOrder(kind: ItemKind): ShopItem[] {
 }
 
 /** Lo que la Tienda muestra AHORA de una categoría. Sin rotación: todo. Con 3 o menos: todo. */
-export function shopOffers(kind: ItemKind, now: number): ShopItem[] {
+export function shopOffers(kind: ItemKind, now: number, s?: RerollView): ShopItem[] {
   const rot = ROTATION[kind];
   const items = pool(kind);
   const show = rot?.show ?? ROTATION_SHOW;
   if (!rot || items.length <= show) return items;
   const order = rotationOrder(kind);
   const w = rotationWindow(now, rot.hours);
-  const start = (w.id * show) % order.length;
+  // (21-11-2026, usuario) con el CAMBIO pagado de esta semana se salta a la siguiente ventana: salen otros ítems
+  const start = ((w.id + rerollShift(s, kind, now)) * show) % order.length;
   return Array.from({ length: show }, (_, i) => order[(start + i) % order.length]);
 }
 
@@ -103,15 +107,50 @@ export function offersChangeIn(kind: ItemKind, now: number): number | null {
 }
 
 /** ¿Está este ítem a la venta ahora? (lo que no rota, siempre; lo que rota, solo si está en la ventana actual). */
-export function isOnSale(id: ItemId, now: number): boolean {
+export function isOnSale(id: ItemId, now: number, s?: RerollView): boolean {
   const it = shopItem(id);
   if (!it) return false;
   if (!ROTATION[it.kind]) return true;
-  return shopOffers(it.kind, now).some((o) => o.id === id);
+  return shopOffers(it.kind, now, s).some((o) => o.id === id);
 }
 
 /** Compra solo lo que la Tienda muestra ahora (rechaza 'not_in_shop' lo demás). El resto de las reglas, en operations.purchase. */
 export function purchaseOffered(s: PlayerState, id: ItemId, now: number = Date.now()): OpResult {
-  if (!isOnSale(id, now)) return { ok: false, error: 'not_in_shop' };
+  if (!isOnSale(id, now, s)) return { ok: false, error: 'not_in_shop' };
   return purchase(s, id);
+}
+
+// ================================================================ CAMBIO de ofertas (21-11-2026, usuario)
+/**
+ * Al tocar el reloj de una categoría se puede CAMBIAR sus ofertas pagando dinero virtual: una vez por categoría y semana (se reinicia el
+ * LUNES, como la liga) y trae otros ítems (salta a la siguiente ventana de la rotación hasta el lunes). Solo tiene sentido si la
+ * categoría tiene más ítems de los que muestra (hoy: ULTI, ESPECIAL y DEFENSIVO); si no, no cobra nada.
+ */
+export const REROLL_PRICE = 100;
+/** lo que mira la rotación del estado del jugador (basta con esto) */
+export type RerollView = { shopReroll?: { week: string; kinds: ItemKind[] } };
+/** ¿Ya se cambió esta categoría esta semana? */
+export function rerolledThisWeek(s: RerollView | undefined, kind: ItemKind, now: number): boolean {
+  return !!s?.shopReroll && s.shopReroll.week === weekIdAt(now) && s.shopReroll.kinds.includes(kind);
+}
+/** cuántas ventanas se adelanta la categoría: 1 si se cambió esta semana, 0 si no */
+export function rerollShift(s: RerollView | undefined, kind: ItemKind, now: number): number {
+  return rerolledThisWeek(s, kind, now) ? 1 : 0;
+}
+/** ¿Hay otros ítems que mostrar en esta categoría? (más ítems de los que se ven a la vez) */
+export function canReroll(kind: ItemKind): boolean {
+  const rot = ROTATION[kind];
+  return !!rot && pool(kind).length > (rot.show ?? ROTATION_SHOW);
+}
+/** Cambia las ofertas de una categoría: cobra REROLL_PRICE de dinero y anota el cambio de la semana. */
+export function rerollShop(s: PlayerState, kind: ItemKind, now: number = Date.now()): OpResult {
+  if (!canReroll(kind)) return { ok: false, error: 'nothing_to_change' };
+  if (rerolledThisWeek(s, kind, now)) return { ok: false, error: 'already_rerolled' };
+  if (s.gems < REROLL_PRICE) return { ok: false, error: 'not_enough_cash' };
+  const week = weekIdAt(now);
+  const n = clonePlayer(s);
+  n.gems -= REROLL_PRICE;
+  const same = n.shopReroll && n.shopReroll.week === week ? n.shopReroll.kinds : []; // de otra semana: se empieza de cero (el lunes se reinicia)
+  n.shopReroll = { week, kinds: [...same, kind] };
+  return { ok: true, state: n };
 }

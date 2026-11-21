@@ -155,6 +155,9 @@ interface LegendRun {
   hTornado?: boolean;
   /** (18-11-2026) HURACÁN: carrera a la T (0 no, 1 corriendo, 2 llegó), la esfera ya se desarmó, la hoja del tornado ya se precargó */
   hMove?: number;
+  /** (21-11-2026) HURACÁN: instante (t del guion) de la última sombra de la carrera a la T y cuántas van */
+  hGhostT?: number;
+  hGhosts?: number;
   hBroke?: boolean;
   hWarm?: boolean;
   plan: EnergyRallyPlan;
@@ -191,6 +194,9 @@ function legendPlan(power: LegendRun['power'], a: P2, v: P2, seed: number): Ener
   return power === 'hurricane' ? planHurricane(a, v, seed) : planEnergyRally(a, v, seed);
 }
 /** colores de la carga del HURACÁN (fx/energyBallCine.ts setPalette): oro, crema y blanco */
+/** (21-11-2026) carrera a la T del HURACÁN: color dorado de las sombras / estela y cada cuántos ms sale una sombra */
+const HURRICANE_RUN_TINT = 0xffd84a;
+const HURRICANE_RUN_GHOST_MS = 70;
 const HURRICANE_COL_CHARGE = { core: HURRICANE_COL.core, light: HURRICANE_COL.light, cyan: HURRICANE_COL.gold, deep: HURRICANE_COL.deep };
 
 /** Bandera de desarrollo apagada a propósito (localStorage = '0'); sin definir cuenta como encendida. */
@@ -382,6 +388,10 @@ const DIRECT = { botNear: 230, apex: 100, step: 1.12, tries: 7 };
 const NET_SNAP_MS = 110;
 /** (21-11-2026) al empezar cada punto, el rival se desliza hasta su sitio de saque en este tiempo (antes saltaba de golpe) */
 const NET_POINT_SLIDE_MS = 320;
+/** (21-11-2026) salto de la interpolación del rival en UN cuadro (px) a partir del cual se desliza (el DASH a 30 fps da ~50-68) */
+const NET_JUMP_MIN = 75;
+/** (21-11-2026) tiempo de ese deslizamiento (ms) */
+const NET_JUMP_SLIDE_MS = 160;
 /** (21-11-2026) máximo que la pelota de un golpe rival se adelanta DE GOLPE al llegar (s); el resto se recupera acelerándola */
 const NET_BALL_JUMP = 0.07;
 /** (21-11-2026, usuario) opacidad de los controles del jugador (joystick, botones) mientras dura la ULTI; 1 = normal */
@@ -888,6 +898,8 @@ export class MatchScene extends Phaser.Scene {
   /** DASH sprint en curso (src/logic/DashSprint.ts): mueve al jugador en arranque / sprint / frenada */
   private dashRun: DashRun | null = null;
   private dashFx!: DashFx;
+  /** (21-11-2026, usuario) efecto de VELOCIDAD de la carrera a la T del HURACÁN: sombras, destello y estela en dorado (fx/dashFx.ts) */
+  private hurDash!: DashFx;
   /** pared del fondo del rival tal como está dibujada (src/logic/BackWall.ts); la calcula drawCourt */
   private backWall: WallGeom | null = null;
   private wallFx!: WallFx;
@@ -1147,6 +1159,7 @@ export class MatchScene extends Phaser.Scene {
     stopMotion(this.motion);
     this.dashRun = null;
     this.dashFx = new DashFx(this, DASH);
+    this.hurDash = new DashFx(this, { ...DASH, ghostTint: HURRICANE_RUN_TINT });
     this.wallFx = new WallFx(this);
     this.simClock = 0;
     this.simRealAt = performance.now();
@@ -3934,7 +3947,21 @@ export class MatchScene extends Phaser.Scene {
     const M = plan.move;
     if (M && !run.hMove && t >= M.t0) {
       run.hMove = 1;
-      A.ch.setMoving(true, run.mirror ? -1 : 1);
+      A.ch.setMoving(true, run.mirror ? -1 : 1, 1); // a toda velocidad
+      // (21-11-2026, usuario) corre CON VELOCIDAD a la T: destello y anillos en los pies, estela de haces hacia la T y sombras doradas por el camino
+      const p0 = project(A.x, A.y);
+      const k0 = p0.s * VIEW.CHAR_K;
+      const dest: P2 = { x: 0, y: 0 };
+      this.legendLocal(run, M.to, dest);
+      const p1 = project(dest.x, dest.y);
+      this.hurDash.burst(p0.sx, p0.sy, k0, A.ch.depth, HURRICANE_RUN_TINT);
+      this.hurDash.streak(p0.sx, p0.sy - 70 * k0, p1.sx, p1.sy - 70 * k0, k0, A.ch.depth, HURRICANE_RUN_TINT);
+      run.hGhostT = t;
+      run.hGhosts = 0;
+    }
+    if (M && run.hMove === 1 && t - (run.hGhostT ?? t) >= HURRICANE_RUN_GHOST_MS) {
+      run.hGhostT = t;
+      this.hurDash.ghost(A.ch, (run.hGhosts = (run.hGhosts ?? 0) + 1) % 3, A.ch.depth);
     }
     if (M && run.hMove === 1 && t >= M.t1) {
       run.hMove = 2;
@@ -9481,6 +9508,14 @@ export class MatchScene extends Phaser.Scene {
     this.fluStarved = !!smp?.starved;
     const r = smp?.snap ?? this.netRemote;
     if (smp) {
+      // (21-11-2026, log online) red de seguridad: un salto de la interpolación en un solo cuadro (empujón del ULTI / SMASH,
+      // fin de un bloqueo, hueco de estados) se desliza NET_JUMP_SLIDE_MS en vez de verse como teletransporte (107-160 px)
+      const jx = bt.x - smp.x;
+      const jy = bt.y - smp.y;
+      const jd = Math.hypot(jx, jy);
+      if (!this.netSnap && !bt.vanished && jd > NET_JUMP_MIN && jd < 300) {
+        this.netSnap = { x: jx, y: jy, at: performance.now(), ms: NET_JUMP_SLIDE_MS };
+      }
       bt.x = smp.x;
       bt.y = smp.y;
       // tras un golpe del rival: el desfase con el punto del contacto se va apagando (deslizamiento, sin salto)
@@ -9527,10 +9562,15 @@ export class MatchScene extends Phaser.Scene {
       // carrera al ritmo de su velocidad real (como la tuya: PlayerMotion.runAnimRate)
       const speedK = smp ? smp.speed / PLAYER_SPEED : undefined;
       // sin estados nuevos hace rato (se perdió el de "se detuvo"): deja de correr en vez de correr en el sitio
-      const moving = smp ? !smp.stale && (r.moving || smp.speed > PLAYER_SPEED * MOTION.moveMin) : r.moving;
+      // (21-11-2026, log online: al empezar el punto el rival se deslizaba 100-150 px en reposo, "patinando") mientras dura el
+      // deslizamiento hasta su sitio de saque, corre hacia allí
+      const sl = this.netSnap;
+      const sliding = !!sl && sl.ms === NET_POINT_SLIDE_MS && Math.hypot(sl.x, sl.y) > 40;
+      const moving = sliding || (smp ? !smp.stale && (r.moving || smp.speed > PLAYER_SPEED * MOTION.moveMin) : r.moving);
       // ya no remata y se mueve: si su pose de remate quedó sin golpe (no llegó o fue al aire), se suelta para correr
       if (moving) bt.ch.releaseRemate();
-      bt.ch.setMoving(moving, r.dirX, moving && speedK !== undefined ? Math.max(speedK, MOTION.moveMin) : speedK);
+      const dirX = sliding ? Math.sign(-sl!.x) || r.dirX : r.dirX;
+      bt.ch.setMoving(moving, dirX, sliding ? 1 : moving && speedK !== undefined ? Math.max(speedK, MOTION.moveMin) : speedK);
       bt.ch.setCharging(r.charging && !moving);
       if (r.charging && !moving) this.rivalChargeT += dt;
       else this.rivalChargeT = 0;

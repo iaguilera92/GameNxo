@@ -106,6 +106,8 @@ class DefensiveDemo implements PowerDemo {
   private readonly st: Phaser.Scene;
   private readonly curtain: Phaser.GameObjects.Rectangle;
   private readonly dashFx: DashFx;
+  /** (21-11-2026) efecto de velocidad dorado de la carrera a la T del HURACÁN (EnergyDemo.speed) */
+  private readonly hurDash: DashFx;
   private readonly pl: Character;
   private readonly pa: PoseActor & { warp: number };
   private readonly machine: Phaser.GameObjects.Container;
@@ -161,6 +163,8 @@ class DefensiveDemo implements PowerDemo {
   private fireBall: InfernoFire | null = null;
   private cine: SmashCinematic | null = null;
   private infernoFlight = false;
+  /** la demo de energía mantiene la bola de energía aunque la pelota no sea 'power' (1.er golpe del HURACÁN) */
+  private keepFlight = false;
   /** brillo del ESPECIAL armado (MatchScene.updateSmashGlow) */
   private glow: Phaser.GameObjects.Image | Phaser.GameObjects.Ellipse | null = null;
   private flashR: Phaser.GameObjects.Rectangle | null = null;
@@ -249,6 +253,7 @@ class DefensiveDemo implements PowerDemo {
       },
     });
     this.dashFx = new DashFx(this.st, DASH);
+    this.hurDash = new DashFx(this.st, { ...DASH, ghostTint: 0xffd84a });
     this.special = special ?? null;
     if (special?.kind === 'inferno') this.infDash = new DashFx(this.st, ultiGhosts(special.el));
 
@@ -358,6 +363,7 @@ class DefensiveDemo implements PowerDemo {
     this.energy = null;
     if (this.cine) this.scene.events.off(Phaser.Scenes.Events.POST_UPDATE, (this.cine as unknown as { tailTick: () => void }).tailTick, this.cine);
     this.dashFx.clear();
+    this.hurDash.clear();
     this.infDash?.clear();
     if (this.stage.scene) this.stage.destroy(true);
     this.curtain.destroy();
@@ -461,6 +467,7 @@ class DefensiveDemo implements PowerDemo {
     this.pl.resetPose();
     this.pl.setReady(false);
     this.ballOn = false;
+    this.keepFlight = false;
     this.trailPts.length = 0;
     this.ballTrail.clear();
     this.ribbon.length = 0;
@@ -633,7 +640,8 @@ class DefensiveDemo implements PowerDemo {
       this.ballShadow.setVisible(false);
       this.ballTrail.setVisible(false);
       rb.setVisible(this.ballOn);
-      if (!rb.power) this.infernoFlight = false;
+      // (21-11-2026, usuario) HURACÁN, 1.er golpe: la pelota NO es 'power' pero sí vuela como BOLA DE ENERGÍA (como en el partido): la demo de energía lo pide con setBall(true, true)
+      if (!rb.power && !this.keepFlight) this.infernoFlight = false;
       rb.quietFx = this.infernoFlight;
       rb.render(this.lastDt);
       const vis = this.ballOn && rb.sprite.visible;
@@ -1718,9 +1726,15 @@ class DefensiveDemo implements PowerDemo {
       snd: (n, v) => this.snd(n, v),
       playCharge: (v) => this.playCharge(v),
       stopCharge: () => this.stopChargeSnd(),
+      speed: {
+        burst: (x, y, k, depth) => this.hurDash.burst(x, y, k, depth, 0xffd84a),
+        streak: (ax, ay, bx, by, k, depth) => this.hurDash.streak(ax, ay, bx, by, k, depth, 0xffd84a),
+        ghost: (i) => this.hurDash.ghost(this.pl, i, this.pl.depth, this.stage),
+      },
       setBall: (on, inf) => {
         this.ballOn = on;
         this.infernoFlight = inf;
+        this.keepFlight = inf; // sin esto renderBall apaga la bola del 1.er golpe del HURACÁN (rb.power = false)
       },
       done: () => this.cut(true),
     });

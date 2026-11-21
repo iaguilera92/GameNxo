@@ -115,6 +115,12 @@ export interface EnergyDemoHost {
   stopCharge(): void;
   /** pelota visible / en vuelo de la ULTI (la dibuja powerDemo.renderBall) */
   setBall(on: boolean, inferno: boolean): void;
+  /** (21-11-2026, usuario) efecto de VELOCIDAD de la carrera a la T del HURACÁN (el mismo del partido): destello, estela y sombras doradas */
+  speed: {
+    burst(x: number, y: number, k: number, depth: number): void;
+    streak(ax: number, ay: number, bx: number, by: number, k: number, depth: number): void;
+    ghost(i: number): void;
+  };
   /** terminó la secuencia: corte y otra vez */
   done(): void;
 }
@@ -596,7 +602,15 @@ export class EnergyDemo {
         h.scene.time.delayedCall(H_T.toT * 1000, () => {
           if (!this.hur || this.phase === 'idle') return;
           const pa = h.pa;
-          h.pl.setMoving(true, Math.sign(T_POS.y - pa.y) || 1);
+          h.pl.setMoving(true, Math.sign(T_POS.y - pa.y) || 1, 1); // a toda velocidad
+          // (21-11-2026, usuario) como en el partido: destello en los pies, estela hacia la T y sombras doradas por el camino
+          const a0 = project(pa.x, pa.y);
+          const a1 = project(T_POS.x, T_POS.y);
+          const k0 = a0.s * VIEW.CHAR_K;
+          h.speed.burst(a0.sx, a0.sy, k0, h.pl.depth);
+          h.speed.streak(a0.sx, a0.sy - 70 * k0, a1.sx, a1.sy - 70 * k0, k0, h.pl.depth);
+          let gi = 0;
+          const ghosts = h.scene.time.addEvent({ delay: 70, repeat: Math.floor((H_T.run * 1000) / 70) - 1, callback: () => (this.hur && this.phase !== 'idle' ? h.speed.ghost(gi++ % 3) : ghosts.remove()) });
           h.scene.tweens.add({
             targets: pa,
             x: T_POS.x,

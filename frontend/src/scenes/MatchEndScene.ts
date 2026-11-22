@@ -306,7 +306,7 @@ export class MatchEndScene extends Phaser.Scene {
     const panelTop = btnY - btnH / 2 - 14 - panelH;
     this.resultPanel(W, panelTop, panelH);
     this.buttons(W, btnY, btnH);
-    this.framePlayer(panelTop);
+    if (!this.fitMap()) this.framePlayer(panelTop); // (21-11-2026, usuario) el mapa se aleja hasta verse el ambiente entero
     if (win) this.confetti(W, H);
     if (win) this.time.delayedCall(900, () => { void showInterstitial('match_victory'); });
   }
@@ -933,7 +933,7 @@ export class MatchEndScene extends Phaser.Scene {
     // el mapa de atrás se sigue alejando de a poco mientras dura todo el duelo: desde ahora hasta que las monedas terminan de pasar
     // (el traspaso dura 3 s desde start; el zoom a 0,9 de playMatchEnd ya casi acabó, por eso force = true)
     const mapCam = this.d.matchKey ? this.scene.get(this.d.matchKey)?.cameras?.main : undefined;
-    mapCam?.zoomTo(MAP_ZOOM_END, start + 3000, 'Sine.easeInOut', true);
+    if (!this.mapFrame()) mapCam?.zoomTo(MAP_ZOOM_END, start + 3000, 'Sine.easeInOut', true); // con imagen de ambiente lo hace fitMap
     this.time.delayedCall(start, () => {
       // victoria / derrota según el PARTIDO (con rendición, gana el rival)
       // con los MISMOS clips de la tarjeta (MAI de frente usa sus poses nuevas: con los del partido salía con la raqueta
@@ -1173,6 +1173,25 @@ export class MatchEndScene extends Phaser.Scene {
    * derrota pero no se veía. Se desplaza el mapa de atrás (la cámara del partido) hacia arriba lo justo para que sus pies
    * queden sobre el panel; sin duelo casi no hace falta, con el duelo de apuestas (panel alto) sube más.
    */
+  /** (21-11-2026) imagen del ambiente del partido (centro y tamaño en el mundo), si la hay */
+  private mapFrame(): { cx: number; cy: number; w: number; h: number } | null {
+    const ms = (this.d.matchKey ? this.scene.get(this.d.matchKey) : null) as unknown as { ambienteFrame?: { cx: number; cy: number; w: number; h: number } | null } | null;
+    return ms?.ambienteFrame ?? null;
+  }
+  /**
+   * (21-11-2026, usuario) Pantalla de resultados (la de las monedas): la cámara del partido se centra en el ambiente y se va alejando
+   * despacio hasta que la imagen entera cabe en la pantalla. false = no hay imagen de ambiente (queda framePlayer, como antes).
+   */
+  private fitMap(): boolean {
+    const fr = this.mapFrame();
+    const cam = this.d.matchKey ? this.scene.get(this.d.matchKey)?.cameras?.main : undefined;
+    if (!fr || !cam) return false;
+    const z = Math.min(cam.width / fr.w, cam.height / fr.h);
+    const ms = 4200;
+    cam.pan(fr.cx, fr.cy, ms, 'Sine.easeInOut', true);
+    cam.zoomTo(z, ms, 'Sine.easeInOut', true);
+    return true;
+  }
   private framePlayer(panelTop: number) {
     const ms = (this.d.matchKey ? this.scene.get(this.d.matchKey) : null) as unknown as { player?: { ch?: { y: number } }; cameras?: { main: Phaser.Cameras.Scene2D.Camera } } | null;
     const feetY = ms?.player?.ch?.y;

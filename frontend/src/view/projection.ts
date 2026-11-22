@@ -13,15 +13,15 @@ import { COURT } from '../config';
 export const VIEW = {
   W: 720, // resolución de diseño (vertical)
   H: 1280,
-  NEAR_Y: 900, // y en pantalla de la línea de fondo del jugador
-  FAR_Y: 330, // y en pantalla de la línea de fondo del rival
+  NEAR_Y: 1010, // y en pantalla de la línea de fondo del jugador (21-11-2026, usuario: antes 900, luego 950; cancha más alta, la línea del rival no se mueve)
+  FAR_Y: 312, // y en pantalla de la línea de fondo del rival (21-11-2026, usuario: antes 330; cancha más alta también por arriba)
   NEAR_W: 700, // ancho en pantalla de la cancha en la línea de fondo cercana (antes 640: cancha más ancha)
   RATIO: 0.48, // ancho lejano / ancho cercano (antes 0.42: el fondo de la cancha menos estrecho)
   /**
    * ensanche SOLO lateral de la cancha en pantalla (1 = como antes). No cambia la escala de perspectiva (`s`): personajes,
    * pelota y alturas quedan del mismo tamaño; la cancha, las líneas, la red y los desplazamientos laterales se ven más anchos.
    */
-  LAT_K: 1.08,
+  LAT_K: 1.15, // (21-11-2026, usuario: antes 1.08; cancha más ancha)
   Z_K: 0.75, // compresión visual de la altura
   CHAR_K: 0.58, // escala base de los personajes (solo visual; antes 0.62)
   /** zoom base de la cámara del partido (<1 = más alejada; solo visual, el HUD no se ve afectado) */
@@ -42,6 +42,9 @@ const F = (VIEW.NEAR_W * D1) / LAT_W;
 const K = (VIEW.NEAR_Y - VIEW.FAR_Y) / (1 / D1 - 1 / D2);
 const H0 = VIEW.NEAR_Y - K / D1;
 
+/** (21-11-2026, usuario) desplazamiento vertical de TODA la cancha en pantalla (cancha, red, personajes, pelota): lo fija cada ambiente (Ambiente.courtDY) al empezar el partido y vuelve a 0 al salir */
+export const COURT_SHIFT = { y: 0 };
+
 export interface Projected {
   sx: number;
   sy: number;
@@ -52,5 +55,5 @@ export interface Projected {
 export function project(x: number, y: number, z = 0): Projected {
   const D = Math.max(80, x - CAM_X);
   const s = F / D;
-  return { sx: VIEW.W / 2 + (y - LAT_C) * s * VIEW.LAT_K, sy: H0 + K / D - VIEW.Z_K * z * s, s };
+  return { sx: VIEW.W / 2 + (y - LAT_C) * s * VIEW.LAT_K, sy: H0 + K / D - VIEW.Z_K * z * s + COURT_SHIFT.y, s };
 }

@@ -54,7 +54,7 @@ export const COURT = {
   bottom: 590,
 };
 /** Pasillos de dobles a cada lado de la cancha de individuales (1.37 m de 8.23 m). */
-export const ALLEY = 60;
+export const ALLEY = 72; // (21-11-2026, usuario: antes 60; pasillos más anchos. En 2v2 también es zona buena de juego)
 export const NET_X = (COURT.left + COURT.right) / 2;
 export const NET_HEIGHT = 34; // altura de la red en "z"
 /** cuánto sobresale la red (y sus postes) por fuera de las líneas de dobles, a cada lado (dibujo y choque) */

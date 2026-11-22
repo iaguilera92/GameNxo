@@ -36,7 +36,7 @@ export function searchTimer(scene: Phaser.Scene, parent: Phaser.GameObjects.Cont
 
 /**
  * (21-11-2026, usuario: que cuadre con la placa del contador) Título "BUSCANDO RIVAL" con el estilo del mockup: cursiva gruesa con borde
- * oscuro, la 1.ª palabra en blanco y el resto en DORADO (degradado con corte duro), flechas doradas » « a los lados y una línea de luz
+ * oscuro, todo en blanco (22-11-2026; antes la 1.ª palabra en blanco y el resto en DORADO (degradado con corte duro), flechas doradas » « a los lados y una línea de luz
  * dorada debajo. Sigue siendo el mismo Text (`label`), así que su texto puede cambiar (p. ej. "BUSCANDO RIVAL 1/2"): flechas, línea y
  * colores se reacomodan solos.
  */
@@ -64,19 +64,8 @@ export function styleSearchTitle(scene: Phaser.Scene, parent: Phaser.GameObjects
     const key = `${txt}|${label.displayWidth.toFixed(1)}|${label.x.toFixed(1)}`;
     if (key === last) return;
     last = key;
-    // colores: 1.ª palabra blanca, el resto dorado (corte duro en el ancho de la 1.ª palabra + espacio)
-    const sp = txt.indexOf(' ');
-    if (sp > 0) {
-      const ctx = label.context;
-      ctx.font = `italic 36px ${FONT}`;
-      const r = Phaser.Math.Clamp((ctx.measureText(txt.slice(0, sp + 1)).width + label.style.strokeThickness / 2) / Math.max(1, label.width), 0, 1);
-      const grd = ctx.createLinearGradient(0, 0, label.width, 0);
-      grd.addColorStop(0, '#ffffff');
-      grd.addColorStop(r, '#ffffff');
-      grd.addColorStop(Math.min(1, r + 0.001), '#ffd23f');
-      grd.addColorStop(1, '#ffb800');
-      label.setFill(grd);
-    } else label.setColor('#ffffff');
+    // (22-11-2026, usuario) todo el título en BLANCO (antes, de la 2.ª palabra en adelante iba en dorado)
+    label.setColor('#ffffff');
     const half = label.displayWidth / 2;
     baseL = label.x - half - GAP_CHEV; // (21-11-2026, usuario) bien separadas: la cursiva sobresale del ancho medido
     baseR = label.x + half + GAP_CHEV;

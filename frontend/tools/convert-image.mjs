@@ -9,7 +9,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
-const [inp, out, q = '0.92'] = process.argv.slice(2);
+const [inp, out, q = '0.92', tw] = process.argv.slice(2); // tw (opcional, 21-11-2026): ancho final en px; el alto sale proporcional
 if (!inp || !out) throw new Error('uso: node tools/convert-image.mjs <entrada> <salida.png|salida.webp> [calidad webp]');
 const mime = out.toLowerCase().endsWith('.webp') ? 'image/webp' : 'image/png';
 const quality = Math.min(1, Math.max(0, Number(q)));
@@ -46,8 +46,10 @@ try {
       const img = document.images[0];
       await img.decode();
       const c = document.createElement('canvas');
-      c.width = img.naturalWidth; c.height = img.naturalHeight;
-      c.getContext('2d').drawImage(img, 0, 0);
+      const k = ${Number(tw) > 0 ? Number(tw) : 0} ? ${Number(tw) > 0 ? Number(tw) : 0} / img.naturalWidth : 1;
+      c.width = Math.round(img.naturalWidth * k); c.height = Math.round(img.naturalHeight * k);
+      const g = c.getContext('2d'); g.imageSmoothingQuality = 'high';
+      g.drawImage(img, 0, 0, c.width, c.height);
       return { w: c.width, h: c.height, url: c.toDataURL(${JSON.stringify(mime)}, ${quality}) };
     })()`,
   });

@@ -1,0 +1,16 @@
+{
+  "file": "assets/ambientes/paseantes-nieve.webp",
+  "cell": {
+    "w": 134,
+    "h": 132
+  },
+  "rows": 4,
+  "frames": 6,
+  "feetPad": 2,
+  "heights": [
+    128,
+    125,
+    96,
+    109
+  ]
+}

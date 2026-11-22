@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import { ALLEY, COURT, NET_X } from '../config';
-import { VIEW, project } from './projection';
+import { COURT_SHIFT, VIEW, project } from './projection';
 
 /**
  * Ambiente + cancha del partido (solo visual).
@@ -29,6 +29,12 @@ export interface Ambiente {
   fenceTopY: number;
   /** (21-11-2026) y de la imagen donde se POSA la paloma (borde de arriba del muro); sin él, `wallTopY`. En el ambiente 3 el borde del muro está más arriba que su `wallTopY` y la paloma quedaba a media pared */
   perchTopY?: number;
+  /** (21-11-2026, usuario) alto de REFERENCIA para la escala si la imagen es más alta que 1024 (ver 'Estructura de un ambiente' en NOTAS-CLAUDE.txt): así las medidas y el tamaño de las cosas no cambian y el alto de más queda como suelo extra abajo */
+  scaleH?: number;
+  /** (21-11-2026, usuario) px de pantalla que BAJA toda la cancha (cancha, red, personajes) respecto a la imagen, que no se mueve: más espacio entre la pared y el rival. Ver COURT_SHIFT */
+  courtDY?: number;
+  /** (22-11-2026, usuario) achica la imagen del ambiente (× sobre su escala; 1 = como siempre) para que lo de los costados (gradas) entre en pantalla. El muro sigue en WALL_AT_Y */
+  zoom?: number;
   surface: Surface;
   /** color medio de la fila de arriba de la imagen (cielo que la continúa al alejar la cámara) */
   sky?: number;
@@ -40,13 +46,16 @@ export interface Ambiente {
 
 /** Ambientes panorámicos optimizados en WebP, cargados aleatoriamente al iniciar cada partido. */
 export const AMBIENTES: Ambiente[] = [
-  { key: 'ambiente-1', file: 'ambiente-1.webp', w: 1536, h: 1024, wallBottomY: 318, wallTopY: 265, fenceTopY: 205, surface: 'hard', sky: 0x031d6b },
+  // (22-11-2026, usuario) rehecho: SIN vallas laterales, gradas pegadas a la cancha (espectadores), farol del centro APAGADO (su luz la pone el código). Muro medido sobre la imagen nueva. zoom 0.7: las esquinas de las gradas entran en pantalla
+  { key: 'ambiente-1', file: 'ambiente-1.webp', w: 1536, h: 1536, scaleH: 1024, courtDY: 52, zoom: 0.7, wallBottomY: 349, wallTopY: 298, fenceTopY: 247, surface: 'hard', sky: 0x031d6b },
   { key: 'ambiente-2', file: 'ambiente-2.webp', w: 1536, h: 1024, wallBottomY: 345, wallTopY: 268, fenceTopY: 196, surface: 'clay', sky: 0x0c2e35 },
   { key: 'ambiente-3', file: 'ambiente-3.webp', w: 1536, h: 1024, wallBottomY: 418, wallTopY: 359, fenceTopY: 222, perchTopY: 325, surface: 'hard', sky: 0x143d7e },
+  // (21-11-2026, usuario) NIEVE: muro de piedra del fondo medido sobre la imagen (nieve del borde en y 333, pie en y 372); valla de malla encima (en la imagen llega a y ~285; fenceTopY 265 = 20 px mas alta a pedido del usuario, 21-11-2026). Piso duro azul
+  { key: 'ambiente-4', file: 'ambiente-4.webp', w: 1536, h: 1536, scaleH: 1024, courtDY: 52, wallBottomY: 372, wallTopY: 333, fenceTopY: 265, surface: 'hard', sky: 0x2a80e8 },
   // (19-11-2026, usuario) PARQUE con varias canchas: SOLO para el 2v2. Imagen con un PASEO de lado a lado detrás del muro (los paseantes
   // cruzan toda la pantalla). Muro del fondo medido sobre la imagen (borde de arriba en y 313, pie en y 397); no tiene valla encima:
   // fenceTopY = el alto de las vallas verdes del fondo (~236). Piso verde de la imagen y cancha azul (hard)
-  { key: 'ambiente-1-2v2', file: 'ambiente-1-2v2.webp', w: 1536, h: 1024, wallBottomY: 397, wallTopY: 313, fenceTopY: 236, surface: 'hard', court: 'green', sky: 0x2a7ba4, only: '2v2' },
+  { key: 'ambiente-1-2v2', file: 'ambiente-1-2v2.webp', w: 1536, h: 1536, scaleH: 1024, courtDY: 52, wallBottomY: 397, wallTopY: 313, fenceTopY: 236, surface: 'hard', court: 'green', sky: 0x2a7ba4, only: '2v2' },
 ];
 
 /** (19-11-2026) Ambientes cargados para este modo: el 2v2 usa los suyos (`only: '2v2'`) si hay alguno cargado; el 1v1 nunca los usa. */
@@ -54,8 +63,13 @@ function ambientesFor(scene: Phaser.Scene, doubles: boolean): Ambiente[] {
   const loaded = AMBIENTES.filter((a) => scene.textures.exists(a.key));
   const own = loaded.filter((a) => a.only === '2v2');
   if (doubles && own.length) return own;
-  return loaded.filter((a) => !a.only);
+  const all1v1 = loaded.filter((a) => !a.only);
+  // (21-11-2026, usuario) PRUEBA TEMPORAL: en 1v1 solo sale el ambiente en prueba (ahora ambiente-1, el barrio). Poner PRUEBA_1V1 = null para volver al sorteo
+  const only = all1v1.filter((a) => a.key === PRUEBA_1V1);
+  return only.length ? only : all1v1;
 }
+/** (21-11-2026) ambiente fijo del 1v1 mientras se prueba; null = aleatorio entre todos */
+const PRUEBA_1V1: string | null = 'ambiente-1';
 
 /** y en pantalla donde debe quedar el muro del fondo (un poco por detrás de la cancha) */
 const WALL_AT_Y = 302;
@@ -80,7 +94,7 @@ export interface DrawnWall {
   /** ambiente elegido (para elegir la música del partido) */
   key: string;
   /** (19-11-2026) dónde se dibujó la imagen del ambiente: esquina de arriba a la izquierda y escala (para poner cosas sobre ella: paseantes) */
-  img: { left: number; top: number; s: number };
+  img: { left: number; top: number; s: number; w: number; h: number };
 }
 
 /**
@@ -114,31 +128,36 @@ export function pickAmbiente(scene: Phaser.Scene, doubles = false): string | nul
   return (available.find((a) => a.key === forced) ?? (Phaser.Utils.Array.GetRandom(available) as Ambiente)).key;
 }
 
-/**
- * Dibuja ambiente + cancha. Devuelve la pared dibujada, o null si falta la imagen (la escena dibuja la suya).
- * preferred: ambiente ya elegido (en la búsqueda, para que su música empiece en el VS); si no, se sortea.
- */
-export function drawCourtView(scene: Phaser.Scene, preferred?: string | null, doubles = false): DrawnWall | null {
-  // 'dev.ambiente' puede forzar cualquiera (también el del 2v2 en un 1v1, para probarlo); si no, solo los de este modo
+/** (21-11-2026) Ambiente que se usará en el partido (mismo criterio que drawCourtView): 'dev.ambiente' puede forzar cualquiera, luego el elegido (preferred) y si no, sorteo. null = no hay imágenes cargadas. */
+export function resolveAmbiente(scene: Phaser.Scene, preferred?: string | null, doubles = false): Ambiente | null {
   const loaded = AMBIENTES.filter((a) => scene.textures.exists(a.key));
   if (!loaded.length) return null;
   const available = ambientesFor(scene, doubles);
-  // pruebas: localStorage 'dev.ambiente' = 'ambiente-2' fuerza uno concreto
   let forced: string | null = null;
   try {
     forced = localStorage.getItem('dev.ambiente');
   } catch {
     /* sin almacenamiento */
   }
-  const amb = loaded.find((a) => a.key === forced) ?? available.find((a) => a.key === preferred) ?? (Phaser.Utils.Array.GetRandom(available.length ? available : loaded) as Ambiente);
+  return loaded.find((a) => a.key === forced) ?? available.find((a) => a.key === preferred) ?? (Phaser.Utils.Array.GetRandom(available.length ? available : loaded) as Ambiente);
+}
+
+/**
+ * Dibuja ambiente + cancha. Devuelve la pared dibujada, o null si falta la imagen (la escena dibuja la suya).
+ * preferred: ambiente ya elegido (en la búsqueda, para que su música empiece en el VS); si no, se sortea.
+ */
+export function drawCourtView(scene: Phaser.Scene, preferred?: string | null, doubles = false): DrawnWall | null {
+  const amb = resolveAmbiente(scene, preferred, doubles);
+  if (!amb) return null;
+  COURT_SHIFT.y = amb.courtDY ?? 0; // antes de dibujar nada (la cancha, la red y los personajes usan project)
   const H = Math.max(scene.scale.height, VIEW.H);
 
   // ---------------------------------------------------------------- ambiente (imagen)
-  const s = Math.max(H / amb.h, COVER_W / amb.w);
+  const s = Math.max(H / (amb.scaleH ?? amb.h), COVER_W / amb.w) * (amb.zoom ?? 1);
   const top = WALL_AT_Y - amb.wallBottomY * s;
   const imgBottom = top + amb.h * s;
   // Relleno común bajo el escenario. La transición encima suaviza el borde inferior de cada imagen.
-  scene.add.rectangle(-1000, imgBottom - 4, VIEW.W + 2000, Math.max(0, H - imgBottom) + 440, SHARED_FOOTER).setOrigin(0).setDepth(-21);
+  scene.add.rectangle(-1000, imgBottom - 4, VIEW.W + 2000, Math.max(0, H - imgBottom) + 2400, SHARED_FOOTER).setOrigin(0).setDepth(-21);
   // '__BASE' explícito: los recortes del cielo (extendTop) se añaden como frames de esta misma textura y Phaser cambia su
   // primer frame al añadir uno: sin esto, desde el 2º partido el estadio se dibujaba con la franja de 3 px (todo negro)
   scene.add.image(VIEW.W / 2, top, amb.key, '__BASE').setOrigin(0.5, 0).setScale(s).setDepth(-20);
@@ -158,7 +177,7 @@ export function drawCourtView(scene: Phaser.Scene, preferred?: string | null, do
   const rt = scene.add.renderTexture(BX, BY, VIEW.W + 2000, Math.ceil(H) + 40).setOrigin(0).setDepth(-10);
   rt.draw(g, -BX, -BY);
   g.destroy();
-  return { wallAtY: WALL_AT_Y, padPx: (amb.wallBottomY - amb.wallTopY) * s, fencePx: (amb.wallBottomY - amb.fenceTopY) * s, perchPx: (amb.wallBottomY - (amb.perchTopY ?? amb.wallTopY)) * s, key: amb.key, img: { left: VIEW.W / 2 - (amb.w * s) / 2, top, s } };
+  return { wallAtY: WALL_AT_Y, padPx: (amb.wallBottomY - amb.wallTopY) * s, fencePx: (amb.wallBottomY - amb.fenceTopY) * s, perchPx: (amb.wallBottomY - (amb.perchTopY ?? amb.wallTopY)) * s, key: amb.key, img: { left: VIEW.W / 2 - (amb.w * s) / 2, top, s, w: amb.w * s, h: amb.h * s } };
 }
 
 /**

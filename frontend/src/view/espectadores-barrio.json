@@ -1,0 +1,15 @@
+{
+  "file": "assets/ambientes/espectadores-barrio.webp",
+  "cell": {
+    "w": 92,
+    "h": 132
+  },
+  "rows": 3,
+  "frames": 6,
+  "feetPad": 2,
+  "heights": [
+    123,
+    128,
+    121
+  ]
+}

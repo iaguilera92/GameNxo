@@ -55,8 +55,8 @@ import { ownedEmotes } from '../domain/emotes';
 import { getPlayer } from '../domain/playerStore';
 import type { PlayerState } from '../domain/player';
 import { C, FONT, textStyle } from '../ui/theme';
-import { VIEW, project } from '../view/projection';
-import { drawCourtView } from '../view/CourtView';
+import { COURT_SHIFT, VIEW, project } from '../view/projection';
+import { drawCourtView, resolveAmbiente } from '../view/CourtView';
 import { stopIntroMusic } from '../fx/introMusic';
 import { playMatchMusic, playResultMusic, stopMatchMusic, takePickedAmbiente } from '../fx/matchMusic';
 import { LOB_SMASH, LobTracker, REMATE } from '../logic/LobSmash';
@@ -107,7 +107,9 @@ import { playMatchEnd } from '../fx/matchEnd';
 import { playMatchIntro } from '../fx/matchIntro';
 import { ServeTurnTag, queueServeTagArt } from '../ui/ServeTurnTag';
 import { setupUiCamera } from '../view/uiCamera';
-import { queueParkWalkers, startParkWalkers } from '../fx/parkWalkers';
+import { queueParkWalkers, queueWalkers, startParkWalkers, startWalkers, startSnowFall } from '../fx/parkWalkers';
+import { startAmbientLights } from '../fx/ambientLights';
+import { queueSpectators, startSpectators } from '../fx/spectators';
 import { createMissionTracker, missionDef, missionHit, missionPoint, missionPointStart, type MissionShot } from '../domain/matchMissions';
 import { queueMissionAlertArt, showMissionAlert } from '../fx/missionAlert';
 import { queueGazeArt, showInfernoGaze } from '../fx/infernoGaze';
@@ -401,6 +403,8 @@ const SERVE_JUMP = { max: 235, hangMs: 70, fallMs: 300, maxShift: 45 };
 const READY_DIST = 200;
 /** INFERNO DRIVE: el fotograma de preparación 9 aparece justo antes del golpe (no mueve la cinemática). */
 const INFERNO_PRE_MS = 45;
+/** (21-11-2026) cuerpo de un personaje para la regla del saque al cuerpo (checkServeBodyTouch): radio en el suelo y alto (unidades de cancha) */
+const SERVE_BODY = { r: 24, z: 95 };
 export class MatchScene extends Phaser.Scene {
   private botName = 'Bot';
   /** nivel del rival → su perfil de dificultad (src/ai/BotProfile.ts) */
@@ -1044,6 +1048,8 @@ export class MatchScene extends Phaser.Scene {
   /** "cargando" del rival (más bajo que el tuyo) */
   private rivalChargeSnd: Phaser.Sound.BaseSound | null = null;
   private ambienteKey = '';
+  /** (21-11-2026, usuario) imagen del ambiente en el mundo (centro y tamaño): la pantalla de resultados aleja la cámara hasta verla entera */
+  ambienteFrame: { cx: number; cy: number; w: number; h: number } | null = null;
   private ambienteHint: string | null = null;
   private dizzy!: Phaser.GameObjects.Container;
   /** estrellas del jugador aturdido por el SMASH rival */
@@ -1074,6 +1080,8 @@ export class MatchScene extends Phaser.Scene {
   preload() {
     queueEmoteArt(this.load); // miniaturas de 160 px (antes las fuentes de ~1,1 MB cada una)
     if (this.doubles) queueParkWalkers(this.load); // (19-11-2026) paseantes del mapa del 2v2 (PARQUE)
+    if (!this.doubles) queueSpectators(this.load, 'ambiente-1'); // (21-11-2026, usuario) espectadores en las gradas del barrio
+    if (!this.doubles) queueWalkers(this.load, 'ambiente-4'); // (21-11-2026, usuario) figuras de la NIEVE (el 1v1)
     this.load.audio('marcador', 'mp3/marcador.mp3'); // suena completo cada vez que sale el marcador
     // los soundtracks NO se cargan aquí: se pide solo el del ambiente elegido (create) y se libera al salir
     this.load.audio('cargando', 'mp3/cargando.mp3'); // sonido de carga (tiro cargado e INFERNO)
@@ -1130,6 +1138,11 @@ export class MatchScene extends Phaser.Scene {
 
   create() {
     // estado (la escena se reutiliza en revanchas)
+    // (21-11-2026, usuario) el ambiente se resuelve YA (antes de crear nada) para que la cancha, la red y los personajes nazcan con su desplazamiento (COURT_SHIFT)
+    const amb0 = resolveAmbiente(this, this.ambienteHint, this.doubles);
+    if (amb0) this.ambienteHint = amb0.key;
+    COURT_SHIFT.y = amb0?.courtDY ?? 0;
+    this.events.once('shutdown', () => (COURT_SHIFT.y = 0));
     this.phase = 'intro';
     this.warmUpShaders(); // (21-11-2026) compila ya los efectos que se compilaban al primer uso (tirones de ~90 ms en el log online)
     this.missions = createMissionTracker(); // misiones de cero en cada partida
@@ -2131,7 +2144,14 @@ export class MatchScene extends Phaser.Scene {
     const drawn = drawCourtView(this, this.ambienteHint, this.doubles); // (19-11-2026) el 2v2 usa su mapa propio (PARQUE)
     // pared del fondo donde se ve: la del estadio (muro + valla) o, en el dibujo de siempre, la valla de x = ax1 (z 70)
     this.ambienteKey = drawn?.key ?? '';
+    this.ambienteFrame = drawn ? { cx: drawn.img.left + drawn.img.w / 2, cy: drawn.img.top + drawn.img.h / 2, w: drawn.img.w, h: drawn.img.h } : null;
     if (drawn?.key === 'ambiente-1-2v2') startParkWalkers(this, drawn.img); // (19-11-2026, usuario) gente paseando por el camino del fondo
+    if (drawn) startSpectators(this, drawn.key, drawn.img); // (21-11-2026, usuario) espectadores sentados (ambiente-1)
+    if (drawn) startAmbientLights(this, drawn.key, drawn.img); // (21-11-2026, usuario) farol que parpadea (ambiente-1)
+    if (drawn?.key === 'ambiente-4') {
+      startWalkers(this, 'ambiente-4', drawn.img); // (21-11-2026, usuario) gente por la nieve de atrás y esquiador por la ladera
+      startSnowFall(this, drawn.img); // nieve cayendo suave, por detrás de la cancha
+    }
     this.backWall = drawn ? wallFromArt(project, LAT_C, drawn.wallAtY, drawn.padPx, drawn.fencePx, VIEW.Z_K) : { x: ax1, padZ: WALL_Z, fenceZ: WALL_Z };
     if (!drawn) {
       const BX = -1000;
@@ -6502,6 +6522,8 @@ export class MatchScene extends Phaser.Scene {
         this.diag?.log('end-pose', { at: 'finale', win, me: this.diagActor(this.player), rival: this.diagActor(this.bot) });
         playResultMusic(this, win); // el soundtrack del partido se corta ya: suena el de victoria / derrota
         this.hideMatchUi(); // (14-11-2026) solo el final: fuera marcador, joystick, botones, rendirse y emojis
+        // (21-11-2026, usuario) JUEGO, SET Y PARTIDO: la cámara deja de seguir al jugador y se asienta al centro del ambiente
+        this.cameras.main.pan(VIEW.W / 2, this.cameras.main.height / 2, 700, 'Sine.easeInOut', true);
         const ms = playMatchFinale(this, { win, playerName: this.doubles ? `${getProfile().name} / ${this.allyName}` : getProfile().name, rivalName: this.doubles ? `${this.botName} / ${this.rival2Name}` : this.botName, games: [this.score.games[0], this.score.games[1]] });
         this.time.delayedCall(ms + 150, () => this.endMatch(win));
       };
@@ -7100,7 +7122,11 @@ export class MatchScene extends Phaser.Scene {
 
   private checkHits() {
     const s = this.ball.s;
-    if (this.serving) return;
+    // el SAQUE no se golpea hasta que bota; si antes toca a alguien del equipo que recibe, el punto es del que saca
+    if (this.serving) {
+      this.checkServeBodyTouch();
+      return;
+    }
     if (performance.now() < this.duelLobUntil) return; // globo del duelo recién salido: aún sobre la red, nadie lo alcanza
     // REMATE del BOT: el golpe lo da tickBotRemate
     if (this.botRemate) return;
@@ -7188,6 +7214,26 @@ export class MatchScene extends Phaser.Scene {
         else if (smashReach) this.botHit(false, 'fire', true);
         else if (!this.botUlti(s)) this.botHit();
       }
+    }
+  }
+
+  /**
+   * (21-11-2026, usuario) REGLA DEL SAQUE: nadie lo devuelve antes del bote (checkHits ya no deja golpear mientras serving) y, si la pelota
+   * del saque TOCA el cuerpo de alguien del equipo que recibe antes de botar (en 2v2 suele ser el que está en la red), el punto es del que saca.
+   * Usuario, rival bot y rival online. En red lo decide netGate dentro de pointTo: en 1v1, el teléfono del que recibe; en 2v2, el host.
+   */
+  private checkServeBodyTouch() {
+    const s = this.ball.s;
+    const server = this.lastHitter;
+    if (!server || this.phase !== 'rally' || this.bounces > 0) return;
+    if (server === 'player' ? s.x <= NET_X : s.x >= NET_X) return; // aún no pasó al lado del que recibe
+    if (s.z > SERVE_BODY.z) return;
+    const team = server === 'player' ? (this.doubles ? this.rivalActors : [this.bot]) : this.doubles && this.ally ? [this.player, this.ally] : [this.player];
+    for (const a of team) {
+      if (a.vanished) continue;
+      if (Math.hypot(s.x - a.x, (s.y - a.y) * 1.25) > SERVE_BODY.r) continue;
+      this.pointTo(server, '¡SAQUE AL CUERPO!', server === 'player' ? '#8fd0ff' : '#ff9aa3');
+      return;
     }
   }
 
@@ -8495,7 +8541,7 @@ export class MatchScene extends Phaser.Scene {
     const cam = this.cameras.main;
     const pp = project(pl.x, pl.y);
     const target = this.baseScrollX + (pp.sx - VIEW.W / 2) * VIEW.FOLLOW;
-    cam.scrollX += (target - cam.scrollX) * Math.min(1, dt * 5);
+    if (this.phase !== 'over') cam.scrollX += (target - cam.scrollX) * Math.min(1, dt * 5); // (21-11-2026) terminado el partido la cámara queda al centro (finale)
 
     // globo hacia el jugador y él dentro del círculo: zoom suave hacia él (el HUD va en otra cámara y no se mueve).
     // Al golpear (el globo deja de estar activo) o al salir del círculo, vuelve al encuadre normal.

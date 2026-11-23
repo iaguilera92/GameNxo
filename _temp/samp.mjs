@@ -1,0 +1,1 @@
+﻿import { decode } from '../frontend/tools/png-lite.mjs'; const im = decode('respaldo_oficial/ambientes/ambiente-1-2v2-1254-v6.png'); for (const [x,y] of [[627,1240],[200,1240],[1000,1240],[627,1000]]) { const i=(y*im.w+x)*4; console.log(x,y,'#'+[0,1,2].map(k=>im.px[i+k].toString(16).padStart(2,'0')).join('')); }

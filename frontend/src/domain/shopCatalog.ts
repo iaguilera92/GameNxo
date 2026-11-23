@@ -12,7 +12,7 @@ import { UNLOCK_LEVEL, type UnlockKey } from './unlocks';
 /**
  * RAREZAS (decididas con el usuario el 14-11-2026): normal · especial · epica · legendaria. Clasificadas hoy: todas las ULTIS, todos los
  * poderes del ESPECIAL y todos los del DEFENSIVO son especiales, salvo el DESTELLO (normal); el DASH y el FUEGO vienen gratis y no están en
- * el catálogo. CARGANDO GOLPE: Fuego normal, Energía especial, Tulipán épica. EFECTOS DE PELOTA: Brasas, Hielo, Neón y Humo especiales; Tulipanes y
+ * el catálogo. CARGANDO GOLPE: Fuego normal; Energía, Hielo, Rayo y Viento especiales; Glitch, Tulipán, Sombra y Luz épicos; Tiempo legendario. EFECTOS DE PELOTA: Brasas, Hielo, Neón y Humo especiales; Tulipanes y
  * Corazones épicas; Estrellas y Arcoíris legendarias; los estilos de color de siempre (Rojo, Verde, Oro, Rosado) normales (15-11-2026).
  * REGLA: cada habilidad o poder NUEVO se crea preguntando antes al usuario qué rareza tiene.
  */
@@ -41,8 +41,11 @@ export interface ShopItem {
 export const CHARACTER_PRICE = { clp: 6990, price: 1000 } as const;
 const BASE_ITEMS: ShopItem[] = [
   // personajes (rareza sin clasificar: preguntar al usuario)
-  { id: 'skin:mai', kind: 'skin', name: 'Mai', ...CHARACTER_PRICE, minLevel: 1, available: true },
+  { id: 'skin:mai', kind: 'skin', name: 'Mai', ...CHARACTER_PRICE, minLevel: 1, available: false }, // retirada de Nuevos personajes; queda como personaje inicial para las cuentas web existentes
   { id: 'skin:net', kind: 'skin', name: 'Net', ...CHARACTER_PRICE, minLevel: 1, available: true }, // (21-11-2026) aún no jugable: solo queda en propiedad
+  { id: 'skin:mat', kind: 'skin', name: 'Mat', ...CHARACTER_PRICE, minLevel: 1, available: true }, // nuevo personaje de la Tienda; se guarda en propiedad hasta que sea jugable
+  { id: 'skin:isa', kind: 'skin', name: 'Isa', ...CHARACTER_PRICE, minLevel: 1, available: true }, // nuevo personaje de la Tienda; se guarda en propiedad hasta que sea jugable
+  { id: 'skin:rin', kind: 'skin', name: 'Rin', ...CHARACTER_PRICE, minLevel: 1, available: true }, // nuevo personaje de la Tienda; se guarda en propiedad hasta que sea jugable
   // estilos (estela de los golpes)
   { id: 'style:red', kind: 'style', name: 'Rojo', price: 40, clp: 490, minLevel: 1, available: true },
   { id: 'style:green', kind: 'style', name: 'Verde', price: 40, clp: 490, minLevel: 2, available: true },
@@ -90,7 +93,14 @@ const BASE_ITEMS: ShopItem[] = [
   // efectos de CARGA (el aro bajo el jugador al cargar un golpe). Nxo trae el de fuego y Mai el de tulipán; el clásico es de todos
   { id: 'charge:fire', kind: 'charge', name: 'Fuego', price: 35, clp: 1290, minLevel: 1, available: true },
   { id: 'charge:energy', kind: 'charge', name: 'Energía', price: 35, clp: 1290, minLevel: 1, available: true },
+  { id: 'charge:hielo', kind: 'charge', name: 'Hielo', price: 60, clp: 1990, minLevel: 1, available: true },
+  { id: 'charge:light', kind: 'charge', name: 'Rayo', price: 60, clp: 1990, minLevel: 1, available: true },
+  { id: 'charge:wild', kind: 'charge', name: 'Viento', price: 60, clp: 1990, minLevel: 1, available: true },
   { id: 'charge:tulip', kind: 'charge', name: 'Tulipán', price: 45, clp: 1390, minLevel: 1, available: true },
+  { id: 'charge:shadow', kind: 'charge', name: 'Sombra', price: 60, clp: 1990, minLevel: 1, available: true },
+  { id: 'charge:luz', kind: 'charge', name: 'Luz', price: 60, clp: 1990, minLevel: 1, available: true },
+  { id: 'charge:glitch', kind: 'charge', name: 'Glitch', price: 60, clp: 1990, minLevel: 1, available: true },
+  { id: 'charge:time', kind: 'charge', name: 'Tiempo', price: 130, clp: 2990, minLevel: 1, available: true },
   // poderes del DEFENSIVO (el DASH es de todos)
   { id: 'defensive:blink', kind: 'defensive', name: 'Destello', price: 50, clp: 1490, minLevel: 1, available: true },
   { id: 'defensive:shadow', kind: 'defensive', name: 'Sombra', price: 50, clp: 1490, minLevel: 1, available: true },
@@ -146,9 +156,11 @@ function withRarity(it: (typeof BASE_ITEMS)[number]): ShopItem {
   if (it.id === 'smash:comet') return { ...base, rarity: 'epica' as const };
   if (it.id === 'smash:dragon') return { ...base, rarity: 'legendaria' as const, realMoneyOnly: true }; // (18-11-2026) DRAGÓN
   if (it.kind === 'smash' || it.kind === 'defensive') return { ...base, rarity: it.id === 'defensive:blink' ? ('normal' as const) : ('especial' as const) };
-  // (14-11-2026) CARGANDO GOLPE: Fuego normal, Energía especial, Tulipán épica (propuesta aceptada por omisión; la legendaria queda reservada). Los ESTILOS siguen sin rareza (decisión del usuario).
+  // CARGANDO GOLPE: Fuego normal; Energía, Hielo, Rayo y Viento especiales; Glitch, Tulipán, Sombra y Luz épicos; Tiempo legendario.
   if (it.kind === 'charge') {
-    const rarity = it.id === 'charge:fire' ? ('normal' as const) : it.id === 'charge:energy' ? ('especial' as const) : ('epica' as const);
+    if (it.id === 'charge:time') return { ...base, rarity: 'legendaria' as const };
+    if (it.id === 'charge:glitch') return { ...base, rarity: 'epica' as const };
+    const rarity = it.id === 'charge:fire' ? ('normal' as const) : it.id === 'charge:energy' || it.id === 'charge:hielo' || it.id === 'charge:light' || it.id === 'charge:wild' ? ('especial' as const) : ('epica' as const);
     return { ...base, rarity };
   }
   // (15-11-2026) EFECTOS DE PELOTA (decididos con el usuario): Brasas, Hielo, Neón y Humo = especial; Tulipanes y Corazones = épica;

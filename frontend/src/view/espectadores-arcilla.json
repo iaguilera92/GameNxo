@@ -1,0 +1,16 @@
+{
+  "file": "assets/ambientes/espectadores-arcilla.webp",
+  "cell": {
+    "w": 80,
+    "h": 132
+  },
+  "rows": 4,
+  "frames": 8,
+  "feetPad": 2,
+  "heights": [
+    121,
+    123,
+    128,
+    90
+  ]
+}

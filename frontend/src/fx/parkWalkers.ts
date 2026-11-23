@@ -46,7 +46,7 @@ const SETS: Record<string, WalkSet> = {
        * (19-11-2026, usuario) pies sobre el PASEO que cruza toda la imagen detrás del muro (vereda de y 274 a ~312): en y 284 quedan por encima
        * de las rejas de los costados (empiezan en y ~287), así se ven enteros de un borde al otro
        */
-      feetY: 284,
+      feetY: 277, // (22-11-2026) imagen nueva: paseo de y ~213 a ~237 (en 1254) detrás del muro
       /** tramo que recorren: de fuera de la imagen por un lado a fuera por el otro (sin desaparecer) */
       x0: -70,
       x1: 1606,

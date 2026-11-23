@@ -35,6 +35,19 @@ export interface Ambiente {
   courtDY?: number;
   /** (22-11-2026, usuario) achica la imagen del ambiente (× sobre su escala; 1 = como siempre) para que lo de los costados (gradas) entre en pantalla. El muro sigue en WALL_AT_Y */
   zoom?: number;
+  /**
+   * (22-11-2026, usuario) escala FIJA (la de un teléfono de 720x1280), igual en todos los teléfonos: la cancha no cambia con el alto de la
+   * pantalla y, sin esto, en un teléfono más alargado la imagen crecía y las gradas quedaban pegadas a la cancha. Para imágenes dibujadas
+   * sobre la cancha (boceto _temp/standsketch.mjs). Lo que sobra abajo en un teléfono alargado lo cubre el relleno común (SHARED_FOOTER)
+   */
+  fixedScale?: boolean;
+  /**
+   * (22-11-2026, usuario) y de la imagen que se pone en WALL_AT_Y (sin él, `wallBottomY`). Sirve para subir el muro en el dibujo sin mover la
+   * imagen: las gradas, alineadas a la cancha, quedan donde estaban y la pared (choque de la pelota, paloma) se mide en su `wallBottomY` real
+   */
+  anchorY?: number;
+  /** (22-11-2026, usuario) color del relleno bajo la imagen y detrás de los controles (por defecto SHARED_FOOTER, azul oscuro) */
+  footer?: number;
   surface: Surface;
   /** color medio de la fila de arriba de la imagen (cielo que la continúa al alejar la cámara) */
   sky?: number;
@@ -47,15 +60,25 @@ export interface Ambiente {
 /** Ambientes panorámicos optimizados en WebP, cargados aleatoriamente al iniciar cada partido. */
 export const AMBIENTES: Ambiente[] = [
   // (22-11-2026, usuario) rehecho: SIN vallas laterales, gradas pegadas a la cancha (espectadores), farol del centro APAGADO (su luz la pone el código). Muro medido sobre la imagen nueva. zoom 0.7: las esquinas de las gradas entran en pantalla
-  { key: 'ambiente-1', file: 'ambiente-1.webp', w: 1536, h: 1536, scaleH: 1024, courtDY: 52, zoom: 0.7, wallBottomY: 349, wallTopY: 298, fenceTopY: 247, surface: 'hard', sky: 0x031d6b },
-  { key: 'ambiente-2', file: 'ambiente-2.webp', w: 1536, h: 1024, wallBottomY: 345, wallTopY: 268, fenceTopY: 196, surface: 'clay', sky: 0x0c2e35 },
-  { key: 'ambiente-3', file: 'ambiente-3.webp', w: 1536, h: 1024, wallBottomY: 418, wallTopY: 359, fenceTopY: 222, perchTopY: 325, surface: 'hard', sky: 0x143d7e },
+  // (22-11-2026, usuario) imagen de ChatGPT con las GRADAS ENDEREZADAS a la perspectiva de la cancha (_temp/warp-gradas.mjs; original en
+  // _temp/respaldo_oficial/ambientes/ambiente-1-1254-v3.png). (22-11-2026, usuario) MURO MAS ARRIBA y gradas mas separadas (ChatGPT sobre la
+  // guia _temp/guia-muro.mjs, enderezada otra vez: ambiente-1-1254-v4-muro.png): muro borde de arriba y 251, pie y 306, malla 200. La imagen
+  // sigue anclada como antes (anchorY 350 = el pie del muro anterior) para que las gradas no se muevan respecto a la cancha.
+  // (22-11-2026, usuario) v5: muro todavia mas arriba (borde y 228, pie y 278, malla 178) (ambiente-1-1254-v5.png, instalada TAL CUAL a pedido del usuario: sin enderezar las gradas)
+  { key: 'ambiente-1', file: 'ambiente-1.webp', w: 1536, h: 1536, scaleH: 1024, courtDY: 52, zoom: 0.7, fixedScale: true, anchorY: 350, wallBottomY: 278, wallTopY: 228, fenceTopY: 178, surface: 'hard', sky: 0x031d6b },
+  // (22-11-2026, usuario) ARCILLA nueva (1536 x 1536, estructura est�ndar): muro verde del fondo medido sobre la imagen (borde de arriba en y 318,
+  // pie en y 396; postes de la malla hasta y ~251). Gradas a los dos costados: zoom 0.6 (con 0.7 casi no entraban en pantalla y los espectadores no se veian, 22-11-2026)
+  { key: 'ambiente-2', file: 'ambiente-2.webp', w: 1536, h: 1536, scaleH: 1024, courtDY: 52, zoom: 0.6, wallBottomY: 396, wallTopY: 318, fenceTopY: 251, surface: 'clay', sky: 0x0c2e35 },
+  // (22-11-2026, usuario) CIUDAD nueva (1536 x 1536, estructura est�ndar): calle a la izquierda (pasar�n autos), gradas a la derecha. Muro azul
+  // del fondo medido sobre la imagen (borde de arriba en y 317, pie en y 392; malla hasta y ~251). Sin cornisa: se posa en el borde del muro
+  { key: 'ambiente-3', file: 'ambiente-3.webp', w: 1536, h: 1536, scaleH: 1024, courtDY: 52, zoom: 0.7, wallBottomY: 392, wallTopY: 317, fenceTopY: 251, surface: 'hard', sky: 0x143d7e },
   // (21-11-2026, usuario) NIEVE: muro de piedra del fondo medido sobre la imagen (nieve del borde en y 333, pie en y 372); valla de malla encima (en la imagen llega a y ~285; fenceTopY 265 = 20 px mas alta a pedido del usuario, 21-11-2026). Piso duro azul
   { key: 'ambiente-4', file: 'ambiente-4.webp', w: 1536, h: 1536, scaleH: 1024, courtDY: 52, wallBottomY: 372, wallTopY: 333, fenceTopY: 265, surface: 'hard', sky: 0x2a80e8 },
   // (19-11-2026, usuario) PARQUE con varias canchas: SOLO para el 2v2. Imagen con un PASEO de lado a lado detrás del muro (los paseantes
   // cruzan toda la pantalla). Muro del fondo medido sobre la imagen (borde de arriba en y 313, pie en y 397); no tiene valla encima:
   // fenceTopY = el alto de las vallas verdes del fondo (~236). Piso verde de la imagen y cancha azul (hard)
-  { key: 'ambiente-1-2v2', file: 'ambiente-1-2v2.webp', w: 1536, h: 1536, scaleH: 1024, courtDY: 52, wallBottomY: 397, wallTopY: 313, fenceTopY: 236, surface: 'hard', court: 'green', sky: 0x2a7ba4, only: '2v2' },
+  // (22-11-2026, usuario) imagen nueva de ChatGPT v6 de ChatGPT tal cual (con escalera a la derecha), redibujada con los muros de los lados paralelos en pantalla a la línea de dobles (guía _temp/para-chatgpt/2v2-guia-muros-rojo.png); muro del fondo al pie y 337 de 1254 = 412
+  { key: 'ambiente-1-2v2', file: 'ambiente-1-2v2.webp', w: 1536, h: 1536, scaleH: 1024, courtDY: 52, zoom: 0.7, fixedScale: true, wallBottomY: 412, wallTopY: 290, fenceTopY: 184, surface: 'hard', court: 'green', sky: 0x2a7ba4, footer: 0x0caf36, only: '2v2' }, // footer = verde del pasto de abajo de la imagen
 ];
 
 /** (19-11-2026) Ambientes cargados para este modo: el 2v2 usa los suyos (`only: '2v2'`) si hay alguno cargado; el 1v1 nunca los usa. */
@@ -64,17 +87,22 @@ function ambientesFor(scene: Phaser.Scene, doubles: boolean): Ambiente[] {
   const own = loaded.filter((a) => a.only === '2v2');
   if (doubles && own.length) return own;
   const all1v1 = loaded.filter((a) => !a.only);
-  // (21-11-2026, usuario) PRUEBA TEMPORAL: en 1v1 solo sale el ambiente en prueba (ahora ambiente-1, el barrio). Poner PRUEBA_1V1 = null para volver al sorteo
-  const only = all1v1.filter((a) => a.key === PRUEBA_1V1);
+  // (22-11-2026, usuario) en 1v1 sale AL AZAR uno de SORTEO_1V1 (ambiente-3 queda fuera hasta que llegue su imagen nueva). null = todos
+  const only = SORTEO_1V1 ? all1v1.filter((a) => SORTEO_1V1.includes(a.key)) : [];
   return only.length ? only : all1v1;
 }
-/** (21-11-2026) ambiente fijo del 1v1 mientras se prueba; null = aleatorio entre todos */
-const PRUEBA_1V1: string | null = 'ambiente-1';
+/** (22-11-2026, usuario) ambientes que entran al sorteo del 1v1; null = aleatorio entre todos */
+// (22-11-2026, usuario) por ahora SOLO ambiente-1 (se esta revisando la imagen nueva). Sorteo anterior: ['ambiente-1', 'ambiente-2', 'ambiente-4']
+const SORTEO_1V1: string[] | null = ['ambiente-1'];
 
 /** y en pantalla donde debe quedar el muro del fondo (un poco por detrás de la cancha) */
 const WALL_AT_Y = 302;
 /** Relleno común al pie de todos los ambientes y detrás de los controles. */
 export const SHARED_FOOTER = 0x07152f;
+/** (22-11-2026) relleno del pie de un ambiente (el suyo o el común) */
+export const footerColor = (key?: string | null) => AMBIENTES.find((a) => a.key === key)?.footer ?? SHARED_FOOTER;
+/** el mismo color oscurecido (franja de detrás de los controles y fondo de la presentación) */
+export const footerDark = (col: number, k = 0.5) => { const c = Phaser.Display.Color.IntegerToColor(col); return Phaser.Display.Color.GetColor(Math.round(c.red * k), Math.round(c.green * k), Math.round(c.blue * k)); };
 /** ancho mínimo a cubrir (la cámara sigue al jugador en lateral) */
 const COVER_W = VIEW.W + 400;
 
@@ -153,17 +181,19 @@ export function drawCourtView(scene: Phaser.Scene, preferred?: string | null, do
   const H = Math.max(scene.scale.height, VIEW.H);
 
   // ---------------------------------------------------------------- ambiente (imagen)
-  const s = Math.max(H / (amb.scaleH ?? amb.h), COVER_W / amb.w) * (amb.zoom ?? 1);
-  const top = WALL_AT_Y - amb.wallBottomY * s;
+  const s = Math.max((amb.fixedScale ? VIEW.H : H) / (amb.scaleH ?? amb.h), COVER_W / amb.w) * (amb.zoom ?? 1);
+  const top = WALL_AT_Y - (amb.anchorY ?? amb.wallBottomY) * s;
+  const wallAtY = top + amb.wallBottomY * s; // pie del muro en pantalla (= WALL_AT_Y sin anchorY)
   const imgBottom = top + amb.h * s;
   // Relleno común bajo el escenario. La transición encima suaviza el borde inferior de cada imagen.
-  scene.add.rectangle(-1000, imgBottom - 4, VIEW.W + 2000, Math.max(0, H - imgBottom) + 2400, SHARED_FOOTER).setOrigin(0).setDepth(-21);
+  const FOOT = amb.footer ?? SHARED_FOOTER;
+  scene.add.rectangle(-1000, imgBottom - 4, VIEW.W + 2000, Math.max(0, H - imgBottom) + 2400, FOOT).setOrigin(0).setDepth(-21);
   // '__BASE' explícito: los recortes del cielo (extendTop) se añaden como frames de esta misma textura y Phaser cambia su
   // primer frame al añadir uno: sin esto, desde el 2º partido el estadio se dibujaba con la franja de 3 px (todo negro)
   scene.add.image(VIEW.W / 2, top, amb.key, '__BASE').setOrigin(0.5, 0).setScale(s).setDepth(-20);
   extendTop(scene, amb, top, s);
   const fade = scene.add.graphics().setDepth(-19);
-  fade.fillGradientStyle(SHARED_FOOTER, SHARED_FOOTER, SHARED_FOOTER, SHARED_FOOTER, 0, 0, 1, 1)
+  fade.fillGradientStyle(FOOT, FOOT, FOOT, FOOT, 0, 0, 1, 1)
     .fillRect(-1000, imgBottom - 220, VIEW.W + 2000, 270);
 
   // ---------------------------------------------------------------- cancha (código)
@@ -177,7 +207,7 @@ export function drawCourtView(scene: Phaser.Scene, preferred?: string | null, do
   const rt = scene.add.renderTexture(BX, BY, VIEW.W + 2000, Math.ceil(H) + 40).setOrigin(0).setDepth(-10);
   rt.draw(g, -BX, -BY);
   g.destroy();
-  return { wallAtY: WALL_AT_Y, padPx: (amb.wallBottomY - amb.wallTopY) * s, fencePx: (amb.wallBottomY - amb.fenceTopY) * s, perchPx: (amb.wallBottomY - (amb.perchTopY ?? amb.wallTopY)) * s, key: amb.key, img: { left: VIEW.W / 2 - (amb.w * s) / 2, top, s, w: amb.w * s, h: amb.h * s } };
+  return { wallAtY, padPx: (amb.wallBottomY - amb.wallTopY) * s, fencePx: (amb.wallBottomY - amb.fenceTopY) * s, perchPx: (amb.wallBottomY - (amb.perchTopY ?? amb.wallTopY)) * s, key: amb.key, img: { left: VIEW.W / 2 - (amb.w * s) / 2, top, s, w: amb.w * s, h: amb.h * s } };
 }
 
 /**

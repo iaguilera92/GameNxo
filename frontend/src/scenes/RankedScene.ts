@@ -230,8 +230,17 @@ export class RankedScene extends Phaser.Scene {
       const fw = prog > 0 ? Math.max(bh, railW * prog) : 0;
       if (fw > 0) {
         const g = this.add.graphics();
-        g.fillStyle(fillCol, 1).fillRoundedRect(railX, railY - bh / 2, fw, bh, bh / 2);
-        g.fillStyle(fillHi, 0.6).fillRoundedRect(railX + 3, railY - bh / 2 + 3, Math.max(0, fw - 6), bh * 0.34, bh / 4);
+        // (22-11-2026, usuario) al entrar (y al cambiar de pestaña) la barra parte de 0 y se llena en 1 s hasta lo que llevamos
+        const paint = (w: number) => {
+          g.clear();
+          if (w <= 0) return;
+          const ww = Math.max(bh, w); // ancho mínimo: la cápsula redonda no se deforma
+          g.setAlpha(Math.min(1, w / bh));
+          g.fillStyle(fillCol, 1).fillRoundedRect(railX, railY - bh / 2, ww, bh, bh / 2);
+          g.fillStyle(fillHi, 0.6).fillRoundedRect(railX + 3, railY - bh / 2 + 3, Math.max(0, ww - 6), bh * 0.34, bh / 4);
+        };
+        paint(0);
+        this.tweens.addCounter({ from: 0, to: fw, duration: 1000, ease: 'Cubic.easeOut', onUpdate: (tw) => g.active && paint(tw.getValue() ?? 0) });
       }
       // moneda + saldo centrados en el hueco izquierdo (x 90..385) y la meta en el derecho (x 1390..1685)
       // (21-11-2026, usuario) cifras GRANDES (100.000 o más) también caben: cada hueco usa todo su ancho (300 px de la imagen), el número
@@ -291,11 +300,22 @@ export class RankedScene extends Phaser.Scene {
       const bg = this.add.graphics();
       bg.fillStyle(0x08153d, 1).fillRoundedRect(bx, barTop, bw, bh, bh / 2);
       const fw = prog > 0 ? Math.max(bh - 4, (bw - 6) * prog) : 0;
-      if (fw > 0) {
-        bg.fillStyle(fillCol, 1).fillRoundedRect(bx + 3, barTop + 3, fw, bh - 6, (bh - 6) / 2);
-        bg.fillStyle(fillHi, 0.6).fillRoundedRect(bx + 7, barTop + 5, Math.max(0, fw - 8), (bh - 6) * 0.34, 4);
-      }
       bg.lineStyle(3, 0xe8eeff, 1).strokeRoundedRect(bx, barTop, bw, bh, bh / 2);
+      if (fw > 0) {
+        // (22-11-2026, usuario) igual que con la imagen: parte de 0 y se llena en 1 s
+        const fg = this.add.graphics();
+        const r = bh - 6;
+        const paint = (w: number) => {
+          fg.clear();
+          if (w <= 0) return;
+          const ww = Math.max(r, w);
+          fg.setAlpha(Math.min(1, w / r));
+          fg.fillStyle(fillCol, 1).fillRoundedRect(bx + 3, barTop + 3, ww, r, r / 2);
+          fg.fillStyle(fillHi, 0.6).fillRoundedRect(bx + 7, barTop + 5, Math.max(0, ww - 8), r * 0.34, 4);
+        };
+        paint(0);
+        this.tweens.addCounter({ from: 0, to: fw, duration: 1000, ease: 'Cubic.easeOut', onUpdate: (tw) => fg.active && paint(tw.getValue() ?? 0) });
+      }
       const lblY = barTop - 20;
       const net = v.weekNet;
       const cur = this.add.text(bx + 2, lblY, fmtCoins(net), { fontFamily: FONT, fontSize: '28px', color: net < 0 ? '#ff8174' : '#ffffff', stroke: '#0a1638', strokeThickness: 5 }).setOrigin(0, 0.5);

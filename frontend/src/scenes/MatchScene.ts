@@ -56,7 +56,7 @@ import { getPlayer } from '../domain/playerStore';
 import type { PlayerState } from '../domain/player';
 import { C, FONT, textStyle } from '../ui/theme';
 import { COURT_SHIFT, VIEW, project } from '../view/projection';
-import { drawCourtView, resolveAmbiente } from '../view/CourtView';
+import { drawCourtView, resolveAmbiente, footerColor, footerDark, SHARED_FOOTER } from '../view/CourtView';
 import { stopIntroMusic } from '../fx/introMusic';
 import { playMatchMusic, playResultMusic, stopMatchMusic, takePickedAmbiente } from '../fx/matchMusic';
 import { LOB_SMASH, LobTracker, REMATE } from '../logic/LobSmash';
@@ -1081,6 +1081,7 @@ export class MatchScene extends Phaser.Scene {
     queueEmoteArt(this.load); // miniaturas de 160 px (antes las fuentes de ~1,1 MB cada una)
     if (this.doubles) queueParkWalkers(this.load); // (19-11-2026) paseantes del mapa del 2v2 (PARQUE)
     if (!this.doubles) queueSpectators(this.load, 'ambiente-1'); // (21-11-2026, usuario) espectadores en las gradas del barrio
+    if (!this.doubles) queueSpectators(this.load, 'ambiente-2'); // (22-11-2026, usuario) espectadores y perrito en las gradas de la arcilla
     if (!this.doubles) queueWalkers(this.load, 'ambiente-4'); // (21-11-2026, usuario) figuras de la NIEVE (el 1v1)
     this.load.audio('marcador', 'mp3/marcador.mp3'); // suena completo cada vez que sale el marcador
     // los soundtracks NO se cargan aquí: se pide solo el del ambiente elegido (create) y se libera al salir
@@ -1444,7 +1445,7 @@ export class MatchScene extends Phaser.Scene {
     if (this.net) this.netSetup();
     else {
       this.entranceWalk(); // entrada: los dos llegan caminando a su sitio mientras la cámara se acerca
-      playMatchIntro(this, () => {
+      playMatchIntro(this, footerColor(this.ambienteKey), () => {
         this.startPoint();
         this.launchBird();
       });
@@ -1527,6 +1528,11 @@ export class MatchScene extends Phaser.Scene {
   }
 
   // ---------------------------------------------------------------- layout
+  /** color de la franja de detrás de los controles: azul de siempre, o el pie del ambiente oscurecido si tiene uno propio */
+  private ctrlCol() {
+    const f = footerColor(this.ambienteKey);
+    return f === SHARED_FOOTER ? 0x07152f : footerDark(f, 0.45);
+  }
   private layout() {
     const W = this.scale.width;
     const H = this.scale.height;
@@ -1534,7 +1540,8 @@ export class MatchScene extends Phaser.Scene {
     const footerH = Math.min(360, H * 0.3);
     this.controlsBackdrop.clear();
     this.controlsBackdrop
-      .fillGradientStyle(0x07152f, 0x07152f, 0x07152f, 0x07152f, 0, 0, 0.84, 0.84)
+      // (22-11-2026, usuario) del color del pie del ambiente, oscurecido (en el 2v2, verde como el pasto; en los demás, el azul de siempre)
+      .fillGradientStyle(this.ctrlCol(), this.ctrlCol(), this.ctrlCol(), this.ctrlCol(), 0, 0, 0.84, 0.84)
       .fillRect(0, H - footerH, W, footerH);
     // el mundo mide VIEW.W x VIEW.H: se centra en horizontal y el espacio extra queda abajo (controles)
     this.baseScrollX = (VIEW.W - W) / 2;
@@ -2146,7 +2153,7 @@ export class MatchScene extends Phaser.Scene {
     this.ambienteKey = drawn?.key ?? '';
     this.ambienteFrame = drawn ? { cx: drawn.img.left + drawn.img.w / 2, cy: drawn.img.top + drawn.img.h / 2, w: drawn.img.w, h: drawn.img.h } : null;
     if (drawn?.key === 'ambiente-1-2v2') startParkWalkers(this, drawn.img); // (19-11-2026, usuario) gente paseando por el camino del fondo
-    if (drawn) startSpectators(this, drawn.key, drawn.img); // (21-11-2026, usuario) espectadores sentados (ambiente-1)
+    this.spectatorsCheer = drawn ? startSpectators(this, drawn.key, drawn.img) : null; // (21-11-2026, usuario) espectadores sentados (ambiente-1 y 2)
     if (drawn) startAmbientLights(this, drawn.key, drawn.img); // (21-11-2026, usuario) farol que parpadea (ambiente-1)
     if (drawn?.key === 'ambiente-4') {
       startWalkers(this, 'ambiente-4', drawn.img); // (21-11-2026, usuario) gente por la nieve de atrás y esquiador por la ladera
@@ -6461,6 +6468,8 @@ export class MatchScene extends Phaser.Scene {
     });
   }
 
+  /** (22-11-2026, usuario) los espectadores que aplauden (ambiente-2) lo hacen solo al ganarse un punto */
+  private spectatorsCheer: (() => void) | null = null;
   private pointTo(w: Who, reason: string, color: string) {
     if (this.phase !== 'rally') return;
     if (this.netGate('point', w, reason, color)) return;
@@ -6480,6 +6489,7 @@ export class MatchScene extends Phaser.Scene {
     }
     this.duelAbort('point'); // punto decidido (también el que llega por red): el duelo en curso se cancela
     this.phase = 'pointover';
+    this.spectatorsCheer?.(); // (22-11-2026, usuario) aplauden en cada punto, gane quien gane (tambien el que llega por red)
     this.slowmoAbort(); // TIEMPO LENTO a medias: tiempo, cámara y personaje normales
     this.dropZeroBack = null;
     this.maxPushOn = null;
@@ -9334,7 +9344,7 @@ export class MatchScene extends Phaser.Scene {
       introStarted = true;
       this.releaseCover(); // (19-11-2026, usuario) la pantalla VS se queda hasta AQUÍ: los dos listos, empieza la presentación
       this.entranceWalk(); // entrada: los dos llegan caminando a su sitio mientras la cámara se acerca
-      playMatchIntro(this, () => {
+      playMatchIntro(this, footerColor(this.ambienteKey), () => {
         this.startPoint();
         this.launchBird();
       });

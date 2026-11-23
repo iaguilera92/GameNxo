@@ -2,12 +2,12 @@ import Phaser from 'phaser';
 import type { ChargeFxId } from '../domain/chargeFx';
 
 /**
- * Efectos de CARGA con sprites (fuego, energía, tulipán): el aro del suelo que se ve bajo el jugador mientras mantiene
+ * Efectos de CARGA con sprites (fuego, energía, tulipán, rayo, sombra y viento): el aro del suelo que se ve bajo el jugador mientras mantiene
  * la carga de un golpe. Las hojas salen de tools/build-charge-fx.mjs (10 frames en 5 columnas x 2 filas: nace → crece →
  * máximo → se disipa); el aro de cada frame queda en el mismo sitio (ancla = pies del jugador).
  *
  *   carga 0..1   avanza por los frames 0..5 (el efecto crece con la potencia)
- *   carga 100 %  late entre los frames 5, 6, 5, 4 (el máximo)
+ *   carga 100 %  late entre los frames 5, 6, 5, 4 (el máximo); TIEMPO se queda en el 5 y crece suavemente
  *   al soltar    se disipa con los frames 7..9 (o se apaga rápido si apenas había carga)
  * El clásico (aro y brillo por código) sigue en MatchScene / fx/shotFx.ts.
  */
@@ -23,17 +23,26 @@ interface Art {
   anchorFy: number;
   /** ancho del aro respecto al ancho de la celda */
   ringFill: number;
-  /** las llamas y la energía suman luz; los pétalos se pintan normales */
+  /** llamas, energía y rayos suman luz; los pétalos se pintan normales */
   additive: boolean;
 }
 
 /** valores que imprime tools/build-charge-fx.mjs */
 export const CHARGE_ART: Record<SpriteChargeFx, Art> = {
-  // fuego (11-11-2026): hoja nueva en .webp, como el tulipán
-  fire: { key: 'charge-fire', file: 'assets/charge-fire.webp', cw: 256, ch: 236, anchorFy: 0.856, ringFill: 0.86, additive: true },
+  // Fuego actualizado (22-11-2026): valores recalculados desde charge-fire.png.
+  fire: { key: 'charge-fire', file: 'assets/charge-fire.webp', cw: 256, ch: 226, anchorFy: 0.832, ringFill: 0.72, additive: true },
   energy: { key: 'charge-energy', file: 'assets/charge-energy.webp', cw: 256, ch: 230, anchorFy: 0.83, ringFill: 0.88, additive: true },
+  hielo: { key: 'charge-hielo', file: 'assets/charge-hielo.webp', cw: 256, ch: 243, anchorFy: 0.848, ringFill: 0.85, additive: true },
   // tulipán (11-11-2026): hoja nueva en .webp (la herramienta saca el .png y tools/convert-image.mjs lo pasa a webp)
   tulip: { key: 'charge-tulip', file: 'assets/charge-tulip.webp', cw: 256, ch: 256, anchorFy: 0.84, ringFill: 0.83, additive: false },
+  light: { key: 'charge-light', file: 'assets/charge-light.webp', cw: 256, ch: 204, anchorFy: 0.809, ringFill: 0.82, additive: true },
+  // Sombra y Viento (id interno `wild`, 22-11-2026): valores calculados por tools/build-charge-fx.mjs.
+  shadow: { key: 'charge-shadow', file: 'assets/charge-shadow.webp', cw: 256, ch: 193, anchorFy: 0.829, ringFill: 0.76, additive: true },
+  // (22-11-2026, usuario: se veía cortado) Viento recortado por franjas (mode 'bands'), ya no por rejilla
+  wild: { key: 'charge-wild', file: 'assets/charge-wild.webp', cw: 256, ch: 220, anchorFy: 0.859, ringFill: 0.75, additive: true },
+  luz: { key: 'charge-luz', file: 'assets/charge-luz.webp', cw: 256, ch: 222, anchorFy: 0.847, ringFill: 0.79, additive: true },
+  glitch: { key: 'charge-glitch', file: 'assets/charge-glitch.webp', cw: 256, ch: 228, anchorFy: 0.838, ringFill: 0.88, additive: true },
+  time: { key: 'charge-time', file: 'assets/charge-time.webp', cw: 256, ch: 150, anchorFy: 0.773, ringFill: 0.78, additive: true },
 };
 
 /** Ancho del aro en pantalla (px) a escala 1 de perspectiva: el del aro clásico (120 px) a carga máxima. */
@@ -63,11 +72,16 @@ export const chargeFxReady = (scene: Phaser.Scene, id: ChargeFxId) => isSpriteCh
 export function chargePreview(scene: Phaser.Scene, id: ChargeFxId, x: number, y: number, size: number): Phaser.GameObjects.GameObject {
   if (chargeFxReady(scene, id) && isSpriteCharge(id)) {
     const a = CHARGE_ART[id];
-    const img = scene.add.image(x, y, a.key, 3).setOrigin(0.5, a.anchorFy).setScale(size / a.cw);
+    const img = scene.add.image(x, y, a.key, id === 'time' ? 0 : 3).setOrigin(0.5, a.anchorFy).setScale(size / a.cw);
     if (a.additive) img.setBlendMode(Phaser.BlendModes.ADD);
-    const seq = [2, 3, 4, 5, 6, 5, 4, 3];
+    const seq = id === 'time' ? [0, 1, 2, 3, 4, 5] : [2, 3, 4, 5, 6, 5, 4, 3];
     let i = 0;
-    const ev = scene.time.addEvent({ delay: 110, loop: true, callback: () => img.active && img.setFrame(seq[i++ % seq.length]) });
+    const ev = scene.time.addEvent({ delay: 110, loop: true, callback: () => {
+      if (!img.active) return;
+      const frame = id === 'time' ? seq[Math.min(i++, seq.length - 1)] : seq[i++ % seq.length];
+      img.setFrame(frame);
+      if (id === 'time') img.setScale((size / a.cw) * (frame === 5 ? 1.08 : 1));
+    } });
     img.once(Phaser.GameObjects.Events.DESTROY, () => ev.remove(false));
     return img;
   }
@@ -135,8 +149,15 @@ export class ChargeSpriteFx {
     this.t += dt;
     let frame: number;
     let alpha = 1;
+    let scaleBoost = 1;
     if (this.value !== null) {
-      frame = this.value >= 1 ? PEAK[Math.floor(this.t * 12) % PEAK.length] : Math.min(5, Math.floor(this.value * 5.999));
+      if (id === 'time') {
+        const progress = Math.max(0, Math.min(1, this.value));
+        frame = progress >= 1 ? 5 : Math.min(5, Math.floor(progress * 5.999));
+        scaleBoost = 1 + progress * 0.1;
+      } else {
+        frame = this.value >= 1 ? PEAK[Math.floor(this.t * 12) % PEAK.length] : Math.min(5, Math.floor(this.value * 5.999));
+      }
     } else if (this.outT !== null) {
       this.outT += dt;
       const i = Math.floor(this.outT * 20);
@@ -157,7 +178,7 @@ export class ChargeSpriteFx {
       .setVisible(true)
       .setFrame(frame)
       .setPosition(x, y)
-      .setScale(w / a.cw)
+      .setScale((w / a.cw) * scaleBoost)
       .setAlpha(alpha)
       .setDepth(depth - 0.8);
   }

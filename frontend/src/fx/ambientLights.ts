@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 /**
  * (21-11-2026, usuario) FAROL QUE FALLA: en la imagen del ambiente el farol está dibujado APAGADO y su luz la pone este código
- * (bombilla, halo y cono, en modo ADD). Siempre encendido, pero unas 4 veces por partido parpadea (2-3 cortes rápidos) y vuelve.
+ * (solo la bombilla, en modo ADD; desde el 22-11 sin halo ni cono). Siempre encendido, pero unas 4 veces por partido parpadea (2-3 cortes rápidos) y vuelve.
  * Solo decoración: cada teléfono lo dibuja por su cuenta (no toca el partido ni la red). Posiciones en px de la IMAGEN del ambiente
  * (1536 de ancho); `img` dice dónde se dibujó (CourtView.drawCourtView).
  */
@@ -19,7 +19,6 @@ const LAMPS: Record<string, Lamp[]> = {
   // farol del centro, detrás del muro del fondo (cabeza medida sobre la imagen: x 747-790, cara de abajo en y ~162)
   'ambiente-1': [{ x: 767, y: 162, w: 40, coneY: 300, coneW: 80 }],
 };
-const WARM = 0xffc864;
 /** parpadeos por partido y separación entre ellos (ms) */
 const FLICKERS = 4;
 const FIRST_MS: [number, number] = [15000, 35000];
@@ -31,17 +30,7 @@ export function startAmbientLights(scene: Phaser.Scene, ambiente: string, img: {
   for (const L of lamps) {
     const s = img.s;
     const g = scene.add.graphics({ x: img.left + L.x * s, y: img.top + L.y * s }).setDepth(-19.45).setBlendMode(Phaser.BlendModes.ADD);
-    // cono hacia abajo (muy suave, en capas)
-    for (let i = 0; i < 4; i++) {
-      const k = 1 - i * 0.22;
-      g.fillStyle(WARM, 0.05);
-      g.fillPoints([new Phaser.Math.Vector2(-L.w * 0.4 * s, 0), new Phaser.Math.Vector2(L.w * 0.4 * s, 0), new Phaser.Math.Vector2(L.coneW * k * s, (L.coneY - L.y) * s), new Phaser.Math.Vector2(-L.coneW * k * s, (L.coneY - L.y) * s)], true);
-    }
-    // halo
-    for (let i = 6; i >= 1; i--) {
-      g.fillStyle(WARM, 0.05);
-      g.fillCircle(0, 0, L.w * 0.32 * i * s);
-    }
+    // (22-11-2026, usuario) sin cono ni halo: solo la bombilla, que sigue prendiendo y apagando
     // bombilla (cara de abajo de la cabeza)
     g.fillStyle(0xfff2c0, 0.95);
     g.fillEllipse(0, 0, L.w * 0.55 * s, L.w * 0.16 * s);

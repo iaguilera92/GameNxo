@@ -148,9 +148,9 @@ export class ShopScene extends Phaser.Scene {
     queueEmoteArt(this.load); // emotes legendarios animados de esa oferta
     queuePassPortraits(this); // retrato del personaje del Pase (tarjeta del Pase)
     if (!this.textures.exists('shop-pj-card')) this.load.image('shop-pj-card', 'assets/tienda-pj.webp'); // (21-11-2026) marco de las tarjetas de PERSONAJES
-    for (const p of Object.values(SOON_PORTRAITS)) if (!this.textures.exists(p.key)) this.load.image(p.key, p.file); // retratos de personajes aún no jugables (NET)
+    for (const p of Object.values(SOON_PORTRAITS)) if (!this.textures.exists(p.key)) this.load.image(p.key, p.file); // retratos de personajes aún no jugables
     queueInfernoArt(this.load); // bolas de los poderes (vista previa)
-    queueChargeFxArt(this.load, ['fire', 'energy', 'tulip']); // aros de carga (vista previa)
+    queueChargeFxArt(this.load, ['fire', 'energy', 'hielo', 'light', 'wild', 'glitch', 'tulip', 'shadow', 'luz', 'time']); // aros de carga (vista previa)
     queueButtonArt(this.load); // botón SMASH (vista previa de sus poderes)
     // sonidos del partido que usan las demostraciones EN ACCIÓN (fx/powerDemo.ts): carga, golpe y golpe de la ULTI
     for (const [k, file] of [['cargando', 'mp3/cargando.mp3'], ['inferno-hit', 'mp3/inferno.mp3'], ['golpe-fuerte', 'mp3/golpe-fuerte.mp3']] as const) if (!this.cache.audio.exists(k)) this.load.audio(k, file);
@@ -999,7 +999,7 @@ export class ShopScene extends Phaser.Scene {
     const canView = has || (it.rarity !== 'legendaria' && it.available);
     if (!has && it.available && !it.realMoneyOnly) c.add(canView ? [] : this.clpTag(sx, y + h - 22, bw, it.clp));
     if (canView) {
-      c.add(this.viewButton(sx, by, bw, () => this.openPreview(it)));
+      c.add(this.viewButton(sx, by, bw, () => this.openPreview(it), has));
     } else if (!has && !it.available) {
       // sin rareza decidida: se ve el efecto pero aún no se vende
       c.add(this.pill(sx, by, bw, 'PRÓXIMAMENTE', 0x24365f, '#9fb4e0'));
@@ -1034,7 +1034,7 @@ export class ShopScene extends Phaser.Scene {
     // (17-11-2026) excepción: la ULTI LEGENDARIA BOLA DE ENERGÍA SÍ se VE (su demostración con las 4 máquinas, fx/powerDemo.ts)
     const canView = has || it.rarity !== 'legendaria' || LEGEND_VIEWABLE.has(it.id);
     if (!has) c.add(canView ? [] : this.clpTag(sx, y + h - 22, bw, it.clp));
-    if (canView) c.add(this.viewButton(sx, by, bw, () => this.openPreview(it)));
+    if (canView) c.add(this.viewButton(sx, by, bw, () => this.openPreview(it), has));
     else if (it.realMoneyOnly) {
       c.add(arcadeButton(this, sx, by, bw, 48, clpLabel(it.clp), this.tap(() => this.toast(s.level < it.minLevel ? `Necesitas nivel ${it.minLevel}` : 'El pago con dinero real (CLP) llega pronto')), { palette: 'green', disabled: s.level < it.minLevel }));
     } else c.add(this.priceButton(sx, by, bw, it.price, s.level < it.minLevel || s.gems < it.price, this.tap(() => this.confirmBuy(it))));
@@ -1063,7 +1063,7 @@ export class ShopScene extends Phaser.Scene {
     // (21-11-2026) el botón de abajo es VER (EN ACCIÓN): dentro se compra o se usa. Lo legendario que no tienes: botones de siempre
     const canView = has || (!!it && it.rarity !== 'legendaria');
     if (!has && it) c.add(canView ? [] : this.clpTag(sx, y + h - 22, bw, it.clp));
-    if (canView) c.add(this.viewButton(sx, by, bw, () => this.openPreviewOf('smash', id, it)));
+    if (canView) c.add(this.viewButton(sx, by, bw, () => this.openPreviewOf('smash', id, it), has));
     else if (it) c.add(this.priceButton(sx, by, bw, it.price, s.level < it.minLevel || s.gems < it.price, this.tap(() => this.confirmBuy(it))));
   }
 
@@ -1151,7 +1151,7 @@ export class ShopScene extends Phaser.Scene {
     // (21-11-2026) lo que ya es tuyo también se VE (dentro se usa): sin botón USAR en la tarjeta
     const canView = has || (!!it && it.rarity !== 'legendaria');
     if (!has && it) c.add(canView ? [] : this.clpTag(sx, y + h - 22, bw, it.clp));
-    if (canView) c.add(this.viewButton(sx, by, bw, () => this.openPreviewOf('zone', zid, it)));
+    if (canView) c.add(this.viewButton(sx, by, bw, () => this.openPreviewOf('zone', zid, it), has));
     else if (it) c.add(arcadeButton(this, sx, by, bw, 48, clpLabel(it.clp), this.tap(() => this.toast(s.level < it.minLevel ? `Necesitas nivel ${it.minLevel}` : 'El pago con dinero real (CLP) llega pronto')), { palette: 'green', disabled: s.level < it.minLevel }));
   }
 
@@ -1236,7 +1236,7 @@ export class ShopScene extends Phaser.Scene {
     // (21-11-2026) lo que ya es tuyo también se VE (dentro se usa): sin botón USAR en la tarjeta
     const canView = has || it.rarity !== 'legendaria';
     if (!has) c.add(canView ? [] : this.clpTag(sx, y + h - 22, bw, it.clp));
-    if (canView) c.add(this.viewButton(sx, by, bw, () => this.openPreview(it)));
+    if (canView) c.add(this.viewButton(sx, by, bw, () => this.openPreview(it), has));
     else c.add(this.priceButton(sx, by, bw, it.price, s.level < it.minLevel || s.gems < it.price, this.tap(() => this.confirmBuy(it))));
   }
 
@@ -1260,7 +1260,7 @@ export class ShopScene extends Phaser.Scene {
     // (21-11-2026) el botón de abajo es VER (EN ACCIÓN): dentro se compra o se usa. Lo legendario que no tienes: botones de siempre
     const canView = has || it.rarity !== 'legendaria';
     if (!has) c.add(canView ? [] : this.clpTag(sx, y + h - 22, bw, it.clp));
-    if (canView) c.add(this.viewButton(sx, by, bw, () => this.openPreview(it)));
+    if (canView) c.add(this.viewButton(sx, by, bw, () => this.openPreview(it), has));
     else if (it.realMoneyOnly) {
       c.add(arcadeButton(this, sx, by, bw, 48, clpLabel(it.clp), this.tap(() => this.toast('El pago con dinero real (CLP) llega pronto')), { palette: 'green' }));
     } else c.add(this.priceButton(sx, by, bw, it.price, s.level < it.minLevel || s.gems < it.price, this.tap(() => this.confirmBuy(it))));
@@ -1381,9 +1381,10 @@ export class ShopScene extends Phaser.Scene {
 
   // ================================================================ ver en acción
   /** Botón VER (abajo de la tarjeta, en el sitio de USAR / precio): abre la pantalla EN ACCIÓN. */
-  private viewButton(x: number, y: number, w: number, onClick: () => void) {
+  private viewButton(x: number, y: number, w: number, onClick: () => void, _owned = false) {
     // (21-11-2026) sin el triángulo de "play": solo el texto VER
-    return arcadeButton(this, x, y, w, 48, 'VER', this.tap(onClick), { palette: 'blue' });
+    // (22-11-2026, usuario) TODOS dicen COMPRAR (también en lo que ya tienes: dentro se usa). owned queda por si se vuelve a distinguir
+    return arcadeButton(this, x, y, w, 48, 'COMPRAR', this.tap(onClick), { palette: 'blue' });
   }
 
   // (16-11-2026, usuario) sin precio bajo el botón VER: el precio se ve al entrar (VER EN ACCIÓN). Se quitó priceTag.

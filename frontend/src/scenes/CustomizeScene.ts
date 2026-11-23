@@ -186,7 +186,7 @@ export class CustomizeScene extends Phaser.Scene {
     queueInfernoArt(this.load); // bolas de los poderes del INFERNO (vista previa del selector)
     // sonidos del partido que usan las demostraciones del ESPECIAL y la ULTI (fx/powerDemo.ts): carga, golpe y golpe de la ULTI
     for (const [k, file] of [['cargando', 'mp3/cargando.mp3'], ['inferno-hit', 'mp3/inferno.mp3'], ['golpe-fuerte', 'mp3/golpe-fuerte.mp3']] as const) if (!this.cache.audio.exists(k)) this.load.audio(k, file);
-    queueChargeFxArt(this.load, ['fire', 'energy', 'tulip']); // aros de carga (vista previa del diálogo CARGANDO GOLPE)
+    queueChargeFxArt(this.load, ['fire', 'energy', 'hielo', 'light', 'wild', 'glitch', 'tulip', 'shadow', 'luz', 'time']); // aros de carga (vista previa del diálogo CARGANDO GOLPE)
   }
 
   create() {
@@ -657,6 +657,9 @@ ${unlockLabel(key)}`, { fontFamily: FONT, fontSize: '16px', color: '#ffd23f', st
       thumb: (x, y, size) => thumb(x, y, size, id),
       onEquip: () => commit((st) => equipStyle(st, id)),
     }));
+    // (22-11-2026, usuario) ordenados por rareza: normal (y los sin rareza) · especial · épica · legendaria; dentro de cada una, el orden de siempre
+    const RANK: Record<string, number> = { normal: 0, especial: 1, epica: 2, legendaria: 3 };
+    slots.sort((a, b) => (RANK[a.rarity ?? 'normal'] ?? 0) - (RANK[b.rarity ?? 'normal'] ?? 0));
     openPowerDialog(this, {
       title: 'EFECTO PELOTA',
       color: styleLook(cur).color,
@@ -773,12 +776,12 @@ ${unlockLabel(key)}`, { fontFamily: FONT, fontSize: '16px', color: '#ffd23f', st
 
   /**
    * CAMBIAR PERSONAJE: el mismo diálogo de los selectores de poderes (televisión grande con dos columnas, lista de huecos y borde con destellos como el de
-   * la ULTI) con los 4 personajes: NXO y MAI (jugables; MAI solo si es tuyo, premio del Pase) y JUN y NET, BLOQUEADOS (aún no jugables). Al equipar, se
+   * la ULTI) con los personajes jugables y los nuevos bloqueados: JUN, NET y MAT (aún no jugables). Al equipar, se
    * guarda la skin en el perfil (menú, VS y partido) y la pantalla se reinicia con el personaje nuevo.
    */
   private openCharacterDialog(skin: SkinId) {
-    // los retratos de JUN y NET no los carga el arranque: si faltan, se piden ahora y se abre al terminar
-    const need = ['jun', 'net'].map((id) => rosterPortrait(id)).filter((p): p is NonNullable<typeof p> => !!p && !this.textures.exists(p.key));
+    // Los retratos de JUN, NET y MAT no los carga el arranque de Personalizar: se piden al abrir el diálogo.
+    const need = ['jun', 'net', 'mat', 'isa', 'rin'].map((id) => rosterPortrait(id)).filter((p): p is NonNullable<typeof p> => !!p && !this.textures.exists(p.key));
     if (need.length) {
       need.forEach((p) => this.load.image(p.key, p.file));
       this.load.once(Phaser.Loader.Events.COMPLETE, () => this.sys.isActive() && this.openCharacterDialogNow(skin));
@@ -790,7 +793,7 @@ ${unlockLabel(key)}`, { fontFamily: FONT, fontSize: '16px', color: '#ffd23f', st
 
   private openCharacterDialogNow(skin: SkinId) {
     const owned = getPlayer().owned;
-    // retrato centrado en (x, y) con `size` px de alto (NXO y MAI de portrait.ts; JUN y NET de passPortrait.ts); sin imagen, un disco
+    // retrato centrado en (x, y) con `size` px de alto (NXO y MAI de portrait.ts; JUN, NET, MAT, ISA y RIN de passPortrait.ts); sin imagen, un disco
     const portrait = (id: string, x: number, y: number, size: number) => {
       if (id === 'nxo' || id === 'mai') {
         const img = addPortrait(this, id as SkinId, x, y + size * 0.5, size * 1.05);
@@ -806,6 +809,9 @@ ${unlockLabel(key)}`, { fontFamily: FONT, fontSize: '16px', color: '#ffd23f', st
       { id: 'mai', name: 'Mai', playable: true, badge: 'DEL PASE' },
       { id: 'jun', name: 'Jun', playable: false, badge: 'PRONTO' },
       { id: 'net', name: 'Net', playable: false, badge: 'PRONTO' },
+      { id: 'mat', name: 'Mat', playable: false, badge: 'PRONTO' },
+      { id: 'isa', name: 'Isa', playable: false, badge: 'PRONTO' },
+      { id: 'rin', name: 'Rin', playable: false, badge: 'PRONTO' },
     ];
     const slots: PowerSlot[] = ROSTER.map((c) => {
       const pas = passiveOf(c.id);
@@ -814,7 +820,7 @@ ${unlockLabel(key)}`, { fontFamily: FONT, fontSize: '16px', color: '#ffd23f', st
         name: c.name,
         desc: pas ? `PASIVA · ${pas.name}\n${pas.short}${c.playable ? '' : '\nAún no se puede jugar.'}` : c.playable ? 'Personaje jugable.' : 'Personaje nuevo. Aún no se puede jugar.',
         badge: c.badge,
-        showLocked: true, // JUN, NET (y MAI si no es tuya) se ven, apagados y con candado
+        showLocked: true, // JUN, NET, MAT, ISA, RIN (y MAI si no es tuya) se ven, apagados y con candado
         owned: c.playable && owned.includes(`skin:${c.id}` as never),
         equipped: c.id === skin,
         preview: (x, y, size) => portrait(c.id, x, y, size * 1.15),
@@ -1525,7 +1531,7 @@ ${unlockLabel(key)}`, { fontFamily: FONT, fontSize: '16px', color: '#ffd23f', st
     return icon;
   }
 
-  /** CARGANDO GOLPE: televisión con el efecto de carga elegido y los 4 disponibles (clásico, fuego, energía, tulipán). */
+  /** CARGANDO GOLPE: televisión con el efecto de carga elegido y los disponibles (clásico, fuego, energía, tulipán y rayo). */
   private openChargeDialog() {
     const p = getPlayer();
     const skin = p.equipped.skin;

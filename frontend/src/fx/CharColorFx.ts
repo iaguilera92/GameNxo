@@ -47,7 +47,7 @@ export const CHAR_COLORS: CharColorDef[] = [
 const SOURCE: Record<string, { from: number; range: number; minSat: number; boost?: Partial<Record<CharColorId, number>> }> = {
   nxo: { from: 0.9875, range: 0.045, minSat: 0.5 }, // rojo de la chaqueta, el short, las zapatillas y la raqueta
   mai: { from: 0.925, range: 0.07, minSat: 0.45 }, // rosa de la gorra y el vestido
-  jun: { from: 0.625, range: 0.05, minSat: 0.55, boost: { dorado: 3.2 } }, // (21-11-2026) azul marino de la camiseta, el short, las muñequeras y la raqueta (medido en su retrato)
+  jun: { from: 0.06, range: 0.035, minSat: 0.55, boost: { dorado: 1.4 } }, // naranja de la camiseta y la raqueta del retrato actualizado
 };
 
 /**
@@ -55,6 +55,8 @@ const SOURCE: Record<string, { from: number; range: number; minSat: number; boos
  * no se puede separar. El retrato es una imagen fija, así que se recolorea en CPU una vez por estilo (recoloredPortrait).
  */
 const PORTRAIT_PROTECT: Record<string, [number, number, number, number][]> = {
+  // Piel expuesta de Jun: el tono naranja de la nueva camiseta se solapa con los tonos cálidos de piel.
+  'portrait-jun': [[245, 0, 715, 450], [125, 500, 365, 950], [645, 500, 865, 825], [215, 925, 725, 1240]],
   // (21-11-2026) sin zonas protegidas: el retrato nuevo de NXO no tiene la boca roja del anterior (antes: [[474, 396, 584, 452]])
 };
 const PORTRAIT_KEYS = new Set(['portrait-nxo', 'portrait-mai', 'portrait-jun']);

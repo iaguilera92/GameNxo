@@ -1,6 +1,5 @@
 import Phaser from 'phaser';
 import { FONT } from '../ui/theme';
-import { SHARED_FOOTER } from '../view/CourtView';
 
 /**
  * Presentación corta al empezar el partido (≤ 2 s en total), SOBRE el mismo mapa:
@@ -35,7 +34,7 @@ export const INTRO = {
   totalMs: 2700,
 };
 
-export function playMatchIntro(scene: Phaser.Scene, onDone: () => void) {
+export function playMatchIntro(scene: Phaser.Scene, footer: number, onDone: () => void) {
   const cam = scene.cameras.main;
   const W = scene.scale.width;
   const H = scene.scale.height;
@@ -70,9 +69,9 @@ export function playMatchIntro(scene: Phaser.Scene, onDone: () => void) {
   vig.fillGradientStyle(0x02060f, 0x02060f, 0x02060f, 0x02060f, 1, 1, 0, 0).fillRect(-2000, INTRO.vigSolidTo, 5000, INTRO.vigFadeTo - INTRO.vigSolidTo);
   // y abajo (bajo la cancha termina el fondo): (21-11-2026, usuario) del MISMO color que el ambiente (el del pie, tras los botones) que se va oscureciendo
   // hacia abajo, sin llegar al negro
-  const foot = Phaser.Display.Color.IntegerToColor(SHARED_FOOTER);
+  const foot = Phaser.Display.Color.IntegerToColor(footer); // (22-11-2026) el pie del ambiente (SHARED_FOOTER o el suyo)
   const footDark = Phaser.Display.Color.GetColor(Math.round(foot.red * 0.5), Math.round(foot.green * 0.5), Math.round(foot.blue * 0.5));
-  vig.fillGradientStyle(SHARED_FOOTER, SHARED_FOOTER, footDark, footDark, 0, 0, 1, 1).fillRect(-2000, INTRO.vigBottomFrom, 5000, INTRO.vigBottomSolid - INTRO.vigBottomFrom);
+  vig.fillGradientStyle(footer, footer, footDark, footDark, 0, 0, 1, 1).fillRect(-2000, INTRO.vigBottomFrom, 5000, INTRO.vigBottomSolid - INTRO.vigBottomFrom);
   vig.fillStyle(footDark, 1).fillRect(-2000, INTRO.vigBottomSolid, 5000, 2000);
 
   // texto INICIO

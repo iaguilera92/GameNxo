@@ -23,7 +23,7 @@ import { SHOP_ITEMS, type ShopItem, shopItem } from './shopCatalog';
 export const ROTATION_SHOW = 3;
 /** categorías con rotación: cada cuántas horas cambian, cuántos se ven a la vez (por defecto ROTATION_SHOW) y si el contador sale siempre */
 export const ROTATION: Partial<Record<ItemKind, { hours: 12 | 24 | 168; show?: number; alwaysTimer?: boolean }>> = {
-  // (21-11-2026, usuario) PERSONAJES: 2 a la vez, cambian cada 24 h (hoy solo hay 2: MAI y NET)
+  // PERSONAJES: 2 a la vez, cambian cada 24 h (NET, MAT, ISA y RIN)
   skin: { hours: 24, show: 2, alwaysTimer: true },
   charge: { hours: 12, alwaysTimer: true }, // (21-11-2026, usuario) con contador en el titulo como la ULTI (hoy solo hay 3, se ven todas)
   smash: { hours: 12 },
@@ -91,12 +91,15 @@ export function shopOffers(kind: ItemKind, now: number, s?: RerollView): ShopIte
   const rot = ROTATION[kind];
   const items = pool(kind);
   const show = rot?.show ?? ROTATION_SHOW;
-  if (!rot || items.length <= show) return items;
+  const byRarity = (list: ShopItem[]) => kind === 'charge'
+    ? list.sort((a, b) => ['normal', 'especial', 'epica', 'legendaria'].indexOf(a.rarity) - ['normal', 'especial', 'epica', 'legendaria'].indexOf(b.rarity) || a.name.localeCompare(b.name, 'es'))
+    : list;
+  if (!rot || items.length <= show) return byRarity(items);
   const order = rotationOrder(kind);
   const w = rotationWindow(now, rot.hours);
   // (21-11-2026, usuario) con el CAMBIO pagado de esta semana se salta a la siguiente ventana: salen otros ítems
   const start = ((w.id + rerollShift(s, kind, now)) * show) % order.length;
-  return Array.from({ length: show }, (_, i) => order[(start + i) % order.length]);
+  return byRarity(Array.from({ length: show }, (_, i) => order[(start + i) % order.length]));
 }
 
 /** ms para que cambie lo que muestra una categoría; null si no rota o no hay otros que mostrar. */

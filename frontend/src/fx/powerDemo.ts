@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
-import { ALLEY, COURT, GRAVITY, HIT_MAX_Z, HIT_RANGE, LUNGE_ARM, NET_HEIGHT, NET_X, PLAYER_SPEED, SHOT_SPEED, SIDE_MARGIN, SMASH_SPEED_MULT } from '../config';
+import { NetView, NET_VIEW_SCALE } from './NetView';
+import { ALLEY, COURT, GRAVITY, HIT_MAX_Z, HIT_RANGE, LUNGE_ARM, NET_HEIGHT, NET_OVERHANG, NET_X, PLAYER_SPEED, SHOT_SPEED, SIDE_MARGIN, SMASH_SPEED_MULT } from '../config';
 import { Character, playerLook } from '../objects/Character';
 import { Ball, type BallState, aimShot, stepBall } from '../objects/Ball';
 import { SmashCinematic } from './SmashCinematic';
@@ -104,6 +105,8 @@ class DefensiveDemo implements PowerDemo {
   private readonly stage: Phaser.GameObjects.Container;
   /** "escena" con la que se crean los efectos: todo lo que se añade va al escenario */
   private readonly st: Phaser.Scene;
+  /** red del partido (fx/NetView.ts) */
+  private netView!: NetView;
   private readonly curtain: Phaser.GameObjects.Rectangle;
   private readonly dashFx: DashFx;
   /** (21-11-2026) efecto de velocidad dorado de la carrera a la T del HURACÁN (EnergyDemo.speed) */
@@ -405,6 +408,7 @@ class DefensiveDemo implements PowerDemo {
       }
     }
     this.lastDt = dt;
+    this.netView.update(); // la red solo se redibuja mientras ondula
     this.renderBall();
     placeActor(this.pl, this.pa);
     this.stage.sort('depth');
@@ -565,6 +569,7 @@ class DefensiveDemo implements PowerDemo {
     const n = Math.max(1, Math.ceil(dt * 120));
     for (let i = 0; i < n; i++) {
       const vz0 = this.ball.vz;
+      const vx0 = this.ball.vx;
       const ev = stepBall(this.ball, dt / n);
       // un bote de verdad (la pelota rodando también da "bote" en cada paso: no cuenta)
       const real = ev === 'bounce' && vz0 < -120;
@@ -576,7 +581,10 @@ class DefensiveDemo implements PowerDemo {
         const r = this.st.add.ellipse(p.sx, p.sy, 34 * p.s, 11 * p.s).setStrokeStyle(2.5 * p.s, 0xffffff, 0.8).setDepth(p.sy - 0.4);
         this.scene.tweens.add({ targets: r, scale: 2.4, alpha: 0, duration: 300, ease: 'Cubic.easeOut', onComplete: () => r.destroy() });
       }
-      if (ev === 'net') this.ball.vx = Math.abs(this.ball.vx) * 0.2;
+      if (ev === 'net') {
+        this.netView.hit(this.ball.y, this.ball.z, vx0);
+        this.ball.vx = Math.abs(this.ball.vx) * 0.2;
+      }
     }
   }
 
@@ -1248,7 +1256,7 @@ class DefensiveDemo implements PowerDemo {
     }
   }
 
-  /** Elige el efecto de CARGA: con su hoja (fuego, energía, tulipán) el ChargeSpriteFx del partido; el clásico (o sin hoja), el aro dibujado. */
+  /** Elige el efecto de CARGA: con su hoja (fuego, energía, tulipán, rayo) el ChargeSpriteFx del partido; el clásico (o sin hoja), el aro dibujado. */
   private useCharge(id: ChargeFxId) {
     this.chargeFx?.hide();
     this.chargeRing?.setVisible(false);
@@ -1790,26 +1798,9 @@ class DefensiveDemo implements PowerDemo {
     line(NET_X - sl, COURT.top, NET_X - sl, COURT.bottom);
     line(NET_X + sl, COURT.top, NET_X + sl, COURT.bottom);
     line(NET_X - sl, LAT_C, NET_X + sl, LAT_C);
-    // red: malla translúcida con la cinta blanca arriba y los postes
-    const net = add.graphics().setDepth(project(NET_X, LAT_C).sy - 0.5);
-    const y0 = dT - 24;
-    const y1 = dB + 24;
-    net.fillStyle(0x0a1638, 0.55).fillPoints([this.P(NET_X, y0), this.P(NET_X, y1), this.P(NET_X, y1, NET_HEIGHT), this.P(NET_X, y0, NET_HEIGHT)], true);
-    net.lineStyle(1.5, 0xffffff, 0.22);
-    for (let i = 1; i < 12; i++) {
-      const yy = y0 + ((y1 - y0) * i) / 12;
-      const a = this.P(NET_X, yy);
-      const b = this.P(NET_X, yy, NET_HEIGHT);
-      net.lineBetween(a.x, a.y, b.x, b.y);
-    }
-    const ta = this.P(NET_X, y0, NET_HEIGHT);
-    const tb = this.P(NET_X, y1, NET_HEIGHT);
-    net.lineStyle(5, 0xffffff, 0.95).lineBetween(ta.x, ta.y, tb.x, tb.y);
-    for (const yy of [y0, y1]) {
-      const a = this.P(NET_X, yy);
-      const b = this.P(NET_X, yy, NET_HEIGHT + 4);
-      net.lineStyle(6, 0x1c3f8f, 1).lineBetween(a.x, a.y, b.x, b.y);
-    }
+    // (22-11-2026, usuario) la MISMA red del partido (fx/NetView.ts): malla en rombos, cinta con caída, correa, postes azules y sombra,
+    // igual de alta (NET_VIEW_SCALE) y de ancha (NET_OVERHANG); ondula y suena si la pelota pega en ella. Va al escenario por el proxy de `add`
+    this.netView = new NetView(this.st, (x, y, z = 0) => this.P(x, y, z), NET_X, dT - NET_OVERHANG, dB + NET_OVERHANG, NET_HEIGHT * NET_VIEW_SCALE, project(NET_X, LAT_C).sy - 0.5);
   }
 
   /** Máquina de pelotas (de frente, quieta al fondo en medio): chasis con ruedas, cuerpo, tolva con pelotas y boca. Mide unos 140 de alto, como un personaje. */

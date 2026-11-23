@@ -1,7 +1,8 @@
 // Arma la hoja de un efecto de CARGA (el "cargando golpe" que se ve en el suelo bajo el jugador mientras carga la potencia).
-//   node tools/build-charge-fx.mjs            (las tres: fuego, energia, tulipan)
+//   node tools/build-charge-fx.mjs            (todas: fuego, energia, tulipan, rayo, sombra, wild, luz, hielo, glitch, tiempo)
 //   node tools/build-charge-fx.mjs fuego      (solo una)
 // Fuentes: art/cargando/cargando-<nombre>.png  ->  salida: public/assets/charge-<id>.webp  (fuego->fire, energia->energy, tulipan->tulip)
+//   rayo/sombra/wild: public/assets/charge-*.png -> public/assets/charge-*.webp
 //
 // Cada fuente es una hoja de 10 frames (5 columnas x 2 filas, en orden de lectura): el efecto nace (0), crece hasta su
 // punto máximo (5-6) y se disipa (9). A diferencia de las bolas del INFERNO (tools/build-power-ball.mjs) NO se centra
@@ -13,17 +14,28 @@
 //   las líneas y se descarta el alfa muy bajo (la bruma). El resultado se revisa a ojo en _tmp/charge-<id>-previa.png.
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { mkdirSync } from 'node:fs';
-import { decode } from './png-lite.mjs';
-import { saveWebp } from './image-out.mjs';
+import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { decode, save } from './png-lite.mjs';
+import { pngToWebp } from './image-out.mjs';
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const SHEETS = {
   // fuente nueva (11-11-2026, cargando-fuego.webp → .png con tools/convert-image.mjs); la anterior en art/cargando/Old/
-  fuego: { id: 'fire', mode: 'bands' },
+  fuego: { id: 'fire', mode: 'bands', src: 'public/assets/charge-fire.png' },
   energia: { id: 'energy', mode: 'grid', inset: 0, autoRow: true, floor: 6, strong: 90 },
   // fuente nueva (11-11-2026, cargando-tulipan.webp → .png con tools/convert-image.mjs): fondo transparente, sin rejilla ni
   // bruma; se corta como el fuego. (La anterior, con rejilla gris y bruma blanca, está en art/cargando/Old/.)
   tulipan: { id: 'tulip', mode: 'bands' },
+  // Rayo (22-11-2026): hoja 5x2 con transparencia y halo suave.
+  rayo: { id: 'light', mode: 'grid', inset: 0, edgeFade: 24, ramp: [64, 255], floor: 6, strong: 90, src: 'public/assets/charge-light.png' },
+  // Sombra y Wild (22-11-2026): hojas transparentes 5x2 con halos; se recortan por celda.
+  sombra: { id: 'shadow', mode: 'grid', inset: 0, edgeFade: 24, ramp: [64, 255], floor: 6, strong: 90, src: 'public/assets/charge-shadow.png' },
+  // (22-11-2026, usuario: se veía cortado) Viento: sus frames no caen en la rejilla 5x2 (los grandes pasan de su celda), se cortan por franjas vacías
+  wild: { id: 'wild', mode: 'bands', ramp: [64, 255], floor: 6, strong: 90, src: 'public/assets/charge-wild.png' },
+  luz: { id: 'luz', mode: 'grid', inset: 0, edgeFade: 24, ramp: [64, 255], floor: 6, strong: 90, src: 'public/assets/charge-luz.png' },
+  hielo: { id: 'hielo', mode: 'grid', inset: 0, edgeFade: 24, ramp: [64, 255], floor: 6, strong: 90, src: 'public/assets/charge-hielo.png' },
+  glitch: { id: 'glitch', mode: 'grid', inset: 0, edgeFade: 24, ramp: [64, 255], floor: 6, strong: 90, src: 'public/assets/charge-glitch.png' },
+  tiempo: { id: 'time', mode: 'grid', inset: 0, edgeFade: 24, ramp: [64, 255], floor: 6, strong: 90, src: 'public/assets/charge-time.png' },
 };
 const COLS = 5;
 const ROWS = 2;
@@ -39,8 +51,8 @@ const names = process.argv.slice(2).length ? process.argv.slice(2) : Object.keys
 for (const name of names) build(name, SHEETS[name]);
 
 function build(name, cfg) {
-  if (!cfg) throw new Error(`hoja desconocida: ${name} (fuego | energia | tulipan)`);
-  const SRC = join(ROOT, 'art', 'cargando', `cargando-${name}.png`);
+  if (!cfg) throw new Error(`hoja desconocida: ${name} (fuego | energia | tulipan | rayo | sombra | wild | luz | hielo | glitch | tiempo)`);
+  const SRC = cfg.src ? join(ROOT, cfg.src) : join(ROOT, 'art', 'cargando', `cargando-${name}.png`);
   const OUT = join(ROOT, 'public', 'assets', `charge-${cfg.id}.webp`);
   const { w, h, px } = decode(SRC);
   // limpieza: alfa residual fuera
@@ -87,6 +99,15 @@ function build(name, cfg) {
     const keep = new Uint8Array(w * h);
     for (const b of boxes) for (let y = b.y0; y < b.y1; y++) for (let x = b.x0; x < b.x1; x++) keep[y * w + x] = 1;
     for (let i = 0; i < w * h; i++) if (!keep[i]) px[i * 4 + 3] = 0;
+    // Algunos sprites luminosos llegan hasta el borde de su celda. Suaviza ese corte horizontal para evitar que parezca
+    // que la animación está tajada entre cuadros; no afecta el centro ni el ancla del aro.
+    const fade = cfg.edgeFade ?? 0;
+    if (fade > 0) for (const b of boxes) for (let y = b.y0; y < b.y1; y++) for (let x = b.x0; x < b.x1; x++) {
+      const d = Math.min(x - b.x0, b.x1 - 1 - x);
+      if (d >= fade) continue;
+      const i = (y * w + x) * 4 + 3;
+      px[i] = Math.round(px[i] * d / fade);
+    }
   } else {
     const bands = (len, has) => {
       const out = [];
@@ -168,7 +189,16 @@ function build(name, cfg) {
       }
   });
   mkdirSync(dirname(OUT), { recursive: true });
-  saveWebp(OUT, SW, SH, sheet);
+  // El PNG intermedio va a una carpeta temporal: una fuente en public/assets con el mismo nombre que la salida
+  // (p. ej. charge-light.png -> charge-light.webp) nunca debe sobrescribirse ni borrarse.
+  const tmp = mkdtempSync(join(tmpdir(), 'build-charge-fx-'));
+  try {
+    const png = join(tmp, `${cfg.id}.png`);
+    save(png, SW, SH, sheet);
+    pngToWebp(png, OUT);
+  } finally {
+    rmSync(tmp, { recursive: true, force: true });
+  }
   // ancho del aro respecto a la celda (para escalar en el juego): el del último frame
   const ringW = (anchors.reduce((s, q) => s + q.ringW, 0) / NF) * scale;
   console.log(`${name} -> ${OUT}`);

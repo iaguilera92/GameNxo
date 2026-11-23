@@ -36,9 +36,9 @@ Cada una cuenta **una sola vez** por partida. Lógica: `frontend/src/domain/matc
   `MARKER_ART` (coordenadas de la imagen a 2128 × 524): si se cambia el arte, se ajustan ahí. Varias a la vez salen en fila.
   No sale en el punto que termina el partido (ya empezó el final): esa misión se ve en ADICIONALES. Solo la ve el usuario local
   en 1v1: en 2v2 no hay misiones y el bot o el rival online no la muestran.
-- **Fin de partido** (`MatchEndScene`): `MatchScene.endMatch` manda `missions` (ids cumplidos). Tras las 3 cards de recompensa y,
-  si hubo duelo de apuestas, tras pasar las monedas apostadas, aparece **ADICIONALES**: 4 cards (✓ dorada = cumplida, candado =
-  no) y el total que cuenta hacia arriba.
+- **Fin de partido** (`MatchEndScene`): `MatchScene.endMatch` manda `missions` (ids cumplidos). **ADICIONALES** aparece después de
+  las 3 cards de recompensa. Si hay duelo de apuestas, empieza a aparecer al 90 % del traspaso de monedas. La sección muestra
+  4 cards (✓ dorada = cumplida, candado = no) y el total que cuenta hacia arriba.
 
 ## Economía
 

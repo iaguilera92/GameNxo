@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import { FONT, restartOnResize } from '../ui/theme';
-import { GOLD, NAVY, SECTOR, TIER_LOOK, CHEST_TEX, type SectorAmountLabel, addSectorContent, chestImage, coin2v2Image, coinIcon, drawSlotIcon, drawWheelFace, ensureTierTexture, isSpecial, sectorCenter } from '../ui/wheelArt';
+import { GOLD, NAVY, SECTOR, TIER_LOOK, CHEST_TEX, WHEEL_FRAME as FRAME, WHEEL_FRAME_KEYS, type SectorAmountLabel, addSectorContent, addWheelFace, chestImage, coin2v2Image, coinIcon, drawSlotIcon, isSpecial, sectorCenter, wheelFaceKey } from '../ui/wheelArt';
 import { WHEEL, type WheelSlot } from '../domain/wheelConfig';
 import type { WheelReward, WheelTier } from '../domain/wheelState';
 import { scaleReward, slotById } from '../domain/dailyWheel';
@@ -22,6 +22,7 @@ import { arcadeButton } from '../ui/modeButtons';
  */
 export interface WheelSceneData {
   index: number;
+  underlay?: Phaser.Scene;
   bonus?: boolean;
   /** RULETA TEST (solo desarrollo): giro extra con selector de premio (los premios SÍ se entregan) */
   test?: boolean;
@@ -42,22 +43,17 @@ const SPIN_MS = [0, 3400, 4000, 4700, 5500];
 const BG_KEY = 'wheel-bg';
 const GLOW_KEY = 'wheel-glow';
 
-/**
- * Marco de la ruleta (public/assets/ruleta-frame.webp): aro metálico, luces,
- * indicador dorado y centro; fondo e interior del disco transparentes. Medidas en píxeles de la imagen.
- */
-const FRAME = { key: 'ruleta-frame', file: 'assets/ruleta-frame.webp', size: 900, disc: 336, outer: 450 };
-
 export class WheelScene extends Phaser.Scene {
   static readonly KEY = 'Wheel';
   private index = 0;
+  private underlay?: Phaser.Scene;
   private bonus = false;
   private test = false;
   /** RULETA TEST: sector elegido (undefined = al azar) */
   private force?: string;
   private picker?: Phaser.GameObjects.Container;
   private wheel!: Phaser.GameObjects.Container;
-  private pointer!: Phaser.GameObjects.Container;
+  private pointer?: Phaser.GameObjects.Container;
   private cx = 0;
   private cy = 0;
   private R = 0;
@@ -66,7 +62,7 @@ export class WheelScene extends Phaser.Scene {
   private tierLockUntil = 0;
   /** velo de color del fondo según el nivel de la ruleta (TIER_BG) */
   private tierTint?: Phaser.GameObjects.Rectangle;
-  private phase: 'idle' | 'spin' | 'result' = 'idle';
+  private phase: 'idle' | 'spin' | 'settling' | 'result' = 'idle';
   private taps = 0;
   private res: { slot: WheelSlot; reward: WheelReward } | null = null;
   private jitter = 0;
@@ -87,7 +83,7 @@ export class WheelScene extends Phaser.Scene {
   private frameGlow?: Phaser.GameObjects.Image;
   /** marco fijo (imagen) y cara de sectores: cambian de color cuando la ruleta sube de nivel */
   private frameImg?: Phaser.GameObjects.Image;
-  private face?: Phaser.GameObjects.Graphics;
+  private face!: Phaser.GameObjects.Image;
   /** nivel actual de la ruleta (normal / dorada / épica): lo decide domain/dailyWheel, aquí solo se muestra */
   private tier: WheelTier = 'normal';
   /** (18-11-2026) textos de las cantidades de los sectores: suben al evolucionar la ruleta (showTierAmounts) */
@@ -102,12 +98,9 @@ export class WheelScene extends Phaser.Scene {
     super(WheelScene.KEY);
   }
 
-  preload() {
-    if (!this.textures.exists(FRAME.key)) this.load.image(FRAME.key, FRAME.file);
-  }
-
   init(data: WheelSceneData) {
     this.index = data?.index ?? 0;
+    this.underlay = data?.underlay;
     this.bonus = data?.bonus === true;
     this.closing = false; // (la escena se reutiliza entre aperturas)
     this.test = data?.test === true;
@@ -125,7 +118,8 @@ export class WheelScene extends Phaser.Scene {
     this.hint = undefined;
     this.frameGlow = undefined;
     this.frameImg = undefined;
-    this.face = undefined;
+    this.pointer = undefined;
+    this.spinTween = undefined;
     this.tier = 'normal';
     this.blinkEv = undefined;
   }
@@ -152,11 +146,21 @@ export class WheelScene extends Phaser.Scene {
     this.title(W);
     this.buildWheel();
     this.closeBtn = this.closeButton(W);
-    // las texturas teñidas del marco pesan (tamaño² × 4 bytes): se quitan al cerrar la ruleta
+    // El fondo opaco cubre la escena anterior. Sus timers y suscripciones siguen activos.
+    const underlay = this.underlay;
+    const wasVisible = underlay?.sys.isVisible();
+    const inputEnabled = underlay?.input.enabled;
+    if (underlay) {
+      underlay.sys.setVisible(false);
+      underlay.input.enabled = false;
+    }
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      if (underlay) {
+        underlay.sys.setVisible(wasVisible ?? true);
+        underlay.input.enabled = inputEnabled ?? true;
+      }
       this.registry.set('wheel.open', false);
       this.game.events.emit('wheel-closed');
-      for (const k of [`${FRAME.key}-gold`, `${FRAME.key}-epic`]) if (this.textures.exists(k)) this.textures.remove(k);
     });
 
     const sp = wheelSpin(this.index, this.bonus);
@@ -164,9 +168,7 @@ export class WheelScene extends Phaser.Scene {
     if (sp?.reward && slot) {
       // ya girada (cerrada antes de cobrar / app cerrada a mitad): se muestra el premio directamente
       this.phase = 'result';
-      this.tier = sp.tier ?? 'normal';
-      this.showTierAmounts(this.tier, false); // (18-11-2026) las cantidades con el bonus del nivel que quedó
-      this.showTierTitle(this.tier, false);
+      this.applyTier(sp.tier ?? 'normal', false);
       this.wheel.setRotation(this.restAngle(WHEEL.slots.indexOf(slot)));
       this.time.delayedCall(60, () => this.reveal(slot, sp.reward!, sp.claimed, !sp.claimed));
     } else {
@@ -219,10 +221,12 @@ export class WheelScene extends Phaser.Scene {
   private rays() {
     const g = this.add.graphics({ x: this.cx, y: this.cy });
     const n = 18;
-    const len = Math.max(this.scale.width, this.scale.height);
+    const len = Math.hypot(this.scale.width, this.scale.height);
     for (let i = 0; i < n; i++) {
       const a0 = (i / n) * Math.PI * 2;
-      g.fillStyle(i % 2 ? 0x3a7bff : 0xffc42e, 0.1).slice(0, 0, len, a0, a0 + Math.PI / n, false).fillPath();
+      const a1 = a0 + Math.PI / n;
+      g.fillStyle(i % 2 ? 0x3a7bff : 0xffc42e, 0.1)
+        .fillTriangle(0, 0, len * Math.cos(a0), len * Math.sin(a0), len * Math.cos(a1), len * Math.sin(a1));
     }
     g.setAlpha(0);
     this.tweens.add({ targets: g, alpha: 1, duration: 500 });
@@ -234,10 +238,14 @@ export class WheelScene extends Phaser.Scene {
 
   /** Fondo a pantalla completa en la gama del juego (azul marino → azul eléctrico con viñeta) + destellos que suben. */
   private background(W: number, H: number) {
-    if (this.textures.exists(BG_KEY)) this.textures.remove(BG_KEY);
-    const tex = this.textures.createCanvas(BG_KEY, W, H);
+    const width = Math.ceil(W / 2);
+    const height = Math.ceil(H / 2);
+    const cached = this.textures.exists(BG_KEY) ? this.textures.get(BG_KEY).getSourceImage() : undefined;
+    if (cached && (cached.width !== width || cached.height !== height)) this.textures.remove(BG_KEY);
+    const tex = this.textures.exists(BG_KEY) ? null : this.textures.createCanvas(BG_KEY, width, height);
     if (tex) {
       const ctx = tex.getContext();
+      ctx.setTransform(width / W, 0, 0, height / H, 0, 0);
       const gx = W / 2;
       const gy = H * 0.43;
       const rad = ctx.createRadialGradient(gx, gy, 10, gx, gy, Math.max(W, H) * 0.78);
@@ -261,10 +269,11 @@ export class WheelScene extends Phaser.Scene {
       }
       ctx.globalAlpha = 1;
       tex.refresh();
-      this.keep.add(this.add.image(0, 0, BG_KEY).setOrigin(0));
-    } else {
-      this.keep.add(this.add.rectangle(0, 0, W, H, 0x0b1733, 1).setOrigin(0));
     }
+    const background = this.textures.exists(BG_KEY)
+      ? this.add.image(0, 0, BG_KEY).setDisplaySize(W, H)
+      : this.add.rectangle(0, 0, W, H, 0x0b1733);
+    this.keep.add(background.setOrigin(0));
     // velo de color del NIVEL de la ruleta (dorada / épica) sobre el fondo; applyTier lo enciende
     this.tierTint = this.add.rectangle(0, 0, W, H, 0x000000, 1).setOrigin(0).setAlpha(0);
     this.keep.add(this.tierTint);
@@ -332,10 +341,8 @@ export class WheelScene extends Phaser.Scene {
 
     // ruleta (gira)
     this.wheel = this.add.container(cx, cy);
-    const face = this.add.graphics();
-    drawWheelFace(face, R, true);
-    this.face = face;
-    this.wheel.add(face);
+    this.face = addWheelFace(this, R);
+    this.wheel.add(this.face);
     // brillo de los sectores especiales
     WHEEL.slots.forEach((s, i) => {
       if (!isSpecial(s)) return;
@@ -388,10 +395,8 @@ export class WheelScene extends Phaser.Scene {
     // sombra suave
     this.add.circle(cx + 6, cy + 10, this.outerR * 0.97, 0x000000, 0.35);
     this.wheel = this.add.container(cx, cy);
-    const face = this.add.graphics();
-    drawWheelFace(face, R + 6, true); // un poco bajo el aro: sin huecos en el borde
-    this.face = face;
-    this.wheel.add(face);
+    this.face = addWheelFace(this, R + 6); // un poco bajo el aro: sin huecos en el borde
+    this.wheel.add(this.face);
     WHEEL.slots.forEach((s, i) => {
       if (!isSpecial(s)) return;
       const a0 = sectorCenter(i) - SECTOR / 2;
@@ -460,7 +465,7 @@ export class WheelScene extends Phaser.Scene {
       }
       return;
     }
-    if (this.taps >= MAX_TAPS) return;
+    if (this.phase === 'settling' || this.taps >= MAX_TAPS) return;
     // (17-11-2026, usuario) tras SUBIR DE NIVEL la ruleta no acepta toques durante 1 s: así se alcanza a ver la evolución
     if (this.time.now < this.tierLockUntil) return;
     if (this.phase === 'idle') {
@@ -499,21 +504,19 @@ export class WheelScene extends Phaser.Scene {
   }
 
   /**
-   * La ruleta sube de nivel: cambia el color de los sectores y del marco (filtro de color), con destello y aviso.
+   * La ruleta sube de nivel: cambia las texturas de los sectores y del marco, con destello y aviso.
    * Solo es visual; los premios ya los recalculó domain/dailyWheel.
    */
   private applyTier(tier: WheelTier, animate: boolean) {
     if (tier === this.tier && animate) return;
     this.tier = tier;
     const look = TIER_LOOK[tier];
-    if (this.face) {
-      this.face.clear();
-      drawWheelFace(this.face, this.framed ? this.R + 6 : this.R, true, tier);
-    }
-    if (this.frameImg) {
-      const key = ensureTierTexture(this, FRAME.key, tier);
-      this.frameImg.setTexture(key);
-      this.frameGlow?.setTexture(key);
+    this.face.setTexture(wheelFaceKey(tier));
+    const key = WHEEL_FRAME_KEYS[tier];
+    if (this.textures.exists(key)) {
+      const size = this.outerR * 2;
+      this.frameImg?.setTexture(key).setDisplaySize(size, size);
+      this.frameGlow?.setTexture(key).setDisplaySize(size, size);
     }
     // (17-11-2026, usuario) el FONDO también se tiñe: dorado en la ruleta dorada, morado en la épica
     if (this.tierTint?.active) {
@@ -658,6 +661,7 @@ export class WheelScene extends Phaser.Scene {
   private spinDone() {
     const res = this.res;
     if (!res) return;
+    this.phase = 'settling';
     this.busy = false;
     // sector ganador iluminado un instante (fijo arriba, encima de la ruleta) y luego se muestra solo el premio
     // dentro de la ruleta y sobre el sector ganador (gira con ella: queda justo bajo el indicador aunque el giro
@@ -714,6 +718,7 @@ export class WheelScene extends Phaser.Scene {
     this.blinkEv?.remove();
     this.blinkEv = undefined;
     this.frameGlow = undefined;
+    this.tweens.killTweensOf(this.wheel.getAll());
     // 1) fuera la ruleta, el título y las indicaciones
     for (const o of [...this.children.list]) {
       if (this.keep.has(o)) continue;
@@ -931,7 +936,7 @@ export class WheelScene extends Phaser.Scene {
  */
 export function openWheel(scene: Phaser.Scene, index: number, extra?: Omit<WheelSceneData, 'index'>): WheelScene | null {
   const key = WheelScene.KEY;
-  const data: WheelSceneData = { index, ...extra };
+  const data: WheelSceneData = { index, ...extra, underlay: scene };
   if (scene.scene.get(key)) scene.scene.launch(key, data);
   else scene.scene.add(key, WheelScene, true, data);
   scene.scene.bringToTop(key);

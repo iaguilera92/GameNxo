@@ -4,6 +4,7 @@ import { queueSfx } from '../fx/sfx';
 import { TORNADO_ART } from '../fx/hurricaneFx';
 import { FONT } from '../ui/theme';
 import { UI } from '../ui/ui';
+import { prepareWheelFaces, queueWheelFrames } from '../ui/wheelArt';
 import { bakeSkins, queueSkinLoads } from '../characters/skins';
 import { queuePortraitLoads } from '../characters/portrait';
 import { queueNxoSpriteLoads, registerNxoAnims } from '../objects/NxoActor';
@@ -28,6 +29,7 @@ export class BootScene extends Phaser.Scene {
     // imágenes de personajes (si existen); si faltan, se usan los personajes vectoriales
     queueSkinLoads(this.load);
     queueSfx(this.load); // sonidos de juego en archivo (fx/sfx.ts)
+    queueWheelFrames(this);
     queueUiSounds(this.load); // sonidos de interfaz en mp3 (solo los de UI_SOUND_FILES; el resto se sintetiza)
     queuePortraitLoads(this.load);
     queueNxoSpriteLoads(this.load); // animaciones de NXO en el partido (si falta algo, se usa el dibujo de siempre)
@@ -53,6 +55,7 @@ export class BootScene extends Phaser.Scene {
   }
 
   create() {
+    prepareWheelFaces(this);
     bakeSkins(this);
     registerNxoAnims(this);
     const W = this.scale.width;

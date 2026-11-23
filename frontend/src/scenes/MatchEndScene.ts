@@ -91,6 +91,10 @@ const NEON = 0x3a7bff;
 const GOLD = 0xffc42e;
 /** alto de los 3 cuadros de recompensa (monedas · EXP · ruleta) */
 const CARD_H = 196;
+const REWARD_CARD_START_MS = 750;
+const REWARD_CARD_STEP_MS = 380;
+const DUEL_START_MS = REWARD_CARD_START_MS + REWARD_CARD_STEP_MS * 3;
+const DUEL_TRANSFER_MS = 3000;
 /** alto extra del panel con el duelo de apuestas Ranked */
 const RANKED_H = 286;
 /** alto de la sección ADICIONALES (misiones por partida): cabecera + 4 cards */
@@ -498,8 +502,11 @@ export class MatchEndScene extends Phaser.Scene {
     if (SHOW_MASTERY_ROW && this.mastery) this.masteryRow(c, w, sepY + 16 + CARD_H + 6, this.mastery);
     if (duel) this.rankedDuel(c, w, sepY + 16 + CARD_H + 20 + this.mrow, duel);
     if (d.ranked?.promotedTo) this.levelUp(W / 2, top - 26, 0, '¡ASCENSO DE LIGA!');
-    // --- ADICIONALES: misiones por partida, después de que pasan las monedas apostadas (si hubo duelo)
-    if (d.missions) this.missionCards(c, w, h - ADD_H - 8 - (d.doubles ? ADD_2V2_PAD : 0), d.missions, duel ? 750 + 380 * 3 + 3000 + 350 : 750 + 380 * 3 + 250);
+    // Los adicionales empiezan a aparecer mientras llegan las últimas monedas del duelo.
+    if (d.missions) {
+      const missionDelay = DUEL_START_MS + (duel ? DUEL_TRANSFER_MS * 0.9 : 250);
+      this.missionCards(c, w, h - ADD_H - 8 - (d.doubles ? ADD_2V2_PAD : 0), d.missions, missionDelay);
+    }
 
     // entrada: sube desde abajo junto con los botones
     c.setAlpha(0).setY(top + 60);
@@ -521,8 +528,8 @@ export class MatchEndScene extends Phaser.Scene {
     const gap = 12;
     const cw = (w - 40 - gap * 2) / 3;
     const xs = [-cw - gap, 0, cw + gap];
-    const base = 750; // empieza cuando el panel ya subió
-    const step = 380;
+    const base = REWARD_CARD_START_MS; // empieza cuando el panel ya subió
+    const step = REWARD_CARD_STEP_MS;
 
     // --- 1) MONEDAS
     const m = this.card(c, xs[0], y0, cw, c2 ? ((c2.bet ?? 1) > 1 ? 'MONEDAS 2V2 · x2' : 'MONEDAS 2V2') : 'MONEDAS', c2 ? 0xb06bff : GOLD, c2 ? 0x2a1458 : 0x3a2a08);
@@ -1007,12 +1014,11 @@ export class MatchEndScene extends Phaser.Scene {
     const vs = this.add.text(0, by, 'VS', { fontFamily: FONT, fontSize: '22px', color: '#7f93bf' }).setOrigin(0.5);
     c.add(vs);
     // animación: tras las tarjetas de recompensa
-    const start = 750 + 380 * 3;
     // el mapa de atrás se sigue alejando de a poco mientras dura todo el duelo: desde ahora hasta que las monedas terminan de pasar
-    // (el traspaso dura 3 s desde start; el zoom a 0,9 de playMatchEnd ya casi acabó, por eso force = true)
+    // (el zoom a 0,9 de playMatchEnd ya casi acabó, por eso force = true)
     const mapCam = this.d.matchKey ? this.scene.get(this.d.matchKey)?.cameras?.main : undefined;
-    if (!this.mapFrame()) mapCam?.zoomTo(MAP_ZOOM_END, start + 3000, 'Sine.easeInOut', true); // con imagen de ambiente lo hace fitMap
-    this.time.delayedCall(start, () => {
+    if (!this.mapFrame()) mapCam?.zoomTo(MAP_ZOOM_END, DUEL_START_MS + DUEL_TRANSFER_MS, 'Sine.easeInOut', true); // con imagen de ambiente lo hace fitMap
+    this.time.delayedCall(DUEL_START_MS, () => {
       // victoria / derrota según el PARTIDO (con rendición, gana el rival)
       // con los MISMOS clips de la tarjeta (MAI de frente usa sus poses nuevas: con los del partido salía con la raqueta
       // en la otra mano, otro color y más grande que el cuadro)
@@ -1025,10 +1031,9 @@ export class MatchEndScene extends Phaser.Scene {
       this.tweens.add({ targets: vs, scale: { from: 1.5, to: 1 }, duration: 300, ease: 'Back.easeOut' });
       // monedas que vuelan de un cuadro al otro: un chorro de ~70 durante 3 s (lo que dura el sonido), llegando una tras otra
       sfx(this, 'recolectar-monedas');
-      const TOTAL = 3000; // ms de todo el traspaso
       const FLY = 700; // ms que tarda cada moneda en cruzar
       const n = 70; // (14-11-2026) más monedas y algo más grandes (antes 40, 8-12 px)
-      const gapMs = (TOTAL - FLY) / n;
+      const gapMs = (DUEL_TRANSFER_MS - FLY) / n;
       let pulse: Phaser.Tweens.Tween | null = null;
       for (let i = 0; i < n; i++) {
         const cg = coinF(this, 0, 0, Phaser.Math.Between(10, 15)); // (17-11-2026) moneda: imagen moneda-1.webp
@@ -1067,7 +1072,7 @@ export class MatchEndScene extends Phaser.Scene {
         targets: cnt,
         v: moved,
         delay: FLY * 0.5,
-        duration: TOTAL - FLY * 0.5,
+        duration: DUEL_TRANSFER_MS - FLY * 0.5,
         ease: 'Linear',
         onUpdate: () => {
           const v = Math.round(cnt.v);

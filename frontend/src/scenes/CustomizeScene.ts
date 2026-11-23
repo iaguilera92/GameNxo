@@ -827,7 +827,7 @@ ${unlockLabel(key)}`, { fontFamily: FONT, fontSize: '16px', color: '#ffd23f', st
         owned: c.playable && owned.includes(`skin:${c.id}` as never),
         equipped: c.id === skin,
         preview: (x, y, size) => portrait(c.id, x, y, size * 1.15 * 1.2),
-        thumb: (x, y, size) => portrait(c.id, x, y - size * 0.1, size * 1.2),
+        thumb: (x, y, size) => portrait(c.id, x, y - size * 0.1, size * 0.9),
         onEquip: () => setSkin(c.id as SkinId),
       };
     });

@@ -27,12 +27,12 @@ export const PASS_PORTRAITS: Record<string, PassPortrait> = {
  * al abrir ese diálogo.
  */
 export const SOON_PORTRAITS: Record<string, PassPortrait> = {
-  flo: { key: 'portrait-flo', file: 'assets/characters/flo_portrait.webp', w: 1024, h: 1536, box: { x0: 162, y0: 21, x1: 936, y1: 1495 } },
-  zac: { key: 'portrait-zac', file: 'assets/characters/zac_portrait.webp', w: 1024, h: 1536, box: { x0: 138, y0: 38, x1: 934, y1: 1500 } },
-  net: { key: 'portrait-net', file: 'assets/characters/net_portrait.webp', w: 1024, h: 1536, box: { x0: 119, y0: 33, x1: 988, y1: 1504 } },
+  flo: { key: 'portrait-flo', file: 'assets/characters/flo_portrait.webp', w: 1122, h: 1402, box: { x0: 185, y0: 6, x1: 1004, y1: 1388 } },
+  zac: { key: 'portrait-zac', file: 'assets/characters/zac_portrait.webp', w: 1024, h: 1536, box: { x0: 108, y0: 35, x1: 976, y1: 1500 } },
+  net: { key: 'portrait-net', file: 'assets/characters/net_portrait.webp', w: 1024, h: 1536, box: { x0: 79, y0: 89, x1: 1002, y1: 1515 } },
   mat: { key: 'portrait-mat', file: 'assets/characters/mat_portrait.webp', w: 1024, h: 1536, box: { x0: 129, y0: 65, x1: 972, y1: 1475 } },
-  isa: { key: 'portrait-isa', file: 'assets/characters/isa_portrait.webp', w: 1024, h: 1535, box: { x0: 86, y0: 9, x1: 972, y1: 1518 } },
-  rin: { key: 'portrait-rin', file: 'assets/characters/rin_portrait.webp', w: 1024, h: 1536, box: { x0: 88, y0: 5, x1: 990, y1: 1523 } },
+  isa: { key: 'portrait-isa', file: 'assets/characters/isa_portrait.webp', w: 1122, h: 1402, box: { x0: 131, y0: 10, x1: 1040, y1: 1382 } },
+  rin: { key: 'portrait-rin', file: 'assets/characters/rin_portrait.webp', w: 1122, h: 1402, box: { x0: 77, y0: 0, x1: 1043, y1: 1388 } },
 };
 
 /** retrato de un personaje del Pase o aún no jugable (undefined = no tiene) */

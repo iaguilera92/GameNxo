@@ -1,0 +1,1 @@
+import { execFileSync } from 'node:child_process'; import { readFileSync } from 'node:fs'; execFileSync('node', ['warp-gradas.mjs', 'respaldo_oficial/ambientes/ambiente-1-2v2-1254-v8.png', '_warp2v2-v8.png', readFileSync('sides-2v2-v8.json', 'utf8')], { stdio: 'inherit' });

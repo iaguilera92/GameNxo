@@ -18,7 +18,7 @@
  */
 import { cycleIdAt } from './dailyWheel';
 import { type PlayerState, clonePlayer } from './player';
-import { LEAGUE_ORDER, RANKED, league, matchStakes, nextLeague, positionPrize } from './rankedConfig';
+import { LEAGUE_ORDER, RANKED, league, matchStakes, nextLeague, positionPrize, weeklyChestCash } from './rankedConfig';
 import { type BoardEntry, type BotClock, buildBoard, buildGlobalBoard, prizePosition } from './rankedBots';
 import { type RankedMatchHistory, type RankedOutcome, type WeeklyReward, newStats } from './rankedState';
 import type { RankId } from './ranks';
@@ -289,7 +289,7 @@ export function claimWeekly(s: PlayerState, week: string): RankedResult<{ reward
   nw.claimed = true;
   if (nw.eligible) {
     n.coins += nw.coins;
-    n.gems += nw.cash;
+    n.gems += nw.cash + weeklyChestCash(nw, false); // (23-11-2026) + dinero al azar del cofre de fin de temporada
     n.zone.rays += nw.rays;
   }
   n.ranked.rewards = n.ranked.rewards.filter((x) => !x.claimed || x.week === week).slice(-8);

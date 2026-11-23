@@ -27,6 +27,8 @@ export const PASS_PORTRAITS: Record<string, PassPortrait> = {
  * al abrir ese diálogo.
  */
 export const SOON_PORTRAITS: Record<string, PassPortrait> = {
+  flo: { key: 'portrait-flo', file: 'assets/characters/flo_portrait.webp', w: 1024, h: 1536, box: { x0: 162, y0: 21, x1: 936, y1: 1495 } },
+  zac: { key: 'portrait-zac', file: 'assets/characters/zac_portrait.webp', w: 1024, h: 1536, box: { x0: 138, y0: 38, x1: 934, y1: 1500 } },
   net: { key: 'portrait-net', file: 'assets/characters/net_portrait.webp', w: 1024, h: 1536, box: { x0: 119, y0: 33, x1: 988, y1: 1504 } },
   mat: { key: 'portrait-mat', file: 'assets/characters/mat_portrait.webp', w: 1024, h: 1536, box: { x0: 129, y0: 65, x1: 972, y1: 1475 } },
   isa: { key: 'portrait-isa', file: 'assets/characters/isa_portrait.webp', w: 1024, h: 1535, box: { x0: 86, y0: 9, x1: 972, y1: 1518 } },

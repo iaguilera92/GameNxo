@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { ALLEY, BOUNCE_DAMP, COURT, GRAVITY, HIT_MAX_Z, NET_HEIGHT, NET_OVERHANG, NET_X } from '../config';
+import { ALLEY, BOUNCE_DAMP, COURT, GRAVITY, HIT_MAX_Z, NET_BALL_CLEARANCE, NET_X, NET_Y_MAX, NET_Y_MIN, netTapeHeight } from '../config';
 import { C } from '../ui/theme';
 import { project } from '../view/projection';
 import type { SmashPower } from '../domain/smashPowers';
@@ -32,10 +32,48 @@ export interface BallState {
 /** DROP SHOT 0: velocidad horizontal de la vuelta y altura con la que vuelve a pasar sobre la red */
 export const DROP_ZERO = { backSpeed: 240, netClear: 22, maxVz: 520 };
 
+/** Error forzado al agotarse el reloj: sale del lado de quien golpea y alcanza la malla. */
+export function aimNetFault(s: BallState, dir: 1 | -1) {
+  s.x = dir > 0 ? Math.min(s.x, NET_X - 8) : Math.max(s.x, NET_X + 8);
+  s.z = Math.max(12, s.z);
+  const dx = NET_X - s.x;
+  const y = Math.max(NET_Y_MIN + 12, Math.min(NET_Y_MAX - 12, s.y));
+  const t = Math.max(0.12, Math.abs(dx) / 700);
+  s.vx = dx / t;
+  s.vy = (y - s.y) / t;
+  s.vz = (netTapeHeight(y) * 0.55 - s.z + 0.5 * GRAVITY * t * t) / t;
+  s.ay = s.g = s.back = s.damp = s.fric = undefined;
+  s.backBounced = undefined;
+}
+
+/** Se abre un poco por la línea lateral más cercana al destino del tiro original. */
+export function aimOutFault(s: BallState, dir: 1 | -1, wide: boolean): boolean {
+  const mid = (COURT.top + COURT.bottom) / 2;
+  const gravity = s.g ?? GRAVITY;
+  const t = (s.vz + Math.sqrt(s.vz * s.vz + 2 * gravity * Math.max(0, s.z))) / gravity;
+  const intendedY = s.y + s.vy * t + 0.5 * (s.ay ?? 0) * t * t;
+  const intendedDepth = dir * (s.x + s.vx * t - NET_X);
+  const margin = (wide ? ALLEY : 0) + 18;
+  const y = intendedY < mid ? COURT.top - margin : COURT.bottom + margin;
+  const depth = Math.max(145, Math.min(365, intendedDepth));
+  const shot = { ...s, x: dir > 0 ? Math.min(s.x, NET_X - 8) : Math.max(s.x, NET_X + 8), z: Math.max(12, s.z) };
+  const dx = NET_X + dir * depth - shot.x;
+  const dy = y - shot.y;
+  // Si no hay espacio para una salida natural, el error termina en la malla.
+  if (Math.abs(dy) > Math.abs(dx) * 0.85) return false;
+  const speed = Math.max(550, Math.min(820, Math.hypot(s.vx, s.vy)));
+  aimShot(shot, NET_X + dir * depth, y, speed, 8);
+  if (Math.abs(dx / shot.vx) > 1.25) return false;
+  Object.assign(s, shot);
+  return true;
+}
+
 export type BallEvent = 'bounce' | 'net' | null;
+export interface NetCrossing { y: number; clearance?: number }
 
 /** Avanza la física de una pelota (también se usa para predicción). */
-export function stepBall(s: BallState, dt: number): BallEvent {
+export function stepBall(s: BallState, dt: number, crossing?: NetCrossing): BallEvent {
+  if (crossing) crossing.clearance = undefined;
   const prevX = s.x;
   const prevY = s.y;
   const prevZ = s.z;
@@ -51,19 +89,35 @@ export function stepBall(s: BallState, dt: number): BallEvent {
   s.vz -= G * dt;
   if (ay) s.vy += ay * dt;
 
-  // ¿Cruza la red por debajo de su altura?
-  const crossed = (prevX - NET_X) * (s.x - NET_X) < 0;
-  if (crossed && s.y > COURT.top - ALLEY - NET_OVERHANG && s.y < COURT.bottom + ALLEY + NET_OVERHANG && s.z < NET_HEIGHT) {
-    s.x = NET_X - Math.sign(s.vx) * 6;
-    s.vx = -s.vx * 0.15;
-    s.vy *= 0.3;
-    return 'net';
+  // Evalúa la parábola al cruzar la red, no en la posición al final del paso.
+  const crossed = (prevX <= NET_X && s.x > NET_X) || (prevX >= NET_X && s.x < NET_X);
+  if (crossed) {
+    const t = (NET_X - prevX) / s.vx;
+    const y = prevY + vy0 * t + 0.5 * ay * t * t;
+    const z = prevZ + vz0 * t - 0.5 * G * t * t;
+    const rolling = prevZ <= 0 && vz0 <= 0;
+    if (y >= NET_Y_MIN && y <= NET_Y_MAX && (z >= 0 || rolling)) {
+      const clearance = Math.max(0, z) - netTapeHeight(y) - NET_BALL_CLEARANCE;
+      if (clearance < 0) {
+        s.x = NET_X - Math.sign(s.vx) * 6;
+        s.y = y;
+        s.z = Math.max(0, z);
+        s.vx *= -0.15;
+        s.vy = (vy0 + ay * t) * 0.3;
+        s.vz = vz0 - G * t;
+        return 'net';
+      }
+      if (crossing) {
+        crossing.y = y;
+        crossing.clearance = clearance;
+      }
+    }
   }
 
   if (s.z <= 0 && s.vz < 0) {
     // el bote es donde z llegó a 0, no al final del paso: con pasos largos (FPS bajos) la pelota ya iba hasta 25
     // unidades más allá y un saque que tocaba la línea se cantaba falta. Rodando (ya en el suelo) no se retrocede.
-    if (prevZ > 0) {
+    if (prevZ > 0 || vz0 > 0) {
       // instante exacto del bote dentro del paso: prevZ + vz0·t − ½·g·t² = 0
       const t = Math.min(dt, (vz0 + Math.sqrt(vz0 * vz0 + 2 * G * prevZ)) / G);
       s.x = prevX + s.vx * t;
@@ -79,7 +133,8 @@ export function stepBall(s: BallState, dt: number): BallEvent {
       const t = Math.max(0.06, Math.abs(s.x - NET_X) / v);
       s.vx = dir * v;
       s.vy *= 0.3;
-      s.vz = Math.min(DROP_ZERO.maxVz, (NET_HEIGHT + DROP_ZERO.netClear + 0.5 * GRAVITY * t * t) / t);
+      const netY = s.y + s.vy * t;
+      s.vz = Math.min(DROP_ZERO.maxVz, (netTapeHeight(netY) + NET_BALL_CLEARANCE + DROP_ZERO.netClear + 0.5 * GRAVITY * t * t) / t);
       s.g = undefined;
       s.ay = undefined;
       s.back = undefined;
@@ -123,7 +178,8 @@ export function aimShot(from: BallState, tx: number, ty: number, speed: number, 
     const vz = (0.5 * GRAVITY * T * T - from.z) / T;
     const tn = (NET_X - from.x) / vx;
     const zn = from.z + vz * tn - 0.5 * GRAVITY * tn * tn;
-    if (tn <= 0 || tn >= T || zn > NET_HEIGHT + netMargin) break;
+    const netY = from.y + dy * (tn / T);
+    if (tn <= 0 || tn >= T || netY < NET_Y_MIN || netY > NET_Y_MAX || zn > netTapeHeight(netY) + NET_BALL_CLEARANCE + netMargin) break;
     T *= 1.08;
   }
   // cada golpe nuevo vuelve al bote normal
@@ -290,8 +346,8 @@ export class Ball {
   spinExtra = 0;
 
   constructor(private scn: Phaser.Scene) {
-    this.shadow = scn.add.ellipse(0, 0, 30, 12, 0x000000, 0.5);
-    this.guide = scn.add.graphics();
+    this.shadow = scn.add.ellipse(0, 0, 30, 12, 0x000000, 0.5).setDepth(1);
+    this.guide = scn.add.graphics().setDepth(2);
     this.trail = scn.add.graphics();
     this.fxParts = new TrailParticles(scn.add.graphics()); // partículas del efecto de pelota equipado (fx/ballTrailFx.ts)
     this.sprite = scn.add.container(0, 0);
@@ -418,20 +474,19 @@ export class Ball {
   /**
    * Sincroniza lo que se VE con el sprite: la física del golpe es inmediata, pero la raqueta dibujada llega a su
    * fotograma de impacto `ms` después. Durante ese tiempo la pelota se dibuja en el punto de contacto y se suelta
-   * hasta alcanzar a la real (la trayectoria, la puntuación y las colisiones no cambian). Las bolas de fuego se
-   * quedan como están (sus llamas se dibujan en la posición real).
+   * hasta alcanzar a la real (la trayectoria, la puntuación y las colisiones no cambian).
    */
-  holdVisual(ms: number) {
-    if (this.power || ms < 20) return;
-    this.lag = { x: this.s.x, y: this.s.y, z: this.s.z, t0: this.scn.time.now, ms: Math.min(ms, 200) };
+  holdVisual(ms: number, x: number, y: number, z: number) {
+    this.lag = ms > 0 ? { x, y, z, t0: this.scn.time.now, ms: Math.min(ms, 200) } : undefined;
   }
   private lag?: { x: number; y: number; z: number; t0: number; ms: number };
 
   render(dt = 1 / 60) {
     let { x, y, z } = this.s;
     if (this.lag) {
-      const q = (this.scn.time.now - this.lag.t0) / this.lag.ms;
-      if (q >= 1 || this.power) this.lag = undefined;
+      const elapsed = this.scn.time.now - this.lag.t0;
+      const q = Math.max(0, (elapsed - this.lag.ms) / 45);
+      if (q >= 1) this.lag = undefined;
       else {
         const L = this.lag;
         x = L.x + (x - L.x) * q;
@@ -455,10 +510,9 @@ export class Ball {
     // efecto: el fieltro gira según la velocidad (y el sentido) de la pelota
     const v = Math.hypot(this.s.vx, this.s.vy, this.s.vz);
     this.felt.rotation += (Math.sign(this.s.vx || 1) * Math.min(v, 1600) * dt) / 70 + this.spinExtra * dt;
-    this.sprite.setDepth(ground.sy + 2);
-    this.shadow.setDepth(1);
-    this.trail.setDepth(ground.sy + 1);
-    this.guide.setDepth(2);
+    const depth = ground.sy + 2;
+    if (this.sprite.depth !== depth) this.sprite.setDepth(depth);
+    if (this.trail.depth !== depth - 1) this.trail.setDepth(depth - 1);
 
     // guía vertical suave pelota -> sombra (ayuda a leer la altura)
     this.guide.clear();
@@ -498,7 +552,7 @@ export class Ball {
       this.history = [];
       this.trail.clear();
       this.fxParts.tick(null, air.sx, sy, scale, dt); // deja que se apaguen solas las partículas del golpe anterior
-      this.fxParts.g.setDepth(ground.sy + 2);
+      if (this.fxParts.g.depth !== depth) this.fxParts.g.setDepth(depth);
       return;
     }
     // globo y cortita conservan SIEMPRE su color (el refuerzo del golpe solo ensancha la estela, no la tiñe)
@@ -511,7 +565,7 @@ export class Ball {
     // efecto de pelota del estilo equipado (fx/ballTrailFx.ts): solo en los golpes normales con estilo, no en globos ni poderes
     const fx: TrailFx = styled !== null && !fixed && !this.power ? this.look?.fx ?? 'plain' : 'plain';
     drawRibbon(this.trail, this.history, { scale, charged: this.charged, boost: this.boost, fx, now: this.scn.time.now });
-    this.fxParts.g.setDepth(ground.sy + 2);
+    if (this.fxParts.g.depth !== depth) this.fxParts.g.setDepth(depth);
     this.fxParts.tick(fx !== 'plain' && this.sprite.visible ? fx : null, air.sx, sy, scale, dt);
     if (this.fire && this.sprite.visible) this.emitFire(dt, air.sx, sy, scale, ground.sy);
   }

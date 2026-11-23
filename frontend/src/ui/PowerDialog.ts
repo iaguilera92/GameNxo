@@ -66,7 +66,7 @@ export interface PowerDialogOpts {
   title: string;
   /** color del borde y de los acentos */
   color: number;
-  slots: PowerSlot[];
+  slots: (PowerSlot | undefined)[];
   /** "side" = dibujo a la izquierda y texto a la derecha (dibujos anchos, como los aros de carga) */
   layout?: 'center' | 'side';
   /** abre la Tienda (botón de los huecos bloqueados que sí existen) */
@@ -553,7 +553,7 @@ export function openPowerDialog(scene: Phaser.Scene, opts: PowerDialogOpts) {
     action.removeAll(true);
   };
 
-  let selected = Math.max(0, slots.findIndex((s) => s.equipped));
+  let selected = Math.max(0, slots.findIndex((s) => s?.equipped));
   const rings: Phaser.GameObjects.Graphics[] = [];
   /** dibujo y rótulo de cada hueco (para apagar los no seleccionados) */
   const cellItems: Phaser.GameObjects.GameObject[][] = [];
@@ -695,7 +695,7 @@ export function openPowerDialog(scene: Phaser.Scene, opts: PowerDialogOpts) {
             s.onEquip?.();
             sfx(scene, 'equipar');
             changed = true;
-            slots.forEach((q, k) => (q.equipped = k === i));
+            slots.forEach((q, k) => { if (q) q.equipped = k === i; });
             close();
           });
         }
@@ -744,7 +744,7 @@ export function openPowerDialog(scene: Phaser.Scene, opts: PowerDialogOpts) {
           s.onEquip?.();
           sfx(scene, 'equipar');
           changed = true;
-          slots.forEach((q, k) => (q.equipped = k === i));
+          slots.forEach((q, k) => { if (q) q.equipped = k === i; });
           close();
         });
       }

@@ -195,8 +195,27 @@ export class BotBrain {
    */
   dashBall = false;
   private wasReading = false;
+  /**
+   * (23-11-2026, usuario) 2v2 contra bots: usa cada habilidad (DEFENSIVO, ESPECIAL, ULTI) EN CUANTO PUEDE, sin sorteo, y con las
+   * recargas del jugador (DASH_COOLDOWN, SMASH_COOLDOWN; la ULTI se carga con 3 puntos). La potencia de sus tiros sigue la de su nivel.
+   */
+  eager = false;
   private get abil() {
-    return ABIL[this.profile?.tier ?? 'normal'];
+    const a = ABIL[this.profile?.tier ?? 'normal'];
+    return this.eager ? { ...a, dash: 1, smash: 1, ulti: 1, cd: 1 } : a;
+  }
+  /** Avanza las recargas (la llama tick; el aliado del 2v2, que no usa tick, la llama la escena). */
+  tickCooldowns(dt: number) {
+    this.dashCd = Math.max(0, this.dashCd - dt);
+    this.smashCd = Math.max(0, this.smashCd - dt);
+  }
+  /** ¿DEFENSIVO listo? (recarga cumplida y su nivel lo usa) */
+  get dashReady(): boolean {
+    return !this.netPractice && this.dashCd <= 0 && this.abil.dash > 0;
+  }
+  /** Gasta el DEFENSIVO (empieza su recarga). Para el aliado del 2v2, que decide su DEFENSIVO en la escena. */
+  useDash() {
+    this.dashCd = DASH_COOLDOWN * this.abil.cd;
   }
   /** reacción + predicción (implementación existente, reutilizada) */
   readonly ai: BotAI;
@@ -309,10 +328,7 @@ export class BotBrain {
     if (body.stun > 0) body.stun -= dt;
     const frozen = body.stun > 0 || phase === 'over' || phase === 'intro' || ((phase === 'serve' || phase === 'toss') && inp.botServes);
     if (phase === 'rally') this.ai.update(dt, inp.ball);
-    if (phase !== 'intro' && phase !== 'over') {
-      this.dashCd = Math.max(0, this.dashCd - dt);
-      this.smashCd = Math.max(0, this.smashCd - dt);
-    }
+    if (phase !== 'intro' && phase !== 'over') this.tickCooldowns(dt);
     // DASH: al empezar a leer cada golpe tuyo decide UNA vez si sprinta (no llegaría a tiempo)
     let sprint: SprintEvt = null;
     const reading = phase === 'rally' && this.ai.reading;
@@ -405,7 +421,8 @@ export class BotBrain {
    */
   onShot(shot: ShotPlan) {
     const ty = clamp(shot.ty, this.cTop, this.cBot);
-    this.ai.onBotHit(LAT_C + (ty - LAT_C) * MOVE.recoverFollow);
+    const hy = this.ai.home.y; // 1v1: el medio (LAT_C), como siempre; 2v2: el centro de su mitad
+    this.ai.onBotHit(hy + (ty - hy) * MOVE.recoverFollow);
   }
 
   /**

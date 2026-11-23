@@ -465,6 +465,7 @@ Las secciones 4 y 5 son el contrato. Estas son las excepciones que la herramient
   imagen (mano izquierda) y en varias filas cambia de lado entre frames. El golpe arranca en su frame de espera, así que
   el frame 1 no se ve, pero puede notarse el cambio de mano desde el reposo. `serveRacket` medido de nuevo.
 - Tiras en WebP desde esta hoja (celda 222×142).
+- **Reposo más chico (23-11-2026, usuario: "al pasar de quieto a correr cambia mucho el tamaño")**: la tira `idle` (`nxo-movimientos-1`) salía un 10 % más grande que los demás cuadros de pie (cuadro 1: 244 px de alto en la tira; revés 220, caminata 222, volea 215, remate 217). Se arregla con `"scale": 0.9` en `idle` de `src/characters/nxo-sprites.json` (`NxoActor.fitTo`, `SCALE_OF`), como el `1.1` de `stunned`. `build-hd.mjs` no toca `scale`. Si se redibuja `nxo-movimientos-1`, volver a medir (`_temp/medir-tiras-nxo.mjs`) y quitar o ajustar este 0.9. Las estiradas copian la escala de `idle` en `build-hd` (no del `scale` del JSON), así que no cambian.
 
 **NXO rival, de frente** (`front`):
 

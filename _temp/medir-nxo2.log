@@ -1,0 +1,6 @@
+idle         f1 244  mediana 240  todos 244,234,226,240,247,239,231,242  celda 142x254  origen 0.98425
+run          f1 198  mediana 195  todos 198,196,198,189,195,195,195,189  celda 172x206  origen 0.98058
+runstop      f1 206  mediana 202  todos 206,202,200,195,200,202,204,204  celda 178x214  origen 0.98131
+dash         f1 205  mediana 200  todos 205,203,171,199,198,200,173,202  celda 176x217  origen 0.98157
+victory      f1 187  mediana 211  todos 187,189,190,213,212,205,211,211  celda 146x224  origen 0.98214
+exit 0 

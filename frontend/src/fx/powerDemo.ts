@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { NetView, NET_VIEW_SCALE } from './NetView';
+import { NetView } from './NetView';
 import { ALLEY, COURT, GRAVITY, HIT_MAX_Z, HIT_RANGE, LUNGE_ARM, NET_HEIGHT, NET_OVERHANG, NET_X, PLAYER_SPEED, SHOT_SPEED, SIDE_MARGIN, SMASH_SPEED_MULT } from '../config';
 import { Character, playerLook } from '../objects/Character';
 import { Ball, type BallState, aimShot, stepBall } from '../objects/Ball';
@@ -274,11 +274,16 @@ class DefensiveDemo implements PowerDemo {
       this.rb = new Ball(this.st);
       this.rb.setVisible(false);
       this.ball = this.rb.s;
-      this.smoke = new SmokeTrail(this.st);
-      this.elFx = new SmashElementFx(this.st);
-      this.elFx.dragonScale = 1.8; // (20-11-2026, usuario) en la vista previa el dragón casi no se veía
-      this.fireBall = new InfernoFire(this.st);
-      this.cine = new SmashCinematic(this.st);
+      if (special.kind === 'smash') {
+        this.smoke = new SmokeTrail(this.st);
+        this.elFx = new SmashElementFx(this.st);
+        this.elFx.dragonScale = 1.8; // en la vista previa el dragón se muestra más grande
+      }
+      if (special.kind === 'inferno') this.fireBall = new InfernoFire(this.st);
+      if (special.kind !== 'charge') this.cine = new SmashCinematic(this.st);
+      this.ballC.setVisible(false);
+      this.ballShadow.setVisible(false);
+      this.ballTrail.setVisible(false);
       this.flashR = this.st.add.rectangle(VIEW.W / 2, this.crop.cy, VIEW.W * 3, 3000, 0xffffff, 0).setDepth(5000).setBlendMode(Phaser.BlendModes.ADD);
       if (special.kind === 'charge') this.useCharge(special.el as ChargeFxId);
     } else this.ball = { x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0 };
@@ -364,7 +369,7 @@ class DefensiveDemo implements PowerDemo {
     this.stopSpecial();
     this.energy?.destroy();
     this.energy = null;
-    if (this.cine) this.scene.events.off(Phaser.Scenes.Events.POST_UPDATE, (this.cine as unknown as { tailTick: () => void }).tailTick, this.cine);
+    this.cine?.dispose();
     this.dashFx.clear();
     this.hurDash.clear();
     this.infDash?.clear();
@@ -411,7 +416,17 @@ class DefensiveDemo implements PowerDemo {
     this.netView.update(); // la red solo se redibuja mientras ondula
     this.renderBall();
     placeActor(this.pl, this.pa);
-    this.stage.sort('depth');
+    // El contenedor no se ordena solo. Evita reordenarlo cuando las capas siguen en el mismo orden.
+    const layers = this.stage.list as (Phaser.GameObjects.GameObject & { depth?: number })[];
+    let previousDepth = -Infinity;
+    for (const layer of layers) {
+      const depth = layer.depth ?? 0;
+      if (depth < previousDepth) {
+        this.stage.sort('depth');
+        break;
+      }
+      previousDepth = depth;
+    }
     this.layout();
   }
 
@@ -644,9 +659,6 @@ class DefensiveDemo implements PowerDemo {
     if (this.rb) {
       // ESPECIAL / ULTI: la pelota del partido con su humo, el efecto de su elemento y la bola del INFERNO (MatchScene.update)
       const rb = this.rb;
-      this.ballC.setVisible(false);
-      this.ballShadow.setVisible(false);
-      this.ballTrail.setVisible(false);
       rb.setVisible(this.ballOn);
       // (21-11-2026, usuario) HURACÁN, 1.er golpe: la pelota NO es 'power' pero sí vuela como BOLA DE ENERGÍA (como en el partido): la demo de energía lo pide con setBall(true, true)
       if (!rb.power && !this.keepFlight) this.infernoFlight = false;
@@ -1799,8 +1811,8 @@ class DefensiveDemo implements PowerDemo {
     line(NET_X + sl, COURT.top, NET_X + sl, COURT.bottom);
     line(NET_X - sl, LAT_C, NET_X + sl, LAT_C);
     // (22-11-2026, usuario) la MISMA red del partido (fx/NetView.ts): malla en rombos, cinta con caída, correa, postes azules y sombra,
-    // igual de alta (NET_VIEW_SCALE) y de ancha (NET_OVERHANG); ondula y suena si la pelota pega en ella. Va al escenario por el proxy de `add`
-    this.netView = new NetView(this.st, (x, y, z = 0) => this.P(x, y, z), NET_X, dT - NET_OVERHANG, dB + NET_OVERHANG, NET_HEIGHT * NET_VIEW_SCALE, project(NET_X, LAT_C).sy - 0.5);
+    // Comparte altura y ancho con el partido y ondula si la pelota pega en ella.
+    this.netView = new NetView(this.st, (x, y, z = 0) => this.P(x, y, z), NET_X, dT - NET_OVERHANG, dB + NET_OVERHANG, NET_HEIGHT, project(NET_X, LAT_C).sy - 0.5);
   }
 
   /** Máquina de pelotas (de frente, quieta al fondo en medio): chasis con ruedas, cuerpo, tolva con pelotas y boca. Mide unos 140 de alto, como un personaje. */

@@ -1,4 +1,4 @@
-﻿// MARCOS DEL PERFIL (card del perfil del menú): corta la hoja public/personajes/Marcos/marcos-ranked.png (6 marcos, 2 columnas x 3 filas) en un
+﻿// MARCOS DEL PERFIL (card del perfil del menú): corta la hoja art/marcos-perfil/marcos-ranked.png (6 marcos, 2 columnas x 3 filas) en un
 // WebP con transparencia por liga: public/assets/marcos/<liga>.webp, y escribe src/ui/profile-frames.json con el cuerpo de cada marco.
 // Uso (desde frontend/):  node tools/build-profile-frames.mjs [debug]
 // La hoja trae fondo blanco y sombras difusas: el exterior es lo que se alcanza desde el borde del recorte sin cruzar el contorno
@@ -11,7 +11,7 @@ import { pathToFileURL } from 'node:url';
 
 // SET=2v2 corta la hoja de los marcos de la LIGA 2v2 (marcos-ranked-2v2.png -> public/assets/marcos2v2/ y src/ui/profile-frames-2v2.json)
 const SET = process.env.SET === '2v2' ? '2v2' : '1v1';
-const SRC = SET === '2v2' ? 'public/personajes/Marcos/marcos-ranked-2v2.png' : 'public/personajes/Marcos/marcos-ranked.png'; // fuente (public/personajes no entra al APK)
+const SRC = SET === '2v2' ? 'art/marcos-perfil/marcos-ranked-2v2.png' : 'art/marcos-perfil/marcos-ranked.png'; // hojas originales fuera de public
 const OUT = SET === '2v2' ? 'public/assets/marcos2v2' : 'public/assets/marcos';
 const JSON_OUT = SET === '2v2' ? 'profile-frames-2v2.json' : 'profile-frames.json';
 // celda de cada marco en la hoja (x, y, w, h) y su cuerpo (rectángulo que coincide con la card; fuera de él sobresalen alas / corona)

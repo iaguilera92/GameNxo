@@ -82,24 +82,29 @@ export class SmokeTrail {
 
   /** Llamar cada fotograma. `on`: la pelota vuela como SMASH; `strong`: potenciado. */
   update(dt: number, ball: BallState, on: boolean, strong: boolean, visible = true) {
+    let ballDepth = Infinity;
     if (on && visible) {
       const look = SMASH_LOOK[this.el].smoke;
       const base = strong ? SMOKE.strong : SMOKE.normal;
       const cfg = { ...base, colors: (strong ? look.strong : look.normal).colors, alpha: (strong ? look.strong : look.normal).alpha };
       this.timer = Math.max(this.timer - dt, -0.06); // tirón de fotogramas: no más de unas pocas emisiones
-      while (this.timer <= 0) {
-        this.timer += cfg.every;
+      if (this.timer <= 0) {
         const ground = project(ball.x, ball.y, 0);
         const air = project(ball.x, ball.y, ball.z);
         const tail = project(ball.x - ball.vx * BEHIND, ball.y - ball.vy * BEHIND, Math.max(0, ball.z - ball.vz * BEHIND));
         const k = air.s * 0.8 * (1 + Math.min(ball.z, 220) / 700); // misma escala que el sprite de la pelota
-        for (let i = 0; i < cfg.per; i++) this.spawn(tail.sx, tail.sy, ground.sy + 1.5, k, cfg, false);
-        if (strong && Math.random() < SMOKE.sparkChance) this.spawn(air.sx, air.sy, ground.sy + 2.5, k, cfg, true);
+        ballDepth = ground.sy + 2;
+        while (this.timer <= 0) {
+          this.timer += cfg.every;
+          for (let i = 0; i < cfg.per; i++) this.spawn(tail.sx, tail.sy, ground.sy + 1.5, k, cfg, false);
+          if (strong && Math.random() < SMOKE.sparkChance) this.spawn(air.sx, air.sy, ground.sy + 2.5, k, cfg, true);
+        }
       }
     } else this.timer = 0;
 
+    if (this.live.length === 0) return;
     // el humo nunca por delante de la pelota (si se aleja de cámara, el humo viejo tendría más profundidad)
-    const ballDepth = visible ? project(ball.x, ball.y, 0).sy + 2 : Infinity;
+    if (visible && ballDepth === Infinity) ballDepth = project(ball.x, ball.y, 0).sy + 2;
     for (let i = this.live.length - 1; i >= 0; i--) {
       const p = this.live[i];
       if (!p.spark && p.o.depth >= ballDepth) p.o.setDepth(ballDepth - 0.5);

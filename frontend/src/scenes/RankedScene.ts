@@ -7,10 +7,11 @@ import { fitText } from '../ui/fitText';
 import { RankBadge, preloadRankBadges } from '../ui/RankBadge';
 import { coin2v2Image, coinIcon, drawChestIcon, drawGiftIcon } from '../ui/wheelArt';
 import { drawCashIcon } from './BattlePassScene';
+import { wheelClaim, wheelTick, wheelWin } from '../fx/wheelSound';
 import { LEAGUE_STYLE, fmtCoins, fmtNet } from '../ui/leagueStyle';
 import { openLeagueRanking } from '../ui/LeagueRanking';
 import { RANKS, type RankId, rankDef } from '../domain/ranks';
-import { RANKED, positionPrize } from '../domain/rankedConfig';
+import { RANKED, positionPrize, weeklyChestCash } from '../domain/rankedConfig';
 import type { BoardEntry } from '../domain/rankedBots';
 import type { RankedView } from '../domain/ranked';
 import { LEAGUE_2V2, type LeagueHubView, league2v2Economy } from '../domain/league2v2';
@@ -22,6 +23,8 @@ import { claimWeekly, markRankedSeen, pendingWeekly, rankedState, rankedView, sy
 const NAVY = 0x0b1733;
 const NEON = 0x3a7bff;
 const GOLD = 0xffc42e;
+/** (23-11-2026) alto de la TAPA en el arte del cofre semanal (cofre-semanal.webp, 256 px): se recorta para abrirlo */
+const SEASON_LID_Y = 100;
 
 /**
  * ARTE DE LA PANTALLA LIGA (21-11-2026, mockup del usuario: _temp/liga/liga-mockup.png). Cada imagen es un WebP sin texto; el
@@ -1111,7 +1114,7 @@ export class RankedScene extends Phaser.Scene {
     const p = this.add.container(cx, H * 0.45).setDepth(8001);
     objs.push(p);
     const pw = Math.min(620, W - 40);
-    const ph = 640;
+    const ph = w.eligible ? 700 : 640; // (23-11-2026) elegible: sitio para el cofre
     const g = this.add.graphics();
     g.lineStyle(12, w.eligible ? GOLD : NEON, 0.25).strokeRoundedRect(-pw / 2, -ph / 2, pw, ph, 26);
     g.fillStyle(NAVY, 0.98).fillRoundedRect(-pw / 2, -ph / 2, pw, ph, 26);
@@ -1127,35 +1130,314 @@ export class RankedScene extends Phaser.Scene {
     fitText(sumTxt, pw - 40);
     p.add(sumTxt);
     if (w.promotedTo) p.add(this.add.text(0, -ph / 2 + 112, `¡LLEGASTE A LA META! SUBES A ${rankDef(w.promotedTo).name.toUpperCase()}${two ? ' · MARCO 2V2' : ''}`, { fontFamily: FONT, fontSize: '17px', color: '#62ef89' }).setOrigin(0.5));
+    // (23-11-2026, usuario) elegible: en vez de la caja con las monedas y el Rayo, el COFRE SEMANAL (late y vibra). Tocarlo o RECLAMAR cobra y lo
+    // abre en pantalla completa (showSeasonChest): sale el premio uno a uno (monedas → Rayo → dinero al azar)
+    let claimNow: (() => void) | null = null;
     if (w.eligible) {
-      const rg = this.add.graphics();
-      rg.fillStyle(0x1a1306, 1).fillRoundedRect(-pw / 2 + 40, -ph / 2 + 380, pw - 80, 96, 18);
-      rg.lineStyle(3, GOLD, 1).strokeRoundedRect(-pw / 2 + 40, -ph / 2 + 380, pw - 80, 96, 18);
-      p.add(rg);
-      p.add((two ? coin2v2Image : coinIcon)(this, -110, -ph / 2 + 428, 20)); // (17-11-2026) moneda: imagen moneda-1.webp (2v2: moneda 2v2)
-      p.add(this.add.text(-82, -ph / 2 + 428, fmtCoins(w.coins), { fontFamily: FONT, fontSize: '36px', color: '#ffd23f' }).setOrigin(0, 0.5));
-      if (w.cash) {
-        const cc = this.add.graphics({ x: 100, y: -ph / 2 + 428 });
-        drawCashIcon(cc, 1);
-        p.add(cc);
-        p.add(this.add.text(126, -ph / 2 + 428, `${w.cash}`, { fontFamily: FONT, fontSize: '36px', color: '#9fe8a0' }).setOrigin(0, 0.5));
-      }
-      const rayY = -ph / 2 + 455;
-      const rayIcon = this.add.graphics({ x: -44, y: rayY });
-      rayIcon.fillStyle(0x47dfff, 1).fillPoints([{ x: 2, y: -11 }, { x: 12, y: -11 }, { x: 6, y: -1 }, { x: 13, y: -1 }, { x: -1, y: 12 }, { x: 4, y: 2 }, { x: -2, y: 2 }], true);
-      p.add(rayIcon);
-      p.add(this.add.text(-25, rayY, `+${w.rays} RAYO${w.rays === 1 ? '' : 'S'}`, { fontFamily: FONT, fontSize: '17px', color: '#79e8ff' }).setOrigin(0, 0.5));
+      const ccy = -ph / 2 + 462;
+      const glow = this.add.circle(0, ccy, 96, GOLD, 0.22).setBlendMode(Phaser.BlendModes.ADD);
+      p.add(glow);
+      this.tweens.add({ targets: glow, scale: 1.25, alpha: 0.1, duration: 800, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
+      const chest = this.seasonChestArt(0, ccy, 170);
+      p.add(chest);
+      const steps: { angle?: number; scale?: number; duration: number }[] = [];
+      for (let k = 0; k < 6; k++) steps.push({ angle: k % 2 ? 5 : -5, duration: 60 });
+      steps.push({ angle: 0, scale: 1.08, duration: 160 });
+      steps.push({ scale: 1, duration: 200 });
+      steps.push({ angle: 0, duration: 1200 }); // pausa
+      this.tweens.chain({ targets: chest, tweens: steps, loop: -1 });
+      chest.setSize(170, 170).setInteractive({ useHandCursor: true });
+      chest.on('pointerup', () => claimNow?.());
+      const ht = this.add.text(0, ccy + 104, 'TOCA EL COFRE PARA ABRIRLO', { fontFamily: FONT, fontSize: '19px', color: '#ffe680', stroke: '#0a1638', strokeThickness: 5 }).setOrigin(0.5).setLetterSpacing(1);
+      p.add(ht);
+      this.tweens.add({ targets: ht, alpha: 0.5, duration: 650, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
       this.confetti(objs, [GOLD, st.color, 0xffffff]);
     } else {
       const t = this.add.text(0, -ph / 2 + 428, `Necesitabas ${two ? LEAGUE_2V2.minWinsForReward : RANKED.minWinsForReward} victorias (ganaste ${w.wins}).\nSigues en tu liga: ¡esta semana sí!`, { fontFamily: FONT, fontSize: '19px', color: '#9fb4e0', align: 'center', wordWrap: { width: pw - 70 } }).setOrigin(0.5);
       p.add(t);
     }
-    p.add(arcadeButton(this, 0, ph / 2 - 62, 300, 80, w.eligible ? 'RECLAMAR' : 'ENTENDIDO', () => {
+    let claimed = false;
+    claimNow = () => {
+      if (claimed) return;
+      claimed = true;
+      // se cobra AL TOCAR (idempotente): cerrar la app a mitad de la animación no pierde el premio
       const res = two ? claimWeekly2v2(w.week) : claimWeekly(w.week);
+      if (res.ok && res.given) return this.showSeasonChest(w, two);
       this.closeOverlay();
-      if (res.ok && res.given) this.toast(`+${fmtCoins(w.coins)} monedas${two ? ' 2v2' : ''}${w.cash ? ` · +${w.cash} dinero` : ''}${w.rays ? ` · +${w.rays} Rayo` : ''}`);
       this.time.delayedCall(300, () => this.presentQueue());
-    }, { palette: 'yellow' }));
+    };
+    p.add(arcadeButton(this, 0, ph / 2 - 62, 300, 80, w.eligible ? 'RECLAMAR' : 'ENTENDIDO', () => claimNow?.(), { palette: 'yellow' }));
+  }
+
+  /** (23-11-2026) cofre semanal (imagen, o el dibujo de respaldo) en un contenedor de `size` px. `lid`: solo la tapa / solo el cuerpo. */
+  private seasonChestArt(x: number, y: number, size: number, part?: 'lid' | 'body'): Phaser.GameObjects.Container {
+    const c = this.add.container(x, y);
+    if (this.textures.exists('liga-chest-week')) {
+      const img = this.add.image(0, 0, 'liga-chest-week').setDisplaySize(size, size);
+      // la tapa del arte (256 px) llega hasta y ~100
+      if (part === 'lid') img.setCrop(0, 0, 256, SEASON_LID_Y);
+      else if (part === 'body') img.setCrop(0, SEASON_LID_Y, 256, 256 - SEASON_LID_Y);
+      c.add(img);
+    } else if (part !== 'lid') {
+      const g = this.add.graphics();
+      drawChestIcon(g, 24, 0, 0);
+      g.setScale(size / 56);
+      c.add(g);
+    }
+    return c;
+  }
+
+  /**
+   * (23-11-2026, usuario) APERTURA DEL COFRE de fin de temporada, como la ruleta: pantalla completa con rayos y destellos, el cofre entra girando
+   * y rebotando; al tocar vibra cada vez más y se abre (sale la tapa y un golpe de luz); el premio sale de dentro UNO A UNO: monedas (cuenta
+   * hacia arriba) → Rayo → dinero al azar (3 a 10, domain/rankedConfig.weeklyChestCash). Cada premio pasa a la fila de abajo. Ya está cobrado.
+   */
+  private showSeasonChest(w: WeeklyReward, two: boolean) {
+    const W = this.scale.width;
+    const H = this.scale.height;
+    const objs = this.openOverlay(1);
+    const shade = objs[0];
+    const alive = () => this.overlay[0] === shade;
+    const add = <T extends Phaser.GameObjects.GameObject>(o: T): T => {
+      objs.push(o);
+      return o;
+    };
+    const st = LEAGUE_STYLE[w.league];
+    const cx = W / 2;
+    const cy = H * 0.44;
+    const D = 8001;
+    // Fondo opaco propio del cofre, detrás de los rayos y por encima de la liga.
+    const bgKey = 'season-chest-backdrop';
+    if (!this.textures.exists(bgKey)) {
+      const bw = 256;
+      const bh = 384;
+      const tex = this.textures.createCanvas(bgKey, bw, bh);
+      if (tex) {
+        const ctx = tex.getContext();
+        const light = ctx.createRadialGradient(bw / 2, bh * 0.44, 6, bw / 2, bh * 0.44, bh * 0.65);
+        light.addColorStop(0, '#244fba');
+        light.addColorStop(0.45, '#152c71');
+        light.addColorStop(1, '#050b23');
+        ctx.fillStyle = light;
+        ctx.fillRect(0, 0, bw, bh);
+        tex.refresh();
+      }
+    }
+    if (this.textures.exists(bgKey)) {
+      add(this.add.image(0, 0, bgKey).setOrigin(0).setDisplaySize(W, H).setScrollFactor(0).setDepth(D - 0.5));
+    }
+    // fondo: rayos que giran y destellos que suben (los de la ruleta)
+    const len = Math.max(W, H);
+    const rays = add(this.add.graphics({ x: cx, y: cy }).setDepth(D).setBlendMode(Phaser.BlendModes.ADD));
+    for (let i = 0; i < 18; i++) {
+      const a0 = (i / 18) * Math.PI * 2;
+      rays.fillStyle(i % 2 ? st.color : GOLD, 0.12).slice(0, 0, len, a0, a0 + Math.PI / 18, false).fillPath();
+    }
+    rays.setAlpha(0);
+    this.tweens.add({ targets: rays, alpha: 1, duration: 500 });
+    this.tweens.add({ targets: rays, angle: 360, duration: 40000, repeat: -1 });
+    for (let i = 0; i < 26; i++) {
+      const sz = Phaser.Math.FloatBetween(3, 8);
+      const s = add(this.add.star(Phaser.Math.Between(0, W), Phaser.Math.Between(0, H), 4, sz * 0.4, sz, Phaser.Utils.Array.GetRandom([0xffe9a0, 0xbfe0ff, 0xffffff]), 0.8).setDepth(D).setBlendMode(Phaser.BlendModes.ADD));
+      this.tweens.add({ targets: s, y: s.y - Phaser.Math.Between(120, 360), alpha: { from: 0.15, to: 0.9 }, angle: 180, duration: Phaser.Math.Between(2600, 5200), yoyo: true, repeat: -1, delay: Phaser.Math.Between(0, 2500), ease: 'Sine.easeInOut' });
+    }
+    // título
+    const title = add(this.add.text(cx, H * 0.1, 'FIN DE TEMPORADA', { fontFamily: FONT, fontSize: '50px', color: '#ffd23f', stroke: '#0a1638', strokeThickness: 10 }).setOrigin(0.5).setDepth(D + 5));
+    fitText(title, W - 40);
+    title.setShadow(0, 6, '#0a1638', 0, true, true);
+    const sub = add(this.add.text(cx, H * 0.1 + 56, `${rankDef(w.league).name.toUpperCase()}${two ? ' · 2V2' : ''}  ·  COFRE SEMANAL`, { fontFamily: FONT, fontSize: '22px', color: st.css, stroke: '#0a1638', strokeThickness: 5 }).setOrigin(0.5).setDepth(D + 5).setLetterSpacing(1));
+    title.setScale(0.4).setAlpha(0);
+    sub.setAlpha(0);
+    this.tweens.add({ targets: title, scale: 1, alpha: 1, duration: 420, ease: 'Back.easeOut' });
+    this.tweens.add({ targets: sub, alpha: 1, delay: 200, duration: 300 });
+    // resplandor + cofre (cuerpo y tapa por separado: la tapa sale volando al abrirse)
+    const size = Math.min(340, W * 0.5);
+    const glow = add(this.add.circle(cx, cy, size * 0.55, GOLD, 0.25).setDepth(D + 1).setBlendMode(Phaser.BlendModes.ADD));
+    this.tweens.add({ targets: glow, scale: 1.2, alpha: 0.12, duration: 900, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
+    const chest = add(this.add.container(cx, cy).setDepth(D + 3));
+    const inner = this.add.ellipse(0, -size / 2 + (SEASON_LID_Y / 256) * size + 4, size * 0.62, size * 0.16, 0xfff1b8, 0).setBlendMode(Phaser.BlendModes.ADD);
+    const body = this.seasonChestArt(0, 0, size, 'body');
+    const lid = this.seasonChestArt(0, 0, size, 'lid');
+    chest.add([inner, body, lid]);
+    chest.setScale(0.2).setAngle(-40).setAlpha(0);
+    this.tweens.add({ targets: chest, scale: 1, angle: 0, alpha: 1, duration: 750, ease: 'Back.easeOut' });
+    const sway = this.tweens.add({ targets: chest, angle: { from: -3, to: 3 }, delay: 800, duration: 900, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
+    const hint = add(this.add.text(cx, cy + size / 2 + 70, 'TOCA EL COFRE\nPARA ABRIRLO', { fontFamily: FONT, fontSize: '40px', color: '#ffffff', stroke: '#0a1638', strokeThickness: 9, align: 'center' }).setOrigin(0.5).setDepth(D + 5).setAlpha(0));
+    this.tweens.add({ targets: hint, alpha: 1, delay: 600, duration: 300, onComplete: () => this.tweens.add({ targets: hint, alpha: 0.55, scale: 1.06, duration: 620, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' }) });
+
+    // premios en orden (ya cobrados): monedas → Rayo → dinero
+    const cash = w.cash + weeklyChestCash(w, two);
+    const prizes: { kind: 'coins' | 'rays' | 'cash'; amount: number; label: string; color: string }[] = [
+      { kind: 'coins', amount: w.coins, label: two ? 'MONEDAS 2V2' : 'MONEDAS', color: '#ffd23f' },
+      ...(w.rays ? [{ kind: 'rays' as const, amount: w.rays, label: w.rays === 1 ? 'RAYO' : 'RAYOS', color: '#79e8ff' }] : []),
+      ...(cash ? [{ kind: 'cash' as const, amount: cash, label: 'DINERO', color: '#9fe8a0' }] : []),
+    ];
+    const prizeIcon = (kind: 'coins' | 'rays' | 'cash', r: number): Phaser.GameObjects.Container => {
+      const c = this.add.container(0, 0);
+      if (kind === 'coins') c.add((two ? coin2v2Image : coinIcon)(this, 0, 0, r));
+      else if (kind === 'cash') {
+        if (this.textures.exists('cash-pack')) c.add(this.add.image(0, 0, 'cash-pack').setDisplaySize(r * 2.4, r * 2.4));
+        else {
+          const g = this.add.graphics();
+          drawCashIcon(g, r / 14);
+          c.add(g);
+        }
+      } else {
+        const g = this.add.graphics();
+        const k = r / 12;
+        const bolt = [{ x: 2, y: -11 }, { x: 12, y: -11 }, { x: 6, y: -1 }, { x: 13, y: -1 }, { x: -1, y: 12 }, { x: 4, y: 2 }, { x: -2, y: 2 }].map((q) => ({ x: (q.x - 5) * k, y: q.y * k }));
+        g.fillStyle(0x0a1638, 1).fillPoints(bolt.map((q) => ({ x: q.x * 1.12, y: q.y * 1.12 })), true);
+        g.fillStyle(0x47dfff, 1).fillPoints(bolt, true);
+        g.fillStyle(0xd8fbff, 0.7).fillPoints(bolt.map((q) => ({ x: q.x * 0.5 - 1.5 * k, y: q.y * 0.5 - 2 * k })), true);
+        c.add(g);
+      }
+      return c;
+    };
+    const burst = (x: number, y: number, n: number, far: number) => {
+      const ring = add(this.add.circle(x, y, 30, 0xffffff, 0).setStrokeStyle(8, GOLD, 1).setDepth(D + 6).setBlendMode(Phaser.BlendModes.ADD));
+      this.tweens.add({ targets: ring, scale: far / 40, alpha: 0, duration: 650, ease: 'Cubic.easeOut' });
+      for (let i = 0; i < n; i++) {
+        const a = (i / n) * Math.PI * 2;
+        const d = Phaser.Math.FloatBetween(far * 0.45, far);
+        const s = add(this.add.star(x, y, 5, 5, 12, Phaser.Utils.Array.GetRandom([0xffd23f, 0xfff1b8, 0xffffff, st.light])).setDepth(D + 6).setBlendMode(Phaser.BlendModes.ADD));
+        this.tweens.add({ targets: s, x: x + Math.cos(a) * d, y: y + Math.sin(a) * d, angle: 360, alpha: 0, scale: 0.4, duration: Phaser.Math.Between(600, 900), ease: 'Cubic.easeOut' });
+      }
+    };
+
+    // fila de abajo: cada premio ya visto se queda ahí
+    const rowY = H * 0.8;
+    const slotX = (i: number) => cx + (i - (prizes.length - 1) / 2) * Math.min(200, (W - 60) / prizes.length);
+    let phase: 'idle' | 'opening' | 'prize' | 'done' = 'idle';
+    let step = -1;
+    let current: Phaser.GameObjects.GameObject[] = [];
+    let currentIcon: Phaser.GameObjects.Container | null = null;
+    let canNext = false;
+    const cont = add(this.add.text(cx, H * 0.92, 'TOCA PARA CONTINUAR', { fontFamily: FONT, fontSize: '28px', color: '#ffffff', stroke: '#0a1638', strokeThickness: 7 }).setOrigin(0.5).setDepth(D + 5).setAlpha(0).setLetterSpacing(2));
+
+    const settleCurrent = () => {
+      // el premio a la vista baja a su sitio de la fila
+      const i = step;
+      const p = prizes[i];
+      if (!p || !currentIcon) return;
+      for (const o of current) {
+        this.tweens.killTweensOf(o);
+        this.tweens.add({ targets: o, alpha: 0, duration: 200, onComplete: () => o.destroy() });
+      }
+      current = [];
+      const ic = currentIcon;
+      currentIcon = null;
+      this.tweens.killTweensOf(ic);
+      this.tweens.add({ targets: ic, x: slotX(i), y: rowY - 18, scale: 0.42, angle: 0, duration: 380, ease: 'Cubic.easeInOut' });
+      const t = add(this.add.text(slotX(i), rowY + 40, `+${fmtCoins(p.amount)}`, { fontFamily: FONT, fontSize: '28px', color: p.color, stroke: '#0a1638', strokeThickness: 6 }).setOrigin(0.5).setDepth(D + 5).setAlpha(0));
+      this.tweens.add({ targets: t, alpha: 1, delay: 300, duration: 220 });
+    };
+
+    const showPrize = () => {
+      step++;
+      const p = prizes[step];
+      if (!p) {
+        phase = 'done';
+        this.tweens.add({ targets: chest, alpha: 0.35, duration: 400 });
+        this.time.delayedCall(250, () => {
+          if (!alive()) return;
+          canNext = true;
+          this.tweens.add({ targets: cont, alpha: 1, duration: 300, onComplete: () => this.tweens.add({ targets: cont, alpha: 0.4, duration: 650, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' }) });
+        });
+        return;
+      }
+      phase = 'prize';
+      canNext = false;
+      const py = H * 0.36;
+      const r = Math.min(110, W * 0.15);
+      // sale del cofre: de la boca del cofre hacia arriba, con rebote
+      const ic = add(prizeIcon(p.kind, r).setDepth(D + 4));
+      ic.setPosition(cx, cy - size * 0.1).setScale(0.1).setAngle(-30);
+      currentIcon = ic;
+      this.tweens.add({ targets: ic, y: py, scale: 1, angle: 0, duration: 560, ease: 'Back.easeOut' });
+      this.tweens.add({ targets: ic, y: py - 10, delay: 600, duration: 1000, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
+      const halo = add(this.add.circle(cx, py, r * 1.3, p.kind === 'rays' ? 0x47dfff : p.kind === 'cash' ? 0x62ef89 : GOLD, 0).setDepth(D + 2).setBlendMode(Phaser.BlendModes.ADD));
+      this.tweens.add({ targets: halo, fillAlpha: 0.3, scale: { from: 0.4, to: 1.2 }, delay: 120, duration: 480, ease: 'Cubic.easeOut' });
+      this.time.delayedCall(200, () => alive() && burst(cx, py, 16, 180));
+      wheelClaim(this);
+      // cantidad que cuenta hacia arriba y su nombre
+      const amt = add(this.add.text(cx, py + r + 62, '+0', { fontFamily: FONT, fontSize: '96px', color: '#ffffff', stroke: '#0a1638', strokeThickness: 14 }).setOrigin(0.5).setDepth(D + 5).setAlpha(0).setScale(0.4));
+      amt.setShadow(0, 8, '#0a1638', 0, true, true);
+      this.tweens.add({ targets: amt, alpha: 1, scale: 1, delay: 260, duration: 380, ease: 'Back.easeOut' });
+      const c = { v: 0 };
+      this.tweens.add({ targets: c, v: p.amount, delay: 320, duration: p.amount > 20 ? 800 : 400, ease: 'Cubic.easeOut', onUpdate: () => amt.setText(`+${fmtCoins(Math.round(c.v))}`), onComplete: () => amt.setText(`+${fmtCoins(p.amount)}`) });
+      const lb = add(this.add.text(cx, amt.y + 76, p.label, { fontFamily: FONT, fontSize: '40px', color: p.color, stroke: '#0a1638', strokeThickness: 9 }).setOrigin(0.5).setDepth(D + 5).setAlpha(0).setLetterSpacing(3));
+      this.tweens.add({ targets: lb, alpha: 1, delay: 560, duration: 300 });
+      current = [halo, amt, lb];
+      // tocar pasa al siguiente; si no, pasa solo
+      this.time.delayedCall(650, () => {
+        if (!alive() || step !== prizes.indexOf(p)) return;
+        canNext = true;
+      });
+      this.time.delayedCall(2000, () => {
+        if (!alive() || step !== prizes.indexOf(p) || phase !== 'prize') return;
+        settleCurrent();
+        showPrize();
+      });
+    };
+
+    const open = () => {
+      phase = 'opening';
+      sway.stop();
+      this.tweens.killTweensOf(hint);
+      this.tweens.add({ targets: hint, alpha: 0, duration: 200 });
+      this.tweens.add({ targets: sub, alpha: 0, duration: 200 });
+      // vibra cada vez más (3 sacudidas) …
+      const shakes: { angle?: number; scale?: number; duration: number; onStart?: () => void }[] = [];
+      for (let b = 0; b < 3; b++) {
+        const amp = 4 + b * 4;
+        shakes.push({ angle: 0, duration: 1, onStart: () => { if (alive()) { wheelTick(this, 1.2 + b * 0.25); this.cameras.main.shake(120 + b * 60, 0.003 + b * 0.003); } } });
+        for (let k = 0; k < 6; k++) shakes.push({ angle: k % 2 ? amp : -amp, scale: 1 + b * 0.05, duration: 45 });
+        shakes.push({ angle: 0, duration: 45 });
+        shakes.push({ angle: 0, duration: 140 });
+      }
+      this.tweens.chain({
+        targets: chest,
+        tweens: shakes,
+        onComplete: () => {
+          if (!alive()) return;
+          // … y se abre: la tapa sale volando, golpe de luz desde dentro
+          wheelWin(this, true);
+          this.cameras.main.flash(260, 255, 235, 170);
+          this.cameras.main.shake(260, 0.01);
+          this.tweens.add({ targets: lid, y: -size * 0.75, angle: -28, alpha: 0, duration: 520, ease: 'Cubic.easeOut' });
+          this.tweens.add({ targets: inner, fillAlpha: 0.95, scaleX: 1.3, duration: 260 });
+          this.tweens.add({ targets: chest, scale: 0.85, y: cy + size * 0.38, angle: 0, duration: 500, ease: 'Back.easeOut' });
+          this.tweens.add({ targets: glow, y: cy + size * 0.2, duration: 500 });
+          const beam = add(this.add.graphics({ x: cx, y: cy + size * 0.38 - size * 0.3 }).setDepth(D + 2).setBlendMode(Phaser.BlendModes.ADD).setAlpha(0));
+          beam.fillStyle(0xfff1b8, 0.35).fillTriangle(-size * 0.28, 0, size * 0.28, 0, 0, -H);
+          beam.fillStyle(0xffffff, 0.25).fillTriangle(-size * 0.5, 0, -size * 0.1, 0, -size * 0.9, -H);
+          beam.fillStyle(0xffffff, 0.25).fillTriangle(size * 0.1, 0, size * 0.5, 0, size * 0.9, -H);
+          this.tweens.add({ targets: beam, alpha: 1, duration: 200 });
+          this.tweens.add({ targets: beam, alpha: 0.4, delay: 200, duration: 700, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
+          burst(cx, cy, 34, 340);
+          this.confetti(objs, [GOLD, st.color, st.light, 0xffffff]);
+          this.time.delayedCall(560, () => alive() && showPrize());
+        },
+      });
+    };
+
+    const zone = add(this.add.zone(0, 0, W, H).setOrigin(0).setDepth(D + 10).setInteractive());
+    zone.on('pointerup', () => {
+      if (phase === 'idle') {
+        if (chest.scale < 0.9) return; // aún entrando
+        return open();
+      }
+      if (!canNext) return;
+      if (phase === 'prize') {
+        settleCurrent();
+        showPrize();
+      } else if (phase === 'done') {
+        phase = 'opening'; // (un solo cierre)
+        this.closeOverlay();
+        this.toast(prizes.map((q) => `+${fmtCoins(q.amount)} ${q.kind === 'coins' ? (two ? 'monedas 2v2' : 'monedas') : q.kind === 'rays' ? 'Rayo' : 'dinero'}`).join(' · '));
+        this.time.delayedCall(300, () => this.presentQueue());
+      }
+    });
   }
 
   // ================================================================ utilidades
@@ -1173,7 +1455,10 @@ export class RankedScene extends Phaser.Scene {
 
   private closeOverlay() {
     if (!this.overlay.length) return;
-    this.overlay.forEach((o) => o.destroy());
+    this.overlay.forEach((o) => {
+      this.tweens.killTweensOf(o);
+      o.destroy();
+    });
     this.overlay = [];
     this.events.emit('overlay-closed');
     this.scrollY = this.overlayReturnScroll;

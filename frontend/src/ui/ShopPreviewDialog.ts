@@ -41,7 +41,15 @@ export function openShopPreview(scene: Phaser.Scene, o: ShopPreviewOpts) {
   const H = scene.scale.height;
   const root = scene.add.container(0, 0).setDepth(8500);
   let demo: PowerDemo | null = null;
+  let prepare: Phaser.Time.TimerEvent | undefined;
   let closed = false;
+  const stopDemo = () => {
+    prepare?.remove();
+    prepare = undefined;
+    demo?.destroy();
+    demo = null;
+  };
+  root.once(Phaser.GameObjects.Events.DESTROY, stopDemo);
   const dim = scene.add.rectangle(0, 0, W, H, 0x02060f, 0.84).setOrigin(0).setInteractive();
   root.add(dim);
 
@@ -69,9 +77,7 @@ export function openShopPreview(scene: Phaser.Scene, o: ShopPreviewOpts) {
   const close = () => {
     if (closed) return;
     closed = true;
-    demo?.destroy();
-    demo = null;
-    dim.disableInteractive();
+    stopDemo();
     scene.tweens.add({ targets: root, alpha: 0, duration: 120, onComplete: () => root.destroy() });
   };
   dim.on('pointerup', close);
@@ -93,7 +99,10 @@ export function openShopPreview(scene: Phaser.Scene, o: ShopPreviewOpts) {
   const maskG = scene.make.graphics({}, false);
   maskG.fillRect(sx, sy, sw, sh);
   const mask = maskG.createGeometryMask();
-  root.once(Phaser.GameObjects.Events.DESTROY, () => maskG.destroy());
+  root.once(Phaser.GameObjects.Events.DESTROY, () => {
+    mask.destroy();
+    maskG.destroy();
+  });
   const demoRoot = scene.add.container(0, 0);
   demoRoot.setMask(mask);
   panel.add(demoRoot);
@@ -102,7 +111,8 @@ export function openShopPreview(scene: Phaser.Scene, o: ShopPreviewOpts) {
   const dot = scene.add.circle(sx + 24, sy + 24, 5, 0xff4f5e, 1);
   const cap = scene.add.text(sx + 38, sy + 24, `EN ACCIÓN · ${o.name.toUpperCase()}`, { fontFamily: FONT, fontSize: '16px', color: '#ffffff', stroke: '#061431', strokeThickness: 4 }).setOrigin(0, 0.5).setLetterSpacing(2);
   fitText(cap, sw - 60);
-  panel.add([dot, cap]);
+  const loading = scene.add.text(sx + sw / 2, sy + sh / 2, 'Preparando demostración…', { fontFamily: FONT, fontSize: '20px', color: '#b9cdee' }).setOrigin(0.5);
+  panel.add([dot, cap, loading]);
   scene.tweens.add({ targets: dot, alpha: 0.25, duration: 520, yoyo: true, repeat: -1 });
   // líneas de la pantalla: ~120 rectángulos que un Graphics recorrería en cada fotograma; pintadas una vez en una textura
   const scan = bakeGraphics(scene, `shop-bake-scan-${sw}x${sh}`, { x0: 0, y0: 0, w: sw, h: sh }, 1, (g) => {
@@ -142,6 +152,7 @@ export function openShopPreview(scene: Phaser.Scene, o: ShopPreviewOpts) {
     const press = (c: Phaser.GameObjects.Container, fn: () => void) => {
       c.setSize(bw, h).setInteractive({ useHandCursor: true });
       c.on('pointerup', () => {
+        if (closed) return;
         scene.tweens.add({ targets: c, scale: { from: 0.92, to: 1 }, duration: 200, ease: 'Back.easeOut' });
         fn();
       });
@@ -203,7 +214,8 @@ export function openShopPreview(scene: Phaser.Scene, o: ShopPreviewOpts) {
     const dollar = scene.add.text(-hw + 30, 0, '$', { fontFamily: FONT, fontSize: '38px', color: '#d8ffe0', stroke: '#06381a', strokeThickness: 5 }).setOrigin(0.5);
     const rtx = -hw + sw + 12;
     const rarea = hw - rtx - 14;
-    const r1 = scene.add.text(rtx + rarea / 2, -16, 'COMPRAR', { fontFamily: FONT, fontSize: '13px', color: '#0d4a1f' }).setOrigin(0.5).setLetterSpacing(2);
+    const r1 = scene.add.text(rtx + rarea / 2, -16, 'PRÓXIMAMENTE', { fontFamily: FONT, fontSize: '13px', color: '#0d4a1f' }).setOrigin(0.5).setLetterSpacing(1);
+    fitText(r1, rarea);
     const r2 = scene.add.text(rtx + rarea / 2, 9, clpLabel(o.clp), { fontFamily: FONT, fontSize: '26px', color: '#ffffff', stroke: '#0a3a18', strokeThickness: 5 }).setOrigin(0.5);
     fitText(r2, rarea);
     rc.add([rg, dollar, r1, r2]);
@@ -215,11 +227,14 @@ export function openShopPreview(scene: Phaser.Scene, o: ShopPreviewOpts) {
   frame.lineStyle(3, o.color, 1).strokeRoundedRect(px, py, pw, ph, 24);
   panel.add(frame);
 
-  // la demostración arranca al abrir (se ajusta al hueco de arriba/abajo)
+  // Deja que aparezca el diálogo antes de construir la cancha y los efectos.
   root.setAlpha(0);
   scene.tweens.add({ targets: root, alpha: 1, duration: 180 });
-  // el mismo encuadre que en PERSONALIZAR (30 arriba para el rótulo, 40 abajo)
-  demo = o.demo(demoRoot, { x: sx, y: sy, w: sw, h: sh }, { x: sx, y: sy + 30, w: sw, h: sh - 30 - 40 });
-  demo.setActive(true);
+  prepare = scene.time.delayedCall(80, () => {
+    prepare = undefined;
+    loading.setVisible(false);
+    demo = o.demo(demoRoot, { x: sx, y: sy, w: sw, h: sh }, { x: sx, y: sy + 30, w: sw, h: sh - 30 - 40 });
+    demo.setActive(true);
+  });
   return root;
 }

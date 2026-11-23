@@ -41,6 +41,7 @@ const clientIp = (socket: Socket) => {
 
 /** log de diagnóstico de partidas (logs/matches/…): lo lee la API protegida con LOG_KEY */
 export const matchLog = new MatchLogger();
+const logForRoom = (room: Room, src: string, entry: Record<string, unknown>) => matchLog.write(room.id, src, entry, room.mode);
 
 export function registerSocketHandlers(io: Server) {
   const rooms = new RoomManager(
@@ -54,7 +55,7 @@ export function registerSocketHandlers(io: Server) {
   );
   const readyTimers = new Map<string, NodeJS.Timeout>();
   /** LOG: sala y rol de cada conexión, también unos segundos DESPUÉS del fin (el juego manda el log del final tarde) */
-  const logRoom = new Map<string, { roomId: string; role: string; until: number }>();
+  const logRoom = new Map<string, { roomId: string; role: string; mode: Room['mode']; until: number }>();
   const LOG_AFTER_MS = 30_000;
   /** RECONEXIÓN: jugador ausente (clave) -> temporizador que lo da por perdido */
   const awayTimers = new Map<string, NodeJS.Timeout>();
@@ -82,8 +83,8 @@ export function registerSocketHandlers(io: Server) {
       awayTimers.delete(p.token);
     }
     log(`sala ${short(room.id)} terminada: gana ${msg.winner} (${msg.reason}) ${msg.games.host}-${msg.games.guest}`);
-    room.players.forEach((p, i) => logRoom.set(p.id, { roomId: room.id, role: i === 0 ? 'host' : 'guest', until: Date.now() + LOG_AFTER_MS }));
-    matchLog.write(room.id, 'srv', { ev: 'over', winner: msg.winner, reason: msg.reason, games: `${msg.games.host}-${msg.games.guest}` });
+    room.players.forEach((p, i) => logRoom.set(p.id, { roomId: room.id, role: i === 0 ? 'host' : 'guest', mode: room.mode, until: Date.now() + LOG_AFTER_MS }));
+    logForRoom(room, 'srv', { ev: 'over', winner: msg.winner, reason: msg.reason, games: `${msg.games.host}-${msg.games.guest}` });
     rooms.finish(room.id);
     started.delete(room.id);
   };
@@ -96,7 +97,7 @@ export function registerSocketHandlers(io: Server) {
     if (t) clearTimeout(t);
     readyTimers.delete(room.id);
     for (const p of room.players) io.to(p.id).emit(EV.START, { roomId: room.id });
-    matchLog.write(room.id, 'srv', { ev: 'start', mode: room.mode, host: room.players[0]?.profile.name, guest: room.players[1]?.profile.name });
+    logForRoom(room, 'srv', { ev: 'start', mode: room.mode, host: room.players[0]?.profile.name, guest: room.players[1]?.profile.name });
     matchTimers.set(
       room.id,
       setTimeout(() => {
@@ -193,7 +194,7 @@ export function registerSocketHandlers(io: Server) {
         io.to(host.id).emit(EV.MATCHED, toHost);
         io.to(guest.id).emit(EV.MATCHED, toGuest);
         log(`emparejados ${room.mode === '2v2' ? '2v2 (compañeros) ' : ''}${host.profile.name} ${room.mode === '2v2' ? '+' : 'vs'} ${guest.profile.name} sala ${short(room.id)} 2/2 → PLAYING`);
-        matchLog.write(room.id, 'srv', { ev: 'matched', mode: room.mode, host: host.profile.name, hostSkin: host.profile.skin, guest: guest.profile.name, guestSkin: guest.profile.skin });
+        logForRoom(room, 'srv', { ev: 'matched', mode: room.mode, host: host.profile.name, hostSkin: host.profile.skin, guest: guest.profile.name, guestSkin: guest.profile.skin });
         // si alguno no llega a cargar, se empieza igualmente al vencer la espera
         readyTimers.set(
           room.id,
@@ -241,7 +242,7 @@ export function registerSocketHandlers(io: Server) {
           if (d.kind === 'ping' || d.kind === 'pong') return; // medición del retraso cada 2 s: solo ruido en el log
           // 2v2: actor del golpe / aviso (0 = el humano que lo envía o su compañero, 1 y 2 = los bots del host)
           const actor = typeof d.a === 'number' ? d.a : typeof d.data?.a === 'number' ? d.data.a : undefined;
-          matchLog.write(room.id, 'srv', { ev: `relay:${ev}`, from: rooms.roleOf(room, socket.id), kind: String(d.kind ?? ''), seq: typeof d.seq === 'number' ? d.seq : undefined, a: actor });
+          logForRoom(room, 'srv', { ev: `relay:${ev}`, from: rooms.roleOf(room, socket.id), kind: String(d.kind ?? ''), seq: typeof d.seq === 'number' ? d.seq : undefined, a: actor });
         }
       });
     socket.on(EV.STATE, relay(EV.STATE, 'state', sanitizeState, true));
@@ -256,13 +257,13 @@ export function registerSocketHandlers(io: Server) {
         const room = rooms.roomOf(socket.id);
         if (room) {
           const src = rooms.roleOf(room, socket.id) ?? '?';
-          for (const e of entries) matchLog.write(room.id, src, e);
+          for (const e of entries) logForRoom(room, src, e);
           return;
         }
         // la sala ya terminó: lo que llega en los segundos siguientes (pantalla final) va igual a su log
         const last = logRoom.get(socket.id);
         if (!last || Date.now() > last.until) return;
-        for (const e of entries) matchLog.write(last.roomId, last.role, e);
+        for (const e of entries) matchLog.write(last.roomId, last.role, e, last.mode);
       }),
     );
 
@@ -280,7 +281,7 @@ export function registerSocketHandlers(io: Server) {
         if (msg.kind !== 'point') return; // faltas y let no suman en el marcador oficial
         const res = rooms.point(socket.id, msg.seq, msg.to === 'me');
         if (!res) return;
-        matchLog.write(res.room.id, 'srv', { ev: 'point', by: rooms.roleOf(res.room, socket.id), to: msg.to, reason: msg.reason, score: `${res.room.score.points.join('-')} / ${res.room.score.games.join('-')}` });
+        logForRoom(res.room, 'srv', { ev: 'point', by: rooms.roleOf(res.room, socket.id), to: msg.to, reason: msg.reason, score: `${res.room.score.points.join('-')} / ${res.room.score.games.join('-')}` });
         const sc = scoreMsg(res.room);
         for (const p of res.room.players) io.to(p.id).emit(EV.SCORE, sc);
         if (res.matchOver) finish(res.room);
@@ -301,7 +302,7 @@ export function registerSocketHandlers(io: Server) {
         awayTimers.delete(r.player.token);
         const msg: ResumedMsg = { score: scoreMsg(r.room) };
         socket.emit(EV.RESUMED, msg);
-        matchLog.write(r.room.id, 'srv', { ev: 'rejoin', who: r.player.profile.name });
+        logForRoom(r.room, 'srv', { ev: 'rejoin', who: r.player.profile.name });
         // 2v2: si vuelve el compañero, el host sigue sin repetir el punto: solo le devuelve su personaje (MATE_BACK)
         if (r.opponent) io.to(r.opponent.id).emit(r.room.mode === '2v2' && rooms.roleOf(r.room, socket.id) === 'guest' ? EV.MATE_BACK : EV.OPPONENT_BACK, msg.score);
         log(`reconectado ${r.player.profile.name} a la sala ${short(r.room.id)} (${short(socket.id)})`);
@@ -319,14 +320,14 @@ export function registerSocketHandlers(io: Server) {
       if (r.promoted) {
         if (r.opponent) io.to(r.opponent.id).emit(EV.PROMOTED, scoreMsg(r.room));
         log(`anfitrión fuera (${reason}) en la sala ${short(r.room.id)}: el compañero pasa a anfitrión`);
-        matchLog.write(r.room.id, 'srv', { ev: 'host-promoted', reason });
+        logForRoom(r.room, 'srv', { ev: 'host-promoted', reason });
         return;
       }
       // 2v2: se fue el compañero: el partido sigue con un bot en su lugar (el host lo juega)
       if (r.continues) {
         if (r.opponent) io.to(r.opponent.id).emit(EV.MATE_AWAY, { gone: reason === 'abandon' });
         log(`compañero fuera (${reason}) en la sala ${short(r.room.id)}: juega un bot`);
-        matchLog.write(r.room.id, 'srv', { ev: 'mate-away', reason });
+        logForRoom(r.room, 'srv', { ev: 'mate-away', reason });
         return;
       }
       if (r.opponent) io.to(r.opponent.id).emit(EV.OPPONENT_LEFT, { reason });
@@ -369,7 +370,7 @@ export function registerSocketHandlers(io: Server) {
                 if (r.promoted) {
                   if (r.opponent) io.to(r.opponent.id).emit(EV.PROMOTED, scoreMsg(r.room));
                   log(`anfitrión no volvió en la sala ${short(r.room.id)}: el compañero pasa a anfitrión`);
-                  matchLog.write(r.room.id, 'srv', { ev: 'host-promoted', reason: 'disconnect' });
+                  logForRoom(r.room, 'srv', { ev: 'host-promoted', reason: 'disconnect' });
                   return;
                 }
                 if (r.opponent) io.to(r.opponent.id).emit(EV.OPPONENT_LEFT, { reason: 'disconnect' });
@@ -377,7 +378,7 @@ export function registerSocketHandlers(io: Server) {
               }, CONFIG.reconnectGraceMs),
             );
             log(`ausente ${a.player.profile.name} en la sala ${short(room.id)}: ${CONFIG.reconnectGraceMs} ms para volver`);
-            matchLog.write(room.id, 'srv', { ev: 'away', who: a.player.profile.name, why });
+            logForRoom(room, 'srv', { ev: 'away', who: a.player.profile.name, why });
             return;
           }
         }

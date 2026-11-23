@@ -400,3 +400,6 @@ posible es la D2 (b), que habría que justificar aparte.
 - Límite actual: sin cuentas, el id es del dispositivo y las monedas Ranked se siguen moviendo en el teléfono. El servidor decide la activación y la hora; `stake`/`settle` del servidor quedan listos para la etapa 4 (endpoints Ranked).
 
 - MODO RIESGO x2, sonidos (20-11-2026, usuario): al mantener presionado suena `modo-riesgo.mp3` y el anillo se llena en 2 s (antes 3 s; `RISK_FILL_MS` en MenuScene). Al soltar antes se corta. Al activarse suena `uiSound 'risk-on'` (sintetizado; antes power-up).
+
+
+**Cofre de fin de temporada (23-11-2026, usuario).** La recompensa semanal elegible (1v1 y 2v2) se muestra como el COFRE SEMANAL (cofre-semanal.webp): al tocarlo o RECLAMAR se cobra y se abre en pantalla completa (RankedScene.showSeasonChest, misma presentación que la ruleta). Salen uno a uno: monedas → Rayo → dinero. El cofre trae además **dinero al azar entre 3 y 10** (ankedConfig.weeklyChestCash, determinista por modo + semana + liga), que se suma al dinero de la liga y de la posición.

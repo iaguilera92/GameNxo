@@ -92,7 +92,7 @@ export function shopOffers(kind: ItemKind, now: number, s?: RerollView): ShopIte
   const items = pool(kind);
   const show = rot?.show ?? ROTATION_SHOW;
   const byRarity = (list: ShopItem[]) => kind === 'charge'
-    ? list.sort((a, b) => ['normal', 'especial', 'epica', 'legendaria'].indexOf(a.rarity) - ['normal', 'especial', 'epica', 'legendaria'].indexOf(b.rarity) || a.name.localeCompare(b.name, 'es'))
+    ? list.sort((a, b) => ['normal', 'especial', 'epica', 'legendaria'].indexOf(a.rarity ?? 'normal') - ['normal', 'especial', 'epica', 'legendaria'].indexOf(b.rarity ?? 'normal') || a.name.localeCompare(b.name, 'es'))
     : list;
   if (!rot || items.length <= show) return byRarity(items);
   const order = rotationOrder(kind);

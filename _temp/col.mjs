@@ -1,0 +1,1 @@
+import { decode } from '../frontend/tools/png-lite.mjs'; const [f,xs]=process.argv.slice(2); const im=decode(f); for (const x of xs.split(',').map(Number)) { let s='x '+x+': '; for (let y=240;y<1100;y+=15){ const i=(y*im.w+x)*4; const r=im.px[i],g=im.px[i+1],b=im.px[i+2]; const c = g>150&&r<60?'G':(r>200&&g>170?'p':(r>200?'P':(g>r?'v':'.'))); s+=c; } console.log(s); }

@@ -184,6 +184,8 @@ export interface HitMsg {
   /** remate con salto (SMASH o remate del globo en el círculo) y choque eléctrico de la carga al 100 %: el receptor los repite */
   special?: boolean;
   shock?: boolean;
+  defensive?: boolean;
+  rallyFault?: 'net' | 'out';
   /** saque con efecto (violeta); en saques normales no viene */
   serveSpin?: boolean;
   /** estirada: lado hacia el que se tira, en las coordenadas del EMISOR (+1 / -1); el receptor lo espeja */
@@ -240,6 +242,7 @@ export type ActionKind =
   | 'smash-disarmed'
   | 'smash-cine'
   | 'inferno-cine'
+  | 'rally-clock'
   | 'defensive';
 
 export interface ActionMsg {

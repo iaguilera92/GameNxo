@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import { FONT } from '../ui/theme';
 import { COINS_LOSS, COINS_SURRENDER, COINS_WIN, XP_LOSS, XP_SURRENDER, XP_WIN, xpToNext, MAX_LEVEL } from '../config';
-import { addCoins, addCoins2v2, addXp, getProfile } from '../logic/Profile';
+import { addCoins, addCoins2v2, addXp, getProfile, grantCoins2v2 } from '../logic/Profile';
 import { loadBet2v2 } from '../ui/PlayEntry2v2';
 import { COINS_2V2, friendly2v2 } from '../domain/coins2v2';
 import { applyCharColor } from '../fx/CharColorFx';
@@ -16,7 +16,7 @@ import { coin2v2Image, coinIcon, drawWheelFace, drawXpIcon } from '../ui/wheelAr
 import { WHEEL } from '../domain/wheelConfig';
 import { commit, getPlayer } from '../domain/playerStore';
 import { awardMastery } from '../domain/operations';
-import { MISSIONS, missionCoins, type MissionId } from '../domain/matchMissions';
+import { MISSIONS, missionCoins, missionReward, type MissionId } from '../domain/matchMissions';
 import { masteryLevel, passiveOf } from '../domain/characterPassives';
 
 /** (18-11-2026, usuario) fila "+1 MAESTRÍA" en el resultado: oculta (la maestría se ve en PERSONALIZAR) */
@@ -82,7 +82,7 @@ export interface MatchEndData {
    * el partido (MatchScene) no necesita saber nada de Ranked. `delta` = monedas netas (premio − entrada).
    */
   ranked?: { delta: number; rank: RankId; level: number; position?: number; promotedTo?: RankId; bet?: number; entry?: number; pot?: number };
-  /** MISIONES POR PARTIDA cumplidas (solo 1v1; docs/MISIONES.md). Sin el campo (2v2) no hay sección ADICIONALES */
+  /** MISIONES POR PARTIDA cumplidas (docs/MISIONES.md; desde el 23-11-2026 también en el 2v2, las mismas). Sin el campo no hay sección ADICIONALES */
   missions?: MissionId[];
 }
 
@@ -98,6 +98,15 @@ const ADD_H = 200; // (19-11-2026, usuario) fila de la cabecera más alta (176 �
 const ADD_CARD_H = 126;
 /** alto de los cuadros de los personajes del duelo */
 const DUEL_BOX_H = 214;
+/**
+ * (23-11-2026, usuario) 2v2: el duelo lleva las MONEDAS 2v2 de cada equipo ARRIBA de su card (fila propia de DUEL_2V2_COIN_ROW) y dentro de la card
+ * 2 filas × 2 columnas: los dos personajes y, debajo de cada uno, sus puntos. Alto extra del panel respecto de RANKED_H.
+ */
+const DUEL_2V2_COIN_ROW = 24;
+/** 2v2: aire extra entre las 4 cards de ADICIONALES y el borde de abajo del panel (23-11-2026, usuario) */
+const ADD_2V2_PAD = 18;
+/** 2v2: el panel del resultado casi a todo el ancho (margen de cada lado) */
+const PANEL_2V2_MARGIN = 8;
 /** zoom al que llega el mapa de atrás cuando terminan de pasar las monedas (parte de 0,9, el de matchEnd.ts) */
 const MAP_ZOOM_END = 0.74;
 
@@ -302,7 +311,7 @@ export class MatchEndScene extends Phaser.Scene {
     this.banner(W, win);
     const btnH = 84;
     const btnY = H - 26 - btnH / 2;
-    const panelH = 108 + 16 + CARD_H + 22 + this.mrow + (this.duel() ? RANKED_H : 0) + (d.missions ? ADD_H : 0);
+    const panelH = 108 + 16 + CARD_H + 22 + this.mrow + (this.duel() ? RANKED_H + (d.doubles ? DUEL_2V2_COIN_ROW : 0) : 0) + (d.missions ? ADD_H + (d.doubles ? ADD_2V2_PAD : 0) : 0);
     const panelTop = btnY - btnH / 2 - 14 - panelH;
     this.resultPanel(W, panelTop, panelH);
     this.buttons(W, btnY, btnH);
@@ -401,7 +410,8 @@ export class MatchEndScene extends Phaser.Scene {
   // ---------------------------------------------------------------- panel de resultado (marcador + XP + ranking)
   private resultPanel(W: number, top: number, h: number) {
     const d = this.d;
-    const w = Math.min(600, W - 40);
+    // (23-11-2026, usuario) 2v2: casi todo el ancho, para que entren los dos personajes de cada equipo en su card
+    const w = d.doubles ? W - PANEL_2V2_MARGIN * 2 : Math.min(600, W - 40);
     const c = this.add.container(W / 2, top);
 
     // fondo: navy translúcido, borde neón y filete dorado (mismo lenguaje que los diálogos)
@@ -463,8 +473,12 @@ export class MatchEndScene extends Phaser.Scene {
     // MISIONES POR PARTIDA: sus monedas se suman UNA vez, aparte de la partida y de la apuesta Ranked (también si pierdes)
     const mst = d as MatchEndData & { _missionCoins?: number };
     if (d.missions && mst._missionCoins === undefined) {
-      const amount = missionCoins(d.missions);
-      mst._missionCoins = amount > 0 ? addCoins(amount).gained : 0;
+      // (23-11-2026, usuario) en el 2v2 se pagan en MONEDAS 2v2, equivalentes a las del 1v1 (missionReward); el MENÚ las hace llegar al monedero 2v2
+      const amount = missionCoins(d.missions, !!d.doubles);
+      if (d.doubles) {
+        mst._missionCoins = amount > 0 ? grantCoins2v2(amount) : 0;
+        if (mst._missionCoins > 0) this.registry.set('menu.coin2v2Gain', ((this.registry.get('menu.coin2v2Gain') as number | undefined) ?? 0) + mst._missionCoins);
+      } else mst._missionCoins = amount > 0 ? addCoins(amount).gained : 0;
     }
     // monedas que entraron con esta partida (apuesta ganada + partida + misiones): el MENÚ las hace volar al monedero
     const cst = d as MatchEndData & { _coinsAtStart?: number; _leagueAtStart?: number; _coinGainSet?: boolean };
@@ -485,7 +499,7 @@ export class MatchEndScene extends Phaser.Scene {
     if (duel) this.rankedDuel(c, w, sepY + 16 + CARD_H + 20 + this.mrow, duel);
     if (d.ranked?.promotedTo) this.levelUp(W / 2, top - 26, 0, '¡ASCENSO DE LIGA!');
     // --- ADICIONALES: misiones por partida, después de que pasan las monedas apostadas (si hubo duelo)
-    if (d.missions) this.missionCards(c, w, h - ADD_H - 8, d.missions, duel ? 750 + 380 * 3 + 3000 + 350 : 750 + 380 * 3 + 250);
+    if (d.missions) this.missionCards(c, w, h - ADD_H - 8 - (d.doubles ? ADD_2V2_PAD : 0), d.missions, duel ? 750 + 380 * 3 + 3000 + 350 : 750 + 380 * 3 + 250);
 
     // entrada: sube desde abajo junto con los botones
     c.setAlpha(0).setY(top + 60);
@@ -672,9 +686,10 @@ export class MatchEndScene extends Phaser.Scene {
   }
 
   /** Monedas que saltan del contador ganado al total (dentro del panel). */
-  private coinShower(c: Phaser.GameObjects.Container, x0: number, y0: number, x1: number, y1: number, n: number, size = 9, onArrive?: () => void) {
+  /** `coin2v2` (23-11-2026): vuelan monedas 2v2 (las de las misiones del 2v2) */
+  private coinShower(c: Phaser.GameObjects.Container, x0: number, y0: number, x1: number, y1: number, n: number, size = 9, onArrive?: () => void, coin2v2 = false) {
     for (let i = 0; i < n; i++) {
-      const g = this.add.container(x0, y0, [coinIcon(this, 0, 0, size)]); // (17-11-2026) moneda: imagen moneda-1.webp
+      const g = this.add.container(x0, y0, [(coin2v2 ? coin2v2Image : coinIcon)(this, 0, 0, size)]); // (17-11-2026) moneda: imagen moneda-1.webp
       g.setScale(0.6).setAlpha(0);
       c.add(g);
       // (18-11-2026) arco de VERDAD hasta (x1, y1): antes la subida y la bajada eran un yoyó y la moneda volvía a su altura de salida
@@ -761,22 +776,26 @@ export class MatchEndScene extends Phaser.Scene {
     c.add(head);
     // cuadros (más grandes; sin nombre: el personaje ya dice quién es)
     const bh = DUEL_BOX_H;
-    const by = y0 + 50 + bh / 2;
+    // (23-11-2026, usuario) 2v2: fila de las MONEDAS 2v2 de cada equipo encima de su card; la card baja esa fila
+    const coinRowY = y0 + 53;
+    const by = y0 + 50 + (two ? DUEL_2V2_COIN_ROW + 6 : 0) + bh / 2; // 2v2: 6 px de aire entre la placa de monedas y la card
     const bw = (w - 40 - 44) / 2;
     const lx = -w / 2 + 20 + bw / 2;
     const rx = w / 2 - 20 - bw / 2;
     // cada cuadro, 2 columnas: IZQUIERDA el personaje (centrado, de pie sobre el borde de abajo) y DERECHA la moneda
     // arriba con la cifra debajo
-    // 2v2: DOS personajes por cuadro (a la izquierda) y la moneda 2v2 a la derecha
-    const colL = two ? -bw * 0.33 : -bw / 4;
-    const colL2 = -bw * 0.07;
-    const colR = two ? bw * 0.3 : bw / 4;
+    // (23-11-2026, usuario) 2v2: 2 filas × 2 columnas, sin moneda dentro (va arriba de la card): arriba los dos personajes, abajo sus puntos
+    const colL = two ? -bw / 4 : -bw / 4;
+    const colL2 = bw / 4;
+    const colR = bw / 4;
     const coinF = two ? coin2v2Image : coinIcon;
+    /** 2v2: alto de la fila de los puntos (abajo de la card) */
+    const ptsRow = 58;
     /** alto del cuerpo (silueta medida) de los dos personajes: el MISMO para los dos */
-    const bodyPx = bh * 0.74;
+    const bodyPx = two ? (bh - ptsRow - 14) * 0.95 : bh * 0.74;
     /** ancho máximo del dibujo: su columna (media tarjeta) con un margen pequeño; la raqueta no se sale del borde */
-    const maxW = two ? bw * 0.27 : bw / 2 - 6;
-    const feetY = bh / 2 - 10;
+    const maxW = two ? bw / 2 - 12 : bw / 2 - 6;
+    const feetY = two ? bh / 2 - ptsRow : bh / 2 - 10;
     // ancla y escala por la SILUETA real del primer frame (pies y alto dibujados), no por el ancla de la hoja: así ningún
     // personaje queda hundido ni más grande que el otro aunque sus hojas tengan celdas y márgenes distintos
     /**
@@ -837,26 +856,56 @@ export class MatchEndScene extends Phaser.Scene {
     };
     type Who = { clips?: DuelClips; pose?: { key: string; frame: number }; pts?: number; mvp?: boolean; mine?: boolean };
     /** pastilla de puntos sobre un personaje (2v2); la del que hizo MÁS puntos va dorada, con brillo */
-    const pill = (bc: Phaser.GameObjects.Container, x: number, pts: number, mvp: boolean) => {
-      const t = this.add.text(0, 0, mvp ? `★ ${pts} PTS` : `${pts} PTS`, { fontFamily: FONT, fontSize: '14px', color: mvp ? '#3a2a00' : '#ffffff' }).setOrigin(0.5);
-      const pw = t.width + 16;
-      const ph = 24;
-      const pc = this.add.container(x, -bh / 2 + 26);
-      const pg = this.add.graphics();
+    // (23-11-2026, usuario) los puntos van en la 2.ª fila de la card, DEBAJO de cada personaje: placa ancha con la cifra grande y "PTS"
+    // pequeño al lado; entra con un rebote y cuenta desde 0. La del que hizo MÁS puntos es dorada, con ★ y brillo que late.
+    const pill = (bc: Phaser.GameObjects.Container, x: number, pts: number, mvp: boolean, delay: number) => {
+      const pw = Math.min(bw / 2 - 18, 150);
+      const ph = 42;
+      const r = ph / 2;
+      const pc = this.add.container(x, bh / 2 - ptsRow / 2 - 2).setScale(0).setAlpha(0);
       if (mvp) {
         const glow = this.add.graphics();
-        glow.fillStyle(0xffd23f, 0.35).fillRoundedRect(-pw / 2 - 6, -ph / 2 - 6, pw + 12, ph + 12, ph / 2 + 6);
+        glow.fillStyle(0xffd23f, 0.3).fillRoundedRect(-pw / 2 - 7, -ph / 2 - 7, pw + 14, ph + 14, r + 7);
         pc.add(glow);
-        this.tweens.add({ targets: glow, alpha: { from: 1, to: 0.3 }, duration: 700, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
-        pg.fillStyle(0xffc42e, 1).fillRoundedRect(-pw / 2, -ph / 2, pw, ph, ph / 2);
-        pg.lineStyle(2, 0xfff2b0, 1).strokeRoundedRect(-pw / 2, -ph / 2, pw, ph, ph / 2);
-      } else {
-        pg.fillStyle(0x0a1638, 0.85).fillRoundedRect(-pw / 2, -ph / 2, pw, ph, ph / 2);
-        pg.lineStyle(2, 0x5f7fc8, 1).strokeRoundedRect(-pw / 2, -ph / 2, pw, ph, ph / 2);
+        this.tweens.add({ targets: glow, alpha: { from: 1, to: 0.25 }, duration: 750, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
       }
-      pc.add([pg, t]);
+      const pg = this.add.graphics();
+      pg.fillStyle(0x000000, 0.35).fillRoundedRect(-pw / 2 + 2, -ph / 2 + 4, pw, ph, r); // sombra
+      pg.fillStyle(mvp ? 0xffb81f : 0x0a1638, mvp ? 1 : 0.92).fillRoundedRect(-pw / 2, -ph / 2, pw, ph, r);
+      pg.fillStyle(0xffffff, mvp ? 0.35 : 0.1).fillRoundedRect(-pw / 2 + 5, -ph / 2 + 4, pw - 10, ph * 0.38, { tl: r - 4, tr: r - 4, bl: 6, br: 6 }); // brillo de vidrio
+      pg.lineStyle(2.5, mvp ? 0xfff2b0 : 0x6f8fd8, 1).strokeRoundedRect(-pw / 2, -ph / 2, pw, ph, r);
+      pc.add(pg);
+      const num = this.add.text(0, 0, '0', { fontFamily: FONT, fontSize: '30px', color: mvp ? '#3a2400' : '#ffffff', stroke: mvp ? '#fff1b8' : '#0a1638', strokeThickness: mvp ? 2 : 5 }).setOrigin(0, 0.5);
+      const lbl = this.add.text(0, 2, 'PTS', { fontFamily: FONT, fontSize: '16px', color: mvp ? '#6a4300' : '#9fb3d9' }).setOrigin(0, 0.5).setLetterSpacing(1);
+      const star = mvp ? this.add.text(0, -1, '★', { fontFamily: FONT, fontSize: '22px', color: '#fff6c8', stroke: '#9a5a00', strokeThickness: 3 }).setOrigin(0, 0.5) : null;
+      const layout = () => {
+        const sw = star ? star.width + 6 : 0;
+        const total = sw + num.width + 6 + lbl.width;
+        let px = -total / 2;
+        if (star) {
+          star.setX(px);
+          px += sw;
+        }
+        num.setX(px);
+        lbl.setX(px + num.width + 6);
+      };
+      pc.add([...(star ? [star] : []), num, lbl]);
+      layout();
       bc.add(pc);
-      if (mvp) this.tweens.add({ targets: pc, scale: { from: 0.6, to: 1 }, duration: 380, delay: 300, ease: 'Back.easeOut' });
+      // entra con rebote y la cifra cuenta hacia arriba
+      this.tweens.add({ targets: pc, scale: 1, alpha: 1, duration: 380, delay, ease: 'Back.easeOut' });
+      const cnt = { v: 0 };
+      this.tweens.add({
+        targets: cnt,
+        v: pts,
+        delay: delay + 120,
+        duration: Math.min(900, 200 + pts * 60),
+        ease: 'Cubic.easeOut',
+        onUpdate: () => {
+          num.setText(String(Math.round(cnt.v)));
+          layout();
+        },
+      });
     };
     const box = (x: number, color: number, amount: number, who: Who[]) => {
       const bc = this.add.container(x, by);
@@ -888,15 +937,44 @@ export class MatchEndScene extends Phaser.Scene {
           // Retrato frontal de NXO como respaldo para animaciones ausentes o skins sin hoja de poses finales.
           bc.add(this.add.image(cx, feetY, 'portrait-nxo').setOrigin(0.5, 1).setDisplaySize(two ? 56 : 84, two ? 72 : 108));
         }
-        if (two && u.pts !== undefined) pill(bc, cx, u.pts, !!u.mvp);
+        if (two && u.pts !== undefined) pill(bc, cx, u.pts, !!u.mvp, 900 + ((x > 0 ? 2 : 0) + i) * 140); // una tras otra: tu equipo y luego el rival
       });
+      c.add(bc);
+      if (two) {
+        // (23-11-2026, usuario) 2v2: moneda 2v2 + cifra en una fila ARRIBA de la card (centradas sobre ella); de aquí salen y aquí llegan las monedas
+        // (23-11-2026, usuario) moneda y cifra más grandes, sobre una placa con el borde del color del equipo (azul tú, rojo rival)
+        const row = this.add.container(x, coinRowY);
+        const CR = 21; // radio de la moneda
+        const plate = this.add.graphics();
+        const coin = this.add.container(0, 0, [coinF(this, 0, 0, CR)]);
+        const val = this.add.text(0, 0, amount.toLocaleString('es-CL'), { fontFamily: FONT, fontSize: '36px', color: '#ffffff', stroke: '#0a1638', strokeThickness: 6 }).setOrigin(0, 0.5);
+        row.add([plate, coin, val]);
+        c.add(row);
+        const accent = color === 0x3a7bff ? 0x6f9bff : 0xff7a88;
+        const center = () => {
+          fitText(val, bw - 90);
+          const tw = CR * 2 + 10 + val.displayWidth;
+          coin.setX(-tw / 2 + CR);
+          val.setX(-tw / 2 + CR * 2 + 10);
+          const pw = Math.min(bw - 10, tw + 36);
+          const ph = 40;
+          plate.clear();
+          plate.fillStyle(0x000000, 0.3).fillRoundedRect(-pw / 2 + 2, -ph / 2 + 3, pw, ph, ph / 2);
+          plate.fillStyle(0x0a1638, 0.9).fillRoundedRect(-pw / 2, -ph / 2, pw, ph, ph / 2);
+          plate.fillStyle(0xffffff, 0.08).fillRoundedRect(-pw / 2 + 5, -ph / 2 + 4, pw - 10, ph * 0.38, { tl: ph / 2 - 4, tr: ph / 2 - 4, bl: 6, br: 6 });
+          plate.lineStyle(2.5, accent, 1).strokeRoundedRect(-pw / 2, -ph / 2, pw, ph, ph / 2);
+        };
+        center();
+        const at = () => ({ x: row.x + coin.x, y: coinRowY });
+        return { bc, g, val, center, coin, sps, src: at, dst: at };
+      }
       const coin = this.add.container(colR, -24, [coinF(this, 0, 0, 24)]); // (17-11-2026) moneda: imagen moneda-1.webp (2v2: moneda 2v2)
       const val = this.add.text(colR, 30, amount.toLocaleString('es-CL'), { fontFamily: FONT, fontSize: '32px', color: '#ffffff', stroke: '#0a1638', strokeThickness: 5 }).setOrigin(0.5);
       bc.add([coin, val]);
-      const center = () => fitText(val, two ? bw * 0.38 : bw / 2 - 16);
+      const center = () => fitText(val, bw / 2 - 16);
       center();
-      c.add(bc);
-      return { bc, g, val, center, coin, sps };
+      // de dónde salen las monedas del traspaso (la cifra) y a dónde llegan (la moneda)
+      return { bc, g, val, center, coin, sps, src: () => ({ x: x + colR, y: by }), dst: () => ({ x: x + colR, y: by - 24 }) };
     };
     // MAI de frente: sus 3 poses salen de su hoja nueva (tools/build-end-poses.mjs; la del partido no trae derrota)
     const clipsMe = endPosesFor(this, d.clips?.me);
@@ -954,10 +1032,13 @@ export class MatchEndScene extends Phaser.Scene {
       let pulse: Phaser.Tweens.Tween | null = null;
       for (let i = 0; i < n; i++) {
         const cg = coinF(this, 0, 0, Phaser.Math.Between(10, 15)); // (17-11-2026) moneda: imagen moneda-1.webp
-        const sx = from.bc.x + colR + Phaser.Math.Between(-14, 14);
-        const sy = by + Phaser.Math.Between(-22, 22);
-        const ex = to.bc.x + colR + Phaser.Math.Between(-10, 10);
-        const ey = by + Phaser.Math.Between(-14, 14) - 24;
+        // (23-11-2026) 2v2: de la fila de monedas de arriba de una card a la de la otra
+        const s0 = from.src();
+        const e0 = to.dst();
+        const sx = s0.x + Phaser.Math.Between(-14, 14);
+        const sy = s0.y + (two ? Phaser.Math.Between(-8, 8) : Phaser.Math.Between(-22, 22));
+        const ex = e0.x + Phaser.Math.Between(-10, 10);
+        const ey = e0.y + (two ? Phaser.Math.Between(-6, 6) : Phaser.Math.Between(-14, 14));
         const arc = Phaser.Math.Between(30, 90);
         cg.setPosition(sx, sy).setVisible(false);
         c.add(cg);
@@ -1003,7 +1084,7 @@ export class MatchEndScene extends Phaser.Scene {
           from.val.setColor('#ffffff');
           this.tweens.add({ targets: to.bc, scale: { from: 1.08, to: 1 }, duration: 300, ease: 'Back.easeOut' });
           const gain = this.add
-            .text(me.bc.x + colR, by - 66, won ? `+${moved.toLocaleString('es-CL')}` : `−${entry.toLocaleString('es-CL')}`, { fontFamily: FONT, fontSize: '24px', color: '#ffffff', stroke: '#0a1638', strokeThickness: 5 })
+            .text(two ? me.bc.x + bw / 2 - 40 : me.bc.x + colR, two ? coinRowY : by - 66, won ? `+${moved.toLocaleString('es-CL')}` : `−${entry.toLocaleString('es-CL')}`, { fontFamily: FONT, fontSize: '24px', color: '#ffffff', stroke: '#0a1638', strokeThickness: 5 })
             .setOrigin(0.5);
           c.add(gain);
           this.tweens.add({ targets: gain, y: gain.y - 26, alpha: { from: 1, to: 0 }, duration: 1400, delay: 400 });
@@ -1017,7 +1098,12 @@ export class MatchEndScene extends Phaser.Scene {
    * entran doradas con ✓ y su premio; las otras, apagadas. Las monedas ya se sumaron (resultPanel); aquí solo se muestran.
    */
   private missionCards(c: Phaser.GameObjects.Container, w: number, y0: number, done: readonly MissionId[], startMs: number) {
-    const gained = (this.d as MatchEndData & { _missionCoins?: number })._missionCoins ?? missionCoins(done);
+    // (23-11-2026, usuario) 2v2: premios en MONEDAS 2v2 (moneda morada), equivalentes a los del 1v1 (missionReward)
+    const dbl = !!this.d.doubles;
+    const reward = (m: (typeof MISSIONS)[number]) => missionReward(m, dbl);
+    const coinArt = dbl ? coin2v2Image : coinIcon;
+    const gold = dbl ? '#d2b0ff' : '#ffd23f';
+    const gained = (this.d as MatchEndData & { _missionCoins?: number })._missionCoins ?? missionCoins(done, dbl);
     const sec = this.add.container(0, 0).setAlpha(0);
     c.add(sec);
     // separador + cabecera: ADICIONALES · +N (moneda)
@@ -1029,8 +1115,8 @@ export class MatchEndScene extends Phaser.Scene {
     const hy = y0 + 34;
     const head = this.add.text(-w / 2 + 26, hy, 'ADICIONALES', { fontFamily: FONT, fontSize: '22px', color: '#ffd23f', stroke: '#0a1638', strokeThickness: 5 }).setOrigin(0, 0.5).setLetterSpacing(2);
     const sub = this.add.text(head.x + head.width + 12, hy + 1, `${done.length}/${MISSIONS.length} MISIONES`, { fontFamily: FONT, fontSize: '14px', color: '#9fb3d9' }).setOrigin(0, 0.5).setLetterSpacing(1);
-    const total = this.add.text(w / 2 - 26, hy, '+0', { fontFamily: FONT, fontSize: '30px', color: gained > 0 ? '#ffd23f' : '#7f93bf', stroke: '#0a1638', strokeThickness: 6 }).setOrigin(1, 0.5);
-    const tCoin = this.add.container(total.x - total.width - 24, hy, [coinIcon(this, 0, 0, 16)]);
+    const total = this.add.text(w / 2 - 26, hy, '+0', { fontFamily: FONT, fontSize: '30px', color: gained > 0 ? gold : '#7f93bf', stroke: '#0a1638', strokeThickness: 6 }).setOrigin(1, 0.5);
+    const tCoin = this.add.container(total.x - total.width - 24, hy, [coinArt(this, 0, 0, 16)]);
     sec.add([head, sub, total, tCoin]);
 
     // 4 cards
@@ -1074,10 +1160,10 @@ export class MatchEndScene extends Phaser.Scene {
       // (18-11-2026, usuario) premio más grande y CENTRADO en la card (moneda + cifra como un solo bloque)
       const py = ch / 2 - 22;
       const cr = 12; // radio de la moneda
-      const val = this.add.text(0, py, `+${m.coins}`, { fontFamily: FONT, fontSize: '26px', color: ok ? '#ffd23f' : '#5d6f96', stroke: '#0a1638', strokeThickness: 5 }).setOrigin(0, 0.5);
+      const val = this.add.text(0, py, `+${reward(m)}`, { fontFamily: FONT, fontSize: '26px', color: ok ? gold : '#5d6f96', stroke: '#0a1638', strokeThickness: 5 }).setOrigin(0, 0.5);
       const left = -(cr * 2 + 6 + val.width) / 2;
       val.setX(left + cr * 2 + 6);
-      const coin = this.add.container(left + cr, py, [coinIcon(this, 0, 0, cr)]).setAlpha(ok ? 1 : 0.35);
+      const coin = this.add.container(left + cr, py, [coinArt(this, 0, 0, cr)]).setAlpha(ok ? 1 : 0.35);
       cont.add([title, coin, val]);
       if (!ok) title.setAlpha(0.8);
       // destello al entrar (como las cards de arriba)
@@ -1103,17 +1189,17 @@ export class MatchEndScene extends Phaser.Scene {
           this.tweens.add({ targets: cd.badge, scale: { from: 1.6, to: 1 }, duration: 320, ease: 'Back.easeOut' });
           // (18-11-2026, usuario) las monedas de la card VUELAN al total de la cabecera (más monedas y más grandes) y el total sube al llegar cada una
           const from = acc;
-          acc += MISSIONS[i].coins;
+          acc += reward(MISSIONS[i]);
           const N = 8;
           let got = 0;
           this.coinShower(sec, cd.cont.x, cd.cont.y + ADD_CARD_H / 2 - 22, tCoin.x, hy, N, 12, () => {
             got++;
-            total.setText(`+${Math.round(from + (MISSIONS[i].coins * got) / N)}`);
+            total.setText(`+${Math.round(from + (reward(MISSIONS[i]) * got) / N)}`);
             tCoin.setX(total.x - total.width - 24);
             this.tweens.killTweensOf(tCoin);
             this.tweens.add({ targets: tCoin, scale: { from: 1.35, to: 1 }, duration: 200, ease: 'Back.easeOut' });
             this.tweens.add({ targets: total, scale: { from: 1.12, to: 1 }, duration: 200, ease: 'Back.easeOut' });
-          });
+          }, dbl);
         });
       });
       if (gained > 0) this.time.delayedCall(200 + cards.length * 220 + 400, () => sfx(this, 'recolectar-monedas', 0.8));

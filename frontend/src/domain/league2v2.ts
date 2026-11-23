@@ -14,7 +14,7 @@
  */
 import { type PlayerState, clonePlayer } from './player';
 import type { RankId } from './ranks';
-import { LEAGUE_ORDER, nextLeague } from './rankedConfig';
+import { LEAGUE_ORDER, nextLeague, weeklyChestCash } from './rankedConfig';
 import { type BoardEcon, type BoardEntry, buildBoard } from './rankedBots';
 import { type RankedView, ME, botClockAt, botClockWeekEnd, msToWeekEnd, weekIdAt } from './ranked';
 import { type WeeklyReward, newStats } from './rankedState';
@@ -198,7 +198,7 @@ export function claimWeekly2v2(s: PlayerState, week: string): Claim2v2Result {
   nw.claimed = true;
   if (nw.eligible) {
     n = addCoins2v2(n, nw.coins);
-    n.gems += nw.cash;
+    n.gems += nw.cash + weeklyChestCash(nw, true); // (23-11-2026) + dinero al azar del cofre de fin de temporada
     n.zone.rays += nw.rays;
   }
   n.league2v2!.rewards = n.league2v2!.rewards.filter((x) => !x.claimed || x.week === week).slice(-8);

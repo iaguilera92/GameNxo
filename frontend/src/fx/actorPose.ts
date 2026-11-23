@@ -43,7 +43,8 @@ export function placeActor(ch: Phaser.GameObjects.Container & { shadow: Phaser.G
     py += -cH + cH * Math.cos(a.spin);
   }
   const sq = a.squat ?? 0;
-  ch.setPosition(px, py).setScale(k * a.warp * (1 + 0.08 * sq), k * (1 + (1 - a.warp) * 0.8) * (1 - 0.2 * sq)).setDepth(p.sy);
+  ch.setPosition(px, py).setScale(k * a.warp * (1 + 0.08 * sq), k * (1 + (1 - a.warp) * 0.8) * (1 - 0.2 * sq));
+  if (ch.depth !== p.sy) ch.setDepth(p.sy);
   if (a.spin || a.spinWas) ch.setAngle(((a.spin ?? 0) * 180) / Math.PI); // al terminar vuelve a 0
   a.spinWas = !!a.spin;
   ch.setAlpha(0.25 + 0.75 * a.warp);

@@ -1,5 +1,5 @@
 /**
- * LOG DE PARTIDAS (diagnóstico): una línea JSON por evento en logs/matches/<fecha>/<sala>.jsonl.
+ * LOG DE PARTIDAS (diagnóstico): el 1v1 conserva su JSONL por sala; el 2v2 escribe solo en LOG-PARTIDO-2V2.txt.
  * Lo escriben el servidor (emparejado, inicio, cortes, puntos, fin y un resumen de lo que reenvía) y los clientes
  * (game:log: eventos del juego, anomalías de sprites, fotos periódicas del estado). Sirve para ver qué pasó en un
  * partido online cuando algo se ve mal (sprites que no salen, saltos, saques, remates, habilidades…).
@@ -10,6 +10,7 @@
 import { appendFile, mkdir, readdir, rm, stat, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import type { GameMode } from './events/protocol.js';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'logs', 'matches');
 /**
@@ -18,21 +19,22 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'logs', '
  * Solo para pruebas: se apaga con LOG_PARTIDO=0.
  */
 export const LOG_PARTIDO = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'logs', 'LOG-PARTIDO.txt');
+export const LOG_PARTIDO_2V2 = join(dirname(LOG_PARTIDO), 'LOG-PARTIDO-2V2.txt');
 const TEXT_ON = process.env.LOG_PARTIDO !== '0';
+const TEXT_2V2_ON = process.env.LOG_PARTIDO_2V2 !== '0';
 const MAX_BYTES = 3 * 1024 * 1024;
 const KEEP_DAYS = 5;
 
 const day = (t = Date.now()) => new Date(t).toISOString().slice(0, 10);
 const safe = (id: string) => id.replace(/[^a-zA-Z0-9-]/g, '').slice(0, 64);
+const textState = () => ({ room: '', queue: Promise.resolve(), bytes: 0 });
 
 export class MatchLogger {
   private size = new Map<string, number>();
   private dirs = new Set<string>();
   private queue = new Map<string, Promise<void>>();
-  /** sala que se escribe en LOG-PARTIDO (la última emparejada) */
-  private textRoom = '';
-  private textQueue: Promise<void> = Promise.resolve();
-  private textBytes = 0;
+  private readonly soloText = textState();
+  private readonly doublesText = textState();
 
   constructor(readonly root = ROOT) {
     void this.prune();
@@ -44,8 +46,9 @@ export class MatchLogger {
   }
 
   /** Añade un evento (src = 'srv' | 'host' | 'guest'). */
-  write(roomId: string, src: string, entry: Record<string, unknown>) {
-    this.text(roomId, src, entry);
+  write(roomId: string, src: string, entry: Record<string, unknown>, mode: GameMode = '1v1') {
+    this.text(roomId, src, entry, mode);
+    if (mode === '2v2') return; // una sola salida para el 2v2, compartida por ambos clientes y el servidor
     const line = JSON.stringify({ ts: new Date().toISOString(), src, ...entry }) + '\n';
     const key = safe(roomId);
     const cur = this.size.get(key) ?? 0;
@@ -63,31 +66,34 @@ export class MatchLogger {
   }
 
   /**
-   * LOG-PARTIDO (texto): una línea por evento → "14:26:11.512 [host ] mv      me=… rv=…". Al emparejarse una sala
-   * nueva el archivo empieza de cero con su cabecera; los eventos de otras salas no entran.
+   * Una línea por evento → "14:26:11.512 [host ] mv      me=… rv=…". Al emparejarse una sala
+   * nueva se reinicia el archivo de ese modo; los eventos de otras salas no entran.
    */
-  private text(roomId: string, src: string, entry: Record<string, unknown>) {
-    if (!TEXT_ON) return;
+  private text(roomId: string, src: string, entry: Record<string, unknown>, mode: GameMode) {
+    const doubles = mode === '2v2';
+    if (!(doubles ? TEXT_2V2_ON : TEXT_ON)) return;
+    const state = doubles ? this.doublesText : this.soloText;
+    const file = join(dirname(this.root), doubles ? 'LOG-PARTIDO-2V2.txt' : 'LOG-PARTIDO.txt');
     const ev = String(entry.ev ?? '?');
     let head: string | null = null;
-    if (ev === 'matched' && roomId !== this.textRoom) {
-      this.textRoom = roomId;
-      this.textBytes = 0;
-      head = `===== PARTIDO ${entry.mode === '2v2' ? '2v2 ' : ''}${roomId}  ${new Date().toISOString()}  host=${entry.host} (${entry.hostSkin})  guest=${entry.guest} (${entry.guestSkin}) =====
+    if (ev === 'matched' && roomId !== state.room) {
+      state.room = roomId;
+      state.bytes = 0;
+      head = `===== PARTIDO ${doubles ? '2v2 ' : ''}${roomId}  ${new Date().toISOString()}  host=${entry.host} (${entry.hostSkin})  guest=${entry.guest} (${entry.guestSkin}) =====
 `;
     }
-    if (roomId !== this.textRoom) return;
+    if (roomId !== state.room) return;
     const fields = Object.entries(entry)
       .filter(([k, v]) => k !== 'ev' && v !== undefined && v !== '')
       .map(([k, v]) => `${k}=${typeof v === 'string' && v.includes(' ') ? `"${v}"` : v}`)
       .join(' ');
     const line = `${new Date().toISOString().slice(11, 23)} [${src.padEnd(5)}] ${ev.padEnd(12)} ${fields}
 `;
-    if (this.textBytes + line.length > MAX_BYTES * 2) return;
-    this.textBytes += line.length;
-    this.textQueue = this.textQueue
-      .then(() => mkdir(dirname(LOG_PARTIDO), { recursive: true }))
-      .then(() => (head !== null ? writeFile(LOG_PARTIDO, head + line) : appendFile(LOG_PARTIDO, line)))
+    const bytes = Buffer.byteLength(line) + (head ? Buffer.byteLength(head) : 0);
+    if (state.bytes + bytes > MAX_BYTES * 2) return;
+    state.bytes += bytes;
+    state.queue = state.queue
+      .then(() => (head !== null ? mkdir(dirname(file), { recursive: true }).then(() => writeFile(file, head + line)) : appendFile(file, line)))
       .catch(() => undefined);
   }
 

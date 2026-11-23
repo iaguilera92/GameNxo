@@ -24,7 +24,7 @@ export const BIRD = {
   flyInMs: 1600,
   flyOutMs: 1800,
   /** tamaño en pantalla (escala de la celda) */
-  scale: 0.42,
+  scale: 0.28,
   /** profundidad: encima de la imagen del ambiente (-20/-19), debajo de la cancha (-10) */
   depth: -15,
 };
@@ -32,7 +32,6 @@ export const BIRD = {
 export function queueAmbientBird(load: Phaser.Loader.LoaderPlugin) {
   if (!load.textureManager.exists(KEY)) load.spritesheet(KEY, FILE, { frameWidth: CELL.w, frameHeight: CELL.h });
 }
-
 function ensureAnims(scene: Phaser.Scene) {
   const row = (r: number) => Array.from({ length: COLS }, (_, i) => ({ key: KEY, frame: r * COLS + i }));
   if (!scene.anims.exists('paloma-idle')) scene.anims.create({ key: 'paloma-idle', frames: row(0), frameRate: 7, repeat: -1, yoyo: true });
@@ -107,3 +106,4 @@ function leave(scene: Phaser.Scene, bird: Phaser.GameObjects.Sprite, out: number
     });
   });
 }
+

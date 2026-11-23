@@ -8,7 +8,11 @@
  *  netDuel    ganas el punto en el que hubo DUELO EN LA RED                                           20
  *  specialLob tiras el ESPECIAL, el rival lo devuelve y tú ganas el punto con un GLOBO al máximo      20
  *             (GLOBO DISPARADO) sin que el rival vuelva a tocarla
+ * (23-11-2026) también en el 2v2, las mismas, pagadas en MONEDAS 2v2 (missionReward: 12 · 24 · 12 · 12).
  */
+import { COINS_WIN } from '../config';
+import { COINS_2V2 } from './coins2v2';
+
 export type MissionId = 'dropZero' | 'skyLaunch' | 'netDuel' | 'specialLob';
 
 export interface MissionDef {
@@ -89,7 +93,15 @@ export function missionDef(id: MissionId): MissionDef {
   return MISSIONS.find((m) => m.id === id)!;
 }
 
-/** Monedas de las misiones cumplidas (cada una una vez; ids desconocidos o repetidos no suman). */
-export function missionCoins(done: readonly MissionId[]): number {
-  return MISSIONS.filter((m) => done.includes(m.id)).reduce((a, m) => a + m.coins, 0);
+/**
+ * (23-11-2026, usuario) Premio de una misión. En el 2v2 se paga en MONEDAS 2v2 y EQUIVALENTE al del 1v1: en la misma proporción que el
+ * premio por ganar el partido (COINS_2V2.win / COINS_WIN = 30 / 50), porque las monedas 2v2 se ganan más despacio. Redondeado, mínimo 1.
+ */
+export function missionReward(m: MissionDef, doubles = false): number {
+  return doubles ? Math.max(1, Math.round((m.coins * COINS_2V2.win) / COINS_WIN)) : m.coins;
+}
+
+/** Monedas de las misiones cumplidas (cada una una vez; ids desconocidos o repetidos no suman). `doubles`: en monedas 2v2 (missionReward). */
+export function missionCoins(done: readonly MissionId[], doubles = false): number {
+  return MISSIONS.filter((m) => done.includes(m.id)).reduce((a, m) => a + missionReward(m, doubles), 0);
 }

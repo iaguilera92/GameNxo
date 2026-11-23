@@ -756,12 +756,18 @@ export class InfernoFire {
     }
   }
 
+  private drawing = false;
+
   /** Cada fotograma: `on` = la pelota vuela como INFERNO DRIVE. */
   update(ball: BallState, on: boolean, visible: boolean) {
     const now = performance.now();
     const dt = Math.min(0.05, (now - this.last) / 1000);
     this.last = now;
-    if (!on || !visible) return this.hide();
+    if (!on || !visible) {
+      if (this.drawing) this.hide();
+      return;
+    }
+    this.drawing = true;
     this.t += dt;
     const ground = project(ball.x, ball.y, 0);
     const air = project(ball.x, ball.y, ball.z);
@@ -968,6 +974,7 @@ export class InfernoFire {
   }
 
   private hide() {
+    this.drawing = false;
     this.barrage?.hide();
     this.energy?.hide();
     this.hurricane?.hide();

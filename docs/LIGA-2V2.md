@@ -29,7 +29,7 @@ Una victoria x1 da +30 y una derrota −15 (`COINS_2V2`), así que la meta de Br
 
 ## Marcos 2v2
 
-- Arte: `public/personajes/Marcos/marcos-ranked-2v2.png` (fuera del APK) → `SET=2v2 node tools/build-profile-frames.mjs` (desde `frontend/`)
+- Arte: `frontend/art/marcos-perfil/marcos-ranked-2v2.png` (fuera del APK) → `SET=2v2 node tools/build-profile-frames.mjs` (desde `frontend/`)
   → `public/assets/marcos2v2/<liga>.webp` y `src/ui/profile-frames-2v2.json`. Los de la liga normal: la misma herramienta sin `SET`.
 - Estado: `PlayerState.league2v2` (liga, `bestLeague`, neto, recompensas) y `equipped.frame2v2`. El marco 2v2 se desbloquea con
   `bestLeague` (nunca baja). Elegir un marco de liga quita el 2v2 y al revés: se ve uno solo.
@@ -41,3 +41,6 @@ Una victoria x1 da +30 y una derrota −15 (`COINS_2V2`), así que la meta de Br
 - Mostrar el marco 2v2 al rival (el protocolo online solo manda el marco de liga).
 - Cifras definitivas y posiciones de premio en 2v2; descenso (como en la liga normal, en pausa).
 - Con servidor: `syncLeague2v2`, `recordMatch2v2` y `claimWeekly2v2` pasan al servidor, como `domain/ranked.ts`.
+
+
+**Cofre de fin de temporada (23-11-2026, usuario).** La recompensa semanal elegible (1v1 y 2v2) se muestra como el COFRE SEMANAL (cofre-semanal.webp): al tocarlo o RECLAMAR se cobra y se abre en pantalla completa (RankedScene.showSeasonChest, misma presentación que la ruleta). Salen uno a uno: monedas → Rayo → dinero. El cofre trae además **dinero al azar entre 3 y 10** (ankedConfig.weeklyChestCash, determinista por modo + semana + liga), que se suma al dinero de la liga y de la posición.

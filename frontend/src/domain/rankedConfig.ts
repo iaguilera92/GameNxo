@@ -100,6 +100,19 @@ export function positionPrize(pos: number | null): PositionPrize | null {
   return RANKED.positionPrizes.find((p) => pos <= p.upTo) ?? null;
 }
 
+/**
+ * (23-11-2026, usuario) COFRE DE FIN DE TEMPORADA: además de monedas y Rayo trae DINERO al azar entre 3 y 10 (1v1 y 2v2, toda liga; se suma
+ * al dinero que ya diera la liga o la posición). Determinista por semana, liga y modo: la UI lo muestra antes de cobrar y el cobro entrega
+ * lo mismo (un servidor lo puede recalcular). 0 si la semana no era elegible.
+ */
+export const WEEKLY_CHEST_CASH = { min: 3, max: 10 } as const;
+export function weeklyChestCash(w: { week: string; league: RankId; eligible: boolean }, two: boolean): number {
+  if (!w.eligible) return 0;
+  let h = 2166136261;
+  for (const ch of `${two ? '2v2' : '1v1'}:${w.week}:${w.league}`) h = Math.imul(h ^ ch.charCodeAt(0), 16777619) >>> 0;
+  return WEEKLY_CHEST_CASH.min + (h % (WEEKLY_CHEST_CASH.max - WEEKLY_CHEST_CASH.min + 1));
+}
+
 /** Comprueba la configuración; devuelve los errores (vacío = válida). */
 export function validateRankedConfig(): string[] {
   const errs: string[] = [];

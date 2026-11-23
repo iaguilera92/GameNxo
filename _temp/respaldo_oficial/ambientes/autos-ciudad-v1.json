@@ -1,0 +1,16 @@
+{
+  "file": "assets/ambientes/autos-ciudad.webp",
+  "cell": {
+    "w": 161,
+    "h": 132
+  },
+  "rows": 4,
+  "frames": 8,
+  "feetPad": 2,
+  "heights": [
+    108,
+    113,
+    106,
+    128
+  ]
+}

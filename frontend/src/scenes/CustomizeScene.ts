@@ -781,7 +781,7 @@ ${unlockLabel(key)}`, { fontFamily: FONT, fontSize: '16px', color: '#ffd23f', st
    */
   private openCharacterDialog(skin: SkinId) {
     // Los retratos de JUN, NET y MAT no los carga el arranque de Personalizar: se piden al abrir el diálogo.
-    const need = ['jun', 'net', 'mat', 'isa', 'rin'].map((id) => rosterPortrait(id)).filter((p): p is NonNullable<typeof p> => !!p && !this.textures.exists(p.key));
+    const need = ['jun', 'net', 'mat', 'isa', 'rin', 'zac', 'flo'].map((id) => rosterPortrait(id)).filter((p): p is NonNullable<typeof p> => !!p && !this.textures.exists(p.key));
     if (need.length) {
       need.forEach((p) => this.load.image(p.key, p.file));
       this.load.once(Phaser.Loader.Events.COMPLETE, () => this.sys.isActive() && this.openCharacterDialogNow(skin));
@@ -805,15 +805,18 @@ ${unlockLabel(key)}`, { fontFamily: FONT, fontSize: '16px', color: '#ffd23f', st
       return this.add.image(x, y + size * 0.5, p.key).setOrigin((x0 + x1) / 2 / p.w, y1 / p.h).setScale((size * 1.05) / (y1 - y0));
     };
     const ROSTER: { id: string; name: string; playable: boolean; badge?: string }[] = [
+      // Cinco columnas: hombres en la primera fila, mujeres en la segunda.
       { id: 'nxo', name: 'Nxo', playable: true },
-      { id: 'mai', name: 'Mai', playable: true, badge: 'DEL PASE' },
       { id: 'jun', name: 'Jun', playable: false, badge: 'PRONTO' },
-      { id: 'net', name: 'Net', playable: false, badge: 'PRONTO' },
       { id: 'mat', name: 'Mat', playable: false, badge: 'PRONTO' },
+      { id: 'zac', name: 'Zac', playable: false, badge: 'PRONTO' },
+      { id: 'mai', name: 'Mai', playable: true, badge: 'DEL PASE' },
+      { id: 'net', name: 'Net', playable: false, badge: 'PRONTO' },
       { id: 'isa', name: 'Isa', playable: false, badge: 'PRONTO' },
       { id: 'rin', name: 'Rin', playable: false, badge: 'PRONTO' },
+      { id: 'flo', name: 'Flo', playable: false, badge: 'PRONTO' },
     ];
-    const slots: PowerSlot[] = ROSTER.map((c) => {
+    const slots: (PowerSlot | undefined)[] = ROSTER.map((c) => {
       const pas = passiveOf(c.id);
       return {
         id: c.id,
@@ -823,11 +826,13 @@ ${unlockLabel(key)}`, { fontFamily: FONT, fontSize: '16px', color: '#ffd23f', st
         showLocked: true, // JUN, NET, MAT, ISA, RIN (y MAI si no es tuya) se ven, apagados y con candado
         owned: c.playable && owned.includes(`skin:${c.id}` as never),
         equipped: c.id === skin,
-        preview: (x, y, size) => portrait(c.id, x, y, size * 1.15),
-        thumb: (x, y, size) => portrait(c.id, x, y, size),
+        preview: (x, y, size) => portrait(c.id, x, y, size * 1.15 * 1.2),
+        thumb: (x, y, size) => portrait(c.id, x, y - size * 0.1, size * 1.2),
         onEquip: () => setSkin(c.id as SkinId),
       };
     });
+    // Reserva el quinto hueco: la fila de mujeres comienza en la siguiente fila.
+    slots.splice(4, 0, undefined);
     openPowerDialog(this, {
       title: 'CAMBIAR PERSONAJE',
       color: NEON,

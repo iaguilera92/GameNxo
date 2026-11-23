@@ -140,13 +140,14 @@ export interface ServeCountdown {
   final(text: string): void;
 }
 
-export function createServeCountdown(scene: Phaser.Scene): ServeCountdown {
+export function createServeCountdown(scene: Phaser.Scene, format = (n: number) => `SACA EN ${n}`): ServeCountdown {
   let c: Phaser.GameObjects.Container | null = null;
   let g: Phaser.GameObjects.Graphics | null = null;
   let t: Phaser.GameObjects.Text | null = null;
   let cur = -1;
   let leaving = false;
   let slot = -1;
+  let width = 260;
   const h = NOTICE.h;
   const s = NOTICE.slant;
   scene.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
@@ -155,8 +156,8 @@ export function createServeCountdown(scene: Phaser.Scene): ServeCountdown {
   });
   const draw = (n: number, label?: string) => {
     if (!g || !t) return;
-    t.setText(label ?? `SACA EN ${n}`);
-    const w = t.displayWidth + NOTICE.padW;
+    t.setText(label ?? format(n)).setScale(1);
+    const w = width = t.width + NOTICE.padW;
     const line = n <= 3 ? 0xff1f2e : 0xff9a1f; // 5-4 naranja · 3-1 rojo
     const fill = n <= 1 ? 0xe0182a : 0x000000; // 1: todo rojo
     g.clear();
@@ -175,7 +176,7 @@ export function createServeCountdown(scene: Phaser.Scene): ServeCountdown {
         // primer hueco libre (si hay otro aviso arriba, va debajo; los que lleguen después, debajo de este)
         if (slot >= 0) used.delete(slot);
         slot = takeSlot(scene);
-        c = scene.add.container(-260, slotY(slot), [g, t]).setScrollFactor(0).setDepth(6061);
+        c = scene.add.container(-scene.scale.width, slotY(slot), [g, t]).setScrollFactor(0).setDepth(6061);
         scene.tweens.add({ targets: c, x: 0, duration: 220, ease: 'Cubic.easeOut' });
       }
       cur = n;
@@ -203,7 +204,7 @@ export function createServeCountdown(scene: Phaser.Scene): ServeCountdown {
       const box = c;
       scene.tweens.add({
         targets: box,
-        x: -260,
+        x: -width - 20,
         duration: 200,
         ease: 'Cubic.easeIn',
         onComplete: () => {

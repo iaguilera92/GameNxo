@@ -1,7 +1,7 @@
 import type { AbilityId } from './Abilities';
 import { getPlayer, commit } from '../domain/playerStore';
 import * as ops from '../domain/operations';
-import { type Result2v2, apply2v2Result } from '../domain/coins2v2';
+import { type Result2v2, addCoins2v2 as addCoins2v2State, apply2v2Result } from '../domain/coins2v2';
 import { recordMatch2v2 } from '../domain/league2v2';
 import { gameClock } from '../domain/timeSource';
 import type { SkinId } from '../characters/skins';
@@ -91,6 +91,15 @@ export function addCoins(amount: number): { gained: number; before: number; afte
   return { gained: res.ok ? after - before : 0, before, after };
 }
 
+/**
+ * (23-11-2026) MONEDAS 2v2 de un premio (misiones del 2v2): se suman y se guardan. Como los premios del Pase y la ruleta, no cuentan en el neto
+ * de la LIGA 2v2 (eso es solo el resultado del partido). Devuelve cuánto entró.
+ */
+export function grantCoins2v2(amount: number): number {
+  const before = Math.max(0, Math.floor(getPlayer().coins2v2 ?? 0));
+  commit((s) => ({ ok: true as const, state: addCoins2v2State(s, amount) }));
+  return Math.max(0, Math.floor(getPlayer().coins2v2 ?? 0)) - before;
+}
 /** MONEDAS 2v2: aplica el resultado de un partido 2v2 y guarda (domain/coins2v2.ts). */
 export function addCoins2v2(r: Result2v2, bet = 1): { before: number; after: number; delta: number; bet: number } {
   let out = { before: 0, after: 0, delta: 0, bet: 1 };

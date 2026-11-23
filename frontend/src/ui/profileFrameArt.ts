@@ -6,7 +6,7 @@ import { FRAME_IDS, type FrameId } from '../domain/profileFrames';
 /**
  * ARTE DE LOS MARCOS DEL PERFIL (21-11-2026, usuario): un WebP con transparencia por liga, en DOS juegos: los de la liga normal
  * (public/assets/marcos/<liga>.webp, de la hoja marcos-ranked.png) y los de la LIGA 2v2 (public/assets/marcos2v2/<liga>.webp, de
- * marcos-ranked-2v2.png). Salen de public/personajes/Marcos/ con `node tools/build-profile-frames.mjs` (y `SET=2v2` para los 2v2), que
+ * marcos-ranked-2v2.png). Salen de art/marcos-perfil/ con `node tools/build-profile-frames.mjs` (y `SET=2v2` para los 2v2), que
  * también escribe los JSON con el tamaño de cada uno y su CUERPO: el rectángulo que coincide con la card; las alas y la corona
  * (Diamante, Challenger) sobresalen. Los ids son los de las ligas y no cambian (docs/BASE-DE-DATOS.md).
  */

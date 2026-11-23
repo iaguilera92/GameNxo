@@ -56,9 +56,19 @@ export const COURT = {
 /** Pasillos de dobles a cada lado de la cancha de individuales (1.37 m de 8.23 m). */
 export const ALLEY = 72; // (21-11-2026, usuario: antes 60; pasillos más anchos. En 2v2 también es zona buena de juego)
 export const NET_X = (COURT.left + COURT.right) / 2;
-export const NET_HEIGHT = 34; // altura de la red en "z"
+export const NET_HEIGHT = 34 * 1.55; // altura de la cinta en el centro, en z
 /** cuánto sobresale la red (y sus postes) por fuera de las líneas de dobles, a cada lado (dibujo y choque) */
 export const NET_OVERHANG = 30;
+export const NET_Y_MIN = COURT.top - ALLEY - NET_OVERHANG;
+export const NET_Y_MAX = COURT.bottom + ALLEY + NET_OVERHANG;
+export const NET_SAG = 0.12;
+export const NET_BALL_CLEARANCE = 16; // espacio bajo el centro de la pelota para que no se meta en la cinta
+export const RALLY_LIMIT = { warnAfter: 40, countdown: 10, dangerAt: 5 };
+
+export function netTapeHeight(y: number) {
+  const edge = Math.min(1, Math.abs((2 * y - NET_Y_MIN - NET_Y_MAX) / (NET_Y_MAX - NET_Y_MIN)));
+  return NET_HEIGHT * (1 + NET_SAG * edge * edge);
+}
 
 // Física
 export const GRAVITY = 950; // en eje z

@@ -1477,10 +1477,11 @@ export class ShopScene extends Phaser.Scene {
     };
     walk(this.body);
     if (this.freeArrow) walk(this.freeArrow);
+    const cardTweens = new Set(this.cardTweens);
     const paused: Phaser.Tweens.Tween[] = [];
     for (const tw of this.tweens.getTweens()) {
       if (tw.isPaused()) continue;
-      if (this.cardTweens.includes(tw) || tw.targets.some((t) => mine.has(t))) {
+      if (cardTweens.has(tw) || tw.targets.some((t) => mine.has(t))) {
         tw.pause();
         paused.push(tw);
       }

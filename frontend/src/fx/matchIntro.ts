@@ -2,17 +2,17 @@ import Phaser from 'phaser';
 import { FONT } from '../ui/theme';
 
 /**
- * Presentación corta al empezar el partido (≤ 2 s en total), SOBRE el mismo mapa:
- *   0.00 s  la pantalla aparece desde negro, oscurecida, con la cámara LEJOS (zoom out) y algo alta
- *   0.00–1.20 s  la cámara se acerca a su encuadre de juego
- *   0.70 s  "INICIO" + "¡COMIENZA EL PARTIDO!" con destello
- *   1.20–1.65 s  se aclara la pantalla y vuelven HUD y controles
- *   1.80 s  `onDone` (empieza el primer punto)
+ * Presentación al empezar el partido, sobre el mismo mapa:
+ *   0.00–0.45 s  ambiente en una vista lejana, centrada en la cancha
+ *   0.45–2.40 s  los personajes caminan mientras la cámara se acerca al encuadre de juego
+ *   0.95 s       aparecen "INICIO" + "¡COMIENZA EL PARTIDO!" con destello
+ *   2.20 s       se aclara la pantalla y vuelven HUD y controles
+ *   2.60 s       `onDone` empieza el primer punto
  *
  * Solo visual: no toca reglas, puntuación, físicas ni IA.
  */
 export const INTRO = {
-  /** zoom inicial (más bajo deja ver el borde del fondo; la viñeta tapa el resto) */
+  /** vista lejana intermedia: deja ver el ambiente alrededor, pero no todo su ancho */
   zoomFrom: 0.72,
   /** relativo al zoom de juego (VIEW.CAM_ZOOM): la cámara termina EXACTAMENTE en el encuadre de juego (sin salto) */
   /** desplazamiento vertical inicial de la cámara (px de mundo; positivo = mira más abajo, oculta el borde superior) */
@@ -23,15 +23,15 @@ export const INTRO = {
   vigFadeTo: 300,
   vigBottomFrom: 1250,
   vigBottomSolid: 1560,
-  /** (21-11-2026, usuario) quieto de lejos este tiempo (ms): el zoom arranca cuando los personajes empiezan a caminar de verdad (entranceWalk: delay 350) */
-  holdMs: 350,
-  zoomMs: 1950, // holdMs + zoomMs = 2300 (lo de antes)
-  dark: 0.55,
-  textAt: 1500,
-  textOutAt: 2400,
-  revealAt: 2100,
-  revealMs: 500,
-  totalMs: 2700,
+  /** duración de la vista completa inicial; después empiezan juntos el zoom y la caminata */
+  holdMs: 450,
+  zoomMs: 1950,
+  dark: 0.32,
+  textAt: 950,
+  textOutAt: 2250,
+  revealAt: 2200,
+  revealMs: 400,
+  totalMs: 2600,
 };
 
 export function playMatchIntro(scene: Phaser.Scene, footer: number, onDone: () => void) {
@@ -50,13 +50,35 @@ export function playMatchIntro(scene: Phaser.Scene, footer: number, onDone: () =
     }
   }
 
-  // cámara: de lejos y un poco alta → encuadre normal
+  // Phaser centra con scrollX = centroX - width/2, independientemente del zoom.
+  // Mantener ese punto fijo evita que el ambiente entre desde un costado al empezar.
+  const baseX = cam.scrollX;
   const baseY = cam.scrollY;
   const baseZoom = cam.zoom; // zoom de juego (no 1): antes terminaba en 1 y al empezar saltaba al real
-  cam.setZoom(baseZoom * INTRO.zoomFrom);
-  cam.scrollY = baseY + INTRO.liftFrom;
+  const zoomFrom = baseZoom * INTRO.zoomFrom;
+  const centerX = baseX + cam.width / 2;
+  const centerY = baseY + cam.height / 2;
+  cam.setZoom(zoomFrom);
+  cam.centerOn(centerX, centerY + INTRO.liftFrom);
   cam.fadeIn(220, 0, 0, 0);
-  scene.tweens.add({ targets: cam, zoom: baseZoom, scrollY: baseY, delay: INTRO.holdMs, duration: INTRO.zoomMs, ease: 'Sine.easeInOut' });
+  // Solo cambia el zoom: el centro horizontal queda fijo desde el primer fotograma.
+  const approach = { t: 0 };
+  scene.tweens.add({
+    targets: approach,
+    t: 1,
+    delay: INTRO.holdMs,
+    duration: INTRO.zoomMs,
+    ease: 'Sine.easeInOut',
+    onUpdate: () => {
+      const z = Phaser.Math.Linear(zoomFrom, baseZoom, approach.t);
+      cam.setZoom(z);
+      cam.centerOn(centerX, centerY + INTRO.liftFrom * (1 - approach.t));
+    },
+    onComplete: () => {
+      cam.setZoom(baseZoom);
+      cam.setScroll(baseX, baseY);
+    },
+  });
 
   // oscurecido (cubre de sobra aunque la cámara esté alejada)
   const dim = scene.add

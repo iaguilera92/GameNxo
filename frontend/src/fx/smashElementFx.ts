@@ -84,10 +84,11 @@ export class SmashElementFx {
   update(dt: number, ball: BallState, on: boolean, strong: boolean, visible = true) {
     dt = Math.min(dt, 0.05); // al volver de segundo plano un dt enorme haría girar sin fin los bucles de emisión
     const g = this.g;
-    g.clear();
-    this.dark.clear();
     this.t += dt;
     const active = on && visible;
+    if (!active && !this.parts.length && !this.hist.length && !this.bolts.length && !g.commandBuffer.length && !this.dark.commandBuffer.length && !this.dragonImg?.visible) return;
+    g.clear();
+    this.dark.clear();
     let k = 1;
     let bx = 0;
     let by = 0;
@@ -743,7 +744,7 @@ export class DropZeroFx {
 
   /** Borra el dibujo y las líneas de aire en curso. */
   hide() {
-    this.g.clear();
+    if (this.g.commandBuffer.length) this.g.clear();
     this.streaks.length = 0;
   }
 

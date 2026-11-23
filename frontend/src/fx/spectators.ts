@@ -23,6 +23,8 @@ interface Seat {
   every: [number, number];
   /** (22-11-2026, usuario) APLAUDE: quieto todo el rato y solo hace su movimiento cuando se gana un punto (cheer) */
   clap?: boolean;
+  /** Factor para acercar un espectador concreto sin alterar la escala dinámica de perspectiva. */
+  size?: number;
 }
 interface SpectatorSet {
   key: string;
@@ -50,10 +52,12 @@ const SETS: Record<string, SpectatorSet> = {
     // (352,337)->(220,472); grada derecha: escalón de abajo (1133,358)->(1323,576). En pantalla se ve de x ~284 a ~1252 (y la cámara se mueve un poco)
     // (22-11-2026, usuario) bajados ~15 px por el mismo escalón (borde (380,320)->(294,378) en 1536); el de más abajo queda a ~25 px del borde de la pantalla
     seats: [
-      { row: 1, x: 352, y: 338, flip: false, every: [4000, 9000] }, // grada izquierda, junto a la esquina del muro: celular (se dibuja antes: queda detrás)
-      { row: 0, x: 310, y: 367, flip: false, every: [5000, 11000] }, // grada izquierda, más hacia la red: mira el partido
+      // (23-11-2026) imagen v6 (gradas más abiertas): cada uno se corre hacia afuera lo mismo que se movió el borde de su grada a su altura
+      // (niño 238 -> 205, niña 120 -> 108, abuelo 1378 -> 1404), misma y
+      { row: 0, x: 225, y: 412, flip: false, every: [5000, 11000], size: 1.25 }, // niño: un poco más arriba y a la izquierda, sobre el escalón. (23-11-2026, usuario) 205 -> 225, un poco más a la derecha
+      { row: 1, x: 108, y: 520, flip: false, every: [4000, 9000], size: 1.35 }, // niña: más a la izquierda y algo más pequeña
       // (22-11-2026, usuario) sin el niño repetido junto al abuelo (el niño que mira el partido queda solo en la grada izquierda)
-      { row: 2, x: 1184, y: 338, flip: true, every: [10000, 20000] }, // grada derecha, junto a la esquina del muro: toma refresco de vez en cuando
+      { row: 2, x: 1384, y: 469, flip: true, every: [10000, 20000], size: 1.35 }, // abuelo: más a la derecha y algo más pequeño, sobre el escalón. (23-11-2026, usuario) 1404 -> 1384, un poco más a la izquierda
     ],
   },
   // (22-11-2026, usuario) ARCILLA (ambiente-2): hoja ambiente-2-figuras (4 filas x 8, fondo de tablero quitado con _temp/prep-figuras.mjs y
@@ -65,11 +69,22 @@ const SETS: Record<string, SpectatorSet> = {
     h: 80, // (22-11-2026, usuario: con 52 no se veian) ~60 px en pantalla con el zoom 0.6
     fps: 7,
     // en pantalla (zoom 0.6) se ve de x ~288 a ~1248 de la imagen: los asientos van en la esquina de cada grada, junto al muro
+    // (23-11-2026) imagen v2 (gradas abiertas siguiendo la cancha; pie en 1254: izquierda (293,330)->(27,590), derecha (960,330)->(1217,590)):
+    // cada uno se corre hacia afuera lo que se movió el borde de su grada a su altura, misma y (antes 420 / 360 / 1196 / 1136).
+    // Los de la derecha y las lentes quedan cerca del borde de lo que se ve (x ~288 a ~1248): el del celular se dejó en 1240 para que entre
     seats: [
-      { row: 3, x: 420, y: 410, flip: false, every: [7000, 14000] }, // grada izquierda, junto a la esquina: el perrito (se dibuja antes: queda detras)
-      { row: 0, x: 360, y: 448, flip: false, every: [6000, 12000], clap: true }, // grada izquierda, escalon de abajo: lentes de sol, aplaude en cada punto
-      { row: 2, x: 1196, y: 413, flip: true, every: [5000, 10000] }, // grada derecha, escalon de encima: mira el celular (detras)
-      { row: 1, x: 1136, y: 428, flip: true, every: [6000, 12000], clap: true }, // grada derecha, escalon de abajo: la chica, aplaude en cada punto
+      // (23-11-2026, usuario) perrito y mujer más abajo y a la izquierda (siguen el mismo escalón); los dos de la derecha más abajo y más separados
+      // (antes 328,410 / 300,448 / 1240,413 / 1214,428). La cámara sigue al jugador en lateral: los bordes se ven al moverse
+      // (23-11-2026, usuario) el perrito un poco más cerca de la mujer (antes 246,480)
+      { row: 3, x: 234, y: 494, flip: false, every: [7000, 14000] }, // grada izquierda: el perrito (se dibuja antes: queda detras)
+      // (23-11-2026, usuario) la de lentes un poco más abajo por el mismo escalón (antes 217,520)
+      { row: 0, x: 194, y: 542, flip: false, every: [6000, 12000], clap: true, size: 1.15 }, // (23-11-2026, usuario) un poco más grande // grada izquierda, escalon de abajo: lentes de sol, aplaude en cada punto
+      // (23-11-2026, usuario) los dos de la derecha en el MISMO escalón (el de abajo), juntos sin taparse (~60 px de separación por el escalón);
+      // la chica más abajo (antes 1268,440 / 1307,520)
+      // (23-11-2026, usuario) las dos un poco más a la derecha (antes 1277 / 1337)
+      // (23-11-2026, usuario) la del celular más abajo y a la derecha (antes 1302,490); la chica más a la derecha y más grande (antes 1362)
+      { row: 2, x: 1322, y: 505, flip: true, every: [5000, 10000] }, // grada derecha, escalon de abajo: mira el celular (detras)
+      { row: 1, x: 1382, y: 550, flip: true, every: [6000, 12000], clap: true, size: 1.15 }, // grada derecha, escalon de abajo: la chica, aplaude en cada punto
     ],
   },
 };
@@ -99,7 +114,7 @@ export function startSpectators(scene: Phaser.Scene, ambiente: string, img: { le
   const { key, meta } = set;
   const hMax = Math.max(...meta.heights);
   for (const seat of set.seats) {
-    const scale = set.seated ? (rivalHeightAt(img.top + seat.y * img.s) * set.seated) / hMax : (set.h * img.s) / hMax;
+    const scale = (seat.size ?? 1) * (set.seated ? (rivalHeightAt(img.top + seat.y * img.s) * set.seated) / hMax : (set.h * img.s) / hMax);
     const first = seat.row * meta.frames;
     const anim = `${key}-${seat.row}`;
     if (!scene.anims.exists(anim)) {

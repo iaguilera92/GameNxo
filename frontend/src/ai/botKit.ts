@@ -53,6 +53,37 @@ const allowed = <T extends string>(kind: string, ids: T[]) =>
     return r !== 'epica' && r !== 'legendaria';
   });
 
+/** sin rareza LEGENDARIA (la ÉPICA sí vale): regla del 2v2 contra bots (23-11-2026, usuario) */
+const notLegendary = <T extends string>(kind: string, ids: T[]) => ids.filter((id) => itemRarity(`${kind}:${id}`) !== 'legendaria');
+
+/**
+ * (23-11-2026, usuario) KITS DEL 2v2 CONTRA BOTS: "a cada personaje poderes diferentes al azar, nunca legendarios". Un kit por bot
+ * (`skins`: el personaje de cada uno), con ESPECIAL, ULTI y DEFENSIVO distintos entre todos y, si se puede, distintos de los del
+ * jugador (`avoid`). La ÉPICA vale; la LEGENDARIA no. Carga y croma, como randomBotKit (sin épicos ni legendarios).
+ */
+export function randomDoublesKits(
+  skins: (string | undefined)[],
+  avoid: { smash?: string; inferno?: string; defensive?: string } = {},
+  rnd: () => number = Math.random,
+): BotKit[] {
+  const used = { smash: new Set<string>(), inferno: new Set<string>(), defensive: new Set<string>() };
+  for (const k of ['smash', 'inferno', 'defensive'] as const) if (avoid[k]) used[k].add(avoid[k]!);
+  const pickFree = <T extends string>(kind: 'smash' | 'inferno' | 'defensive', ids: T[]): T => {
+    const free = ids.filter((id) => !used[kind].has(id));
+    const pool = free.length ? free : ids; // más bots que poderes: se repite (hoy no pasa: 7 ESPECIALES, 9 ULTIS, 6 DEFENSIVOS)
+    const id = pool[Math.floor(rnd() * pool.length)];
+    used[kind].add(id);
+    return id;
+  };
+  const smashes = notLegendary('smash', SMASHES);
+  const infernos = notLegendary('inferno', INFERNOS);
+  const defensives = notLegendary('defensive', BOT_DEFENSIVES);
+  return skins.map((skin) => {
+    const base = randomBotKit(skin, rnd); // carga y croma
+    return { ...base, smash: pickFree('smash', smashes), inferno: pickFree('inferno', infernos), defensive: pickFree('defensive', defensives) };
+  });
+}
+
 export function randomBotKit(skin: string | undefined, rnd: () => number = Math.random): BotKit {
   const base = botKitFor(skin);
   const pick = <T>(arr: T[]) => arr[Math.floor(rnd() * arr.length)];

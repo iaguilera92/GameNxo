@@ -1,0 +1,12 @@
+idle sin JSON
+run sin JSON
+walk         f1 222  mediana 222  todos 222,222,213,216,225,222,217,217  celda 172x234  origen 0.98291
+runstop sin JSON
+brake-turn   f1 235  mediana 231  todos 235,231,226,231,225,239,215,225  celda 244x253  origen 0.98419
+forehand     f1 238  mediana 236  todos 238,236,233,220,229,236,239,246  celda 238x252  origen 0.98413
+backhand     f1 220  mediana 220  todos 220,218,216,217,220,219,221,221  celda 190x231  origen 0.98268
+serve        f1 193  mediana 193  todos 193,191,199,194,217,182,181,176  celda 164x226  origen 0.9823
+serve-spin   f1 227  mediana 227  todos 227,230,236,217,267,227,220,207  celda 216x273  origen 0.98535
+volley       f1 215  mediana 213  todos 215,208,209,207,216,213,212,215  celda 262x222  origen 0.98198
+smash        f1 217  mediana 223  todos 217,223,231,214,264,231,206,211  celda 206x274  origen 0.9854
+exit 0 

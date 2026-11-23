@@ -80,6 +80,8 @@ export function sanitizeHit(d: unknown): HitMsg | null {
   if (t !== null) out.t = t;
   if (d.special === true) out.special = true;
   if (d.shock === true) out.shock = true;
+  if (d.defensive === true) out.defensive = true;
+  if (d.kind === 'hit' && (d.rallyFault === 'net' || d.rallyFault === 'out')) out.rallyFault = d.rallyFault;
   if (d.serveSpin === true) out.serveSpin = true;
   if (d.impact === true) out.impact = true;
   const lunge = num(d.lunge);

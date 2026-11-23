@@ -13,6 +13,8 @@ const CLEAR = 0.14;
 const MAX_ALPHA = 0.55;
 /** DESENFOQUE real de la cámara del juego (WebGL; el marcador y los botones van en otra cámara y quedan nítidos) */
 const BLUR_MAX = 2.4;
+// Cada paso dibuja dos veces toda la cámara. El velo radial aporta el resto de la pérdida de nitidez.
+const BLUR_STEPS = 2;
 /** la niebla se desvanece durante el último tramo del aturdido (ms) */
 const FADE_OUT_MS = 1000;
 
@@ -155,7 +157,9 @@ export class StunFog {
     // la nítida sigue a la principal (mismo encuadre)
     this.sharp!.setScroll(cam.scrollX, cam.scrollY).setZoom(cam.zoom).setSize(cam.width, cam.height);
     // desenfoque de toda la cancha (solo WebGL); sube y baja con la niebla
-    if (!this.blur && this.scene.renderer.type === Phaser.WEBGL && cam.postFX) this.blur = cam.postFX.addBlur(0, 2, 2, 0);
+    if (!this.blur && this.scene.renderer.type === Phaser.WEBGL && cam.postFX) {
+      this.blur = cam.postFX.addBlur(0, 2, 2, 0, undefined, BLUR_STEPS);
+    }
     if (this.blur) this.blur.strength = BLUR_MAX * this.k;
     // cubre toda la vista aunque el personaje esté en un borde
     const cover = Math.hypot(cam.worldView.width, cam.worldView.height) * 2.2;

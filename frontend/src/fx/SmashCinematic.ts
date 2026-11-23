@@ -137,7 +137,6 @@ export class SmashCinematic {
   private pausedTime = false;
   private tail = false;
   private dark: Phaser.GameObjects.Rectangle;
-  private back: Phaser.GameObjects.Graphics;
   private auraImgs: Phaser.GameObjects.Image[];
   private racketGlow: Phaser.GameObjects.Image;
   private flashImg: Phaser.GameObjects.Image;
@@ -159,7 +158,6 @@ export class SmashCinematic {
 
   constructor(private scene: Phaser.Scene) {
     this.dark = scene.add.rectangle(0, 0, 10, 10, 0x02040c, 1).setOrigin(0.5).setDepth(0.95).setVisible(false);
-    this.back = scene.add.graphics().setVisible(false).setBlendMode(Phaser.BlendModes.ADD);
     // brillos SUAVES (degradado radial, sin contorno): aura del cuerpo, raqueta y destello
     if (!scene.textures.exists(SOFT)) {
       const t = scene.textures.createCanvas(SOFT, 64, 64);
@@ -180,10 +178,14 @@ export class SmashCinematic {
     this.flashImg = soft().setDepth(3701);
     this.front = scene.add.graphics().setDepth(3700).setVisible(false).setBlendMode(Phaser.BlendModes.ADD);
     scene.events.on(Phaser.Scenes.Events.POST_UPDATE, this.tailTick, this);
-    scene.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
-      scene.events.off(Phaser.Scenes.Events.POST_UPDATE, this.tailTick, this);
-      this.cancel();
-    });
+    scene.events.once(Phaser.Scenes.Events.SHUTDOWN, this.dispose, this);
+  }
+
+  /** Cancela la reproducción y retira los listeners. La escena o el contenedor dueño destruye el dibujo. */
+  dispose() {
+    this.scene.events.off(Phaser.Scenes.Events.SHUTDOWN, this.dispose, this);
+    this.scene.events.off(Phaser.Scenes.Events.POST_UPDATE, this.tailTick, this);
+    this.cancel();
   }
 
   /** ¿Hay alguna cinemática en curso (congelada o en su cola de efectos)? */
@@ -211,7 +213,6 @@ export class SmashCinematic {
     this.scene.time.paused = true;
     for (const s of o.freeze) s.anims?.pause();
     this.dark.setVisible(true).setAlpha(0);
-    this.back.setVisible(true);
     this.front.setVisible(true);
     // tiempo REAL exacto (no depende de los FPS ni del reloj del partido); también es la red de seguridad
     const H = this.P.hitAtMs;
@@ -292,7 +293,6 @@ export class SmashCinematic {
 
   private clearGfx() {
     this.dark.setVisible(false);
-    this.back.clear().setVisible(false);
     this.front.clear().setVisible(false);
     this.auraImgs.forEach((o) => o.setVisible(false));
     this.racketGlow.setVisible(false);
@@ -312,8 +312,10 @@ export class SmashCinematic {
     const P = this.P;
     this.dragonBody ??= this.scene.add.graphics();
     this.dragonFire ??= this.scene.add.graphics().setBlendMode(Phaser.BlendModes.ADD);
-    const body = this.dragonBody.clear().setVisible(true).setDepth(f.depth - 0.6);
-    const fire = this.dragonFire.clear().setVisible(true).setDepth(f.depth - 0.55);
+    const body = this.dragonBody.clear().setVisible(true);
+    const fire = this.dragonFire.clear().setVisible(true);
+    if (body.depth !== f.depth - 0.6) body.setDepth(f.depth - 0.6);
+    if (fire.depth !== f.depth - 0.55) fire.setDepth(f.depth - 0.55);
     const clamp01 = (x: number) => Math.max(0, Math.min(1, x));
     const smooth = (x: number) => x * x * (3 - 2 * x);
     const k = f.s;
@@ -463,8 +465,6 @@ export class SmashCinematic {
               : 1 - clamp01((e - P.releaseFromMs) / (D - P.releaseFromMs));
 
     // --- aura CEÑIDA al cuerpo, detrás del personaje (sin discos grandes sobre la cancha)
-    const b = this.back;
-    b.clear().setDepth(f.depth - 0.5);
     const hh = f.hh ?? 60 * k; // medio alto del personaje en pantalla
     const throb = 1 + Math.sin(e / 38) * 0.06;
     const aura: [number, number, number][] = P.aura ?? [
@@ -477,11 +477,12 @@ export class SmashCinematic {
       const sc = s * throb * (0.75 + 0.25 * energy);
       const o = this.auraImgs[i];
       if (!o) return;
+      const depth = f.depth - 0.5 - i * 0.01;
+      if (o.depth !== depth) o.setDepth(depth);
       o.setTint(col)
         .setPosition(f.x, f.y)
         .setDisplaySize(hh * 1.5 * sc, hh * 3 * sc)
         .setAlpha(Math.min(1, a * 2.6 * energy * G))
-        .setDepth(f.depth - 0.5 - i * 0.01)
         .setVisible(true);
     });
 
@@ -519,8 +520,8 @@ export class SmashCinematic {
         g.lineStyle(18 * wk, col, 0.14 * fade).lineBetween(x0, y0, x1, y1); // halo suave
         g.lineStyle(8 * wk, col, 0.5 * fade).lineBetween(x0, y0, x1, y1);
         g.lineStyle(3 * wk, 0xffffff, 1 * fade).lineBetween(x0, y0, x1, y1); // núcleo luminoso
-        g.fillStyle(col, 0.5 * fade).fillCircle(x1, y1, 7 * wk);
-        g.fillStyle(0xffffff, fade).fillCircle(x1, y1, 3.5 * wk); // punta
+        g.fillStyle(col, 0.5 * fade).fillEllipse(x1, y1, 14 * wk, 14 * wk, 12);
+        g.fillStyle(0xffffff, fade).fillEllipse(x1, y1, 7 * wk, 7 * wk, 8); // punta
       }
     }
     // partículas: nacen lejos y caen hacia el punto de concentración
@@ -550,7 +551,7 @@ export class SmashCinematic {
       const ps = p.size * (0.7 + 0.5 * k);
       // hielo: cristales que apuntan hacia el personaje y giran un poco al caer; si no, puntos de luz
       if (ice) this.iceCrystal(g, px, py, ps * 1.3, p.a + p.r * 0.02, p.col, pa);
-      else g.fillStyle(p.col, pa).fillCircle(px, py, ps);
+      else g.fillStyle(p.col, pa).fillEllipse(px, py, ps * 2, ps * 2, 8);
     }
     // brillo en la raqueta: suave y latiendo en la máxima energía (sin anillos ni ondas)
     if (e < P.hitAtMs) {

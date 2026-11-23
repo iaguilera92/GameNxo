@@ -65,20 +65,25 @@ export const AMBIENTES: Ambiente[] = [
   // guia _temp/guia-muro.mjs, enderezada otra vez: ambiente-1-1254-v4-muro.png): muro borde de arriba y 251, pie y 306, malla 200. La imagen
   // sigue anclada como antes (anchorY 350 = el pie del muro anterior) para que las gradas no se muevan respecto a la cancha.
   // (22-11-2026, usuario) v5: muro todavia mas arriba (borde y 228, pie y 278, malla 178) (ambiente-1-1254-v5.png, instalada TAL CUAL a pedido del usuario: sin enderezar las gradas)
-  { key: 'ambiente-1', file: 'ambiente-1.webp', w: 1536, h: 1536, scaleH: 1024, courtDY: 52, zoom: 0.7, fixedScale: true, anchorY: 350, wallBottomY: 278, wallTopY: 228, fenceTopY: 178, surface: 'hard', sky: 0x031d6b },
+  // (23-11-2026, usuario) v6 de ChatGPT: gradas abiertas como el 2v2 (pie de las gradas siguiendo la perspectiva de la cancha) y muro del fondo
+  // más alto (borde y 172, pie y 229 de 1254). Misma posición de la imagen (anchorY 350); muro en su pie y borde reales.
+  { key: 'ambiente-1', file: 'ambiente-1.webp', w: 1536, h: 1536, scaleH: 1024, courtDY: 52, zoom: 0.7, fixedScale: true, anchorY: 350, wallBottomY: 280, wallTopY: 211, fenceTopY: 178, surface: 'hard', court: 'night', sky: 0x031d6b, footer: 0x303a62 }, // (23-11-2026) v7: mismo dibujo que la v6 con el piso azul pizarra; cancha con la paleta `night` y relleno de abajo del color del piso
   // (22-11-2026, usuario) ARCILLA nueva (1536 x 1536, estructura est�ndar): muro verde del fondo medido sobre la imagen (borde de arriba en y 318,
   // pie en y 396; postes de la malla hasta y ~251). Gradas a los dos costados: zoom 0.6 (con 0.7 casi no entraban en pantalla y los espectadores no se veian, 22-11-2026)
+  // (23-11-2026, usuario) ambiente-2 v2 de ChatGPT: gradas abiertas siguiendo la cancha (pie de la grada izquierda (293,330)->(27,590) de 1254);
+  // el muro verde no se movió (pie y 322 de 1254), mismos valores
   { key: 'ambiente-2', file: 'ambiente-2.webp', w: 1536, h: 1536, scaleH: 1024, courtDY: 52, zoom: 0.6, wallBottomY: 396, wallTopY: 318, fenceTopY: 251, surface: 'clay', sky: 0x0c2e35 },
   // (22-11-2026, usuario) CIUDAD nueva (1536 x 1536, estructura est�ndar): calle a la izquierda (pasar�n autos), gradas a la derecha. Muro azul
   // del fondo medido sobre la imagen (borde de arriba en y 317, pie en y 392; malla hasta y ~251). Sin cornisa: se posa en el borde del muro
+  // (23-11-2026, usuario) imagen v2 de ChatGPT: a la derecha, reja y camino del parque en vez de gradas; muro y bordes del piso donde estaban (mismos valores)
   { key: 'ambiente-3', file: 'ambiente-3.webp', w: 1536, h: 1536, scaleH: 1024, courtDY: 52, zoom: 0.7, wallBottomY: 392, wallTopY: 317, fenceTopY: 251, surface: 'hard', sky: 0x143d7e },
   // (21-11-2026, usuario) NIEVE: muro de piedra del fondo medido sobre la imagen (nieve del borde en y 333, pie en y 372); valla de malla encima (en la imagen llega a y ~285; fenceTopY 265 = 20 px mas alta a pedido del usuario, 21-11-2026). Piso duro azul
   { key: 'ambiente-4', file: 'ambiente-4.webp', w: 1536, h: 1536, scaleH: 1024, courtDY: 52, wallBottomY: 372, wallTopY: 333, fenceTopY: 265, surface: 'hard', sky: 0x2a80e8 },
   // (19-11-2026, usuario) PARQUE con varias canchas: SOLO para el 2v2. Imagen con un PASEO de lado a lado detrás del muro (los paseantes
   // cruzan toda la pantalla). Muro del fondo medido sobre la imagen (borde de arriba en y 313, pie en y 397); no tiene valla encima:
   // fenceTopY = el alto de las vallas verdes del fondo (~236). Piso verde de la imagen y cancha azul (hard)
-  // (22-11-2026, usuario) imagen nueva de ChatGPT v6 de ChatGPT tal cual (con escalera a la derecha), redibujada con los muros de los lados paralelos en pantalla a la línea de dobles (guía _temp/para-chatgpt/2v2-guia-muros-rojo.png); muro del fondo al pie y 337 de 1254 = 412
-  { key: 'ambiente-1-2v2', file: 'ambiente-1-2v2.webp', w: 1536, h: 1536, scaleH: 1024, courtDY: 52, zoom: 0.7, fixedScale: true, wallBottomY: 412, wallTopY: 290, fenceTopY: 184, surface: 'hard', court: 'green', sky: 0x2a7ba4, footer: 0x0caf36, only: '2v2' }, // footer = verde del pasto de abajo de la imagen
+  // (22-11-2026, usuario) imagen nueva de ChatGPT v9 de ChatGPT ENDEREZADA fila por fila con _temp/enderezar-2v2.mjs: pie de los muros a 140 px de la linea de dobles en todas las filas (23-11: guia _temp/para-chatgpt/2v2-v7-guia-muros-rojo.png, distancia muro-dobles 160/151 arriba -> 139/131 abajo, guia 140; antes v8 172 -> 136; pie muro fondo y 352 de 1254 = 431, borde de arriba y 250 = 306) (antes v6, con escalera a la derecha), redibujada con los muros de los lados paralelos en pantalla a la línea de dobles (guía _temp/para-chatgpt/2v2-guia-muros-rojo.png); muro del fondo al pie y 337 de 1254 = 412
+  { key: 'ambiente-1-2v2', file: 'ambiente-1-2v2.webp', w: 1536, h: 1536, scaleH: 1024, courtDY: 52, zoom: 0.7, fixedScale: true, anchorY: 431, wallBottomY: 387, wallTopY: 285, fenceTopY: 184, surface: 'hard', court: 'green', sky: 0x2a7ba4, footer: 0x0caf36, only: '2v2' }, // footer = verde del pasto de abajo de la imagen
 ];
 
 /** (19-11-2026) Ambientes cargados para este modo: el 2v2 usa los suyos (`only: '2v2'`) si hay alguno cargado; el 1v1 nunca los usa. */
@@ -93,7 +98,8 @@ function ambientesFor(scene: Phaser.Scene, doubles: boolean): Ambiente[] {
 }
 /** (22-11-2026, usuario) ambientes que entran al sorteo del 1v1; null = aleatorio entre todos */
 // (22-11-2026, usuario) por ahora SOLO ambiente-1 (se esta revisando la imagen nueva). Sorteo anterior: ['ambiente-1', 'ambiente-2', 'ambiente-4']
-const SORTEO_1V1: string[] | null = ['ambiente-1'];
+// (23-11-2026, usuario) los mapas 1v1 ya listos (imagen rehecha en perspectiva): 1, 2 y 3. ambiente-4 entra cuando se rehaga.
+const SORTEO_1V1: string[] | null = ['ambiente-1', 'ambiente-2', 'ambiente-3'];
 
 /** y en pantalla donde debe quedar el muro del fondo (un poco por detrás de la cancha) */
 const WALL_AT_Y = 302;
@@ -223,24 +229,15 @@ function extendTop(scene: Phaser.Scene, amb: Ambiente, top: number, s: number) {
   scene.add.rectangle(W0, top + 2, WW, 2200, avg).setOrigin(0, 1).setDepth(-22);
   const fade = scene.add.graphics().setDepth(-19);
   fade.fillGradientStyle(avg, avg, avg, avg, 1, 1, 0, 0).fillRect(W0, top - 2, WW, SKY_BLEND);
-  // COSTADOS: fondo oscuro liso fuera de la imagen y un degradado que entra en su borde
+  // COSTADOS (23-11-2026, usuario): antes, fondo oscuro liso y un degradado negro en el borde; al ir a un lado se veía un borde
+  // negro. Ahora, la misma imagen espejada a cada lado: el borde empalma sin corte y al mover la cámara sigue el ambiente.
   const iw = amb.w * s;
-  const ih = amb.h * s;
-  const left = VIEW.W / 2 - iw / 2;
-  const dark = 0x050b1c;
   for (const side of [-1, 1] as const) {
-    const edge = side < 0 ? left : left + iw;
-    scene.add.rectangle(side < 0 ? edge - 1500 : edge, top, 1500, ih + 600, dark).setOrigin(0, 0).setDepth(-22);
-    const v = scene.add.graphics().setDepth(-19);
-    const x0 = side < 0 ? edge - 2 : edge - SIDE_BLEND + 2;
-    const a0 = side < 0 ? 1 : 0;
-    const a1 = side < 0 ? 0 : 1;
-    v.fillGradientStyle(dark, dark, dark, dark, a0, a1, a0, a1).fillRect(x0, top, SIDE_BLEND, ih);
+    scene.add.image(VIEW.W / 2 + side * iw, top, amb.key, '__BASE').setOrigin(0.5, 0).setScale(s).setFlipX(true).setDepth(-20);
   }
 }
-/** cuánto entra el degradado del cielo / de los costados en el borde de la imagen (px de mundo) */
+/** cuánto entra el degradado del cielo en el borde de arriba de la imagen (px de mundo) */
 const SKY_BLEND = 90;
-const SIDE_BLEND = 70;
 
 
 // ================================================================ utilidades de dibujo
@@ -298,6 +295,9 @@ function glow(g: Phaser.GameObjects.Graphics, x: number, y: number, rx: number, 
 const HARD_COLORS = {
   blue: { alley: 0x1d4aa0, near: 0x4a97f0, far: 0x2459b8, light: 0xbfe0ff },
   green: { alley: 0x1f7a3c, near: 0x4cbf6a, far: 0x2f9452, light: 0xe0ffd8 },
+  // (23-11-2026, usuario) ambiente-1 v7, piso azul pizarra (#303a62): azul más apagado que `blue` (no choca con el piso y va con el mural) y la
+  // luz de los focos cálida, como los faroles. Vista previa: _temp/preview-cancha.mjs
+  night: { alley: 0x2a3c7a, near: 0x4f74c8, far: 0x33529e, light: 0xffd9a0 },
 };
 
 function drawHard(g: Phaser.GameObjects.Graphics, C = HARD_COLORS.blue) {

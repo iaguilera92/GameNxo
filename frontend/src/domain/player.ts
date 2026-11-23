@@ -42,7 +42,7 @@ export const newLoginState = (): LoginState => ({ last: '', streak: 0, adBonusDa
 export type StyleId = 'classic' | 'red' | 'green' | 'gold' | 'pink' | 'rainbow' | 'ember' | 'frost' | 'tulip' | 'hearts' | 'stars' | 'neon' | 'smoke';
 export type ItemKind = 'ability' | 'skin' | 'style' | 'inferno' | 'charge' | 'defensive' | 'smash' | 'emote' | 'color' | 'zone';
 /** Id único de ítem: `<tipo>:<id>` (ej. 'ability:wall', 'skin:mai'). Los `emote:` solo se ganan en el Pase de Batalla. */
-export type ItemId = `ability:${AbilityId}` | `skin:${SkinId}` | 'skin:net' | 'skin:mat' | 'skin:isa' | 'skin:rin' | `style:${StyleId}` | `inferno:${InfernoPower}` | `charge:${ChargeFxId}` | `defensive:${DefensivePower}` | `smash:${SmashPower}` | `emote:${EmoteKind}` | `color:${CharColorId}` | `color:${CharColorId}:${'nxo' | 'mai'}` | `zone:${'fire' | 'shadow'}`;
+export type ItemId = `ability:${AbilityId}` | `skin:${SkinId}` | 'skin:net' | 'skin:mat' | 'skin:isa' | 'skin:rin' | 'skin:zac' | 'skin:flo' | `style:${StyleId}` | `inferno:${InfernoPower}` | `charge:${ChargeFxId}` | `defensive:${DefensivePower}` | `smash:${SmashPower}` | `emote:${EmoteKind}` | `color:${CharColorId}` | `color:${CharColorId}:${'nxo' | 'mai'}` | `zone:${'fire' | 'shadow'}`;
 
 export interface Loadout {
   skin: SkinId;

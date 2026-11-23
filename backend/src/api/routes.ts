@@ -5,7 +5,7 @@ import { Router } from 'express';
 import { createReadStream } from 'node:fs';
 import type { RoomManager } from '../socket/rooms/RoomManager.js';
 import { matchLog } from '../socket/handlers/index.js';
-import { LOG_PARTIDO } from '../socket/matchLog.js';
+import { LOG_PARTIDO, LOG_PARTIDO_2V2 } from '../socket/matchLog.js';
 import { CONFIG } from '../config/env.js';
 import { riskRouter } from './riskRoutes.js';
 import { RiskStore } from '../risk/riskMode.js';
@@ -28,6 +28,13 @@ export function apiRouter(getRooms: () => RoomManager | null) {
     res.type('text/plain; charset=utf-8');
     createReadStream(LOG_PARTIDO)
       .on('error', () => res.status(404).end('sin LOG-PARTIDO todavía'))
+      .pipe(res);
+  });
+  r.get('/log-partido-2v2', (req, res) => {
+    if (!allowed(req)) return res.status(404).end();
+    res.type('text/plain; charset=utf-8');
+    createReadStream(LOG_PARTIDO_2V2)
+      .on('error', () => res.status(404).end('sin LOG-PARTIDO-2V2 todavía'))
       .pipe(res);
   });
   r.get('/match-logs/:room', async (req, res) => {

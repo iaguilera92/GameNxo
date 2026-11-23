@@ -36,10 +36,10 @@ for _ in $(seq 1 "${DEPLOY_WAIT_S:-90}"); do
   sleep 1
 done
 
-# versión nueva = logs de partidas nuevos: se borran los de la versión anterior (LOG-PARTIDO y logs/matches).
+# versión nueva = logs de partidas nuevos: se borran los de la versión anterior.
 # deploy.log no se toca. Para conservarlos: DEPLOY_KEEP_LOGS=1
 if [ "${DEPLOY_KEEP_LOGS:-0}" != "1" ]; then
-  rm -rf "$BACKEND_DIR/logs/matches" "$BACKEND_DIR/logs/LOG-PARTIDO.txt"
+  rm -rf "$BACKEND_DIR/logs/matches" "$BACKEND_DIR/logs/LOG-PARTIDO.txt" "$BACKEND_DIR/logs/LOG-PARTIDO-2V2.txt"
   echo "[$(date -Is)] logs de partidas borrados (versión nueva)"
 fi
 

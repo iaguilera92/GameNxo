@@ -140,7 +140,8 @@ export class DashFx {
       const w = (2 + Math.random() * 5) * k;
       g.lineStyle(w * 2.6, color, 0.16).lineBetween(x0, y0, x1, y1); // halo
       g.lineStyle(w, i % 3 === 0 ? 0xffffff : color, 0.85).lineBetween(x0, y0, x1, y1); // núcleo
-      g.fillStyle(0xffffff, 0.9).fillCircle(x1, y1, w * 0.9); // punta brillante
+      const tip = w * 1.8;
+      g.fillStyle(0xffffff, 0.9).fillEllipse(x1, y1, tip, tip, 8); // punta brillante
     }
     this.scene.tweens.add({ targets: g, x: ux * len * 0.12, y: uy * len * 0.12, alpha: 0, duration: 340, ease: 'Quad.easeOut', onComplete: () => this.kill(g) });
   }

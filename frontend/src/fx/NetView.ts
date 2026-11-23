@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { NET_SAG, netTapeHeight } from '../config';
 
 /**
  * RED DE TENIS del partido (solo visual + sonido; la física de la red sigue en objects/Ball.stepBall).
@@ -15,14 +16,9 @@ import Phaser from 'phaser';
  * Lo fijo (sombra, postes) se pinta una vez; malla y cinta se redibujan solo mientras se mueven.
  */
 export type Projector = (x: number, y: number, z?: number) => { x: number; y: number };
-/** (21-11-2026, usuario) la red se DIBUJA más alta que su altura física (NET_HEIGHT): solo es visual, la pelota y las reglas no cambian. Súbelo o bájalo aquí. */
-export const NET_VIEW_SCALE = 1.45; // (21-11-2026, usuario) un poco más alta (antes 1.32; 20-11: 1.2)
-
 const LOOK = {
   /** tamaño del rombo (unidades de cancha) */
   cell: 13,
-  /** cuánto más alta es la cinta en los postes que en el centro (fracción de NET_HEIGHT) */
-  sag: 0.12,
   meshCol: 0xe6eaf7,
   meshAlpha: 0.42,
   fill: 0x1b2036,
@@ -70,9 +66,7 @@ export class NetView {
 
   /** altura de la cinta en el lateral y (más baja en el centro, como una red real) */
   private top(y: number) {
-    const u = (y - this.y0) / (this.y1 - this.y0); // 0..1
-    const e = Math.abs(u - 0.5) * 2; // 0 centro, 1 postes
-    return this.H * (1 + LOOK.sag * e * e);
+    return netTapeHeight(y);
   }
 
   /** sombra en el suelo y postes con tapa: una sola vez (renderTexture) */
@@ -84,7 +78,7 @@ export class NetView {
     g.fillStyle(0x000000, 0.22).fillPoints(sh, true);
     g.fillStyle(0x000000, 0.18).fillRect(Math.min(sh[0].x, sh[1].x), sh[0].y - 2, Math.abs(sh[1].x - sh[0].x), 5);
     // postes: cuerpo con sombra lateral y tapa redonda
-    const postTop = H * (1 + LOOK.sag) + 5;
+    const postTop = H * (1 + NET_SAG) + 5;
     for (const y of [y0, y1]) {
       const b = P(netX, y, 0);
       const t = P(netX, y, postTop);
@@ -190,7 +184,7 @@ export class NetView {
     g.lineStyle(1.2, LOOK.meshCol, LOOK.meshAlpha);
     const cell = LOOK.cell;
     const span = y1 - y0;
-    const maxZ = this.H * (1 + LOOK.sag);
+    const maxZ = this.H * (1 + NET_SAG);
     for (const sgn of [1, -1]) {
       for (let c = -maxZ; c <= span + maxZ; c += cell) {
         let prev: { x: number; y: number } | null = null;

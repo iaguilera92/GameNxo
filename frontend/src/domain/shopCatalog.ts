@@ -40,6 +40,8 @@ export interface ShopItem {
 /** (21-11-2026, usuario) PERSONAJES de la Tienda: $6.990 CLP cada uno y también con dinero virtual. El virtual es PROVISIONAL (~3 semanas jugando): se cambia solo aquí. */
 export const CHARACTER_PRICE = { clp: 6990, price: 1000 } as const;
 const BASE_ITEMS: ShopItem[] = [
+  { id: 'skin:flo', kind: 'skin', name: 'Flo', ...CHARACTER_PRICE, minLevel: 1, available: true }, // en propiedad hasta que sea jugable
+  { id: 'skin:zac', kind: 'skin', name: 'Zac', ...CHARACTER_PRICE, minLevel: 1, available: true }, // en propiedad hasta que sea jugable
   // personajes (rareza sin clasificar: preguntar al usuario)
   { id: 'skin:mai', kind: 'skin', name: 'Mai', ...CHARACTER_PRICE, minLevel: 1, available: false }, // retirada de Nuevos personajes; queda como personaje inicial para las cuentas web existentes
   { id: 'skin:net', kind: 'skin', name: 'Net', ...CHARACTER_PRICE, minLevel: 1, available: true }, // (21-11-2026) aún no jugable: solo queda en propiedad

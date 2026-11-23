@@ -1,6 +1,11 @@
-# Misiones por partida (1v1)
+# Misiones por partida (1v1 y 2v2)
 
-Añadido: 18-11-2026 (Claude). 4 misiones que se reinician en **cada partida** 1v1 (contra el bot u online; en 2v2 no hay).
+Añadido: 18-11-2026 (Claude). 4 misiones que se reinician en **cada partida** 1v1 (contra el bot u online).
+**2v2 (23-11-2026, usuario):** las MISMAS 4 misiones, por ahora, con la sección ADICIONALES al final del resultado. Cuentan los puntos de tu
+equipo (también los que hace tu compañero); ¡Hasta la vista! vale con cualquiera de los dos rivales; Duelo RED no se puede cumplir (en el 2v2
+no hay duelo en la red). **Pagan MONEDAS 2v2** (usuario, 23-11-2026), equivalentes a las del 1v1 en la misma proporción que el premio por
+ganar el partido (COINS_2V2.win / COINS_WIN = 30 / 50): Drop Shot 0 **12**, ¡Hasta la vista! **24**, Duelo RED 12, Combo Globo **12**
+(`missionReward` en `domain/matchMissions.ts`; se suman con `grantCoins2v2`, sin contar en el neto de la LIGA 2v2, como los premios del Pase).
 Cada una cuenta **una sola vez** por partida. Lógica: `frontend/src/domain/matchMissions.ts`. Prueba:
 `node tools/test-match-missions.mjs` (en `frontend/`).
 

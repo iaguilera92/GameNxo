@@ -74,9 +74,11 @@ export class BotAI {
 
   /** x de su posición de espera (null = detrás de la línea de fondo, como siempre). MatchScene la acerca a la red para PROBAR el duelo en la red. */
   homeX: number | null = null;
+  /** (23-11-2026) lateral de su posición de espera (null = el medio). En el 2v2 es el centro de SU mitad (ai/doublesPositioning.ts homeY). */
+  homeY: number | null = null;
 
   get home() {
-    return new Phaser.Math.Vector2(this.homeX ?? COURT.right + 40, (COURT.top + COURT.bottom) / 2);
+    return new Phaser.Math.Vector2(this.homeX ?? COURT.right + 40, this.homeY ?? (COURT.top + COURT.bottom) / 2);
   }
 
   /** Llamar cuando el jugador golpea la pelota. */

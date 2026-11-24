@@ -32,6 +32,7 @@ export interface ScoreBoardState {
   gameIndex: number;
   /** 0 = saca el jugador, 1 = saca el rival */
   server: 0 | 1;
+  shortMatch?: boolean;
 }
 
 // ---------------------------------------------------------------- ARTE DEL MARCADOR (21-11-2026, usuario: marcador-principal.png)
@@ -132,7 +133,7 @@ export class ScoreBoard extends Phaser.GameObjects.Container {
         this.scene.tweens.add({ targets: t, scale: { from: base * 1.45, to: base }, duration: 320, ease: 'Back.easeOut' });
       }
     });
-    this.gameLabel = `JUEGO ${Math.min(s.gameIndex + 1, this.gamesToWin * 2 - 1)}`;
+    this.gameLabel = s.shortMatch ? 'A 4 PUNTOS' : `JUEGO ${Math.min(s.gameIndex + 1, this.gamesToWin * 2 - 1)}`;
     this.refreshLabel();
     for (let side = 0; side < 2; side++)
       this.pips[side].forEach((p, i) => {

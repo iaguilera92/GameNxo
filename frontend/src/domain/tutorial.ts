@@ -172,7 +172,44 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
   },
 ];
 
-const IDS = new Set(TUTORIAL_STEPS.map((s) => s.id));
+/**
+ * (24-11-2026, usuario) REGALOS del tutorial: al llegar al nivel se le dan (si aún no los tiene). GRIS = color de ropa para todos sus personajes
+ * (ítem `color:gris`); AZUL = estela de pelota. Los da `grantTutorialGifts` (domain/operations.ts).
+ */
+export const TUTORIAL_GIFTS: { level: number; item: string }[] = [
+  { level: 8, item: 'color:gris' },
+  { level: 10, item: 'style:blue' },
+];
+
+export const GUIDE = {
+  welcome: 'guide-welcome',
+  firstMatch: 'guide-first-match',
+  defensive: 'guide-defensive',
+  profile: 'guide-profile',
+  spin: 'guide-spin',
+} as const;
+export type GuidedMatch = 'first' | 'spin';
+export const GUIDE_FIRST_WHEEL = 'guide-first-wheel';
+export function guidedStep(level: number, seen: readonly string[] = []) {
+  if (level === 1 && !seen.includes(GUIDE.firstMatch)) return 'play';
+  if (!seen.includes(GUIDE.firstMatch)) return null;
+  if (!seen.includes(GUIDE.defensive)) return 'defensive';
+  if (!seen.includes(GUIDE.profile)) return 'profile';
+  return seen.includes(GUIDE.spin) ? null : 'spin';
+}
+
+/**
+ * (24-11-2026, usuario) PROBAR TUTORIAL LVL (AJUSTES, solo modo desarrollo): lo que ya habría visto un jugador que llega al nivel `level`
+ * jugando el tutorial entero (avisos de los niveles anteriores y los pasos guiados ya hechos). Al añadir pasos nuevos, que entren aquí.
+ */
+export function tutorialSeenBefore(level: number): string[] {
+  const seen = TUTORIAL_STEPS.filter((s) => s.level < level).map((s) => s.id);
+  if (level >= 2) seen.push(GUIDE.welcome, GUIDE.firstMatch);
+  if (level >= 3) seen.push(GUIDE.defensive, GUIDE.profile, GUIDE.spin);
+  return seen;
+}
+
+const IDS = new Set([...TUTORIAL_STEPS.map((s) => s.id), ...Object.values(GUIDE)]);
 
 /** ¿Es el id de un paso que existe? (para validar lo guardado). */
 export function isTutorialId(v: unknown): v is string {

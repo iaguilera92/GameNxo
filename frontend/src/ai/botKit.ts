@@ -24,10 +24,11 @@ export interface BotKit {
   color?: CharColorId;
 }
 
-const NXO: BotKit = { defensive: 'dash', smash: 'fire', inferno: 'fire', charge: 'fire' };
+// (24-11-2026, usuario) el kit de base del bot es el DEFAULT de todos (antes Nxo = fuego, Mai = hielo / destello / tulipán)
+const NXO: BotKit = { defensive: 'dash', smash: 'default', inferno: 'default', charge: 'classic' };
 const KITS: Record<string, BotKit> = {
   nxo: NXO,
-  mai: { defensive: 'blink', smash: 'ice', inferno: 'ice', charge: 'tulip' },
+  mai: NXO,
 };
 
 export function botKitFor(skin: string | undefined): BotKit {
@@ -41,8 +42,8 @@ export function botKitFor(skin: string | undefined): BotKit {
  * DEFENSIVO: los 6 (DASH y DESTELLO propios del bot; SOMBRA, SUPERSALTO, VOLTERETA y PATINAJE con MatchScene.botFly).
  */
 const BOT_DEFENSIVES: DefensivePower[] = ['dash', 'blink', 'shadow', 'jump', 'flip', 'skate'];
-const SMASHES: SmashPower[] = ['fire', 'ice', 'wind', 'lightning', 'shadow', 'light', 'comet', 'dragon']; // comet (épica) y dragon (legendaria) quedan fuera por `allowed`
-const INFERNOS: InfernoPower[] = ['fire', 'ice', 'wind', 'lightning', 'tulip', 'shadow', 'light', 'ultra', 'barrage']; // shadow = ULTI de SOMBRA, light = ULTI de LUZ, ultra = ULTRA EFECTO, barrage = RÁFAGA (17-11-2026)
+const SMASHES: SmashPower[] = ['default', 'fire', 'ice', 'wind', 'lightning', 'shadow', 'light', 'comet', 'dragon']; // comet (épica) y dragon (legendaria) quedan fuera por `allowed`
+const INFERNOS: InfernoPower[] = ['default', 'fire', 'ice', 'wind', 'lightning', 'tulip', 'shadow', 'light', 'ultra', 'barrage']; // shadow = ULTI de SOMBRA, light = ULTI de LUZ, ultra = ULTRA EFECTO, barrage = RÁFAGA (17-11-2026)
 const CHARGES: ChargeFxId[] = ['classic', 'fire', 'energy', 'tulip'];
 const COLORS: CharColorId[] = ['azul', 'verde', 'morado', 'dorado', 'sombra'];
 

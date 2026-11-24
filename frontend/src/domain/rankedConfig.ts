@@ -31,7 +31,8 @@ export interface PositionPrize {
 
 export const RANKED = {
   /** nivel con el que se desbloquea: 1 = todos compiten en Bronce desde el principio (no se deja fuera a nadie) */
-  unlockLevel: 1,
+  // (24-11-2026, usuario) las LIGAS se abren en el nivel 20 (al terminar el tutorial); antes 1. Se explican en el 17, sin premios
+  unlockLevel: 20,
   /** premio de una victoria = entrada × prizeMult */
   prizeMult: 2,
   /** apuestas disponibles (multiplicador individual de entrada y premio) */

@@ -8,6 +8,7 @@ import type { AbilityId } from '../logic/Abilities';
 import type { SkinId } from '../characters/skins';
 import { type ItemId, type PlayerState, type StyleId, clonePlayer, itemId, owns } from './player';
 import { shopItem } from './shopCatalog';
+import { TUTORIAL_GIFTS } from './tutorial';
 import { bpAddXpInPlace } from './battlePassConfig';
 import { ZONE_STAT_MAX, type ZoneStatKey, zoneStatsOf } from './zoneProgress';
 import { MASTERY, MASTERY_MAX_POINTS, passiveOf } from './characterPassives';
@@ -32,7 +33,11 @@ export type OpError =
   | 'not_enough_cash'
   | 'real_money_only'
   | 'not_enough_rays'
-  | 'stat_maxed';
+  | 'stat_maxed'
+  // (24-11-2026) pantalla de inicio (completeOnboarding)
+  | 'already_done'
+  | 'invalid_name'
+  | 'invalid_skin';
 
 export type OpResult<T = object> = ({ ok: true; state: PlayerState } & T) | { ok: false; error: OpError };
 
@@ -80,6 +85,43 @@ export function markTutorialSeen(s: PlayerState, id: string): OpResult {
   if (s.tutorial?.includes(id)) return { ok: true, state: s };
   const n = clonePlayer(s);
   n.tutorial = [...(n.tutorial ?? []), id];
+  return { ok: true, state: n };
+}
+
+/** (24-11-2026, usuario) NOMBRE DE USUARIO: 3 a 12 letras, números, espacio, guion o guion bajo (sin espacios al principio ni al final). */
+export const USERNAME = { min: 3, max: 12, re: /^[A-Za-z0-9ÁÉÍÓÚÜÑáéíóúüñ _-]+$/ };
+export function validUsername(raw: string): string | null {
+  const n = raw.trim().replace(/\s+/g, ' ');
+  return n.length >= USERNAME.min && n.length <= USERNAME.max && USERNAME.re.test(n) ? n : null;
+}
+/**
+ * (24-11-2026, usuario) PANTALLA DE INICIO: nombre de usuario y el ÚNICO personaje que se regala (los demás se desbloquean en la Tienda). Sin
+ * vuelta atrás: solo vale una vez por cuenta. `playable` = ids de los personajes que se pueden elegir (CATALOG).
+ */
+export function completeOnboarding(s: PlayerState, name: string, skin: string, playable: readonly string[]): OpResult {
+  if (s.onboarded) return fail('already_done');
+  const n = validUsername(name);
+  if (!n) return fail('invalid_name');
+  if (!playable.includes(skin)) return fail('invalid_skin');
+  const c = clonePlayer(s);
+  c.name = n;
+  // solo el elegido: fuera los personajes que traía el perfil nuevo por defecto
+  c.owned = [...c.owned.filter((i) => !i.startsWith('skin:')), `skin:${skin}` as ItemId];
+  c.equipped = { ...c.equipped, skin: skin as PlayerState['equipped']['skin'] };
+  c.onboarded = true;
+  return { ok: true, state: c };
+}
+/** ¿Falta la pantalla de inicio? Cuenta nueva (nivel 1, sin tutorial empezado) con el modo desarrollo apagado. */
+export function needsOnboarding(s: Readonly<PlayerState>, devMode: boolean): boolean {
+  return !devMode && !s.onboarded && s.level === 1 && !(s.tutorial?.length);
+}
+
+/** (24-11-2026, usuario) Da los REGALOS del tutorial de los niveles ya alcanzados que aún no tiene (idempotente; domain/tutorial.ts TUTORIAL_GIFTS). */
+export function grantTutorialGifts(s: PlayerState): OpResult {
+  const add = TUTORIAL_GIFTS.filter((g) => g.level <= s.level && !s.owned.includes(g.item as ItemId)).map((g) => g.item as ItemId);
+  if (!add.length) return { ok: true, state: s };
+  const n = clonePlayer(s);
+  n.owned = [...n.owned, ...add];
   return { ok: true, state: n };
 }
 

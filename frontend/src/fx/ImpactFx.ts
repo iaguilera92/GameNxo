@@ -17,6 +17,8 @@ const pick = <T>(a: readonly T[]): T => a[Math.floor(Math.random() * a.length)];
  * Las mismas formas (lenguas, bocanadas, fragmentos) teñidas con los colores de cada poder.
  */
 const BLAST: Record<InfernoElement, { flash: number; tongues: number[]; puffs: number[]; wave: number; frags: number[]; ground: number; groundFlash: number }> = {
+  // (24-11-2026) ULTI DEFAULT: dorado y blanco
+  default: { flash: 0xfffbea, tongues: [0xffb020, 0xffc94a, 0xffe48a, 0xffffff], puffs: [0xffc94a, 0xffe48a, 0xfff6dc], wave: 0xffe48a, frags: [0xffffff, 0xfff1b8, 0xffc94a], ground: 0xffc94a, groundFlash: 0xfffbea },
   fire: { flash: 0xfff6c8, tongues: [0xff2a0a, 0xff6a12, 0xffa21a, 0xffd23a], puffs: [0xff3a0a, 0xff7a1a, 0xffb02a], wave: 0xffa21a, frags: [0xfff2a0, 0xffa31a, 0xff3d1a], ground: 0xff7a1a, groundFlash: 0xfff1a0 },
   ice: { flash: 0xeafcff, tongues: [0x2f8cff, 0x4aa8ff, 0x8fdcff, 0xd8f6ff], puffs: [0x2f8cff, 0x6fc4ff, 0xbff0ff], wave: 0x8fdcff, frags: [0xffffff, 0xbff0ff, 0x4aa8ff], ground: 0x6fc4ff, groundFlash: 0xeafcff },
   wind: { flash: 0xf0fff0, tongues: [0x2fbf6a, 0x5fd68a, 0x9cf0b0, 0xe0ffe8], puffs: [0x3fd68a, 0x8ff0b0, 0xd0ffe0], wave: 0x8ff0b0, frags: [0xffffff, 0xb8ff9a, 0x5fd16f], ground: 0x6fe0a0, groundFlash: 0xf0fff0 },
@@ -135,6 +137,7 @@ export function powerImpactFx(scene: Phaser.Scene, kind: PowerKind, x: number, y
 
 /** Colores [principal, claro, destello de pantalla RGB o null] del golpe del ESPECIAL de cada poder. */
 const AFTER: Record<SmashPower | 'tulip', { main: number; light: number; flash: [number, number, number] | null }> = {
+  default: { main: 0xcfdcf5, light: 0xffffff, flash: [240, 245, 255] }, // (24-11-2026) DEFAULT (ESPECIAL plateado; la ULTI usa su estallido dorado)
   fire: { main: 0xff6a12, light: 0xffd23a, flash: [255, 170, 80] },
   ice: { main: 0x4aa8ff, light: 0xeafcff, flash: [190, 230, 255] },
   wind: { main: 0x3fd68a, light: 0xf0fff4, flash: [200, 255, 220] },

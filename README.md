@@ -61,8 +61,9 @@ npm run cap:release   # build de producción (anuncios reales, .env.release) + c
 
 ## Notas para la IA que continúe
 
-- Responder al usuario en español y de forma resumida. Trabajar por etapas y, tras cada cambio, compilar
-  (`npx tsc --noEmit` y `npm run build`) y decir qué probar en el teléfono.
+- Responder al usuario en español y de forma resumida. Trabajar por etapas y explicar brevemente qué cambió.
+- **El usuario se encarga de las pruebas.** Tras cada cambio, dejar la validación en sus manos. La IA solo debe ejecutar
+  pruebas, simulaciones, comprobaciones de TypeScript o builds de verificación si el usuario lo pide expresamente.
 - Coordinación entre IAs: `NOTAS-CLAUDE.txt` (lo que hizo cada una y avisos). Reglas de Kiro: `.kiro/steering/`.
   Sprites: `docs/COMO-TRABAJAR-SPRITES-MOVIMIENTOS.md` (leer antes de tocar hojas). Economía: `docs/ECONOMIA.md`.
 - **Viene una base de datos con cuentas** (lo comprado y lo equipado por usuario): lee `docs/BASE-DE-DATOS.md` antes de tocar

@@ -21,8 +21,10 @@ import { preloadSearchTimer, searchTimer, styleSearchTitle } from '../ui/searchT
 import { searchSpinner } from '../ui/searchSpinner';
 import { startIntroMusic, stopIntroMusic } from '../fx/introMusic';
 import { MAX_LEVEL } from '../config';
+import type { GuidedMatch } from '../domain/tutorial';
 
 const BOT_NAMES = ['RoboAce', 'BotNadal', 'TopSpin-3000', 'NetBot', 'Volea.exe'];
+const PRACTICE_NAMES = ['Álex', 'Dani', 'Nico', 'Sam'];
 
 /** "Buscando partida..." (presentación competitiva) y pantalla VS antes del partido. */
 export class MatchmakingScene extends Phaser.Scene {
@@ -46,8 +48,10 @@ export class MatchmakingScene extends Phaser.Scene {
   private doubles = false;
   private allyName = 'Aliado';
   private rival2Name = 'Rival 2';
+  private guide?: GuidedMatch;
 
-  init(data?: { ranked?: { bet: number }; unranked?: boolean; from?: string; skipSearch?: boolean; mode?: '2v2' }) {
+  init(data?: { ranked?: { bet: number }; unranked?: boolean; from?: string; skipSearch?: boolean; mode?: '2v2'; guide?: GuidedMatch }) {
+    this.guide = data?.guide;
     this.doubles = data?.mode === '2v2';
     {
       const names = Phaser.Utils.Array.Shuffle([...BOT_NAMES.filter((n) => n.length <= 9)]);
@@ -95,7 +99,7 @@ export class MatchmakingScene extends Phaser.Scene {
     // tras agotarse la búsqueda online y elegir JUGAR VS BOT: directo al VS (sin la pantalla de búsqueda otra vez)
     if (this.skipSearch) {
       const rk0 = !!this.rankedBet || this.unranked;
-      this.showVersus(rk0 ? this.rankedRivalName() : Phaser.Utils.Array.GetRandom(BOT_NAMES));
+      this.showVersus(rk0 ? this.rankedRivalName() : Phaser.Utils.Array.GetRandom(PRACTICE_NAMES));
       return;
     }
 
@@ -191,7 +195,7 @@ export class MatchmakingScene extends Phaser.Scene {
           if (!res.ok) return this.back(res.error === 'not_enough_coins' ? 'No te alcanzan las monedas' : 'No se pudo entrar a la Liga');
         }
         this.toMatch = true;
-        this.scene.start('Match', this.doubles ? { botName, rivalLevel, ambiente: this.ambiente, mode: '2v2', allyName: this.allyName, rival2Name: this.rival2Name } : { botName, rivalLevel, ambiente: this.ambiente });
+        this.scene.start('Match', this.doubles ? { botName, rivalLevel, ambiente: this.ambiente, mode: '2v2', allyName: this.allyName, rival2Name: this.rival2Name } : { botName, rivalLevel, ambiente: this.ambiente, guide: this.guide });
       });
     });
   }

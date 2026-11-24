@@ -5,7 +5,7 @@
  * - El resto (AZUL, VERDE, MORADO, DORADO, SOMBRA) se ganan en el PASE DE BATALLA, cada uno PARA UN PERSONAJE (ítem `color:<id>:<skin>`, 19-11-2026).
  * - Se elige en PERSONALIZACIÓN y se guarda en `PlayerState.equipped.color`. Solo cambia cómo se ve tu personaje.
  */
-export type CharColorId = 'classic' | 'azul' | 'verde' | 'morado' | 'dorado' | 'sombra';
+export type CharColorId = 'classic' | 'azul' | 'verde' | 'morado' | 'dorado' | 'sombra' | 'gris'; // gris = regalo del tutorial (nivel 8, 24-11-2026)
 
 export interface CharColorInfo {
   id: CharColorId;
@@ -22,6 +22,8 @@ export const CHAR_COLOR_LIST: CharColorInfo[] = [
   { id: 'morado', name: 'MORADO', desc: 'Tu ropa en morado.', color: 0x9a45ff },
   { id: 'dorado', name: 'DORADO', desc: 'Tu ropa en dorado brillante.', color: 0xffc42e },
   { id: 'sombra', name: 'SOMBRA', desc: 'Tu ropa oscura, sin color.', color: 0x4a5266 },
+  // (24-11-2026, usuario) GRIS: regalo del tutorial en el nivel 8 (rareza especial), para todos tus personajes
+  { id: 'gris', name: 'GRIS', desc: 'Tu ropa en gris claro.', color: 0xa7afbd },
 ];
 
 const IDS = new Set<string>(CHAR_COLOR_LIST.map((c) => c.id));

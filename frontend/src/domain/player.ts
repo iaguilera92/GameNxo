@@ -39,7 +39,7 @@ export interface LoginState {
 export const newLoginState = (): LoginState => ({ last: '', streak: 0, adBonusDay: '', week: '', days: [] });
 
 /** Efectos de pelota (estelas). `classic` = POR DEFECTO (sin estela). Los ids no se cambian nunca. */
-export type StyleId = 'classic' | 'red' | 'green' | 'gold' | 'pink' | 'rainbow' | 'ember' | 'frost' | 'tulip' | 'hearts' | 'stars' | 'neon' | 'smoke';
+export type StyleId = 'classic' | 'blue' | 'red' | 'green' | 'gold' | 'pink' | 'rainbow' | 'ember' | 'frost' | 'tulip' | 'hearts' | 'stars' | 'neon' | 'smoke';
 export type ItemKind = 'ability' | 'skin' | 'style' | 'inferno' | 'charge' | 'defensive' | 'smash' | 'emote' | 'color' | 'zone';
 /** Id único de ítem: `<tipo>:<id>` (ej. 'ability:wall', 'skin:mai'). Los `emote:` solo se ganan en el Pase de Batalla. */
 export type ItemId = `ability:${AbilityId}` | `skin:${SkinId}` | 'skin:net' | 'skin:mat' | 'skin:isa' | 'skin:rin' | 'skin:zac' | 'skin:flo' | `style:${StyleId}` | `inferno:${InfernoPower}` | `charge:${ChargeFxId}` | `defensive:${DefensivePower}` | `smash:${SmashPower}` | `emote:${EmoteKind}` | `color:${CharColorId}` | `color:${CharColorId}:${'nxo' | 'mai'}` | `zone:${'fire' | 'shadow'}`;
@@ -103,6 +103,8 @@ export interface PlayerState {
   coins2v2?: number;
   /** CAMBIO de ofertas de la Tienda (domain/shopRotation.ts): semana (su lunes) y categorías ya cambiadas pagando dinero; vale una vez por categoría y semana */
   shopReroll?: ShopRerollState;
+  /** (24-11-2026, usuario) ya pasó la pantalla de inicio (nombre de usuario y personaje elegido, sin vuelta atrás: operations.completeOnboarding) */
+  onboarded?: boolean;
 }
 /** categorías de la Tienda ya cambiadas en una semana (week = lunes AAAA-MM-DD) */
 export interface ShopRerollState {
@@ -123,7 +125,8 @@ export const itemId = {
   color: (id: CharColorId): ItemId => `color:${id}`,
 };
 
-export const STARTER_ITEMS: ItemId[] = ['ability:dash', 'ability:smash', 'skin:nxo', 'style:classic'];
+// (24-11-2026, usuario) NXO ya no es de todos: cada cuenta tiene SOLO el personaje que eligió al empezar (newPlayer / completeOnboarding)
+export const STARTER_ITEMS: ItemId[] = ['ability:dash', 'ability:smash', 'style:classic'];
 /** 10 entradas de Bronce (500): un jugador nuevo puede jugar 10 Ranked aunque las pierda todas (docs/ECONOMIA.md) */
 export const STARTING_COINS = 5000;
 
@@ -139,7 +142,7 @@ export function newPlayer(starter: StarterSkin = 'nxo'): PlayerState {
     coins: STARTING_COINS,
     gems: 0,
     // Nxo es de todos; empezar con Mai la deja además en propiedad (ítem skin:mai)
-    owned: starter === 'mai' ? [...STARTER_ITEMS, 'skin:mai'] : [...STARTER_ITEMS],
+    owned: [...STARTER_ITEMS, `skin:${starter}` as ItemId],
     equipped: { skin: starter, style: 'classic', abilities: ['dash', 'smash'] },
     wheel: newWheelState(),
     bp: newBattlePass(),

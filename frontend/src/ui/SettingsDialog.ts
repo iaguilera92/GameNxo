@@ -4,7 +4,8 @@ import { arcadeButton } from './modeButtons';
 import { ONLINE_URL, getOnlineMode, setOnlineMode } from '../net/config';
 import { disconnect } from '../net/NetClient';
 import { DEV_COINS, DEV_LEVEL, isDevMode } from '../domain/devMode';
-import { writeDevMode } from '../domain/devMode';
+import { startTutorialAt, writeDevMode } from '../domain/devMode';
+import { MAX_LEVEL } from '../config';
 import { RIVAL_OPTIONS, type RivalSetting, type ShakeLevel, getSettings, setSettings } from '../logic/Settings';
 import { adsPrivacyAvailable, openAdsPrivacy } from '../ads/ads';
 
@@ -43,7 +44,8 @@ export function showSettings(scene: Phaser.Scene, o: { depth?: number; onClose?:
   const footH = 150;
   // PRIVACIDAD DE ANUNCIOS: solo donde aplica el aviso de consentimiento (UE); en Chile no aparece
   const privacy = adsPrivacyAvailable();
-  const rows = privacy ? 8 : 7;
+  const dev = isDevMode(); // (24-11-2026) con el modo desarrollo: fila PROBAR TUTORIAL LVL
+  const rows = (privacy ? 8 : 7) + (dev ? 1 : 0);
   const rowH = rows > 7 ? 100 : 108;
   const ph = headH + rowH * rows + footH;
   const panel = scene.add.container(W / 2, H / 2).setScrollFactor(0).setDepth(depth + 1);
@@ -142,13 +144,29 @@ export function showSettings(scene: Phaser.Scene, o: { depth?: number; onClose?:
     ),
   );
 
+  // (24-11-2026, usuario) PROBAR TUTORIAL LVL (solo con el modo desarrollo): perfil NORMAL nuevo en el nivel elegido, con el tutorial de los
+  // niveles anteriores ya visto; pasa a modo OFF (sin el borrado de siempre) y reinicia la app (domain/devMode.ts startTutorialAt)
+  let next = 6;
+  if (dev) {
+    const subTut = label(next, 'TUTORIAL LVL', 'Perfil normal desde ese nivel', tutorialIcon);
+    let lvl = 1;
+    panel.add(numberPicker(scene, x + pw - 34 - 140 - 12, rowY(next), 1, 1, MAX_LEVEL, (v) => (lvl = v)));
+    panel.add(pillButton(scene, x + pw - 34, rowY(next), 'PROBAR', () => {
+      startTutorialAt(lvl);
+      subTut.setText(`Reiniciando… nivel ${lvl}, modo OFF`);
+      scene.time.delayedCall(300, () => window.location.reload());
+    }, 140));
+    next++;
+  }
+
   // GUÍA DE TIMING: aro que se cierra sobre la pelota en el momento ideal del toque (Perfect Timing)
-  label(6, 'GUÍA DE TIMING', 'Aro sobre la pelota al golpear', timingIcon);
-  panel.add(toggle(scene, x + pw - 92, rowY(6), s.timingGuide, (on) => setSettings({ timingGuide: on })));
+  label(next, 'GUÍA DE TIMING', 'Aro sobre la pelota al golpear', timingIcon);
+  panel.add(toggle(scene, x + pw - 92, rowY(next), s.timingGuide, (on) => setSettings({ timingGuide: on })));
+  next++;
 
   if (privacy) {
-    label(7, 'PRIVACIDAD', 'Consentimiento de anuncios', shieldIcon);
-    panel.add(pillButton(scene, x + pw - 34, rowY(7), 'ELEGIR', () => void openAdsPrivacy()));
+    label(next, 'PRIVACIDAD', 'Consentimiento de anuncios', shieldIcon);
+    panel.add(pillButton(scene, x + pw - 34, rowY(next), 'ELEGIR', () => void openAdsPrivacy()));
   }
 
   // ---------------------------------------------------------------- pie
@@ -280,8 +298,7 @@ function cycler(scene: Phaser.Scene, right: number, y: number, initial: RivalSet
 }
 
 /** Botón pastilla (mismo estilo que el selector del rival; `right` = borde derecho). */
-function pillButton(scene: Phaser.Scene, right: number, y: number, text: string, onTap: () => void) {
-  const w = 160;
+function pillButton(scene: Phaser.Scene, right: number, y: number, text: string, onTap: () => void, w = 160) {
   const h = 50;
   const c = scene.add.container(right - w / 2, y);
   const bg = scene.add.graphics();
@@ -298,7 +315,46 @@ function pillButton(scene: Phaser.Scene, right: number, y: number, text: string,
   return c;
 }
 
+/** (24-11-2026) Selector numérico ‹ N › (`right` = borde derecho), de `min` a `max` (da la vuelta). */
+function numberPicker(scene: Phaser.Scene, right: number, y: number, initial: number, min: number, max: number, onChange: (v: number) => void) {
+  const w = 140;
+  const h = 50;
+  const c = scene.add.container(right - w / 2, y);
+  const bg = scene.add.graphics();
+  bg.fillStyle(0x0a1638, 1).fillRoundedRect(-w / 2 - 3, -h / 2 - 3, w + 6, h + 6, 16);
+  bg.fillStyle(0x223156, 1).fillRoundedRect(-w / 2, -h / 2, w, h, 14);
+  c.add(bg);
+  const txt = scene.add.text(0, 0, '', { fontFamily: FONT, fontSize: '24px', color: '#ffd23f' }).setOrigin(0.5);
+  c.add(txt);
+  let v = initial;
+  const draw = () => txt.setText(String(v));
+  draw();
+  const arrow = (dir: -1 | 1) => {
+    const ax = dir * (w / 2 - 22);
+    const t = scene.add.text(ax, -2, dir < 0 ? '‹' : '›', { fontFamily: FONT, fontSize: '34px', color: '#cfe0ff' }).setOrigin(0.5);
+    const hit = scene.add.rectangle(ax, 0, 50, h + 16, 0x000000, 0.001).setInteractive({ useHandCursor: true });
+    hit.on('pointerup', () => {
+      v = v + dir > max ? min : v + dir < min ? max : v + dir;
+      draw();
+      scene.tweens.add({ targets: txt, scale: { from: 1.18, to: 1 }, duration: 160, ease: 'Back.easeOut' });
+      onChange(v);
+    });
+    c.add([t, hit]);
+  };
+  arrow(-1);
+  arrow(1);
+  return c;
+}
+
 // ---------------------------------------------------------------- iconos (dibujados)
+function tutorialIcon(g: Phaser.GameObjects.Graphics) {
+  // birrete con borla (lección)
+  g.fillStyle(0xffffff, 1);
+  g.beginPath().moveTo(0, -12).lineTo(16, -4).lineTo(0, 4).lineTo(-16, -4).closePath().fillPath();
+  g.fillRect(-9, 0, 18, 9);
+  g.lineStyle(2.5, 0xffd23f, 1).lineBetween(12, -2, 12, 9);
+  g.fillStyle(0xffd23f, 1).fillCircle(12, 11, 3);
+}
 function timingIcon(g: Phaser.GameObjects.Graphics) {
   // pelota con el aro guía alrededor
   g.fillStyle(0xd7f25a, 1).fillCircle(0, 0, 6);

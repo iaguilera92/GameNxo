@@ -19,9 +19,13 @@ fija lo que ya existe, lo que falta y las reglas para no complicar la migración
 DEFENSIVO RELÁMPAGO (`defensive:lightning`, 18-11-2026, ÉPICO, solo dinero real): azul neón, rayo y rastro de rayos en el suelo (`fx/elementImpactFx.ts` `lightningFloorTrail`, `lightningBodyFx(..., neon)`), tiempos `LIGHTNING` en `logic/DefensiveMoves.ts`. Red: acción `defensive` con `kind: 'lightning'` (+ `chg`, `out`, `in`). El bot no lo usa (épica).
 DEFENSIVO TIEMPO LENTO (`defensive:slowmo`, 18-11-2026, LEGENDARIO, solo dinero real, $59.990): el mundo va a `SLOWMO.k` (0,4) con penumbra mientras corres a la pelota y, al llegar, cinemática de 2 s con la cámara cerca y una estirada que devuelve con un golpe cargado al máximo (`MatchScene.startSlowmo` / `updateSlowmoHit` / `slowmoShot`, `fx/slowmoCine.ts`, constantes `SLOWMO` en `logic/DefensiveMoves.ts`). Icono: `drawSlowmoIcon` (`ui/icons.ts`). Red 1v1: el rival ve la carrera por los estados y recibe `defensive` con `kind: 'slowmo'` (+ `x`, `y`, `tx`, `ty`, `side`, `ms`) al empezar la cinemática; el juez es quien lo usa, así que mientras dura nadie suma punto. **2v2 online: bloqueado** ("Pronto en 2v2 online"): frenar el mundo en un teléfono descuadra a los bots del host. El bot no lo usa (legendario).
 
+(24-11-2026, usuario) Rarezas: **Default · especial · épica · legendaria**. La rareza normal ya no existe: DESTELLO, carga FUEGO y las estelas Rojo, Verde, Oro y Rosado pasaron a especial (`ItemRarity` en `shopCatalog.ts`). Lo de abajo es el historial.
+
 Cada ítem de la Tienda tiene `rarity` (normal · especial · épica · legendaria; hoy: ULTIS, ESPECIAL y DEFENSIVO especiales salvo el DESTELLO, normal, y el ESPECIAL COMETA (`smash:comet`), épica; cargando golpe: Fuego normal, Energía especial, Tulipán épica; EFECTOS DE PELOTA: Brasas, Hielo, Neón y Humo especiales, Tulipanes y Corazones épicas, Estrellas legendaria, Arcoíris y Estrellas legendarias; Rojo, Verde, Oro y Rosado normales. `style:classic` es POR DEFECTO: sin estela) y `realMoneyOnly` (solo dinero real: las ULTIS y la rareza épica o legendaria). Esas dos marcas son datos de catálogo, no de la cuenta: el servidor las lee del mismo catálogo.
 
 El tutorial por nivel guarda en la cuenta los avisos ya vistos (`PlayerState.tutorial`, ids de `domain/tutorial.ts`: no se cambian nunca).
+
+(24-11-2026) Ids nuevos fijos: `smash:default` y `inferno:default` (iniciales de todos, rareza Default, no se venden). `smash:fire` e `inferno:fire` pasan a ser ítems de la Tienda. `migrate.ts` ya no regala la ULTI equipada: solo la deja si la tiene.
 
 Lo que se guarda por cuenta son solo ids (`smash:ice`, `defensive:blink`, `equipped.smash = 'ice'`…): pesa casi nada.
 

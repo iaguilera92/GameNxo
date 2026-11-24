@@ -29,6 +29,29 @@ export interface SmashLook {
 const DRAGON_CINE_ON = false;
 
 export const SMASH_LOOK: Record<SmashPower, SmashLook> = {
+  // (24-11-2026, usuario) DEFAULT (rareza Default, el inicial de todos): pelota con brillo blanco suave, casi sin humo ni partículas grandes.
+  // Aturde igual que los otros (el golpe es el mismo).
+  default: {
+    ball: { core: 0xffffff, trail: 0xdfe8ff, flames: [0xffffff, 0xeef4ff, 0xcfdcf5, 0xaebfe0], rise: 0.1, shards: false },
+    smoke: {
+      normal: { colors: [0xeef4ff, 0xd6e2f8, 0xbfcdea], alpha: 0.12 },
+      strong: { colors: [0xf6f9ff, 0xe0e9fa, 0xc8d6ef, 0xaebfe0], alpha: 0.16 },
+      sparks: [0xffffff, 0xeef4ff, 0xcfdcf5],
+      additive: false,
+    },
+    aura: { col: 0x8fa6d6, hot: 0xdfe8ff, core: 0xffffff },
+    blast: { flash: 0xffffff, core: 0xeef4ff, ring: 0xcfdcf5, lines: [0xffffff, 0xaebfe0], sparks: [0xffffff, 0xeef4ff, 0xcfdcf5] },
+    ring: 0xdfe8ff,
+    cine: {
+      colors: { core: 0xffffff, gold: 0xdfe8ff, hot: 0x8fa6d6, cyan: 0xeef4ff },
+      aura: [
+        [1.2, 0x8fa6d6, 0.16],
+        [1.0, 0xcfdcf5, 0.18],
+        [0.84, 0xffffff, 0.18],
+      ],
+      flashTint: 0xffffff,
+    },
+  },
   fire: {
     ball: { core: 0xff8a1e, trail: 0xff7a1e, flames: [0xfff36b, 0xffb020, 0xff6a1e, 0xff3b1e], rise: 1, shards: false },
     smoke: {
@@ -209,18 +232,21 @@ const DRAGON_TIMES: Partial<CineProfile> = {
   glow: 1.3,
 };
 
+/** (24-11-2026) ESPECIAL DEFAULT: la misma cinemática (mismos tiempos: los dos teléfonos la esperan igual) pero más tenue: menos oscuro y menos rayos */
+const DEFAULT_LOOK: Partial<CineProfile> = { darken: 0.22, glow: 0.7, particles: 0 };
+
 const CINES: Partial<Record<SmashPower, CineProfile>> = {};
 /** Perfil de la cinemática del SMASH para un poder: el del fuego de siempre, o los tiempos de siempre con el aspecto del poder. */
 export function smashCine(el: SmashPower): CineProfile {
   let p = CINES[el];
   if (!p) {
     // los poderes que no existen en la ULTI (sombra, luz, cometa) traen su propio cine en SMASH_LOOK
-    const own = el === 'fire' ? undefined : (SMASH_LOOK[el].cine ?? INFERNO_LOOK[el as Exclude<SmashPower, 'shadow' | 'light' | 'comet' | 'dragon'>].cine);
+    const own = el === 'fire' ? undefined : (SMASH_LOOK[el].cine ?? INFERNO_LOOK[el as Exclude<SmashPower, 'shadow' | 'light' | 'comet' | 'dragon' | 'default'>].cine);
     // (17-11-2026, usuario) las PARTÍCULAS que caen hacia el punto de concentración solo en lo ÉPICO y LEGENDARIO; el resto (fuego gratis y los de
     // rareza especial) conserva solo las tiras de energía (rayos)
     const r = itemRarity(`smash:${el}`);
     const particles = r === 'epica' || r === 'legendaria' ? SMASH_CINE.particles : 0;
-    p = { ...SMASH_CINE, ...own, particles, ...(el === 'dragon' && DRAGON_CINE_ON ? DRAGON_TIMES : {}) };
+    p = { ...SMASH_CINE, ...own, particles, ...(el === 'dragon' && DRAGON_CINE_ON ? DRAGON_TIMES : {}), ...(el === 'default' ? DEFAULT_LOOK : {}) };
     CINES[el] = p;
   }
   return p;

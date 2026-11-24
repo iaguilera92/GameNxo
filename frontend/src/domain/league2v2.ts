@@ -14,7 +14,7 @@
  */
 import { type PlayerState, clonePlayer } from './player';
 import type { RankId } from './ranks';
-import { LEAGUE_ORDER, nextLeague, weeklyChestCash } from './rankedConfig';
+import { LEAGUE_ORDER, RANKED, nextLeague, weeklyChestCash } from './rankedConfig';
 import { type BoardEcon, type BoardEntry, buildBoard } from './rankedBots';
 import { type RankedView, ME, botClockAt, botClockWeekEnd, msToWeekEnd, weekIdAt } from './ranked';
 import { type WeeklyReward, newStats } from './rankedState';
@@ -164,6 +164,8 @@ export function syncLeague2v2(s: PlayerState, now: number): PlayerState {
 
 /** Apunta un partido 2v2 terminado: `delta` = lo que cambiaron de verdad las MONEDAS 2v2 (después de recortar a 0). */
 export function recordMatch2v2(s: PlayerState, now: number, win: boolean, delta: number): PlayerState {
+  // (24-11-2026, usuario) la LIGA 2V2 se abre en el nivel 20, como la 1v1 (RANKED.unlockLevel): antes, sus partidos no cuentan para la liga
+  if (s.level < RANKED.unlockLevel) return s;
   const synced = syncLeague2v2(s, now);
   const n = synced === s ? clonePlayer(s) : synced;
   const l = n.league2v2!;

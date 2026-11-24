@@ -4,7 +4,7 @@ import { GOLD, NAVY, SECTOR, TIER_LOOK, CHEST_TEX, WHEEL_FRAME as FRAME, WHEEL_F
 import { WHEEL, type WheelSlot } from '../domain/wheelConfig';
 import type { WheelReward, WheelTier } from '../domain/wheelState';
 import { scaleReward, slotById } from '../domain/dailyWheel';
-import { CHEST, formatChestTime } from '../domain/chest';
+import { CHEST } from '../domain/chest';
 import { getPlayer } from '../domain/playerStore';
 import { boostWheel, claimWheel, claimWheelAdBonus, spinWheel, wheelSpin } from '../logic/Wheels';
 import { wheelClaim, wheelStart, wheelTick, wheelWin } from '../fx/wheelSound';
@@ -784,7 +784,8 @@ export class WheelScene extends Phaser.Scene {
     } else if (reward.kind === 'chest') {
       big = `¡${CHEST.names[chest?.level ?? 0]}!`;
       small = (chest?.level ?? 0) > 0 ? '¡EVOLUCIONÓ!' : 'SE ABRE EN 2 DÍAS';
-      note = chest ? `Se abre en ${formatChestTime(chest.readyAt - Date.now())} · búscalo en el menú` : '';
+      // (23-11-2026, usuario) sin el texto blanco del tiempo ("Se abre en …"): ya lo dice el amarillo
+
     } else {
       target = reward.amount;
       big = `+${n(target)}`;
@@ -801,7 +802,8 @@ export class WheelScene extends Phaser.Scene {
       const c = { v: 0 };
       this.tweens.add({ targets: c, v: target, delay: t0 + 360, duration: 800, ease: 'Cubic.easeOut', onUpdate: () => amount.setText(`+${n(Math.round(c.v))}`), onComplete: () => amount.setText(big) });
     }
-    const label = this.add.text(cx, ty + (textOnly ? 56 : 84), small, { fontFamily: FONT, fontSize: '40px', color: '#ffd23f', stroke: '#0a1638', strokeThickness: 9 }).setOrigin(0.5).setAlpha(0).setLetterSpacing(3);
+    // (23-11-2026, usuario) cofre: el texto amarillo un poco más abajo (56 -> 80)
+    const label = this.add.text(cx, ty + (reward.kind === 'chest' ? 80 : textOnly ? 56 : 84), small, { fontFamily: FONT, fontSize: '40px', color: '#ffd23f', stroke: '#0a1638', strokeThickness: 9 }).setOrigin(0.5).setAlpha(0).setLetterSpacing(3);
     this.tweens.add({ targets: label, alpha: 1, delay: t0 + 620, duration: 300 });
     if (note) {
       const nt = this.add.text(cx, label.y + 48, note, { fontFamily: FONT, fontSize: '22px', color: '#cfe0ff', stroke: '#0a1638', strokeThickness: 5 }).setOrigin(0.5).setAlpha(0);

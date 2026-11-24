@@ -51,6 +51,7 @@ const BAND = 0.5;
  * (`glowIn` pegado al filo, `glow` el resto), chispas y líneas de velocidad. Fuego = los de siempre.
  */
 const GAZE_FX: Record<InfernoPower, { edge: number; edgeIn: number; glowIn: number; glow: number; spark: number; line: number }> = {
+  default: { edge: 0xffb020, edgeIn: 0xfff1b8, glowIn: 0xfffbea, glow: 0xffc94a, spark: 0xffffff, line: 0xffe48a }, // (24-11-2026) ULTI DEFAULT: dorado
   fire: { edge: 0xff5a1a, edgeIn: 0xffd27a, glowIn: 0xffe6a0, glow: 0xff6a1a, spark: 0xfff1b8, line: 0xffa020 },
   ice: { edge: 0x3a9bff, edgeIn: 0xbff0ff, glowIn: 0xeafcff, glow: 0x3a9bff, spark: 0xffffff, line: 0x8fdcff },
   wind: { edge: 0x2fbf6a, edgeIn: 0xd0ffe0, glowIn: 0xf0fff0, glow: 0x3fd68a, spark: 0xeaffe0, line: 0x9cf06a },

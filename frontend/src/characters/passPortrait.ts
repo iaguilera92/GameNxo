@@ -28,7 +28,7 @@ export const PASS_PORTRAITS: Record<string, PassPortrait> = {
  */
 export const SOON_PORTRAITS: Record<string, PassPortrait> = {
   flo: { key: 'portrait-flo', file: 'assets/characters/flo_portrait.webp', w: 1122, h: 1402, box: { x0: 185, y0: 6, x1: 1004, y1: 1388 } },
-  zac: { key: 'portrait-zac', file: 'assets/characters/zac_portrait.webp', w: 1024, h: 1536, box: { x0: 108, y0: 35, x1: 976, y1: 1500 } },
+  zac: { key: 'portrait-zac', file: 'assets/characters/zac_portrait.webp', w: 1024, h: 1536, box: { x0: 79, y0: 8, x1: 976, y1: 1511 } },
   net: { key: 'portrait-net', file: 'assets/characters/net_portrait.webp', w: 1024, h: 1536, box: { x0: 79, y0: 89, x1: 1002, y1: 1515 } },
   mat: { key: 'portrait-mat', file: 'assets/characters/mat_portrait.webp', w: 1024, h: 1536, box: { x0: 129, y0: 65, x1: 972, y1: 1475 } },
   isa: { key: 'portrait-isa', file: 'assets/characters/isa_portrait.webp', w: 1122, h: 1402, box: { x0: 131, y0: 10, x1: 1040, y1: 1382 } },

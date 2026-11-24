@@ -14,13 +14,13 @@ import type { ItemRarity } from '../domain/shopCatalog';
  *     legendaria = gemas doradas grandes en las 4 esquinas, corona en la gema de arriba y doble brillo exterior.
  */
 export const RARITY_STYLE: Record<ItemRarity, { main: number; light: number; dark: number; width: number; glow: number; inner: boolean; studs: boolean }> = {
-  normal: { main: 0x9fb0cf, light: 0xe9f0fb, dark: 0x2a3550, width: 3.5, glow: 0, inner: true, studs: false },
+  default: { main: 0x9fb0cf, light: 0xe9f0fb, dark: 0x2a3550, width: 3.5, glow: 0, inner: true, studs: false },
   especial: { main: 0x2fd0ff, light: 0xd2f8ff, dark: 0x0a3e5c, width: 4.5, glow: 0.22, inner: true, studs: false },
   epica: { main: 0xb455ff, light: 0xecd2ff, dark: 0x3a1066, width: 5, glow: 0.32, inner: true, studs: true },
   legendaria: { main: 0xffc12e, light: 0xfff4c2, dark: 0x6a4300, width: 6, glow: 0.45, inner: true, studs: true },
 };
 
-const TIER: Record<ItemRarity, number> = { normal: 0, especial: 1, epica: 2, legendaria: 3 };
+const TIER: Record<ItemRarity, number> = { default: 0, especial: 1, epica: 2, legendaria: 3 };
 
 /** Rombo (gema) centrado en (cx, cy) de medio ancho `r`, con su brillo. */
 function gem(g: Phaser.GameObjects.Graphics, cx: number, cy: number, r: number, S: (typeof RARITY_STYLE)[ItemRarity]) {

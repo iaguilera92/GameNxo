@@ -4,6 +4,7 @@ import { ballSpray } from './barrageFx';
 
 /** Colores del choque de una pelota con poder según su elemento (destello y onda). */
 const POWER_WALL: Record<FxElement, { hot: number; ring: number }> = {
+  default: { hot: 0xfffbea, ring: 0xffc94a }, // (24-11-2026) DEFAULT (ESPECIAL y ULTI): blanco y dorado
   fire: { hot: 0xffb347, ring: 0xff7a1e },
   ice: { hot: 0xbff0ff, ring: 0x4aa8ff },
   wind: { hot: 0xd8ffe0, ring: 0x3fd68a },

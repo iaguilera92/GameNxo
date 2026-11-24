@@ -82,14 +82,14 @@ const SETS: Record<string, WalkSet> = {
   'ambiente-4': {
     key: 'snow-walkers',
     meta: SNOW,
-    // franja de nieve entre el horizonte (y ~260) y la valla (empieza en y ~285)
-    path: { feetY: 282, x0: -90, x1: 1626, adultH: 56 },
+    // Los pies siguen la nieve plana por detrás de los postes de la reja.
+    path: { feetY: 275, x0: -90, x1: 1626, adultH: 56 },
     walkers: [
       { speed: 34, fps: 8 }, // persona con bufanda
       { speed: 30, fps: 8 }, // chica con husky
       { speed: 38, fps: 9 }, // niño con trineo
-      // esquiador: baja por la ladera de la derecha (borde de arriba de la ladera ≈ de (1230,139) a (960,253)); baja hasta y 264, justo antes de la franja de nieve plana (horizonte y ~260; los otros pasean con los pies en y 282) y se desvanece sin cruzarla; pies ~35 px dentro de ella. OJO: en pantalla solo se ve la franja x 480..1056 de la imagen (720 de ancho a escala 1.25), por eso el tramo es corto
-      { speed: 45, fps: 10, maxPlays: 2, slope: { x0: 1230, y0: 175, x1: 920, y1: 264, adultH: 40 } },
+      // Baja por debajo de las casas y se desvanece al llegar al pie de la ladera, antes del paseo.
+      { speed: 45, fps: 10, maxPlays: 2, slope: { x0: 1270, y0: 201, x1: 1020, y1: 264, adultH: 40 } },
     ],
   },
   /**

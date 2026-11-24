@@ -11,6 +11,9 @@ import { queueNxoSpriteLoads, registerNxoAnims } from '../objects/NxoActor';
 import { preloadRankBadges } from '../ui/RankBadge';
 import { queueAmbienteLoad } from '../view/CourtView';
 import { bootRanked, myLeague } from '../logic/Ranked';
+import { getPlayer } from '../domain/playerStore';
+import { isDevMode } from '../domain/devMode';
+import { needsOnboarding } from '../domain/operations';
 
 
 
@@ -144,7 +147,9 @@ export class BootScene extends Phaser.Scene {
    */
   private crossfadeToMenu() {
     const cam = this.cameras.main;
-    const menu = this.scene.get('Menu');
+    // (24-11-2026, usuario) cuenta nueva: primero la pantalla de inicio (nombre de usuario y personaje)
+    const first = needsOnboarding(getPlayer(), isDevMode()) ? 'Onboarding' : 'Menu';
+    const menu = this.scene.get(first);
     menu.events.once(Phaser.Scenes.Events.CREATE, () => {      // el menú hace su propio fadeIn desde negro: se espera a que termine (queda oculto bajo el cargando)
       this.time.delayedCall(300, () => {
         cam.setBackgroundColor('rgba(0,0,0,0)');
@@ -157,7 +162,7 @@ export class BootScene extends Phaser.Scene {
         });
       });
     });
-    this.scene.launch('Menu');
+    this.scene.launch(first);
     this.scene.bringToTop(); // el cargando sigue encima mientras se desvanece
   }
 }

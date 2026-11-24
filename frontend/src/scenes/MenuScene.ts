@@ -13,7 +13,10 @@ import { arcadeButton, modeBand, modeShape } from '../ui/modeButtons';
 import { chestStatus } from '../domain/chest';
 import { gameClock } from '../domain/timeSource';
 import { isDevMode } from '../domain/devMode';
-import { maybeShowTutorial } from '../ui/TutorialDialog';
+import { maybeShowTutorial, openTutorialDialog } from '../ui/TutorialDialog';
+import { GUIDE, guidedStep } from '../domain/tutorial';
+import { grantTutorialGifts, markTutorialSeen } from '../domain/operations';
+import { guideFocus } from '../ui/guideFocus';
 import { fitText } from '../ui/fitText';
 import { myLeague, myPosition, rankedState, rankedView, riskModeStatus, riskUsedThisWeek, syncRanked, syncRiskMode, activateRiskMode, devActivateRisk, type RiskActivateError } from '../logic/Ranked';
 import { formatRiskLeft } from '../domain/riskMode';
@@ -32,7 +35,7 @@ import { loadBet, rankedPlayButton } from '../ui/PlayEntry';
 import { matchStakes } from '../domain/rankedConfig';
 import { serverUrl } from '../net/config';
 import { MAX_LEVEL } from '../config';
-import { getPlayer, onPlayerChange } from '../domain/playerStore';
+import { commit, getPlayer, onPlayerChange } from '../domain/playerStore';
 import { DailyWheels } from '../ui/DailyWheels';
 import { showSettings } from '../ui/SettingsDialog';
 import { BP_TIERS, bpClaimable, bpLevel, syncSeason } from '../domain/battlePass';
@@ -91,6 +94,8 @@ const RISK_TAP_MS = 280;
 // (20-11-2026, usuario) el anillo se llena en 2 s, lo mismo que suena modo-riesgo.mp3 (antes 3 s en total)
 const RISK_FILL_MS = 2000;
 const RISK_HOLD_MS = RISK_TAP_MS + RISK_FILL_MS;
+const RISK_LEVEL = 20;
+const DOUBLES_LEVEL = 10;
 const RISK_MSG: Record<RiskActivateError, string> = {
   offline: 'Necesitas conexión para activar el MODO RIESGO',
   not_monday: 'El MODO RIESGO solo se activa los lunes',
@@ -110,6 +115,21 @@ const NAV = {
 };
 
 export class MenuScene extends Phaser.Scene {
+  private guideOverlay?: Phaser.GameObjects.Container;
+  private guideRects?: { defensive: { x: number; y: number; w: number; h: number }; profile?: { x: number; y: number; w: number; h: number } };
+
+  private refreshGuide() {
+    this.guideOverlay?.destroy();
+    this.guideOverlay = undefined;
+    if (isDevMode() || !this.guideRects) return;
+    const p = getPlayer();
+    const step = guidedStep(p.level, p.tutorial);
+    if (!step) return;
+    const target = step === 'defensive' ? this.guideRects.defensive : step === 'profile' ? this.guideRects.profile : this.modeRects[0];
+    if (!target) return;
+    const labels = { play: 'TOCA JUGAR', defensive: 'ABRE PERSONAJE PARA VER TU DEFENSIVO', profile: 'TOCA TU PERFIL', spin: 'TOCA JUGAR PARA PRACTICAR EL DEFENSIVO' }; // (24-11-2026) nivel 2: solo DEFENSIVO
+    this.guideOverlay = guideFocus(this, target, labels[step]);
+  }
   constructor() {
     super('Menu');
   }
@@ -270,6 +290,7 @@ export class MenuScene extends Phaser.Scene {
     const SIDE_STEP = 152;
     const SIDE_LIFT = 22;
     const sideY = Math.max(PASS_BOTTOM + 10 + 68, Math.min(H * 0.4, feetY - 300, dailyMaxY - 84 / 2 - 30 - 136 / 2 - SIDE_STEP) - SIDE_LIFT);
+    this.guideRects = { defensive: { x: 128, y: sideY, w: 214, h: 136 }, profile: this.guideRects?.profile };
     this.sideButton(128, sideY, 'PERSONAJE', 'user', false, () => go('Customize'));
     this.sideButton(128, sideY + SIDE_STEP, 'TIENDA', 'shop', false, () => go('Shop'));
     // premio diario: bajo TIENDA, mitad de su ancho (214/2); se marca en dorado pero NUNCA se abre solo
@@ -281,17 +302,32 @@ export class MenuScene extends Phaser.Scene {
     const gapSide = SIDE_STEP - 136;
     const dailyY = Math.min(sideY + SIDE_STEP + 136 / 2 + gapSide + dailyH / 2, dailyMaxY - SIDE_LIFT);
     // alineado a la izquierda con TIENDA (su borde izquierdo está en 128 − 214/2)
-    dailyLoginButton(this, 128 - 214 / 2 + dailyW / 2, dailyY, (m) => this.toast(m), dailyW, dailyH);
-    // AMIGOS: a su derecha, mismo diseño pero bloqueado (la sección aún no existe)
-    friendsButton(this, 128 - 214 / 2 + dailyW + dailyGap + dailyW / 2, dailyY, (m) => this.toast(m), dailyW, dailyH);
-    // RANKING GLOBAL (saldo de monedas, sin bots): card bajo DIARIO, mismo tamaño (16-11-2026). Desde el menú y no desde LIGA,
-    // para no confundirlo con el ranking semanal de la liga
-    globalRankingButton(this, 128 - 214 / 2 + dailyW / 2, dailyY + globalRow, dailyW, dailyH);
+    const showAfterFirstMatch = isDevMode() || p.level > 1 || getPlayer().tutorial?.includes(GUIDE.firstMatch);
+    if (showAfterFirstMatch) {
+      dailyLoginButton(this, 128 - 214 / 2 + dailyW / 2, dailyY, (m) => this.toast(m), dailyW, dailyH);
+      globalRankingButton(this, 128 - 214 / 2 + dailyW / 2, dailyY + globalRow, dailyW, dailyH);
+    }
+    // (24-11-2026, usuario) AMIGOS desde el nivel 2 (antes 5): para probar con amigos pronto (allí todo va en Default)
+    if (isDevMode() || p.level >= 2) {
+      friendsButton(this, 128 - 214 / 2 + dailyW + dailyGap + dailyW / 2, dailyY, (m) => this.toast(m), dailyW, dailyH);
+    }
 
     // --- JUGAR
     // JUGAR = partida Ranked en tu liga con la apuesta elegida (monto tocable + info). Sin monedas: amistosa gratis
     this.playRow(W, playY, (bet) => {
       uiSound(this, 'play'); // arranque del partido: golpe + whoosh + acorde
+      const p = getPlayer();
+      if (!isDevMode() && p.level <= 15) {
+        const step = guidedStep(p.level, p.tutorial);
+        this.scene.start('Matchmaking', { skipSearch: true, from: 'Menu', guide: step === 'play' ? 'first' : step === 'spin' ? 'spin' : undefined });
+        return;
+      }
+      // (24-11-2026, usuario) niveles 16 a 19: partido COMPLETO amistoso contra el bot (sin apuesta: las ligas se abren en el nivel 20)
+      if (!isDevMode() && p.level < MAX_LEVEL) {
+        this.cameras.main.fadeOut(200, 0, 0, 0);
+        this.cameras.main.once('camerafadeoutcomplete', () => this.scene.start('Matchmaking', { unranked: true, from: 'Menu' }));
+        return;
+      }
       // datos del flujo BOT de siempre: Ranked con la apuesta elegida, o AMISTOSO sin monedas
       const botFlow = bet ? { ranked: { bet }, from: 'Menu' } : { unranked: true, from: 'Menu' };
       // con servidor multijugador configurado: primero se busca un rival real 5 s (LanSearch); sin rival, el BOT
@@ -303,11 +339,23 @@ export class MenuScene extends Phaser.Scene {
       this.cameras.main.fadeOut(200, 0, 0, 0);
       // con servidor: primero se busca un COMPAÑERO humano (2 humanos contra 2 bots); sin él, 2v2 contra bots como siempre
       const fb = { unranked: false, from: 'Menu', mode: '2v2' };
-      this.cameras.main.once('camerafadeoutcomplete', () => (serverUrl() !== null ? this.scene.start('LanSearch', { mode: '2v2', fallback: fb }) : this.scene.start('Matchmaking', fb)));
+      // (24-11-2026, usuario) en el tutorial (bajo el nivel 20) el 2v2 es contra bots: sin buscar compañero en línea
+      const online = serverUrl() !== null && (isDevMode() || getPlayer().level >= MAX_LEVEL);
+      this.cameras.main.once('camerafadeoutcomplete', () => (online ? this.scene.start('LanSearch', { mode: '2v2', fallback: fb }) : this.scene.start('Matchmaking', fb)));
     });
 
     // --- ruletas diarias (encima de JUGAR). Una ruleta recién ganada se abre sola UNA vez.
-    const wheelOpened = this.dailyWheels(W, playY);
+    const wheelOpened = showAfterFirstMatch ? this.dailyWheels(W, playY) : false;
+    // (24-11-2026, usuario) regalos del tutorial de los niveles ya alcanzados (gris en el 8, estela azul en el 10)
+    if (!isDevMode()) commit((s) => grantTutorialGifts(s));
+    this.refreshGuide();
+    const guidePlayer = getPlayer();
+    if (!isDevMode() && guidePlayer.level === 1 && !guidePlayer.tutorial?.includes(GUIDE.welcome)) {
+      openTutorialDialog(this, { id: GUIDE.welcome, level: 1, title: '¡BIENVENIDO!', pages: ['Tu primer partido empieza aquí.'] }, () => {
+        commit((s) => markTutorialSeen(s, GUIDE.welcome));
+        commit((s) => markTutorialSeen(s, 'l01-bienvenida'));
+      }, 2000);
+    }
     // EXP de la partida: "+N EXP" y las barras de nivel y del pase se llenan; con ruleta, DESPUÉS de cerrarla
     // TUTORIAL por nivel (domain/tutorial.ts; solo con el modo desarrollo apagado): DESPUÉS de la ruleta y de la presentación de la EXP
     // (que dura ~6 s), para que el aviso de un nivel recién alcanzado no se pise con ellas
@@ -387,10 +435,10 @@ export class MenuScene extends Phaser.Scene {
       ring,
       modeShape(w, h),
       0xffd23f,
-      () => this.riskInfo(),
+      () => this.riskUnlocked() ? this.riskInfo() : this.toast(`Modo Riesgo desde el nivel ${RISK_LEVEL}`),
       () => this.tryActivateRisk(() => paint()),
       TAG_X + 46,
-      () => riskModeStatus().phase !== 'active',
+      () => this.riskUnlocked() && riskModeStatus().phase !== 'active',
       (f) => {
         if (!c.active) return;
         if (f > 0 && riskModeStatus().phase !== 'active') tagText.setText('10 MIN'); // lo que va a durar, mientras se mantiene
@@ -403,19 +451,20 @@ export class MenuScene extends Phaser.Scene {
     const paint = () => {
       if (!c.active) return;
       const rs = riskModeStatus();
-      const active = rs.phase === 'active';
+      const unlocked = this.riskUnlocked();
+      const active = unlocked && rs.phase === 'active';
       glow(active);
-      const on = active || !riskUsedThisWeek();
+      const on = !unlocked || active || !riskUsedThisWeek();
       c.setVisible(on);
       if (!on) return;
       // con cofre, su sitio es del cofre: esta card a su izquierda
       c.x = chestStatus(getPlayer() as never, gameClock.now()).kind !== 'none' ? xChest - w - gap : xChest;
       // la máscara del destello sigue a la card (posición en pantalla)
       hotMask.clear().fillStyle(0xffffff).fillPoints(modeShape(w, h).map((p) => ({ x: p.x + c.x, y: p.y + c.y })), true);
-      const live = rs.phase !== 'closed';
+      const live = unlocked && rs.phase !== 'closed';
       // activo o en reposo: la etiqueta a su tamaño normal (el hold la agranda mientras se mantiene; al activarse vuelve a 1)
       if (active) tagText.setScale(1).setShadow(0, 0, '#000', 0, false, false);
-      tagText.setText(active ? formatRiskLeft(rs.msLeft) : '10 MIN');
+      tagText.setText(!unlocked ? `NIVEL ${RISK_LEVEL}` : active ? formatRiskLeft(rs.msLeft) : '10 MIN');
       const key = `${live}|${active}|${Math.ceil(tagText.width)}`;
       if (key === shown) return;
       shown = key;
@@ -572,7 +621,12 @@ export class MenuScene extends Phaser.Scene {
   }
 
   /** Pide activar el MODO RIESGO (servidor). Hoy no es lunes / ya usado / sin conexión: aviso. `onOk` si se activó. */
+  private riskUnlocked() {
+    return isDevMode() || getPlayer().level >= RISK_LEVEL;
+  }
+
   private tryActivateRisk(onOk?: () => void) {
+    if (!this.riskUnlocked()) return this.toast(`Modo Riesgo desde el nivel ${RISK_LEVEL}`);
     const rs = riskModeStatus();
     if (rs.phase === 'active') return this.toast(RISK_MSG.active);
     const done = (msg: string) => {
@@ -1708,10 +1762,12 @@ export class MenuScene extends Phaser.Scene {
       else arcadeButton(this, lx, y, lw, h, 'JUGAR', () => onPlay(null), { palette: 'yellow' });
       // 2v2 chico: solo el texto; elige la LIGA 2V2
       // (21-11-2026, usuario) un solo toque: cambia a la LIGA 2V2 (el botón se agranda) Y abre ya el diálogo (antes hacían falta dos toques)
+      const locked = !dev && getPlayer().level < DOUBLES_LEVEL;
       arcadeButton(this, rx, y, rw, h, '2v2', () => {
+        if (locked) return this.toast(`2v2 desde el nivel ${DOUBLES_LEVEL}`);
         this.setLeagueMode('2v2');
         this.openDoublesMenu();
-      }, { palette: 'purple' });
+      }, { palette: locked ? 'grey' : 'purple' });
     }
     this.playRowObjs = this.children.list.filter((o) => !before.has(o));
     this.rebuildRiskGlow(); // el brillo del MODO RIESGO sigue a los botones nuevos
@@ -1722,6 +1778,7 @@ export class MenuScene extends Phaser.Scene {
 
   /** Diálogo del 2v2 (INVITAR AMIGO / JUGAR 2V2 con la apuesta en monedas 2v2). Lo abren el botón 2v2 grande y, de un solo toque, el 2v2 chico. */
   private openDoublesMenu() {
+    if (!isDevMode() && getPlayer().level < DOUBLES_LEVEL) return this.toast(`2v2 desde el nivel ${DOUBLES_LEVEL}`);
     const a = this.playRowArgs;
     if (!a) return;
     openDoublesDialog(this, {
@@ -1734,6 +1791,7 @@ export class MenuScene extends Phaser.Scene {
 
   /** (19-11-2026) Elige la liga de la card (LIGA / LIGA 2V2): repinta la card, el contador de monedas de arriba y la fila JUGAR / 2v2. */
   private setLeagueMode(m: '1v1' | '2v2') {
+    if (m === '2v2' && !isDevMode() && getPlayer().level < DOUBLES_LEVEL) return;
     if (this.leagueMode === m) return;
     this.leagueMode = m;
     this.leagueRepaint?.();
@@ -1767,7 +1825,9 @@ export class MenuScene extends Phaser.Scene {
     this.passWidget(24, passY, Math.min(380, Math.min(440, countersLeft - 24 - 14)));
     // MONEDAS DE LA LIGA (neto de la semana): en la fila del PASE, a la derecha, del borde de los contadores al del botón de ajustes
     // (21-11-2026; antes eran la 1.ª fila de la columna de contadores)
-    this.leagueCoins(countersLeft, gx + gs / 2, passY, PASS_H);
+    if (isDevMode() || p.level > 1 || getPlayer().tutorial?.includes(GUIDE.firstMatch)) {
+      this.leagueCoins(countersLeft, gx + gs / 2, passY, PASS_H);
+    }
     // columna de 2 filas en el alto de la card del perfil: monedas de la cuenta · dinero virtual. A su derecha, ajustes.
     this.coinCounter(gx - gs / 2 - 10, y + COUNTER_TOP);
     // dinero (billetes): saldo real, en vivo; al tocarlo lleva a la Tienda
@@ -2009,8 +2069,19 @@ export class MenuScene extends Phaser.Scene {
     const cardHit = this.add.rectangle(0, 0, cw, ch, 0x000000, 0.001).setOrigin(0).setInteractive({ useHandCursor: true });
     cardHit.on('pointerup', () => {
       this.tweens.add({ targets: card, scale: { from: 0.97, to: 1 }, duration: 180, ease: 'Back.easeOut' });
-      openProfileDialog(this, (m) => this.toast(m));
+      const p = getPlayer();
+      const guided = !isDevMode() && guidedStep(p.level, p.tutorial) === 'profile';
+      if (guided) {
+        this.guideOverlay?.destroy();
+        this.guideOverlay = undefined;
+      }
+      const dialog = openProfileDialog(this, (m) => this.toast(m));
+      if (guided) dialog.once(Phaser.GameObjects.Events.DESTROY, () => {
+        commit((s) => markTutorialSeen(s, GUIDE.profile));
+        if (this.sys.isActive()) this.refreshGuide();
+      });
     });
+    this.guideRects = { defensive: this.guideRects?.defensive ?? { x: 128, y: 0, w: 214, h: 136 }, profile: { x: x + cw / 2, y: y + ch / 2, w: cw, h: ch } };
     card.add(cardHit);
 
     // insignia de rango a la izquierda (en lugar del avatar)

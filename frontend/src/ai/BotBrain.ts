@@ -178,6 +178,8 @@ export class BotBrain {
    * hacia ti, sin ESPECIAL, ULTI, DASH, globos ni dejadas ni errores, y sale a volear cerca de la red.
    */
   netPractice = false;
+  /** (24-11-2026) probabilidad 0..1 de tirar FUERA el próximo golpe (tutorial que se gana siempre; MatchScene.tutorialGuardPoint) */
+  forceOut = 0;
   /** enfriamientos restantes de las habilidades (s) */
   private dashCd = 0;
   private smashCd = 0;
@@ -447,7 +449,7 @@ export class BotBrain {
    * `noPower` (Claude): saque o su resto en juego: no lanza el ESPECIAL con este golpe.
    * `forcePower` (Claude): llegó con el alcance extra del ESPECIAL: este golpe ES el ESPECIAL (si está listo).
    */
-  planShot(ball: BallState, ctx: ShotContext, ulti = false, noPower = false, forcePower = false): ShotPlan {
+  planShot(ball: BallState, ctx: ShotContext, ulti = false, noPower = false, forcePower = false, allowDropZero = true): ShotPlan {
     const ai = this.ai;
     const d = ai.d;
     const away = ctx.playerY > LAT_C ? -1 : 1; // lado contrario al jugador
@@ -557,7 +559,7 @@ export class BotBrain {
         margin = 8;
         kind = 'drop';
         // (14-11-2026) DROP SHOT 0: con buen contacto, a veces la tira con efecto hacia atrás (más los rivales buenos)
-        if (!this.netPractice && q >= STRAT.dropZero.minQuality && Math.random() < STRAT.dropZero.chance * Math.min(1, 0.4 + this.abil.smash)) {
+        if (allowDropZero && !this.netPractice && q >= STRAT.dropZero.minQuality && Math.random() < STRAT.dropZero.chance * Math.min(1, 0.4 + this.abil.smash)) {
           dropZero = true;
           tx = NET_X - ownLen * rand(0.1, 0.2);
           speed = SHOT_SPEED * 0.9;
@@ -579,7 +581,8 @@ export class BotBrain {
     tx += (1 - q) * rand(-60, 60);
     ty += (1 - q) * rand(-90, 90);
     // a veces sale mal: los golpes arriesgados y el mal contacto lo hacen más probable
-    if (Math.random() < ai.outChance * STRAT.risk[intent] * (STRAT.outBase + STRAT.outBadContact * (1 - q))) {
+    // (24-11-2026) `forceOut`: partido del tutorial que se gana siempre (domain/tutorialMatch.ts botForcedOutChance)
+    if (Math.random() < this.forceOut || Math.random() < ai.outChance * STRAT.risk[intent] * (STRAT.outBase + STRAT.outBadContact * (1 - q))) {
       if (intent === 'drop') tx = NET_X + rand(10, 45); // dejada corta: se queda en su campo
       else if (Math.random() < 0.5) tx = COURT.left - rand(15, 55);
       else ty = Math.random() < 0.5 ? this.cTop - rand(15, 45) : this.cBot + rand(15, 45);

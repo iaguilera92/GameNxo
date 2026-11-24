@@ -36,7 +36,8 @@ export const CHARGE_FX: ChargeFxDef[] = [
 
 const IDS = new Set<string>(CHARGE_FX.map((c) => c.id));
 /** Efecto de cada personaje (id del catálogo) cuando el jugador no eligió otro. */
-const DEFAULT_BY_SKIN: Record<string, ChargeFxId> = { nxo: 'fire', mai: 'tulip' };
+// (24-11-2026, usuario) ya no hay carga inicial por personaje (antes Nxo = fuego, Mai = tulipán): todos empiezan con la CLÁSICA
+const DEFAULT_BY_SKIN: Record<string, ChargeFxId> = {};
 
 export function isChargeFx(v: unknown): v is ChargeFxId {
   return typeof v === 'string' && IDS.has(v);

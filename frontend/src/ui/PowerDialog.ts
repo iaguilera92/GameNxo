@@ -97,6 +97,8 @@ export interface PowerDialogOpts {
   pulse?: number;
   /** página 2 de la televisión: una demostración en acción (se llega deslizando; ver PowerDemo) */
   demo?: { create: (parent: Phaser.GameObjects.Container, outer: DemoRect, inner: DemoRect, id: string | undefined) => PowerDemo };
+  /** En el tutorial hay que ver la demostración antes de equipar el poder. */
+  requireDemoBeforeEquip?: boolean;
 }
 
 const NAVY = 0x0b1733;
@@ -173,6 +175,7 @@ export function openPowerDialog(scene: Phaser.Scene, opts: PowerDialogOpts) {
   root.once(Phaser.GameObjects.Events.DESTROY, unfreeze);
   const timers: Phaser.Time.TimerEvent[] = [];
   let changed = false;
+  let demoSeen = !opts.requireDemoBeforeEquip;
   let closed = false;
 
   // fondo oscuro que bloquea lo de detrás; tocar fuera del panel cierra
@@ -397,7 +400,13 @@ export function openPowerDialog(scene: Phaser.Scene, opts: PowerDialogOpts) {
         ease: 'Cubic.easeInOut',
         onUpdate: () => setOffset(st.v),
         onComplete: () => {
-          if (page === 1) demoCtl?.setActive(true);
+          if (page === 1) {
+            demoCtl?.setActive(true);
+            if (!demoSeen) {
+              demoSeen = true;
+              show(selected);
+            }
+          }
         },
       });
     };
@@ -511,6 +520,11 @@ export function openPowerDialog(scene: Phaser.Scene, opts: PowerDialogOpts) {
     grey: { fill: 0x44506b, band: 0xffffff, bandA: 0.08, stroke: '#1b2338', text: '#c4cfe8' },
   };
   const tag = (label: string, palette: ArcadePalette, onTap?: () => void, check = false) => {
+    if (!demoSeen && label === 'EQUIPAR') {
+      label = 'DESLIZA PARA VER';
+      palette = 'blue';
+      onTap = undefined;
+    }
     actionPulse?.remove();
     actionPulse = null;
     for (const o of action.list) scene.tweens.killTweensOf(o); // el latido del botón anterior

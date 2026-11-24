@@ -498,6 +498,7 @@ export function hyperTexture(scene: Phaser.Scene, key: string): string | null {
 
 /** Filtro de canvas por poder del SMASH (sobre el arte rojo/naranja del botón). */
 const ELEMENT_FILTER: Record<Exclude<SmashPower, 'fire'>, string> = {
+  default: 'grayscale(1) brightness(1.55) contrast(1.05)', // (24-11-2026) DEFAULT: plateado
   ice: 'hue-rotate(205deg) saturate(1.15) brightness(1.1)', // azul hielo
   wind: 'hue-rotate(110deg) saturate(1.05) brightness(1.1)', // verde
   // amarillo eléctrico: girar el tono del rojo deja manchas naranja y verdes; se pasa a luz, se tiñe en sepia y se satura

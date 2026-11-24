@@ -150,9 +150,10 @@ export function hitLookOf(el: FxElement = 'fire') {
  * (17-11-2026) Bolas SIN hoja de sprites (se dibujan por código): ULTRA EFECTO = pelota normal + aire de ventilador gigante;
  * RÁFAGA = pelota normal + ráfaga de pelotas fantasma (fx/barrageFx.ts).
  */
-export type ProceduralBall = 'ultra' | 'barrage' | 'energy' | 'hurricane'; // hurricane = HURACÁN (LEGENDARIA, fx/hurricaneFx.ts) // (17-11-2026) energy = BOLA DE ENERGÍA (LEGENDARIA, fx/energyBallFx.ts)
+export type ProceduralBall = 'ultra' | 'barrage' | 'energy' | 'hurricane' | 'default'; // (24-11-2026) default = ULTI DEFAULT (esfera dorada por código, updateDefault)
+// // hurricane = HURACÁN (LEGENDARIA, fx/hurricaneFx.ts) // (17-11-2026) energy = BOLA DE ENERGÍA (LEGENDARIA, fx/energyBallFx.ts)
 export function isProceduralBall(el: InfernoElement): el is ProceduralBall {
-  return el === 'ultra' || el === 'barrage' || el === 'energy' || el === 'hurricane';
+  return el === 'ultra' || el === 'barrage' || el === 'energy' || el === 'hurricane' || el === 'default';
 }
 export const BALL_ART: Record<Exclude<InfernoElement, ProceduralBall>, BallArt> = { fire: FIREBALL_ART, ice: ICEBALL_ART, wind: WINDBALL_ART, lightning: LIGHTNINGBALL_ART, tulip: TULIPBALL_ART, shadow: SHADOWBALL_ART, light: LIGHTBALL_ART };
 /** Hoja de la bola de un poder; undefined en las procedurales (ULTRA EFECTO, RÁFAGA). */
@@ -205,6 +206,23 @@ function addUltraPreview(scene: Phaser.Scene, c: Phaser.GameObjects.Container, m
   scene.events.once(Phaser.Scenes.Events.SHUTDOWN, off);
 }
 
+/** (24-11-2026) Vista previa de la ULTI DEFAULT: la esfera dorada con su brillo que late (sin hoja). */
+function addDefaultPreview(scene: Phaser.Scene, c: Phaser.GameObjects.Container, maxW: number, maxH: number, animate: boolean) {
+  const m = Math.min(maxW, maxH);
+  ensureRadial(scene, GLOW, 64, [
+    [0, 1],
+    [0.35, 0.85],
+    [0.7, 0.3],
+    [1, 0],
+  ]);
+  const P = BALL_FX.default;
+  const halo = scene.add.image(0, 0, GLOW).setTint(P.halo).setBlendMode(Phaser.BlendModes.ADD).setDisplaySize(m * 0.95, m * 0.95).setAlpha(0.7);
+  const body = scene.add.image(0, 0, GLOW).setTint(0xffd86b).setDisplaySize(m * 0.5, m * 0.5);
+  const core = scene.add.image(0, 0, GLOW).setTint(P.core).setBlendMode(Phaser.BlendModes.ADD).setDisplaySize(m * 0.32, m * 0.32);
+  c.add([halo, body, core]);
+  if (animate) scene.tweens.add({ targets: halo, alpha: 0.4, scale: halo.scale * 1.12, duration: 520, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
+}
+
 /** Tamaño en pantalla [ancho, alto] de una bola de alto `h` (las cuadradas, h × h). */
 export function ballDims(art: BallArt, h: number): [number, number] {
   return [art.cellH ? (h * art.cell) / art.cellH : h, h];
@@ -223,6 +241,7 @@ export function addBallPreview(scene: Phaser.Scene, x: number, y: number, el: In
     if (el === 'barrage') addBarragePreview(scene, c, maxW, maxH, animate);
     else if (el === 'energy') addEnergyPreview(scene, c, maxW, maxH, animate); // (17-11-2026) BOLA DE ENERGÍA
     else if (el === 'hurricane') addHurricanePreview(scene, c, maxW, maxH, animate); // (17-11-2026) HURACÁN
+    else if (el === 'default') addDefaultPreview(scene, c, maxW, maxH, animate); // (24-11-2026) ULTI DEFAULT
     else addUltraPreview(scene, c, maxW, maxH, animate);
     return c;
   }
@@ -267,6 +286,21 @@ export interface InfernoLook {
   hit: { ring: number; star: number; flash: [number, number, number] };
 }
 export const INFERNO_LOOK: Record<InfernoElement, InfernoLook> = {
+  // (24-11-2026, usuario) ULTI DEFAULT (rareza Default, la inicial de todos): dorada y blanca, más tenue que las de la Tienda
+  default: {
+    ghostTint: 0xffe48a,
+    ghostRamp: [0x7a5200, 0xfff1b8],
+    cine: {
+      colors: { core: 0xffffff, gold: 0xffd86b, hot: 0xffb020, cyan: 0xfff1b8 },
+      aura: [
+        [1.25, 0xffb020, 0.18],
+        [1.04, 0xffd86b, 0.2],
+        [0.86, 0xfffbea, 0.2],
+      ],
+      flashTint: 0xfffbea,
+    },
+    hit: { ring: 0xffc94a, star: 0xffffff, flash: [255, 240, 190] },
+  },
   fire: {
     ghostTint: INFERNO.dash.tint,
     cine: { colors: INFERNO_CINE.colors, aura: INFERNO_CINE.aura },
@@ -421,7 +455,11 @@ export const INFERNO_LOOK: Record<InfernoElement, InfernoLook> = {
   },
 };
 
-const CINES: Partial<Record<InfernoElement, CineProfile>> = { fire: INFERNO_CINE };
+const CINES: Partial<Record<InfernoElement, CineProfile>> = {
+  fire: INFERNO_CINE,
+  // (24-11-2026) ULTI DEFAULT: los mismos tiempos (el partido y el otro teléfono esperan INFERNO_CINE.hitAtMs) pero más tenue: menos oscuro, sin partículas
+  default: { ...INFERNO_CINE, ...INFERNO_LOOK.default.cine, darken: INFERNO_CINE.darken * 0.55, glow: INFERNO_CINE.glow * 0.75, particles: 0 },
+};
 /** Perfil de la cinemática del INFERNO para un poder: los tiempos de INFERNO_CINE con su aspecto (fuego = INFERNO_CINE). */
 export function infernoCine(el: InfernoElement): CineProfile {
   let p = CINES[el];
@@ -637,6 +675,8 @@ const TONGUE_COLS = [0xff2a0a, 0xff6a12, 0xffa21a, 0xffd23a];
  * salen por detrás (`rise` = cuánto suben: el calor sube las brasas; la escarcha cae un poco) y destello del contacto.
  */
 const BALL_FX: Record<InfernoElement, { halo: number; core: number; trail: [number, number]; bits: [number, number]; rise: number; glow: [number, number]; sparks: number[] }> = {
+  // (24-11-2026) ULTI DEFAULT: esfera dorada con núcleo blanco y estela dorada
+  default: { halo: 0xffb020, core: 0xffffff, trail: [0xfff1b8, 0xffc94a], bits: [0xffffff, 0xffe48a], rise: 0, glow: [0xfffbea, 0xffc94a], sparks: [0xffffff, 0xfff1b8, 0xffc94a] },
   fire: { halo: 0xff4a10, core: 0xfff1c0, trail: [0xffb347, 0xff5a1a], bits: [0xffd23a, 0xff6a12], rise: 0.8, glow: [0xfff1c8, 0xff7a1a], sparks: [0xfff2a0, 0xffa31a, 0xff3d1a] },
   ice: { halo: 0x2f8cff, core: 0xe6fbff, trail: [0xbff0ff, 0x4aa8ff], bits: [0xe6fbff, 0x8fdcff], rise: -0.15, glow: [0xeafcff, 0x3a9bff], sparks: [0xffffff, 0xbff0ff, 0x4aa8ff] },
   // viento: hojas verdes que flotan un poco
@@ -704,6 +744,8 @@ export class InfernoFire {
    */
   energyGrowSec = 0.6;
   private energyT = 0;
+  /** (24-11-2026) ULTI DEFAULT (sin hoja): halo, cuerpo y núcleo dorados + estela de 8 brillos (se crean al usarse) */
+  private def?: { halo: Phaser.GameObjects.Image; body: Phaser.GameObjects.Image; core: Phaser.GameObjects.Image; trail: Phaser.GameObjects.Image[]; hist: { x: number; y: number }[] };
 
   constructor(private readonly scene: Phaser.Scene) {
     ensureBallAnims(scene); // animación de cada bola con hoja cargada (fuego, hielo, viento, rayo)
@@ -791,6 +833,10 @@ export class InfernoFire {
       const gq = Math.min(1, this.energyT / Math.max(0.1, this.energyGrowSec));
       const grow = 0.3 + 0.7 * (1 - (1 - gq) * (1 - gq)); // 30 % al salir -> 100 % al llegar (nunca más)
       this.energy.draw(dt, air.sx, air.sy, R * ENERGY_BALL_SCALE * grow, d);
+      return;
+    }
+    if (this.el === 'default') {
+      this.updateDefault(air, R, d);
       return;
     }
     if (isProceduralBall(this.el)) {
@@ -973,8 +1019,44 @@ export class InfernoFire {
     this.ultraBall!.setPosition(air.sx, air.sy).setScale(k).setDepth(d + 0.01).setVisible(true);
   }
 
+  /**
+   * (24-11-2026, usuario) ULTI DEFAULT: esfera dorada grande (más que la carga máxima, menos que las de la Tienda) con núcleo blanco que
+   * late y una estela dorada de 8 brillos que se achican detrás. Todo por código, sin hoja.
+   */
+  private updateDefault(air: { sx: number; sy: number }, R: number, d: number) {
+    const sc = this.scene;
+    const add = Phaser.BlendModes.ADD;
+    const P = BALL_FX.default;
+    this.def ??= {
+      halo: sc.add.image(0, 0, GLOW).setTint(P.halo).setBlendMode(add),
+      body: sc.add.image(0, 0, GLOW).setTint(0xffd86b),
+      core: sc.add.image(0, 0, GLOW).setTint(P.core).setBlendMode(add),
+      trail: Array.from({ length: 8 }, (_, i) => sc.add.image(0, 0, GLOW).setTint(i % 2 ? P.trail[1] : P.trail[0]).setBlendMode(add)),
+      hist: [],
+    };
+    const D = this.def;
+    const pulse = 1 + 0.06 * Math.sin(this.t * 22);
+    D.hist.unshift({ x: air.sx, y: air.sy });
+    if (D.hist.length > 24) D.hist.length = 24;
+    D.trail.forEach((o, i) => {
+      const h = D.hist[Math.min(D.hist.length - 1, (i + 1) * 3)];
+      const f = 1 - (i + 1) / (D.trail.length + 1);
+      o.setPosition(h.x, h.y).setDisplaySize(R * 2.2 * f, R * 2.2 * f).setAlpha(0.55 * f).setDepth(d - 0.03).setVisible(D.hist.length > 3);
+    });
+    D.halo.setPosition(air.sx, air.sy).setDisplaySize(R * 2.9 * pulse, R * 2.9 * pulse).setAlpha(0.6).setDepth(d - 0.02).setVisible(true);
+    D.body.setPosition(air.sx, air.sy).setDisplaySize(R * 1.7, R * 1.7).setAlpha(0.95).setDepth(d + 0.01).setVisible(true);
+    D.core.setPosition(air.sx, air.sy).setDisplaySize(R * 1.05 * pulse, R * 1.05 * pulse).setDepth(d + 0.012).setVisible(true);
+  }
+
   private hide() {
     this.drawing = false;
+    if (this.def) {
+      this.def.halo.setVisible(false);
+      this.def.body.setVisible(false);
+      this.def.core.setVisible(false);
+      this.def.trail.forEach((o) => o.setVisible(false));
+      this.def.hist.length = 0;
+    }
     this.barrage?.hide();
     this.energy?.hide();
     this.hurricane?.hide();

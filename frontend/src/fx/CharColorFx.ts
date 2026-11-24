@@ -39,6 +39,7 @@ export const CHAR_COLORS: CharColorDef[] = [
   { id: 'morado', name: 'MORADO', to: 0.78, sat: 1, bright: 1 },
   { id: 'dorado', name: 'DORADO', to: 0.12, sat: 1.05, bright: 1.2 },
   { id: 'sombra', name: 'SOMBRA', to: null, sat: 0.12, bright: 0.5 },
+  { id: 'gris', name: 'GRIS', to: null, sat: 0.06, bright: 0.95 }, // (24-11-2026) regalo del tutorial (nivel 8): gris claro
 ];
 
 /** Color principal de la ropa de cada personaje (el que se cambia). */

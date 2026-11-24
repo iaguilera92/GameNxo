@@ -16,8 +16,9 @@ import { UNLOCK_LEVEL, type UnlockKey } from './unlocks';
  * Corazones épicas; Estrellas y Arcoíris legendarias; los estilos de color de siempre (Rojo, Verde, Oro, Rosado) normales (15-11-2026).
  * REGLA: cada habilidad o poder NUEVO se crea preguntando antes al usuario qué rareza tiene.
  */
-export type ItemRarity = 'normal' | 'especial' | 'epica' | 'legendaria';
-export const RARITY_LABEL: Record<ItemRarity, string> = { normal: 'NORMAL', especial: 'ESPECIAL', epica: 'ÉPICA', legendaria: 'LEGENDARIA' };
+// (24-11-2026, usuario) rarezas: DEFAULT (lo inicial de todos) · especial · épica · legendaria. La rareza 'normal' ya no existe: lo que era normal pasó a especial
+export type ItemRarity = 'default' | 'especial' | 'epica' | 'legendaria';
+export const RARITY_LABEL: Record<ItemRarity, string> = { default: 'DEFAULT', especial: 'ESPECIAL', epica: 'ÉPICA', legendaria: 'LEGENDARIA' };
 
 export interface ShopItem {
   id: ItemId;
@@ -49,6 +50,7 @@ const BASE_ITEMS: ShopItem[] = [
   { id: 'skin:isa', kind: 'skin', name: 'Isa', ...CHARACTER_PRICE, minLevel: 1, available: true }, // nuevo personaje de la Tienda; se guarda en propiedad hasta que sea jugable
   { id: 'skin:rin', kind: 'skin', name: 'Rin', ...CHARACTER_PRICE, minLevel: 1, available: true }, // nuevo personaje de la Tienda; se guarda en propiedad hasta que sea jugable
   // estilos (estela de los golpes)
+  { id: 'style:blue', kind: 'style', name: 'Azul', price: 40, clp: 490, minLevel: 1, available: true }, // (24-11-2026) regalo del tutorial (nivel 10)
   { id: 'style:red', kind: 'style', name: 'Rojo', price: 40, clp: 490, minLevel: 1, available: true },
   { id: 'style:green', kind: 'style', name: 'Verde', price: 40, clp: 490, minLevel: 2, available: true },
   { id: 'style:gold', kind: 'style', name: 'Oro', price: 80, clp: 990, minLevel: 5, available: true },
@@ -65,6 +67,7 @@ const BASE_ITEMS: ShopItem[] = [
   { id: 'style:hearts', kind: 'style', name: 'Corazones', price: 60, clp: 1990, minLevel: 1, available: true },
   { id: 'style:stars', kind: 'style', name: 'Estrellas', price: 100, clp: 2490, minLevel: 1, available: true },
   // poderes del INFERNO (el FUEGO es de todos; el HIELO viene con Mai)
+  { id: 'inferno:fire', kind: 'inferno', name: 'Fuego', price: 40, clp: 1490, minLevel: 1, available: true }, // (24-11-2026, usuario) FUEGO ya no es gratis
   { id: 'inferno:ice', kind: 'inferno', name: 'Hielo', price: 40, clp: 1490, minLevel: 1, available: true },
   { id: 'inferno:wind', kind: 'inferno', name: 'Viento', price: 60, clp: 1990, minLevel: 1, available: true },
   { id: 'inferno:lightning', kind: 'inferno', name: 'Rayo', price: 80, clp: 2490, minLevel: 1, available: true },
@@ -83,6 +86,7 @@ const BASE_ITEMS: ShopItem[] = [
   // (17-11-2026) ULTI HURACÁN: segunda LEGENDARIA (precio de toda legendaria: LEGENDARY_PRICE, más abajo)
   { id: 'inferno:hurricane', kind: 'inferno', name: 'Huracán', price: 130, clp: 2990, minLevel: 1, available: true },
   // poderes del ESPECIAL (SMASH). El fuego es de todos
+  { id: 'smash:fire', kind: 'smash', name: 'Fuego', price: 45, clp: 1390, minLevel: 1, available: true }, // (24-11-2026, usuario) FUEGO ya no es gratis
   { id: 'smash:ice', kind: 'smash', name: 'Hielo', price: 45, clp: 1390, minLevel: 1, available: true },
   { id: 'smash:wind', kind: 'smash', name: 'Viento', price: 50, clp: 1490, minLevel: 1, available: true },
   { id: 'smash:lightning', kind: 'smash', name: 'Rayo', price: 55, clp: 1990, minLevel: 1, available: true },
@@ -119,8 +123,12 @@ const BASE_ITEMS: ShopItem[] = [
 ];
 /** Rareza de un ítem de la Tienda por su id (undefined = sin clasificar o no está en la Tienda: FUEGO, DASH). */
 export function itemRarity(id: string): ItemRarity | undefined {
-  return SHOP_ITEMS.find((i) => i.id === id)?.rarity;
+  return SHOP_ITEMS.find((i) => i.id === id)?.rarity ?? GIFT_RARITY[id] ?? (DEFAULT_ITEMS.has(id) ? 'default' : undefined);
 }
+/** (24-11-2026, usuario) lo inicial de todos, de rareza DEFAULT (no se vende): ESPECIAL y ULTI DEFAULT, DASH, carga y color clásicos, sin estela */
+/** (24-11-2026) rareza de los colores de ropa que no se venden (regalos) */
+const GIFT_RARITY: Record<string, ItemRarity> = { 'color:gris': 'especial' };
+const DEFAULT_ITEMS = new Set<string>(['smash:default', 'inferno:default', 'defensive:dash', 'charge:classic', 'style:classic', 'color:classic']);
 
 /**
  * (12-11-2026) Un ítem no se puede comprar antes de que se desbloquee la habilidad a la que pertenece (domain/unlocks.ts): sin esto
@@ -157,18 +165,18 @@ function withRarity(it: (typeof BASE_ITEMS)[number]): ShopItem {
   if (it.id === 'defensive:lightning') return { ...base, rarity: 'epica' as const }; // (18-11-2026) RELÁMPAGO
   if (it.id === 'smash:comet') return { ...base, rarity: 'epica' as const };
   if (it.id === 'smash:dragon') return { ...base, rarity: 'legendaria' as const, realMoneyOnly: true }; // (18-11-2026) DRAGÓN
-  if (it.kind === 'smash' || it.kind === 'defensive') return { ...base, rarity: it.id === 'defensive:blink' ? ('normal' as const) : ('especial' as const) };
+  if (it.kind === 'smash' || it.kind === 'defensive') return { ...base, rarity: 'especial' as const }; // (24-11-2026) DESTELLO: de normal a especial
   // CARGANDO GOLPE: Fuego normal; Energía, Hielo, Rayo y Viento especiales; Glitch, Tulipán, Sombra y Luz épicos; Tiempo legendario.
   if (it.kind === 'charge') {
     if (it.id === 'charge:time') return { ...base, rarity: 'legendaria' as const };
     if (it.id === 'charge:glitch') return { ...base, rarity: 'epica' as const };
-    const rarity = it.id === 'charge:fire' ? ('normal' as const) : it.id === 'charge:energy' || it.id === 'charge:hielo' || it.id === 'charge:light' || it.id === 'charge:wild' ? ('especial' as const) : ('epica' as const);
+    const rarity = it.id === 'charge:fire' || it.id === 'charge:energy' || it.id === 'charge:hielo' || it.id === 'charge:light' || it.id === 'charge:wild' ? ('especial' as const) : ('epica' as const);
     return { ...base, rarity };
   }
   // (15-11-2026) EFECTOS DE PELOTA (decididos con el usuario): Brasas, Hielo, Neón y Humo = especial; Tulipanes y Corazones = épica;
   // Estrellas y Arcoíris = legendarias (épica y legendaria, solo dinero real). Rojo, Verde, Oro y Rosado = normales (dinero virtual y Pase).
   if (it.kind === 'style') {
-    const STYLE_RARITY: Partial<Record<string, ItemRarity>> = { 'style:ember': 'especial', 'style:frost': 'especial', 'style:neon': 'especial', 'style:smoke': 'especial', 'style:tulip': 'epica', 'style:hearts': 'epica', 'style:stars': 'legendaria', 'style:rainbow': 'legendaria', 'style:red': 'normal', 'style:green': 'normal', 'style:gold': 'normal', 'style:pink': 'normal' };
+    const STYLE_RARITY: Partial<Record<string, ItemRarity>> = { 'style:ember': 'especial', 'style:frost': 'especial', 'style:neon': 'especial', 'style:smoke': 'especial', 'style:tulip': 'epica', 'style:hearts': 'epica', 'style:stars': 'legendaria', 'style:rainbow': 'legendaria', 'style:blue': 'especial', 'style:red': 'especial', 'style:green': 'especial', 'style:gold': 'especial', 'style:pink': 'especial' }; // (24-11-2026) los 4 que eran normal: especial
     const rarity = STYLE_RARITY[it.id];
     if (rarity) return { ...base, rarity };
   }

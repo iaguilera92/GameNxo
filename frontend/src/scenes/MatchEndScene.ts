@@ -11,12 +11,14 @@ import { fitText } from '../ui/fitText';
 import type { RankId } from '../domain/ranks';
 import { resetMatchEnd } from '../fx/matchEnd';
 import { markWheelPresented, recordMatchWin, wheelToPresent, wheelStatuses } from '../logic/Wheels';
+import { GUIDE, GUIDE_FIRST_WHEEL, type GuidedMatch } from '../domain/tutorial';
+import { markTutorialSeen } from '../domain/operations';
 import { openWheel, whenWheelReady } from './WheelScene';
 import { coin2v2Image, coinIcon, drawWheelFace, drawXpIcon } from '../ui/wheelArt';
 import { WHEEL } from '../domain/wheelConfig';
 import { commit, getPlayer } from '../domain/playerStore';
 import { awardMastery } from '../domain/operations';
-import { MISSIONS, missionCoins, missionReward, type MissionId } from '../domain/matchMissions';
+import { MISSIONS, missionCoins, missionDef, missionReward, type MissionId } from '../domain/matchMissions';
 import { masteryLevel, passiveOf } from '../domain/characterPassives';
 
 /** (18-11-2026, usuario) fila "+1 MAESTRÍA" en el resultado: oculta (la maestría se ve en PERSONALIZAR) */
@@ -27,6 +29,8 @@ import { matchStakes } from '../domain/rankedConfig';
 import { isDevMode } from '../domain/devMode';
 import { recordPlayed, recordWin } from '../logic/Stats';
 import { showInterstitial } from '../ads/ads';
+import { ambienteEdges, footerDark } from '../view/CourtView';
+import { xpToLevelUp } from '../domain/tutorialMatch';
 import type { EndClip } from '../objects/NxoActor';
 
 type DuelClips = { idle: EndClip; victory: EndClip; defeat: EndClip };
@@ -50,6 +54,7 @@ function newMatchId(): string {
  * · ranking (solo si llega `ranked`, p. ej. partida clasificatoria desbloqueada) · CONTINUAR / REVANCHA.
  */
 export interface MatchEndData {
+  guide?: GuidedMatch;
   /** pose final de cada lado (textura + frame), para el duelo Ranked */
   poses?: { me?: { key: string; frame: number }; rival?: { key: string; frame: number } };
   /** clips DE FRENTE de cada lado (reposo en bucle; luego victoria o derrota) con su ancla y alto de pie (NxoActor.endClips) */
@@ -75,6 +80,12 @@ export interface MatchEndData {
   doubles?: { allyName: string; rival2Name: string };
   /** partido en red (multijugador 1v1): REVANCHA vuelve a buscar rival */
   lan?: boolean;
+  /** (24-11-2026, usuario) partido del TUTORIAL: gane o pierda, da justo la EXP del siguiente nivel (domain/tutorialMatch.ts) */
+  tutorial?: boolean;
+  /** (24-11-2026) misiones del tutorial de ese nivel (domain/tutorialMissions.ts); sin ellas, las normales. Sin TODAS hechas no se sube */
+  missionList?: MissionId[];
+  /** (24-11-2026) en ese nivel las misiones son obligatorias para subir */
+  missionsRequired?: boolean;
     /** clave de la escena del partido (la rellena playMatchEnd) */
   matchKey?: string;
   /**
@@ -113,6 +124,8 @@ const ADD_2V2_PAD = 18;
 const PANEL_2V2_MARGIN = 8;
 /** zoom al que llega el mapa de atrás cuando terminan de pasar las monedas (parte de 0,9, el de matchEnd.ts) */
 const MAP_ZOOM_END = 0.74;
+/** (23-11-2026, usuario) cuánto MÁS cerca que "imagen entera en pantalla" queda el mapa en la pantalla de resultados */
+const MAP_FIT_CLOSER = 1.3;
 
 // (17-11-2026) moneda: imagen moneda-1.webp — la moneda dibujada local (drawCoin) se quitó: ahora coinIcon (ui/wheelArt)
 
@@ -281,8 +294,8 @@ export class MatchEndScene extends Phaser.Scene {
     const wstore = d as MatchEndData & { _matchId?: string; _wheel?: number | null; _playedId?: string };
     // partidas jugadas (PERFIL): toda partida terminada, también la rendida; una sola vez aunque la escena se repita
     if (!wstore._playedId) recordPlayed((wstore._playedId = newMatchId()));
-    if (!d.surrendered && !wstore._matchId) {
-      wstore._matchId = newMatchId();
+    if (!d.surrendered && (d.guide !== 'first' || win) && !wstore._matchId) {
+      wstore._matchId = d.guide === 'first' ? GUIDE_FIRST_WHEEL : newMatchId();
       wstore._wheel = recordMatchWin(wstore._matchId); // índice de la ruleta desbloqueada (o null)
       if (win) recordWin(wstore._matchId); // victorias totales (se muestran en la pantalla VS)
     }
@@ -457,11 +470,17 @@ export class MatchEndScene extends Phaser.Scene {
     //   XP: victoria XP_WIN, derrota/rendición XP_LOSS · monedas: COINS_WIN / COINS_LOSS / COINS_SURRENDER
     const store = d as MatchEndData & { _xp?: ReturnType<typeof addXp>; _coins?: ReturnType<typeof addCoins> };
     // (19-11-2026, usuario) rendirte NO da EXP; si el RIVAL se rinde o se va, 95 (lo de perder) si ganaste al menos un juego, si no 0
-    const gained = d.surrendered ? XP_SURRENDER : d.rivalLeft ? (d.playerGames >= 1 ? XP_LOSS : 0) : d.win ? XP_WIN : XP_LOSS;
+    const base = d.surrendered ? XP_SURRENDER : d.rivalLeft ? (d.playerGames >= 1 ? XP_LOSS : 0) : d.win ? XP_WIN : d.guide === 'first' ? 0 : XP_LOSS;
+    // (24-11-2026, usuario) tutorial: un partido = un nivel, gane o pierda (el primer partido guiado se gana siempre)
+    const allMissions = !d.missionsRequired || !d.missionList || d.missionList.every((id) => d.missions?.includes(id));
+    const gained = d.tutorial && !allMissions ? 0 : d.tutorial && !d.surrendered && !d.rivalLeft && !(d.guide === 'first' && !d.win) ? xpToLevelUp(getPlayer().level, getPlayer().xp) : base;
     if (!store._xp) {
       store._xp = addXp(gained);
       // el MENÚ, al volver, muestra "+N EXP" y llena las barras de nivel y del pase (después de la ruleta, si se abre)
       this.registry.set('menu.xpGain', gained);
+      if (!d.surrendered && d.guide && (d.guide !== 'first' || d.win)) {
+        commit((s) => markTutorialSeen(s, d.guide === 'first' ? GUIDE.firstMatch : GUIDE.spin));
+      }
     }
     // 2v2 (21-11-2026, usuario): no se ganan monedas de 1v1, solo las MONEDAS 2v2
     if (!store._coins) store._coins = d.doubles ? { before: getPlayer().coins, gained: 0, after: getPlayer().coins } as ReturnType<typeof addCoins> : addCoins(d.surrendered ? COINS_SURRENDER : d.win ? COINS_WIN : COINS_LOSS);
@@ -1105,6 +1124,11 @@ export class MatchEndScene extends Phaser.Scene {
   private missionCards(c: Phaser.GameObjects.Container, w: number, y0: number, done: readonly MissionId[], startMs: number) {
     // (23-11-2026, usuario) 2v2: premios en MONEDAS 2v2 (moneda morada), equivalentes a los del 1v1 (missionReward)
     const dbl = !!this.d.doubles;
+    const missions = this.d.missionList
+      ? this.d.missionList.map((id) => missionDef(id))
+      : this.d.guide === 'first'
+        ? [missionDef('guideJoystick'), missionDef('guideDirectServe')]
+        : MISSIONS;
     const reward = (m: (typeof MISSIONS)[number]) => missionReward(m, dbl);
     const coinArt = dbl ? coin2v2Image : coinIcon;
     const gold = dbl ? '#d2b0ff' : '#ffd23f';
@@ -1119,18 +1143,18 @@ export class MatchEndScene extends Phaser.Scene {
     // baja 12 y las cards 24 (ADD_H crece igual)
     const hy = y0 + 34;
     const head = this.add.text(-w / 2 + 26, hy, 'ADICIONALES', { fontFamily: FONT, fontSize: '22px', color: '#ffd23f', stroke: '#0a1638', strokeThickness: 5 }).setOrigin(0, 0.5).setLetterSpacing(2);
-    const sub = this.add.text(head.x + head.width + 12, hy + 1, `${done.length}/${MISSIONS.length} MISIONES`, { fontFamily: FONT, fontSize: '14px', color: '#9fb3d9' }).setOrigin(0, 0.5).setLetterSpacing(1);
+    const completed = missions.filter(m => done.includes(m.id)).length;
+    const sub = this.add.text(head.x + head.width + 12, hy + 1, `${completed}/${missions.length} MISIONES`, { fontFamily: FONT, fontSize: '14px', color: '#9fb3d9' }).setOrigin(0, 0.5).setLetterSpacing(1);
     const total = this.add.text(w / 2 - 26, hy, '+0', { fontFamily: FONT, fontSize: '30px', color: gained > 0 ? gold : '#7f93bf', stroke: '#0a1638', strokeThickness: 6 }).setOrigin(1, 0.5);
     const tCoin = this.add.container(total.x - total.width - 24, hy, [coinArt(this, 0, 0, 16)]);
     sec.add([head, sub, total, tCoin]);
 
-    // 4 cards
     const gap = 10;
-    const cw = (w - 40 - gap * 3) / 4;
+    const cw = (w - 40 - gap * (missions.length - 1)) / missions.length;
     const ch = ADD_CARD_H;
     const cy = y0 + 68;
     const titles: Phaser.GameObjects.Text[] = [];
-    const cards = MISSIONS.map((m, i) => {
+    const cards = missions.map((m, i) => {
       const ok = done.includes(m.id);
       const x = -w / 2 + 20 + cw / 2 + i * (cw + gap);
       const cont = this.add.container(x, cy + ch / 2).setScale(0).setAlpha(0);
@@ -1194,12 +1218,12 @@ export class MatchEndScene extends Phaser.Scene {
           this.tweens.add({ targets: cd.badge, scale: { from: 1.6, to: 1 }, duration: 320, ease: 'Back.easeOut' });
           // (18-11-2026, usuario) las monedas de la card VUELAN al total de la cabecera (más monedas y más grandes) y el total sube al llegar cada una
           const from = acc;
-          acc += reward(MISSIONS[i]);
+          acc += reward(missions[i]);
           const N = 8;
           let got = 0;
           this.coinShower(sec, cd.cont.x, cd.cont.y + ADD_CARD_H / 2 - 22, tCoin.x, hy, N, 12, () => {
             got++;
-            total.setText(`+${Math.round(from + (reward(MISSIONS[i]) * got) / N)}`);
+            total.setText(`+${Math.round(from + (reward(missions[i]) * got) / N)}`);
             tCoin.setX(total.x - total.width - 24);
             this.tweens.killTweensOf(tCoin);
             this.tweens.add({ targets: tCoin, scale: { from: 1.35, to: 1 }, duration: 200, ease: 'Back.easeOut' });
@@ -1265,8 +1289,8 @@ export class MatchEndScene extends Phaser.Scene {
    * queden sobre el panel; sin duelo casi no hace falta, con el duelo de apuestas (panel alto) sube más.
    */
   /** (21-11-2026) imagen del ambiente del partido (centro y tamaño en el mundo), si la hay */
-  private mapFrame(): { cx: number; cy: number; w: number; h: number } | null {
-    const ms = (this.d.matchKey ? this.scene.get(this.d.matchKey) : null) as unknown as { ambienteFrame?: { cx: number; cy: number; w: number; h: number } | null } | null;
+  private mapFrame(): { cx: number; cy: number; w: number; h: number; key?: string } | null {
+    const ms = (this.d.matchKey ? this.scene.get(this.d.matchKey) : null) as unknown as { ambienteFrame?: { cx: number; cy: number; w: number; h: number; key?: string } | null } | null;
     return ms?.ambienteFrame ?? null;
   }
   /**
@@ -1277,11 +1301,41 @@ export class MatchEndScene extends Phaser.Scene {
     const fr = this.mapFrame();
     const cam = this.d.matchKey ? this.scene.get(this.d.matchKey)?.cameras?.main : undefined;
     if (!fr || !cam) return false;
-    const z = Math.min(cam.width / fr.w, cam.height / fr.h);
+    // (23-11-2026, usuario) "no alejes tanto": antes la imagen entera cabía en la pantalla (en un teléfono alto quedaban franjas grandes
+    // arriba y abajo). Ahora se aleja hasta 1,3× ese zoom (los costados los cubren las copias espejadas) sin pasar del que tenía.
+    const z = Math.min(cam.zoom, Math.min(cam.width / fr.w, cam.height / fr.h) * MAP_FIT_CLOSER);
     const ms = 4200;
     cam.pan(fr.cx, fr.cy, ms, 'Sine.easeInOut', true);
     cam.zoomTo(z, ms, 'Sine.easeInOut', true);
+    this.mapBands(fr, z, ms);
     return true;
+  }
+  /**
+   * (23-11-2026, usuario) relleno de arriba y abajo del mapa alejado, del color del ambiente: cada franja parte del color medio del borde de la
+   * imagen (CourtView `edges`) y se oscurece hacia el borde de la pantalla; entra unos px sobre la imagen con degradado, sin corte seco.
+   * Aparece a la par que se aleja la cámara.
+   */
+  private mapBands(fr: { h: number; key?: string }, z: number, ms: number) {
+    const ed = ambienteEdges(fr.key);
+    if (!ed) return;
+    const W = this.scale.width;
+    const H = this.scale.height;
+    const imgH = fr.h * z; // alto de la imagen en pantalla al terminar (centrada)
+    const topY = H / 2 - imgH / 2;
+    const botY = H / 2 + imgH / 2;
+    const BLEND = 70; // px que el degradado entra sobre la imagen
+    const g = this.add.graphics().setDepth(-6).setAlpha(0);
+    if (topY > 0) {
+      const dark = footerDark(ed.top, 0.55);
+      g.fillGradientStyle(dark, dark, ed.top, ed.top, 1).fillRect(0, 0, W, topY);
+      g.fillGradientStyle(ed.top, ed.top, ed.top, ed.top, 1, 1, 0, 0).fillRect(0, topY - 1, W, BLEND);
+    }
+    if (botY < H) {
+      const dark = footerDark(ed.bottom, 0.55);
+      g.fillGradientStyle(ed.bottom, ed.bottom, dark, dark, 1).fillRect(0, botY, W, H - botY);
+      g.fillGradientStyle(ed.bottom, ed.bottom, ed.bottom, ed.bottom, 0, 0, 1, 1).fillRect(0, botY - BLEND, W, BLEND + 1);
+    }
+    this.tweens.add({ targets: g, alpha: 1, delay: ms * 0.35, duration: ms * 0.65, ease: 'Sine.easeInOut' });
   }
   private framePlayer(panelTop: number) {
     const ms = (this.d.matchKey ? this.scene.get(this.d.matchKey) : null) as unknown as { player?: { ch?: { y: number } }; cameras?: { main: Phaser.Cameras.Scene2D.Camera } } | null;
@@ -1318,11 +1372,15 @@ export class MatchEndScene extends Phaser.Scene {
 
     // un solo cambio de pantalla por overlay (un doble toque no abre dos ruletas ni arranca dos veces)
     let leaving = false;
-    const cont = arcadeButton(this, x0, y, bw, bh, 'CONTINUAR', () => {
+    const cont = arcadeButton(this, d.guide ? W / 2 : x0, y, bw, bh, 'CONTINUAR', () => {
       if (leaving) return;
       leaving = true;
       resetMatchEnd(this.scene.get(matchKey));
       this.scene.stop(matchKey);
+      if (d.guide === 'first') {
+        this.scene.start('Menu');
+        return;
+      }
       // Si la partida desbloqueó una ruleta, mostrarla antes de entrar al menú.
       const wheelIndex = wheelToPresent();
       if (wheelIndex >= 0) {
@@ -1348,6 +1406,11 @@ export class MatchEndScene extends Phaser.Scene {
       }
       this.scene.start('Menu');
     }, { palette: 'yellow', noShadow: true }); // (21-11-2026, usuario) sin la sombra azul
+    if (d.guide) {
+      cont.setAlpha(0).setY(y + 40);
+      this.tweens.add({ targets: cont, alpha: 1, y, duration: 380, delay: 550, ease: 'Back.easeOut' });
+      return;
+    }
     // REVANCHA: misma lógica que ya existía (reiniciar el partido con el mismo rival).
     // En Ranked se vuelve a buscar partida con la misma apuesta (la entrada se paga de nuevo al empezar).
     const again = arcadeButton(this, x1, y, bw, bh, d.ranked ? 'OTRA DE LIGA' : d.lan ? 'OTRA PARTIDA' : 'REVANCHA', () => {

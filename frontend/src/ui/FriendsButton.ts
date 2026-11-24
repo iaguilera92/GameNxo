@@ -8,7 +8,7 @@ import { friendsRepository, openFriendsDialog } from './FriendsDialog';
  * Botón AMIGOS del menú principal: misma forma que DIARIO y GLOBAL (paralelogramo inclinado, icono arriba y texto abajo). Abre la ventana de amigos
  * (ui/FriendsDialog.ts). Un punto rojo avisa si hay solicitudes pendientes. (21-11-2026: antes estaba apagado, con candado.)
  */
-export function friendsButton(scene: Phaser.Scene, x: number, y: number, onToast: (m: string) => void, w = 76, h = 76) {
+export function friendsButton(scene: Phaser.Scene, x: number, y: number, onToast: (m: string) => void, w = 76, h = 76, locked = false) {
   const c = scene.add.container(x, y).setDepth(50);
   const k = 14 * (h / 136) + 4;
   const shape = roundedPoly([[-w / 2 + k, -h / 2], [w / 2, -h / 2], [w / 2 - k, h / 2], [-w / 2, h / 2]], 14);
@@ -39,6 +39,7 @@ export function friendsButton(scene: Phaser.Scene, x: number, y: number, onToast
   }
   c.setSize(w, h).setInteractive({ useHandCursor: true });
   c.on('pointerup', () => {
+    if (locked) return onToast('Amigos se desbloquea en el nivel 5');
     scene.tweens.add({ targets: c, scale: { from: 0.94, to: 1 }, duration: 200, ease: 'Back.easeOut' });
     openFriendsDialog(scene, onToast);
   });

@@ -13,7 +13,8 @@
 import { COINS_WIN } from '../config';
 import { COINS_2V2 } from './coins2v2';
 
-export type MissionId = 'dropZero' | 'skyLaunch' | 'netDuel' | 'specialLob';
+import { TUTORIAL_MISSION_DEFS, type TutorialMissionId, isTutorialMissionId } from './tutorialMissions';
+export type MissionId = 'dropZero' | 'skyLaunch' | 'netDuel' | 'specialLob' | 'guideJoystick' | 'guideDirectServe' | TutorialMissionId; // (24-11-2026) + las del tutorial (domain/tutorialMissions.ts)
 
 export interface MissionDef {
   id: MissionId;
@@ -90,6 +91,9 @@ export function missionPoint(t: MissionTracker, p: MissionPoint): MissionId[] {
 }
 
 export function missionDef(id: MissionId): MissionDef {
+  if (id === 'guideJoystick') return { id, title: 'Usar joystick', coins: 20 };
+  if (id === 'guideDirectServe') return { id, title: 'Saque directo', coins: 20 };
+  if (isTutorialMissionId(id)) return { id, ...TUTORIAL_MISSION_DEFS[id] };
   return MISSIONS.find((m) => m.id === id)!;
 }
 
@@ -103,5 +107,5 @@ export function missionReward(m: MissionDef, doubles = false): number {
 
 /** Monedas de las misiones cumplidas (cada una una vez; ids desconocidos o repetidos no suman). `doubles`: en monedas 2v2 (missionReward). */
 export function missionCoins(done: readonly MissionId[], doubles = false): number {
-  return MISSIONS.filter((m) => done.includes(m.id)).reduce((a, m) => a + missionReward(m, doubles), 0);
+  return [...new Set(done)].reduce((a, id) => a + missionReward(missionDef(id), doubles), 0);
 }

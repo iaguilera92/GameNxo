@@ -18,6 +18,7 @@ import { addCoins2v2 } from './coins2v2';
 import type { OpResult } from './operations';
 import { type ItemId, type PlayerState, clonePlayer, owns } from './player';
 import { COSMETIC_CATALOG, WEIGHT_TOTAL, WHEEL, type WheelSlot } from './wheelConfig';
+import { GUIDE_FIRST_WHEEL } from './tutorial';
 import { type WheelReward, type WheelSpin, type WheelState, type WheelTier, newWheelState } from './wheelState';
 
 export type { WheelReward, WheelSpin, WheelState, WheelTier } from './wheelState';
@@ -219,7 +220,7 @@ export function spin(s: PlayerState, index: number, now: number, rng: Rng = secu
     return { ok: true, state: n, slot, reward: sp.reward, tier: sp.tier ?? 'normal', repeated: true };
   }
   // forceSlot: solo la RULETA TEST (desarrollo) elige el sector para probar cada premio
-  const slot = (forceSlot && slotById(forceSlot)) || pickWeighted(WHEEL.slots, rng);
+  const slot = (sp.matchId === GUIDE_FIRST_WHEEL ? slotById('c100') : forceSlot && slotById(forceSlot)) || pickWeighted(WHEEL.slots, rng);
   const base = resolvePrize(slot, n, rng);
   const tier = rollTier('normal', rng);
   const reward = scaleReward(base, tier);

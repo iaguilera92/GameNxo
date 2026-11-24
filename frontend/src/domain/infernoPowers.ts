@@ -6,7 +6,7 @@
  * - Sin elegir, cada personaje usa el suyo: Mai = hielo; el resto = fuego.
  * - Solo cambia cómo se ve la bola y sus efectos (fx/InfernoFx.ts, fx/ImpactFx.ts); el golpe es el mismo.
  */
-export type InfernoPower = 'fire' | 'ice' | 'wind' | 'lightning' | 'tulip' | 'shadow' | 'light' | 'ultra' | 'barrage' | 'energy' | 'hurricane'; // shadow = SOMBRA, light = LUZ, ultra = ULTRA EFECTO, barrage = RÁFAGA, energy = BOLA DE ENERGÍA (17-11-2026)
+export type InfernoPower = 'default' | 'fire' | 'ice' | 'wind' | 'lightning' | 'tulip' | 'shadow' | 'light' | 'ultra' | 'barrage' | 'energy' | 'hurricane'; // shadow = SOMBRA, light = LUZ, ultra = ULTRA EFECTO, barrage = RÁFAGA, energy = BOLA DE ENERGÍA (17-11-2026)
 
 export interface InfernoPowerDef {
   id: InfernoPower;
@@ -23,6 +23,8 @@ export interface InfernoPowerDef {
 }
 
 export const INFERNO_POWERS: InfernoPowerDef[] = [
+  // (24-11-2026, usuario) DEFAULT: la ULTI inicial de todos (rareza Default). Esfera dorada por código, más que la carga máxima y menos que las de la Tienda.
+  { id: 'default', name: 'DEFAULT', ball: 'BOLA DEFAULT', desc: 'Una esfera dorada que deja una estela.', color: 0xffc94a, css: '#ffe48a' },
   { id: 'fire', name: 'FUEGO', ball: 'BOLA DE FUEGO', desc: 'Un golpe de fuego devastador.', color: 0xff6a2a, css: '#ffbc55' },
   { id: 'ice', name: 'HIELO', ball: 'BOLA DE HIELO', desc: 'Un remolino de hielo cristalino.', color: 0x45b8ff, css: '#9fe2ff' },
   { id: 'wind', name: 'VIENTO', ball: 'BOLA DE VIENTO', desc: 'Un torbellino de viento y hojas.', color: 0x3fd68a, css: '#9cf5c2' },
@@ -51,7 +53,8 @@ export const INFERNO_POWERS: InfernoPowerDef[] = [
 
 const IDS = new Set<string>(INFERNO_POWERS.map((p) => p.id));
 /** Poder de cada personaje (id del catálogo) cuando el jugador no eligió otro. */
-const DEFAULT_BY_SKIN: Record<string, InfernoPower> = { mai: 'ice' };
+// (24-11-2026, usuario) ya no hay ULTI inicial por personaje (antes Mai = hielo): todos empiezan con la DEFAULT
+const DEFAULT_BY_SKIN: Record<string, InfernoPower> = {};
 
 export function isInfernoPower(v: unknown): v is InfernoPower {
   return typeof v === 'string' && IDS.has(v);
@@ -60,7 +63,7 @@ export function isInfernoPower(v: unknown): v is InfernoPower {
 /** Poder que se usa: el elegido (si es válido) o, si no hay, el del personaje `skin`. */
 export function infernoPowerOf(chosen: unknown, skin?: string): InfernoPower {
   if (isInfernoPower(chosen)) return chosen;
-  return (skin && DEFAULT_BY_SKIN[skin]) || 'fire';
+  return (skin && DEFAULT_BY_SKIN[skin]) || 'default';
 }
 
 /**
@@ -68,7 +71,7 @@ export function infernoPowerOf(chosen: unknown, skin?: string): InfernoPower {
  * Tienda (ítem `inferno:<poder>`). `owned` = PlayerState.owned.
  */
 export function infernoOwned(owned: readonly string[], power: InfernoPower, skin?: string): boolean {
-  return power === 'fire' || owned.includes(`inferno:${power}`) || infernoPowerOf(undefined, skin) === power;
+  return power === 'default' || owned.includes(`inferno:${power}`) || infernoPowerOf(undefined, skin) === power;
 }
 
 export function infernoPowerDef(id: InfernoPower): InfernoPowerDef {

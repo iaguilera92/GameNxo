@@ -51,6 +51,11 @@ export interface Ambiente {
   surface: Surface;
   /** color medio de la fila de arriba de la imagen (cielo que la continúa al alejar la cámara) */
   sky?: number;
+  /**
+   * (23-11-2026, usuario) color medio de las 12 filas de ARRIBA y de ABAJO de la imagen (medido en la fuente 1254, _temp/edges.mjs):
+   * relleno con degradado de la pantalla de resultados (MatchEndScene.fitMap), para que no se vea fuera de lugar
+   */
+  edges?: { top: number; bottom: number };
   /** (19-11-2026, usuario) mapa EXCLUSIVO de un modo: '2v2' = solo sale en los partidos 2v2 (y el 2v2 solo usa los suyos) */
   only?: '2v2';
   /** (19-11-2026, usuario) colores de la cancha dura: azul (por defecto) o VERDE (a juego con un piso verde, como el del parque) */
@@ -67,23 +72,23 @@ export const AMBIENTES: Ambiente[] = [
   // (22-11-2026, usuario) v5: muro todavia mas arriba (borde y 228, pie y 278, malla 178) (ambiente-1-1254-v5.png, instalada TAL CUAL a pedido del usuario: sin enderezar las gradas)
   // (23-11-2026, usuario) v6 de ChatGPT: gradas abiertas como el 2v2 (pie de las gradas siguiendo la perspectiva de la cancha) y muro del fondo
   // más alto (borde y 172, pie y 229 de 1254). Misma posición de la imagen (anchorY 350); muro en su pie y borde reales.
-  { key: 'ambiente-1', file: 'ambiente-1.webp', w: 1536, h: 1536, scaleH: 1024, courtDY: 52, zoom: 0.7, fixedScale: true, anchorY: 350, wallBottomY: 280, wallTopY: 211, fenceTopY: 178, surface: 'hard', court: 'night', sky: 0x031d6b, footer: 0x303a62 }, // (23-11-2026) v7: mismo dibujo que la v6 con el piso azul pizarra; cancha con la paleta `night` y relleno de abajo del color del piso
+  { key: 'ambiente-1', file: 'ambiente-1.webp', w: 1536, h: 1536, scaleH: 1024, courtDY: 52, zoom: 0.7, fixedScale: true, anchorY: 350, wallBottomY: 280, wallTopY: 211, fenceTopY: 178, surface: 'hard', court: 'night', sky: 0x031d6b, footer: 0x303a62, edges: { top: 0x102e81, bottom: 0x2e3860 } }, // (23-11-2026) v7: mismo dibujo que la v6 con el piso azul pizarra; cancha con la paleta `night` y relleno de abajo del color del piso
   // (22-11-2026, usuario) ARCILLA nueva (1536 x 1536, estructura est�ndar): muro verde del fondo medido sobre la imagen (borde de arriba en y 318,
   // pie en y 396; postes de la malla hasta y ~251). Gradas a los dos costados: zoom 0.6 (con 0.7 casi no entraban en pantalla y los espectadores no se veian, 22-11-2026)
   // (23-11-2026, usuario) ambiente-2 v2 de ChatGPT: gradas abiertas siguiendo la cancha (pie de la grada izquierda (293,330)->(27,590) de 1254);
   // el muro verde no se movió (pie y 322 de 1254), mismos valores
-  { key: 'ambiente-2', file: 'ambiente-2.webp', w: 1536, h: 1536, scaleH: 1024, courtDY: 52, zoom: 0.6, wallBottomY: 396, wallTopY: 318, fenceTopY: 251, surface: 'clay', sky: 0x0c2e35 },
+  { key: 'ambiente-2', file: 'ambiente-2.webp', w: 1536, h: 1536, scaleH: 1024, courtDY: 52, zoom: 0.6, wallBottomY: 396, wallTopY: 318, fenceTopY: 251, surface: 'clay', sky: 0x0c2e35, edges: { top: 0x7a57a0, bottom: 0xc52f06 } },
   // (22-11-2026, usuario) CIUDAD nueva (1536 x 1536, estructura est�ndar): calle a la izquierda (pasar�n autos), gradas a la derecha. Muro azul
   // del fondo medido sobre la imagen (borde de arriba en y 317, pie en y 392; malla hasta y ~251). Sin cornisa: se posa en el borde del muro
   // (23-11-2026, usuario) imagen v2 de ChatGPT: a la derecha, reja y camino del parque en vez de gradas; muro y bordes del piso donde estaban (mismos valores)
-  { key: 'ambiente-3', file: 'ambiente-3.webp', w: 1536, h: 1536, scaleH: 1024, courtDY: 52, zoom: 0.7, wallBottomY: 392, wallTopY: 317, fenceTopY: 251, surface: 'hard', sky: 0x143d7e },
-  // (21-11-2026, usuario) NIEVE: muro de piedra del fondo medido sobre la imagen (nieve del borde en y 333, pie en y 372); valla de malla encima (en la imagen llega a y ~285; fenceTopY 265 = 20 px mas alta a pedido del usuario, 21-11-2026). Piso duro azul
-  { key: 'ambiente-4', file: 'ambiente-4.webp', w: 1536, h: 1536, scaleH: 1024, courtDY: 52, wallBottomY: 372, wallTopY: 333, fenceTopY: 265, surface: 'hard', sky: 0x2a80e8 },
+  { key: 'ambiente-3', file: 'ambiente-3.webp', w: 1536, h: 1536, scaleH: 1024, courtDY: 52, zoom: 0.7, wallBottomY: 392, wallTopY: 317, fenceTopY: 251, surface: 'hard', sky: 0x143d7e, edges: { top: 0x6854c1, bottom: 0x0a49ab } },
+  // Nieve: el pie del muro ancla la imagen respecto a la cancha; la colisión de la valla queda 20 px sobre el travesaño.
+  { key: 'ambiente-4', file: 'ambiente-4.webp', w: 1536, h: 1536, scaleH: 1024, courtDY: 52, zoom: 0.7, fixedScale: true, wallBottomY: 403, wallTopY: 356, fenceTopY: 271, surface: 'hard', sky: 0x2a80e8 },
   // (19-11-2026, usuario) PARQUE con varias canchas: SOLO para el 2v2. Imagen con un PASEO de lado a lado detrás del muro (los paseantes
   // cruzan toda la pantalla). Muro del fondo medido sobre la imagen (borde de arriba en y 313, pie en y 397); no tiene valla encima:
   // fenceTopY = el alto de las vallas verdes del fondo (~236). Piso verde de la imagen y cancha azul (hard)
   // (22-11-2026, usuario) imagen nueva de ChatGPT v9 de ChatGPT ENDEREZADA fila por fila con _temp/enderezar-2v2.mjs: pie de los muros a 140 px de la linea de dobles en todas las filas (23-11: guia _temp/para-chatgpt/2v2-v7-guia-muros-rojo.png, distancia muro-dobles 160/151 arriba -> 139/131 abajo, guia 140; antes v8 172 -> 136; pie muro fondo y 352 de 1254 = 431, borde de arriba y 250 = 306) (antes v6, con escalera a la derecha), redibujada con los muros de los lados paralelos en pantalla a la línea de dobles (guía _temp/para-chatgpt/2v2-guia-muros-rojo.png); muro del fondo al pie y 337 de 1254 = 412
-  { key: 'ambiente-1-2v2', file: 'ambiente-1-2v2.webp', w: 1536, h: 1536, scaleH: 1024, courtDY: 52, zoom: 0.7, fixedScale: true, anchorY: 431, wallBottomY: 387, wallTopY: 285, fenceTopY: 184, surface: 'hard', court: 'green', sky: 0x2a7ba4, footer: 0x0caf36, only: '2v2' }, // footer = verde del pasto de abajo de la imagen
+  { key: 'ambiente-1-2v2', file: 'ambiente-1-2v2.webp', w: 1536, h: 1536, scaleH: 1024, courtDY: 52, zoom: 0.7, fixedScale: true, anchorY: 431, wallBottomY: 387, wallTopY: 285, fenceTopY: 184, surface: 'hard', court: 'green', sky: 0x2a7ba4, footer: 0x0caf36, edges: { top: 0x2e69c7, bottom: 0x02af3a }, only: '2v2' }, // footer = verde del pasto de abajo de la imagen
 ];
 
 /** (19-11-2026) Ambientes cargados para este modo: el 2v2 usa los suyos (`only: '2v2'`) si hay alguno cargado; el 1v1 nunca los usa. */
@@ -92,20 +97,19 @@ function ambientesFor(scene: Phaser.Scene, doubles: boolean): Ambiente[] {
   const own = loaded.filter((a) => a.only === '2v2');
   if (doubles && own.length) return own;
   const all1v1 = loaded.filter((a) => !a.only);
-  // (22-11-2026, usuario) en 1v1 sale AL AZAR uno de SORTEO_1V1 (ambiente-3 queda fuera hasta que llegue su imagen nueva). null = todos
   const only = SORTEO_1V1 ? all1v1.filter((a) => SORTEO_1V1.includes(a.key)) : [];
   return only.length ? only : all1v1;
 }
 /** (22-11-2026, usuario) ambientes que entran al sorteo del 1v1; null = aleatorio entre todos */
-// (22-11-2026, usuario) por ahora SOLO ambiente-1 (se esta revisando la imagen nueva). Sorteo anterior: ['ambiente-1', 'ambiente-2', 'ambiente-4']
-// (23-11-2026, usuario) los mapas 1v1 ya listos (imagen rehecha en perspectiva): 1, 2 y 3. ambiente-4 entra cuando se rehaga.
-const SORTEO_1V1: string[] | null = ['ambiente-1', 'ambiente-2', 'ambiente-3'];
+const SORTEO_1V1: string[] | null = ['ambiente-1', 'ambiente-2', 'ambiente-3', 'ambiente-4'];
 
 /** y en pantalla donde debe quedar el muro del fondo (un poco por detrás de la cancha) */
 const WALL_AT_Y = 302;
 /** Relleno común al pie de todos los ambientes y detrás de los controles. */
 export const SHARED_FOOTER = 0x07152f;
 /** (22-11-2026) relleno del pie de un ambiente (el suyo o el común) */
+/** (23-11-2026) colores de borde de arriba y abajo de la imagen de un ambiente (relleno de la pantalla de resultados) */
+export const ambienteEdges = (key?: string | null) => AMBIENTES.find((a) => a.key === key)?.edges ?? null;
 export const footerColor = (key?: string | null) => AMBIENTES.find((a) => a.key === key)?.footer ?? SHARED_FOOTER;
 /** el mismo color oscurecido (franja de detrás de los controles y fondo de la presentación) */
 export const footerDark = (col: number, k = 0.5) => { const c = Phaser.Display.Color.IntegerToColor(col); return Phaser.Display.Color.GetColor(Math.round(c.red * k), Math.round(c.green * k), Math.round(c.blue * k)); };

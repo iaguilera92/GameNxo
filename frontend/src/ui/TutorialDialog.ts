@@ -5,7 +5,7 @@ import { sfx } from '../fx/sfx';
 import { commit, getPlayer } from '../domain/playerStore';
 import { isDevMode } from '../domain/devMode';
 import { markTutorialSeen } from '../domain/operations';
-import { type TutorialStep, pendingTutorial } from '../domain/tutorial';
+import { guidedStep, type TutorialStep, pendingTutorial } from '../domain/tutorial';
 
 const NAVY = 0x0b1a3d;
 const NEON = 0x3a7bff;
@@ -15,7 +15,7 @@ const GOLD = 0xffd23f;
  * Aviso del TUTORIAL POR NIVEL (domain/tutorial.ts): panel centrado con el nivel, el título, una banda "NUEVO" si el nivel desbloquea algo
  * y 1-3 páginas de texto corto. Se cierra con ¡ENTENDIDO! (no al tocar fuera). Devuelve la función que lo cierra sin marcarlo.
  */
-export function openTutorialDialog(scene: Phaser.Scene, step: TutorialStep, onDone: () => void) {
+export function openTutorialDialog(scene: Phaser.Scene, step: TutorialStep, onDone: () => void, autoCloseMs?: number) {
   const W = scene.scale.width;
   const H = scene.scale.height;
   const root = scene.add.container(0, 0).setDepth(9500);
@@ -75,6 +75,13 @@ export function openTutorialDialog(scene: Phaser.Scene, step: TutorialStep, onDo
 
   let page = 0;
   let closed = false;
+  const finish = () => {
+    if (closed) return;
+    closed = true;
+    sfx(scene, 'equipar');
+    scene.tweens.add({ targets: root, alpha: 0, duration: 140, onComplete: () => root.destroy() });
+    onDone();
+  };
   const show = () => {
     body.setText(step.pages[page]);
     dots.clear();
@@ -91,15 +98,12 @@ export function openTutorialDialog(scene: Phaser.Scene, step: TutorialStep, onDo
           scene.time.delayedCall(0, show); // el botón se rehace fuera de su propio clic
           return;
         }
-        if (closed) return;
-        closed = true;
-        sfx(scene, 'equipar');
-        scene.tweens.add({ targets: root, alpha: 0, duration: 140, onComplete: () => root.destroy() });
-        onDone();
+        finish();
       }, { palette: last ? 'yellow' : 'blue', chevron: last }),
     );
   };
   show();
+  if (autoCloseMs) scene.time.delayedCall(autoCloseMs, finish);
 
   root.setAlpha(0);
   panel.setScale(0.94);
@@ -117,6 +121,7 @@ export function openTutorialDialog(scene: Phaser.Scene, step: TutorialStep, onDo
 export function maybeShowTutorial(scene: Phaser.Scene) {
   if (isDevMode() || !scene.sys.isActive()) return;
   const p = getPlayer();
+  if (guidedStep(p.level, p.tutorial)) return;
   const step = pendingTutorial(p.level, p.tutorial);
   if (!step) return;
   openTutorialDialog(scene, step, () => {

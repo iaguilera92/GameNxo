@@ -14,6 +14,8 @@ export class Score {
   games: [number, number] = [0, 0];
   points: [number, number] = [0, 0];
 
+  constructor(readonly shortMatch = false) {}
+
   get gameIndex() {
     return this.games[0] + this.games[1];
   }
@@ -26,6 +28,7 @@ export class Score {
 
   /** Saca el jugador en juegos pares y el bot en impares (con serverOffset 1, al revés). */
   get server(): Side {
+    if (this.shortMatch) return ((this.serverOffset + Math.floor((this.played + 1) / 2)) % 2) as Side;
     return ((this.gameIndex + this.serverOffset) % 2) as Side;
   }
 
@@ -34,6 +37,10 @@ export class Score {
 
   pointTo(w: Side): PointResult {
     this.played++;
+    if (this.shortMatch) {
+      this.points[w]++;
+      return { gameWinner: null, matchWinner: this.points[w] >= 4 ? w : null };
+    }
     const l = (1 - w) as Side;
     const p = this.points;
     let gameWon = false;
@@ -57,6 +64,7 @@ export class Score {
   /** Etiqueta del punto actual de cada lado. */
   labels(): [string, string] {
     const p = this.points;
+    if (this.shortMatch) return [String(p[0]), String(p[1])];
     if (p[0] >= 3 && p[1] >= 3) {
       if (p[0] === p[1]) return ['40', '40'];
       return p[0] > p[1] ? ['AD', '40'] : ['40', 'AD'];
@@ -66,6 +74,7 @@ export class Score {
 
   /** Texto especial: "Iguales" / "Ventaja" / "Punto de oro". */
   status(): string | null {
+    if (this.shortMatch) return null;
     const p = this.points;
     if (p[0] >= 3 && p[1] >= 3) {
       if (p[0] === p[1]) return GOLDEN_POINT ? '¡Punto de oro!' : 'Iguales';

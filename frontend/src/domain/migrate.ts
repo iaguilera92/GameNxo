@@ -13,7 +13,7 @@ import { sanitizeRanked } from './ranked';
 import { sanitizeLogin } from './dailyLogin';
 import { sanitizeZoneProgress } from './zoneProgress';
 import { sanitizeMastery } from './characterPassives';
-import { isInfernoPower } from './infernoPowers';
+import { infernoOwned, isInfernoPower } from './infernoPowers';
 import { chargeFxOwned, isChargeFx } from './chargeFx';
 import { CHAR_COLOR_LIST, COLOR_SKINS, type CharColorId, charColorItem, charColorOwned, isCharColor } from './charColors';
 import { isSmashPower, smashOwned } from './smashPowers';
@@ -30,6 +30,7 @@ import { isFrameId } from './profileFrames';
 // Los emotes solo se ganan en el Pase de Batalla.
 const KNOWN_ITEMS = new Set<string>([
   ...STARTER_ITEMS,
+  'skin:nxo',
   'skin:mai',
   ...SHOP_ITEMS.map((i) => i.id),
   ...EMOTES.map((k) => itemId.emote(k)),
@@ -66,6 +67,7 @@ export function migratePlayer(raw: unknown, starter: StarterSkin = 'nxo'): Playe
   if (mastery) s.mastery = mastery;
   // tutorial por nivel: solo ids de avisos que existen
   if (Array.isArray(r.tutorial)) s.tutorial = [...new Set(r.tutorial.filter(isTutorialId))];
+  if (r.onboarded === true) s.onboarded = true; // (24-11-2026) pantalla de inicio ya hecha
   const risk = sanitizeRisk(r.riskMode); // MODO RIESGO x2 (domain/riskMode.ts)
   if (risk) s.riskMode = risk;
   const c2 = sanitizeCoins2v2(r.coins2v2); // MONEDAS 2v2 (domain/coins2v2.ts)
@@ -102,6 +104,8 @@ export function migratePlayer(raw: unknown, starter: StarterSkin = 'nxo'): Playe
   if (eq && typeof eq === 'object') {
     const skin = eq.skin;
     if (typeof skin === 'string' && s.owned.includes(`skin:${skin}` as ItemId)) s.equipped.skin = skin as PlayerState['equipped']['skin'];
+    // (24-11-2026) perfiles de antes (NXO era de todos): el personaje con el que juega queda como suyo
+    if (!s.owned.includes(`skin:${s.equipped.skin}` as ItemId)) s.owned.push(`skin:${s.equipped.skin}` as ItemId);
     const style = typeof eq.style === 'string' ? (V1_STYLE[eq.style] ?? eq.style) : undefined;
     if (style && s.owned.includes(`style:${style}` as ItemId)) s.equipped.style = style as StyleId;
     const ab = eq.abilities;
@@ -124,10 +128,8 @@ export function migratePlayer(raw: unknown, starter: StarterSkin = 'nxo'): Playe
     // marco del perfil: id de liga válido (si está desbloqueado lo decide profileFrames.equippedFrame al mostrarlo)
     if (isFrameId(eq.frame)) s.equipped.frame = eq.frame;
     if (isFrameId(eq.frame2v2)) s.equipped.frame2v2 = eq.frame2v2; // marco 2v2 (se muestra solo si la liga 2v2 ya se alcanzó)
-    if (isInfernoPower(eq.inferno)) {
-      s.equipped.inferno = eq.inferno;
-      if (eq.inferno !== 'fire' && !s.owned.includes(itemId.inferno(eq.inferno))) s.owned.push(itemId.inferno(eq.inferno));
-    }
+    // (24-11-2026, usuario) solo si la tiene (DEFAULT es de todos); antes se regalaba la que ya usaba y FUEGO era de todos
+    if (isInfernoPower(eq.inferno) && infernoOwned(s.owned, eq.inferno, s.equipped.skin)) s.equipped.inferno = eq.inferno;
   }
   return s;
 }

@@ -22,6 +22,8 @@ export interface StyleLook {
 
 export const STYLE_LOOK: Record<StyleId, StyleLook> = {
   classic: { color: 0x3a8bff, dark: 0x1a4fb0, trail: 0xffffff, sparkle: false, fx: 'plain', perk: 'Sin estela' },
+  // (24-11-2026, usuario) AZUL: regalo del tutorial (nivel 10, rareza especial)
+  blue: { color: 0x3a8bff, dark: 0x1a4fb0, trail: 0x4fa8ff, sparkle: false, fx: 'plain', perk: 'Estela azul' },
   red: { color: 0xff4f5e, dark: 0xb3202f, trail: 0xff5a6a, sparkle: false, fx: 'plain', perk: 'Estela roja' },
   pink: { color: 0xff6fae, dark: 0xc23a7d, trail: 0xff8fc4, sparkle: false, fx: 'plain', perk: 'Estela rosada' },
   green: { color: 0x62d935, dark: 0x2f8f14, trail: 0x7dff5a, sparkle: false, fx: 'plain', perk: 'Estela verde' },

@@ -28,6 +28,7 @@ const MAX_PARTS = 90;
 
 /** Colores [externo, interno] del charco del suelo y de la cola de cometa de cada poder. */
 const GLOW: Record<SmashPower, [number, number]> = {
+  default: [0xaebfe0, 0xffffff], // (24-11-2026) DEFAULT: plata y blanco
   fire: [0xff5a12, 0xffd23a],
   ice: [0x4aa8ff, 0xeafcff],
   wind: [0x3fd68a, 0xf0fff4],
@@ -116,7 +117,9 @@ export class SmashElementFx {
       else if (this.el === 'shadow') this.drawShadow(bx, by, k * S, dx, dy, dt);
       else if (this.el === 'light') this.drawLight(bx, by, k * S, dx, dy, dt);
       else if (this.el === 'fire') this.drawFire(bx, by, k * S, dx, dy, dt, strong);
-      else if (this.el === 'comet') this.drawMeteor(bx, by, k * S, dx, dy, dt, strong);
+      else if (this.el === 'default') {
+        // (24-11-2026) ESPECIAL DEFAULT: solo el brillo del suelo y la cola blanca (drawComet), sin partículas propias
+      } else if (this.el === 'comet') this.drawMeteor(bx, by, k * S, dx, dy, dt, strong);
       else if (this.el === 'dragon') {
         if (!this.drawDragonSprite(bx, by, k * S, dx, dy, dt, strong, ground.sy)) this.drawDragon(bx, by, k * S, dx, dy, dt, strong);
       } else this.drawLightning(bx, by, k * S, dt);

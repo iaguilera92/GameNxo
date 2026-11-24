@@ -1723,3 +1723,15 @@ MAI HD ESPALDAS COMPLETA (16-11-2026): mai-ulti-6 (pickup) instalada; todas las 
 (23-11-2026) SORTEO_1V1 = ambiente-1, ambiente-2, ambiente-3 (los ya rehechos). ambiente-4 fuera hasta rehacerlo. Build 29 + sync OK.
 
 (23-11-2026) SORTEO_1V1 = ambiente-1, ambiente-2, ambiente-3 (los ya rehechos). ambiente-4 fuera hasta rehacerlo. Build 29 + sync OK.
+
+(23-11-2026) Ruleta, premio COFRE: quitado el texto blanco 'Se abre en ... busca en el menu'; el amarillo (SE ABRE EN 2 DIAS / EVOLUCIONO) baja 56 -> 80 px. Pantalla de resultados (MatchEndScene.fitMap): zoom 1.3x el de imagen entera (MAP_FIT_CLOSER) y franjas de arriba/abajo con degradado del color del borde de la imagen (CourtView edges + ambienteEdges, mapBands). ambiente-4 sin edges (sin franjas). tsc + build 30 + sync OK. Sin probar en telefono.
+
+(24-11-2026) Tutorial: plan en docs/TUTORIAL-PLAN.md. Rareza 'default' reemplaza 'normal' (DESTELLO, charge:fire, style red/green/gold/pink -> especial). AJUSTES (solo dev): TUTORIAL LVL + PROBAR (devMode.startTutorialAt, tutorial.tutorialSeenBefore). Build 31. Sin probar en telefono.
+
+(24-11-2026) ESPECIAL DEFAULT y ULTI DEFAULT (ids 'default'), iniciales de todos; FUEGO a la Tienda (smash:fire 45/1390, inferno:fire 40/1490); sin iniciales por personaje (infernoPowers/chargeFx DEFAULT_BY_SKIN vacios); botKit base Default; itemRarity devuelve 'default' para lo inicial. 10 tablas de efectos con su entrada default. tsc + build 32 + sync OK. Sin probar en telefono.
+
+(24-11-2026) Tutorial: regalos gris (nivel 8) y estela azul (nivel 10); motor del partido (tutorialMatch.ts, MatchCoach, CoachPause; MatchScene: sin rendirse/AUTO, guardia de victoria hasta 9, punto repetido; MatchEndScene: un nivel por partido). BotBrain.forceOut. Build 33. Sin probar en telefono.
+
+(24-11-2026) Tutorial: misiones por nivel 1-4 (tutorialMissions.ts), ejercicios niveles 2 (solo DEFENSIVO), 3 (direcciones) y 4 (ESPECIAL) con MatchCoach; menu por nivel (amigos 2, ligas 20, 16-19 amistoso completo, tutorial solo bots). Build 34. Sin probar en telefono.
+
+(24-11-2026) Tutorial: misiones niveles 5-15 (obligatorias solo 1-4); pantalla de inicio OnboardingScene (nombre + personaje unico, confirmacion); STARTER_ITEMS sin skin:nxo. Build 35. Sin probar en telefono.

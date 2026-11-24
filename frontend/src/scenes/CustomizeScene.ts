@@ -21,6 +21,10 @@ import { roundedPoly } from '../ui/shapes';
 import { arcadeButton } from '../ui/modeButtons';
 import { hyperTexture } from '../ui/AbilityButton';
 import { commit, getPlayer } from '../domain/playerStore';
+import { isDevMode } from '../domain/devMode';
+import { GUIDE, guidedStep } from '../domain/tutorial';
+import { markTutorialSeen } from '../domain/operations';
+import { guideFocus } from '../ui/guideFocus';
 import { equipStyle, upgradeZoneStat } from '../domain/operations';
 import type { StyleId } from '../domain/player';
 import { STYLE_LOOK, styleLook } from '../ui/styleLook';
@@ -64,7 +68,7 @@ function byDefault(isBase: boolean, name: string, desc: string): { name: string;
   return isBase ? { name: 'POR DEFECTO', desc: `${name}: ${desc}` } : { name, desc };
 }
 /** nombre de cada EFECTO PELOTA (estela; ui/styleLook.ts) */
-const STYLE_NAME: Record<string, string> = { classic: 'POR DEFECTO', red: 'ROJO', pink: 'ROSADO', green: 'VERDE', gold: 'ORO', rainbow: 'ARCOÍRIS', ember: 'BRASAS', frost: 'HIELO', tulip: 'TULIPANES', hearts: 'CORAZONES', stars: 'ESTRELLAS', neon: 'NEÓN', smoke: 'HUMO' };
+const STYLE_NAME: Record<string, string> = { classic: 'POR DEFECTO', blue: 'AZUL', red: 'ROJO', pink: 'ROSADO', green: 'VERDE', gold: 'ORO', rainbow: 'ARCOÍRIS', ember: 'BRASAS', frost: 'HIELO', tulip: 'TULIPANES', hearts: 'CORAZONES', stars: 'ESTRELLAS', neon: 'NEÓN', smoke: 'HUMO' };
 
 /**
  * Frame 'trim' de una imagen: solo su contenido (sin el margen transparente). Se mide una vez y queda en la textura;
@@ -168,6 +172,14 @@ const PASSIVES: Record<'spin' | 'charge', PassiveDef> = {
  * Mientras no haya base de datos el personaje es siempre Nxo (logic/Profile FORCED_SKIN).
  */
 export class CustomizeScene extends Phaser.Scene {
+  private guideOverlay?: Phaser.GameObjects.Container;
+  private guideDefensiveRect?: { x: number; y: number; w: number; h: number };
+
+  private focusDefensiveGuide(equipped: boolean) {
+    this.guideOverlay?.destroy();
+    const target = equipped ? { x: 54, y: 64, w: 78, h: 78 } : this.guideDefensiveRect;
+    if (target) this.guideOverlay = guideFocus(this, target, equipped ? 'VUELVE AL MENÚ' : 'TOCA DEFENSIVO');
+  }
   /** tarjeta del INFERNO (se redibuja al elegir otro poder) */
   private infernoBox?: Phaser.GameObjects.Container;
   /** posición de las tarjetas equipables (para el efecto al equipar): style · color · charge · defensive · special · ulti */
@@ -280,6 +292,12 @@ export class CustomizeScene extends Phaser.Scene {
     this.sectionTitle(W, y, 'HABILIDADES');
     const row2 = y + L.titleToCard;
     p.abilities.forEach((id, i) => this.abilityCard(W, row2, L.ability, i as 0 | 1, ABILITIES[id]));
+    const state = getPlayer();
+    if (!isDevMode() && guidedStep(state.level, state.tutorial) === 'defensive') {
+      const col = gridCol(W, p.abilities[0] === 'dash' ? 0 : 1);
+      this.guideDefensiveRect = { x: col.x + col.w / 2, y: row2 + L.ability / 2, w: col.w, h: L.ability };
+      this.focusDefensiveGuide(false);
+    }
     y += L.titleToCard + L.ability + L.gapFeatures;
     this.featureCards(W, y, L.features);
     // bloqueos por nivel (domain/unlocks.ts): DEFENSIVO 2 · ESPECIAL 4 · ULTI 6 · ESTILOS 8 · EFECTO PELOTA 10 · CARGANDO 12 · ZONA 15
@@ -658,8 +676,8 @@ ${unlockLabel(key)}`, { fontFamily: FONT, fontSize: '16px', color: '#ffd23f', st
       onEquip: () => commit((st) => equipStyle(st, id)),
     }));
     // (22-11-2026, usuario) ordenados por rareza: normal (y los sin rareza) · especial · épica · legendaria; dentro de cada una, el orden de siempre
-    const RANK: Record<string, number> = { normal: 0, especial: 1, epica: 2, legendaria: 3 };
-    slots.sort((a, b) => (RANK[a.rarity ?? 'normal'] ?? 0) - (RANK[b.rarity ?? 'normal'] ?? 0));
+    const RANK: Record<string, number> = { default: 0, especial: 1, epica: 2, legendaria: 3 };
+    slots.sort((a, b) => (RANK[a.rarity ?? 'default'] ?? 0) - (RANK[b.rarity ?? 'default'] ?? 0));
     openPowerDialog(this, {
       title: 'EFECTO PELOTA',
       color: styleLook(cur).color,
@@ -1259,7 +1277,7 @@ ${unlockLabel(key)}`, { fontFamily: FONT, fontSize: '16px', color: '#ffd23f', st
     const slots: PowerSlot[] = INFERNO_POWERS.map((d) => ({
       id: d.id,
       demoName: d.name,
-      ...byDefault(d.id === 'fire', d.name, `${d.ball}. ${d.desc}`),
+      ...byDefault(d.id === 'default', d.name, `${d.ball}. ${d.desc}`),
       owned: infernoOwned(p.owned, d.id, p.equipped.skin),
       rarity: itemRarity(`inferno:${d.id}`),
       equipped: d.id === cur,
@@ -1345,7 +1363,7 @@ ${unlockLabel(key)}`, { fontFamily: FONT, fontSize: '16px', color: '#ffd23f', st
     // recarga como píldora (arriba a la derecha); el nombre se encoge para no tocarla
     const cd = `${a.cooldown}s`;
     // con el poder de siempre (dash / fuego) se deja la descripción de la habilidad (dice también la duración del aturdido)
-    const isDefault = !power || power.id === 'dash' || power.id === 'fire';
+    const isDefault = !power || power.id === 'dash' || power.id === 'default';
     this.gridCard(x, y, w, h, a.color, a.name, isDefault ? a.desc : power.desc, 78);
     // botón de la habilidad: imagen (assets/btn-<id>.webp) si existe; si no, el icono dibujado
     // el SMASH con el color de su poder; el DEFENSIVO con el icono de su poder (el DASH, la imagen de siempre)
@@ -1389,7 +1407,7 @@ ${unlockLabel(key)}`, { fontFamily: FONT, fontSize: '16px', color: '#ffd23f', st
     const slots: PowerSlot[] = SMASH_POWERS.map((d) => ({
       id: d.id,
       demoName: d.name,
-      ...byDefault(d.id === 'fire', d.name, d.desc),
+      ...byDefault(d.id === 'default', d.name, d.desc),
       owned: smashOwned(p.owned, d.id),
       rarity: itemRarity(`smash:${d.id}`),
       equipped: d.id === cur,
@@ -1482,13 +1500,18 @@ ${unlockLabel(key)}`, { fontFamily: FONT, fontSize: '16px', color: '#ffd23f', st
   private openDefensiveDialog(a: AbilityDef) {
     const p = getPlayer();
     const cur = defensivePowerOf(p.equipped.defensive);
-    const slots: PowerSlot[] = DEFENSIVE_POWERS.map((d) => ({
+    const guided = !isDevMode() && guidedStep(p.level, p.tutorial) === 'defensive';
+    if (guided) {
+      this.guideOverlay?.destroy();
+      this.guideOverlay = undefined;
+    }
+    const slots: PowerSlot[] = DEFENSIVE_POWERS.filter((d) => !guided || d.id === cur).map((d) => ({
       id: d.id,
       demoName: d.name,
       ...byDefault(d.id === 'dash', d.name, d.desc),
       owned: defensiveOwned(p.owned, d.id),
       rarity: itemRarity(`defensive:${d.id}`),
-      equipped: d.id === cur,
+      equipped: !guided && d.id === cur,
       preview:
         d.id === 'dash'
           ? (ix, iy, size) => this.abilityIcon(a, ix, iy, size)
@@ -1506,6 +1529,7 @@ ${unlockLabel(key)}`, { fontFamily: FONT, fontSize: '16px', color: '#ffd23f', st
       slots,
       // televisión grande y sin marco; deslizando se ve al personaje usar el poder contra una máquina de pelotas (fx/powerDemo.ts)
       bigTv: true,
+      requireDemoBeforeEquip: guided,
       demo: { create: (parent, outer, inner, id) => createDefensiveDemo(this, parent, outer, inner, getProfile().skin, (id as DefensivePower | undefined) ?? cur) },
       onShop: () => {
         this.cameras.main.fadeOut(180, 0, 0, 0);
@@ -1513,7 +1537,13 @@ ${unlockLabel(key)}`, { fontFamily: FONT, fontSize: '16px', color: '#ffd23f', st
       },
       // (faltaba) al equipar otro poder, la pantalla se rehace al instante y la tarjeta DEFENSIVO lo muestra
       onClose: ({ changed }) => {
-        if (changed) this.restartEquipped('defensive');
+        if (guided) {
+          if (changed) {
+            commit((s) => markTutorialSeen(s, GUIDE.defensive));
+            commit((s) => markTutorialSeen(s, 'l02-defensivo'));
+          }
+          this.focusDefensiveGuide(changed);
+        } else if (changed) this.restartEquipped('defensive');
       },
     });
   }

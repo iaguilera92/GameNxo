@@ -13,7 +13,8 @@
  */
 import { MAX_LEVEL } from '../config';
 import { CATALOG } from '../characters/catalog';
-import { type ItemId, type PlayerState, clonePlayer } from './player';
+import { type ItemId, type PlayerState, clonePlayer, newPlayer } from './player';
+import { TUTORIAL_GIFTS, tutorialSeenBefore } from './tutorial';
 import { SHOP_ITEMS } from './shopCatalog';
 import { EMOTES } from './emotes';
 import { CHAR_COLOR_LIST, COLOR_SKINS, charColorItem } from './charColors';
@@ -43,6 +44,29 @@ export function isDevMode(): boolean {
   }
 }
 
+/**
+ * (24-11-2026, usuario) PROBAR TUTORIAL LVL (AJUSTES, solo con el modo desarrollo encendido): borra el perfil normal, deja uno nuevo en el
+ * nivel `level` con el tutorial de los niveles anteriores ya visto (tutorialSeenBefore) y pasa a modo OFF SIN volver a borrarlo. Después
+ * hay que reiniciar la app. El perfil de pruebas (ON) no se toca.
+ */
+export function startTutorialAt(level: number) {
+  const lv = Math.max(1, Math.min(MAX_LEVEL, Math.round(level)));
+  const s = newPlayer();
+  s.level = lv;
+  s.xp = 0;
+  if (lv > 1) s.onboarded = true; // en el nivel 1 se ve la pantalla de inicio (nombre y personaje)
+  const seen = tutorialSeenBefore(lv);
+  if (seen.length) s.tutorial = seen;
+  // regalos de los niveles ya pasados (gris, estela azul)
+  for (const g of TUTORIAL_GIFTS) if (g.level <= lv && !s.owned.includes(g.item as ItemId)) s.owned.push(g.item as ItemId);
+  try {
+    for (const k of NORMAL_PROFILE_KEYS) localStorage.removeItem(k);
+    localStorage.setItem(NORMAL_PROFILE_KEYS[0], JSON.stringify(s));
+    localStorage.setItem(FLAG_KEY, '0');
+  } catch {
+    /* sin almacenamiento: no se puede preparar */
+  }
+}
 export function writeDevMode(on: boolean) {
   try {
     // de ON a OFF: el perfil normal empieza de cero (nivel 1, nada comprado)

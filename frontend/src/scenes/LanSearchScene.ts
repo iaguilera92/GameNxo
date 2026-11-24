@@ -180,8 +180,8 @@ export class LanSearchScene extends Phaser.Scene {
     showConfirm(this, {
       title: 'SIN RIVAL',
       message: why,
-      detail: '¿Quieres jugar contra el BOT?',
-      confirmLabel: 'JUGAR VS BOT',
+      detail: '¿Quieres iniciar una partida?',
+      confirmLabel: 'JUGAR',
       cancelLabel: 'MENÚ',
       onConfirm: () => this.scene.start('Matchmaking', { ...this.fallback, skipSearch: true }), // la búsqueda online ya esperó: directo al VS
       onCancel: () => this.scene.start('Menu'),

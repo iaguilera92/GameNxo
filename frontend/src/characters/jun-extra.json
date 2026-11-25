@@ -1,0 +1,214 @@
+{
+  "source": "Jun/jugador/jun-{movimientos,golpes,reacciones,extras}-*.png",
+  "view": "back",
+  "cell": {
+    "w": 116,
+    "h": 199
+  },
+  "origin": {
+    "x": 0.5,
+    "y": 0.9799
+  },
+  "standHeight": 190,
+  "animations": {
+    "dash": {
+      "file": "dash.webp",
+      "frames": 8,
+      "fps": 18,
+      "loop": true,
+      "cell": {
+        "w": 168,
+        "h": 180
+      },
+      "origin": {
+        "x": 0.5,
+        "y": 0.97778
+      }
+    },
+    "defeat": {
+      "file": "defeat.webp",
+      "frames": 8,
+      "fps": 10,
+      "loop": false,
+      "cell": {
+        "w": 160,
+        "h": 197
+      },
+      "origin": {
+        "x": 0.5,
+        "y": 0.9797
+      }
+    },
+    "serve-spin": {
+      "file": "serve-spin.webp",
+      "frames": 8,
+      "fps": 12,
+      "loop": false,
+      "impact": 4,
+      "cell": {
+        "w": 190,
+        "h": 247
+      },
+      "origin": {
+        "x": 0.5,
+        "y": 0.98381
+      }
+    },
+    "dive-right": {
+      "file": "dive-right.webp",
+      "frames": 8,
+      "fps": 18,
+      "loop": false,
+      "cell": {
+        "w": 284,
+        "h": 197
+      },
+      "origin": {
+        "x": 0.5,
+        "y": 0.9797
+      }
+    },
+    "dive-left": {
+      "file": "dive-left.webp",
+      "frames": 8,
+      "fps": 18,
+      "loop": false,
+      "cell": {
+        "w": 300,
+        "h": 197
+      },
+      "origin": {
+        "x": 0.5,
+        "y": 0.9797
+      }
+    },
+    "stunned": {
+      "file": "stunned.webp",
+      "frames": 8,
+      "fps": 12,
+      "loop": true,
+      "cell": {
+        "w": 148,
+        "h": 203
+      },
+      "origin": {
+        "x": 0.5,
+        "y": 0.9803
+      },
+      "scale": 1.1
+    },
+    "point-won": {
+      "file": "point-won.webp",
+      "frames": 8,
+      "fps": 12,
+      "loop": false,
+      "cell": {
+        "w": 166,
+        "h": 220
+      },
+      "origin": {
+        "x": 0.5,
+        "y": 0.98182
+      }
+    },
+    "point-lost": {
+      "file": "point-lost.webp",
+      "frames": 8,
+      "fps": 10,
+      "loop": false,
+      "cell": {
+        "w": 164,
+        "h": 227
+      },
+      "origin": {
+        "x": 0.5,
+        "y": 0.98238
+      }
+    },
+    "walk": {
+      "file": "walk.webp",
+      "frames": 8,
+      "fps": 40,
+      "loop": false,
+      "cell": {
+        "w": 130,
+        "h": 200
+      },
+      "origin": {
+        "x": 0.5,
+        "y": 0.98
+      }
+    },
+    "inferno-hit": {
+      "file": "inferno-hit.webp",
+      "frames": 8,
+      "fps": 14,
+      "loop": false,
+      "cell": {
+        "w": 266,
+        "h": 214
+      },
+      "origin": {
+        "x": 0.5,
+        "y": 0.98131
+      }
+    },
+    "volley": {
+      "file": "volley.webp",
+      "frames": 8,
+      "fps": 16,
+      "loop": false,
+      "impact": 4,
+      "cell": {
+        "w": 190,
+        "h": 200
+      },
+      "origin": {
+        "x": 0.5,
+        "y": 0.98
+      }
+    },
+    "walk-intro": {
+      "file": "walk-intro.webp",
+      "frames": 8,
+      "fps": 8,
+      "loop": true,
+      "cell": {
+        "w": 148,
+        "h": 199
+      },
+      "origin": {
+        "x": 0.5,
+        "y": 0.9799
+      }
+    },
+    "point-doubt": {
+      "file": "point-doubt.webp",
+      "frames": 8,
+      "fps": 8,
+      "loop": false,
+      "cell": {
+        "w": 140,
+        "h": 208
+      },
+      "origin": {
+        "x": 0.5,
+        "y": 0.98077
+      }
+    },
+    "point-cheer": {
+      "file": "point-cheer.webp",
+      "frames": 8,
+      "fps": 10,
+      "loop": false,
+      "cell": {
+        "w": 170,
+        "h": 203
+      },
+      "origin": {
+        "x": 0.5,
+        "y": 0.9803
+      }
+    }
+  }
+}

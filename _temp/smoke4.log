@@ -1,0 +1,16 @@
+Menu         {"act":["Menu"],"chars":{"nxo":1,"nxof":0,"mai":51,"maif":27,"mat":0,"matf":0},"amb":[],"liga":0,"shop":0,"charge":0,"total":158}
+Matchmaking  {"act":["Match"],"chars":{"nxo":1,"nxof":0,"mai":52,"maif":27,"mat":0,"matf":0},"amb":["ambiente-1","ambiente-paloma"],"liga":0,"shop":0,"charge":0,"total":232}
+1v1 #1 {"yo":"mai","rival":"isa","nombre":"ISA"}
+Menu         {"act":["Menu"],"chars":{"nxo":1,"nxof":0,"mai":52,"maif":27,"mat":0,"matf":0},"amb":["ambiente-paloma"],"liga":0,"shop":0,"charge":0,"total":208}
+Matchmaking  {"act":["Boot"],"chars":{"nxo":1,"nxof":0,"mai":51,"maif":27,"mat":0,"matf":0},"amb":[],"liga":0,"shop":0,"charge":0,"total":101}
+1v1 #2 sin partido
+Menu         {"act":["Menu"],"chars":{"nxo":1,"nxof":0,"mai":51,"maif":27,"mat":0,"matf":0},"amb":[],"liga":0,"shop":0,"charge":0,"total":158}
+Matchmaking  {"act":["Match"],"chars":{"nxo":1,"nxof":0,"mai":52,"maif":27,"mat":0,"matf":0},"amb":["ambiente-1","ambiente-paloma"],"liga":0,"shop":0,"charge":0,"total":232}
+1v1 #3 {"yo":"mai","rival":"isa","nombre":"ISA"}
+Menu         {"act":["Menu"],"chars":{"nxo":1,"nxof":0,"mai":52,"maif":27,"mat":0,"matf":0},"amb":["ambiente-paloma"],"liga":0,"shop":0,"charge":0,"total":208}
+Matchmaking  {"act":["Match"],"chars":{"nxo":1,"nxof":0,"mai":52,"maif":27,"mat":0,"matf":0},"amb":["ambiente-paloma","ambiente-3"],"liga":0,"shop":0,"charge":0,"total":234}
+1v1 #4 {"yo":"mai","rival":"isa","nombre":"ISA"}
+Menu         {"act":["Menu"],"chars":{"nxo":1,"nxof":0,"mai":52,"maif":27,"mat":0,"matf":0},"amb":["ambiente-paloma"],"liga":0,"shop":0,"charge":0,"total":210}
+Matchmaking  {"act":["Match"],"chars":{"nxo":1,"nxof":0,"mai":52,"maif":27,"mat":8,"matf":28},"amb":["ambiente-paloma","ambiente-1"],"liga":0,"shop":0,"charge":0,"total":234}
+1v1 #5 {"yo":"mai","rival":"mat","nombre":"MAT"}
+sin errores

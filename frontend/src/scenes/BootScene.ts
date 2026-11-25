@@ -7,9 +7,9 @@ import { UI } from '../ui/ui';
 import { prepareWheelFaces, queueWheelFrames } from '../ui/wheelArt';
 import { bakeSkins, queueSkinLoads } from '../characters/skins';
 import { queuePortraitLoads } from '../characters/portrait';
-import { queueNxoSpriteLoads, registerNxoAnims } from '../objects/NxoActor';
+import { queueNxoSpriteLoads, registerNxoAnims, sheetsOf } from '../objects/NxoActor';
+import { getProfile } from '../logic/Profile';
 import { preloadRankBadges } from '../ui/RankBadge';
-import { queueAmbienteLoad } from '../view/CourtView';
 import { bootRanked, myLeague } from '../logic/Ranked';
 import { getPlayer } from '../domain/playerStore';
 import { isDevMode } from '../domain/devMode';
@@ -35,7 +35,8 @@ export class BootScene extends Phaser.Scene {
     queueWheelFrames(this);
     queueUiSounds(this.load); // sonidos de interfaz en mp3 (solo los de UI_SOUND_FILES; el resto se sintetiza)
     queuePortraitLoads(this.load);
-    queueNxoSpriteLoads(this.load); // animaciones de NXO en el partido (si falta algo, se usa el dibujo de siempre)
+    // (25-11-2026) solo TU personaje (de espaldas y de frente): el rival se carga al ir al partido (si falta algo, se usa el dibujo de siempre)
+    queueNxoSpriteLoads(this.load, sheetsOf([[getProfile().skin, 'back'], [getProfile().skin, 'front']]));
     this.load.image('nxo-logo', 'assets/nxo-logo.webp');
     this.load.image('loading-bg', 'assets/loading-bg.webp');
     // recursos del menú: así el menú aparece al instante detrás del cargando
@@ -51,8 +52,8 @@ export class BootScene extends Phaser.Scene {
     (['normal', 'oro', 'epico'] as const).forEach((n, i) => {
       if (!this.textures.exists(`chest-${i}`)) this.load.image(`chest-${i}`, `assets/cofre-${n}.webp`);
     });
-    this.load.audio('vs', 'mp3/vs.mp3'); // sonido de la pantalla VS (la cache de audio es global)
-    queueAmbienteLoad(this.load); // ambiente del partido (estadio)
+    this.load.audio('vs', 'mp3/vs.m4a'); // sonido de la pantalla VS (la cache de audio es global)
+    // (25-11-2026) los ambientes ya no se cargan aquí: solo el del partido (MatchmakingScene / MatchScene, queueAmbiente)
     bootRanked(); // partida Ranked a medias = abandono; cierre de semana / mes
     preloadRankBadges(this.load, [myLeague()]); // solo la del rango actual
   }

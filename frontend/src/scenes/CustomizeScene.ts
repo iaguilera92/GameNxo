@@ -1,4 +1,5 @@
 import { installTapSound } from '../fx/uiSound';
+import { releaseSceneTexturesOnExit } from '../ui/sceneTextures';
 import Phaser from 'phaser';
 import { FONT, restartOnResize, textStyle } from '../ui/theme';
 import { stadiumBg } from '../ui/ui';
@@ -9,6 +10,7 @@ import { CHAR_COLOR_LIST, type CharColorId, charColorFor, charColorInfo, charCol
 import { applyCharColor } from '../fx/CharColorFx';
 import { type UnlockKey, isUnlocked, unlockLabel } from '../domain/unlocks';
 import { skinById } from '../characters/catalog';
+import { queueNxoSpriteLoads, registerNxoAnims, sheetsOf } from '../objects/NxoActor';
 import { rosterPortrait } from '../characters/passPortrait';
 import { addPortrait } from '../characters/portrait';
 import type { SkinId } from '../characters/skins';
@@ -178,7 +180,18 @@ export class CustomizeScene extends Phaser.Scene {
   private focusDefensiveGuide(equipped: boolean) {
     this.guideOverlay?.destroy();
     const target = equipped ? { x: 54, y: 64, w: 78, h: 78 } : this.guideDefensiveRect;
-    if (target) this.guideOverlay = guideFocus(this, target, equipped ? 'VUELVE AL MENÚ' : 'TOCA DEFENSIVO');
+    if (target) this.guideOverlay = guideFocus(this, target, equipped ? 'VUELVE AL MENÚ' : 'TOCA DEFENSIVO', { textDy: equipped ? 34 : 0 });
+  }
+
+  /** (25-11-2026, usuario) tutorial: al equipar, la tarjeta DEFENSIVO se ve brillar sobre el opaco; luego VUELVE AL MENÚ */
+  private equipDefensiveGuide() {
+    this.guideOverlay?.destroy();
+    const t = this.guideDefensiveRect;
+    const r = this.cardRects.defensive;
+    if (!t || !r) return this.focusDefensiveGuide(true);
+    this.guideOverlay = guideFocus(this, t, '', { hand: false });
+    this.time.delayedCall(200, () => this.playEquipFx(r, 8150));
+    this.time.delayedCall(1500, () => this.focusDefensiveGuide(true));
   }
   /** tarjeta del INFERNO (se redibuja al elegir otro poder) */
   private infernoBox?: Phaser.GameObjects.Container;
@@ -190,6 +203,8 @@ export class CustomizeScene extends Phaser.Scene {
   }
 
   preload() {
+    releaseSceneTexturesOnExit(this); // (25-11-2026) sus imágenes propias se liberan al salir (ui/sceneTextures.ts)
+    queueNxoSpriteLoads(this.load, sheetsOf([[getProfile().skin, 'back'], [getProfile().skin, 'front']])); // (25-11-2026) tu personaje (al cambiarlo, la escena se reinicia y lo carga)
     if (!this.textures.exists('menu-bg')) this.load.image('menu-bg', 'assets/menu-bg.webp');
     if (!this.textures.exists('icon-zona')) this.load.image('icon-zona', 'assets/icon-zona.webp');
     if (!this.textures.exists('personalizar-title')) this.load.image('personalizar-title', 'assets/personalizar-titulo.webp'); // (18-11-2026) título en imagen
@@ -197,11 +212,12 @@ export class CustomizeScene extends Phaser.Scene {
     for (const art of Object.values(ABILITY_ART)) if (art && !this.textures.exists(art.key)) this.load.image(art.key, art.file);
     queueInfernoArt(this.load); // bolas de los poderes del INFERNO (vista previa del selector)
     // sonidos del partido que usan las demostraciones del ESPECIAL y la ULTI (fx/powerDemo.ts): carga, golpe y golpe de la ULTI
-    for (const [k, file] of [['cargando', 'mp3/cargando.mp3'], ['inferno-hit', 'mp3/inferno.mp3'], ['golpe-fuerte', 'mp3/golpe-fuerte.mp3']] as const) if (!this.cache.audio.exists(k)) this.load.audio(k, file);
+    for (const [k, file] of [['cargando', 'mp3/cargando.m4a'], ['inferno-hit', 'mp3/inferno.m4a'], ['golpe-fuerte', 'mp3/golpe-fuerte.m4a']] as const) if (!this.cache.audio.exists(k)) this.load.audio(k, file);
     queueChargeFxArt(this.load, ['fire', 'energy', 'hielo', 'light', 'wild', 'glitch', 'tulip', 'shadow', 'luz', 'time']); // aros de carga (vista previa del diálogo CARGANDO GOLPE)
   }
 
   create() {
+    registerNxoAnims(this);
     const W = this.scale.width;
     const H = this.scale.height;
     restartOnResize(this);
@@ -330,7 +346,7 @@ export class CustomizeScene extends Phaser.Scene {
    * EFECTO AL EQUIPAR sobre la tarjeta: destello blanco, borde dorado que late, anillo que se expande, chispas que saltan
    * del borde y, con ellas, el icono y los textos de la tarjeta entran de nuevo con rebote (se ve el cambio).
    */
-  private playEquipFx(r: { x: number; y: number; w: number; h: number }) {
+  private playEquipFx(r: { x: number; y: number; w: number; h: number }, depth = 59) {
     if (!this.sys.isActive()) return;
     const cx = r.x + r.w / 2;
     const cy = r.y + r.h / 2;
@@ -346,16 +362,16 @@ export class CustomizeScene extends Phaser.Scene {
       this.tweens.add({ targets: o, scaleX: { from: sx * 0.3, to: sx }, scaleY: { from: sy * 0.3, to: sy }, duration: 460, ease: 'Back.easeOut' });
     }
     // destello blanco sobre toda la tarjeta
-    const flash = this.add.graphics().setDepth(60).setBlendMode(Phaser.BlendModes.ADD);
+    const flash = this.add.graphics().setDepth(depth + 1).setBlendMode(Phaser.BlendModes.ADD);
     flash.fillStyle(0xffffff, 0.6).fillRoundedRect(r.x, r.y, r.w, r.h, RAD);
     this.tweens.add({ targets: flash, alpha: 0, duration: 520, ease: 'Cubic.easeOut', onComplete: () => flash.destroy() });
     // borde dorado brillante que late dos veces y se apaga
-    const edge = this.add.graphics().setDepth(61).setBlendMode(Phaser.BlendModes.ADD);
+    const edge = this.add.graphics().setDepth(depth + 2).setBlendMode(Phaser.BlendModes.ADD);
     edge.lineStyle(10, GOLD, 0.35).strokeRoundedRect(r.x - 2, r.y - 2, r.w + 4, r.h + 4, RAD + 2);
     edge.lineStyle(4, 0xfff6c8, 1).strokeRoundedRect(r.x, r.y, r.w, r.h, RAD);
     this.tweens.add({ targets: edge, alpha: { from: 1, to: 0.25 }, duration: 260, yoyo: true, repeat: 1, onComplete: () => this.tweens.add({ targets: edge, alpha: 0, duration: 420, onComplete: () => edge.destroy() }) });
     // anillo que se expande desde la tarjeta
-    const ring = this.add.graphics({ x: cx, y: cy }).setDepth(59).setBlendMode(Phaser.BlendModes.ADD);
+    const ring = this.add.graphics({ x: cx, y: cy }).setDepth(depth).setBlendMode(Phaser.BlendModes.ADD);
     ring.lineStyle(5, GOLD, 0.9).strokeRoundedRect(-r.w / 2, -r.h / 2, r.w, r.h, RAD);
     this.tweens.add({ targets: ring, scale: 1.28, alpha: 0, duration: 620, ease: 'Cubic.easeOut', onComplete: () => ring.destroy() });
     // chispas que salen del borde
@@ -363,7 +379,7 @@ export class CustomizeScene extends Phaser.Scene {
       const side = Math.random();
       const px = r.x + Math.random() * r.w;
       const py = side < 0.5 ? r.y : r.y + r.h;
-      const star = this.add.star(px, py, 4, 2, 7, i % 2 ? GOLD : 0xffffff).setDepth(62).setBlendMode(Phaser.BlendModes.ADD).setScale(0.4);
+      const star = this.add.star(px, py, 4, 2, 7, i % 2 ? GOLD : 0xffffff).setDepth(depth + 3).setBlendMode(Phaser.BlendModes.ADD).setScale(0.4);
       this.tweens.add({ targets: star, y: py + (py === r.y ? -1 : 1) * Phaser.Math.Between(14, 38), x: px + Phaser.Math.Between(-16, 16), scale: 1.1, alpha: 0, angle: 140, duration: Phaser.Math.Between(500, 800), delay: Phaser.Math.Between(0, 220), ease: 'Cubic.easeOut', onComplete: () => star.destroy() });
     }
   }
@@ -794,12 +810,12 @@ ${unlockLabel(key)}`, { fontFamily: FONT, fontSize: '16px', color: '#ffd23f', st
 
   /**
    * CAMBIAR PERSONAJE: el mismo diálogo de los selectores de poderes (televisión grande con dos columnas, lista de huecos y borde con destellos como el de
-   * la ULTI) con los personajes jugables y los nuevos bloqueados: JUN, NET y MAT (aún no jugables). Al equipar, se
+   * la ULTI) con los personajes jugables y los nuevos bloqueados. Al equipar, se
    * guarda la skin en el perfil (menú, VS y partido) y la pantalla se reinicia con el personaje nuevo.
    */
   private openCharacterDialog(skin: SkinId) {
-    // Los retratos de JUN, NET y MAT no los carga el arranque de Personalizar: se piden al abrir el diálogo.
-    const need = ['jun', 'net', 'mat', 'isa', 'rin', 'zac', 'flo'].map((id) => rosterPortrait(id)).filter((p): p is NonNullable<typeof p> => !!p && !this.textures.exists(p.key));
+    // Los retratos de los personajes bloqueados se piden al abrir el diálogo.
+    const need = ['jun', 'net', 'rin', 'zac', 'flo'].map((id) => rosterPortrait(id)).filter((p): p is NonNullable<typeof p> => !!p && !this.textures.exists(p.key));
     if (need.length) {
       need.forEach((p) => this.load.image(p.key, p.file));
       this.load.once(Phaser.Loader.Events.COMPLETE, () => this.sys.isActive() && this.openCharacterDialogNow(skin));
@@ -825,12 +841,12 @@ ${unlockLabel(key)}`, { fontFamily: FONT, fontSize: '16px', color: '#ffd23f', st
     const ROSTER: { id: string; name: string; playable: boolean; badge?: string }[] = [
       // Cinco columnas: hombres en la primera fila, mujeres en la segunda.
       { id: 'nxo', name: 'Nxo', playable: true },
-      { id: 'jun', name: 'Jun', playable: false, badge: 'PRONTO' },
-      { id: 'mat', name: 'Mat', playable: false, badge: 'PRONTO' },
+      { id: 'jun', name: 'Jun', playable: true, badge: 'DEL PASE' },
+      { id: 'mat', name: 'Mat', playable: true },
       { id: 'zac', name: 'Zac', playable: false, badge: 'PRONTO' },
       { id: 'mai', name: 'Mai', playable: true, badge: 'DEL PASE' },
       { id: 'net', name: 'Net', playable: false, badge: 'PRONTO' },
-      { id: 'isa', name: 'Isa', playable: false, badge: 'PRONTO' },
+      { id: 'isa', name: 'Isa', playable: true },
       { id: 'rin', name: 'Rin', playable: false, badge: 'PRONTO' },
       { id: 'flo', name: 'Flo', playable: false, badge: 'PRONTO' },
     ];
@@ -841,7 +857,8 @@ ${unlockLabel(key)}`, { fontFamily: FONT, fontSize: '16px', color: '#ffd23f', st
         name: c.name,
         desc: pas ? `PASIVA · ${pas.name}\n${pas.short}${c.playable ? '' : '\nAún no se puede jugar.'}` : c.playable ? 'Personaje jugable.' : 'Personaje nuevo. Aún no se puede jugar.',
         badge: c.badge,
-        showLocked: true, // JUN, NET, MAT, ISA, RIN (y MAI si no es tuya) se ven, apagados y con candado
+        showLocked: true,
+        lockedNote: c.id === 'isa' ? 'Consíguela en la Tienda.' : c.id === 'jun' ? 'Desbloquéalo en el nivel 30 del Pase de Batalla.' : undefined,
         owned: c.playable && owned.includes(`skin:${c.id}` as never),
         equipped: c.id === skin,
         preview: (x, y, size) => portrait(c.id, x, y, size * 1.15 * 1.2),
@@ -924,6 +941,14 @@ ${unlockLabel(key)}`, { fontFamily: FONT, fontSize: '16px', color: '#ffd23f', st
     ic.fillStyle(0x0a1638, 1).fillPoints(bolt.map((p) => ({ x: p.x + 1.5, y: p.y + 1.5 })), true);
     ic.fillStyle(0xffe14a, 1).fillPoints(bolt, true);
     t.setX(right - 16).setDepth(1);
+    // (25-11-2026, usuario) con Rayos para gastar, el contador también brilla y late (va con la tarjeta de la ZONA)
+    if (rays > 0) {
+      const glow = this.add.graphics();
+      glow.lineStyle(8, 0xffd23f, 0.25).strokeRoundedRect(x0 - 3, cy - h / 2 - 3, w + 6, h + 6, h / 2 + 3);
+      glow.lineStyle(2.5, 0xffe27a, 1).strokeRoundedRect(x0, cy - h / 2, w, h, h / 2);
+      this.tweens.add({ targets: glow, alpha: { from: 0.3, to: 1 }, duration: 700, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
+      this.tweens.add({ targets: ic, scale: { from: 1, to: 1.2 }, duration: 700, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
+    }
     const hit = this.add.zone(x0 + w / 2, cy, w, h + 10).setInteractive({ useHandCursor: true });
     hit.on('pointerup', () => this.toast('RAYOS: se ganan en la Liga y en el Pase de Batalla · 1 rayo = +1% a un atributo de la ZONA'));
     return w;
@@ -969,47 +994,47 @@ ${unlockLabel(key)}`, { fontFamily: FONT, fontSize: '16px', color: '#ffd23f', st
         // la ZONA es POR PERSONAJE: aquí se ven y suben los atributos del personaje elegido (los Rayos son de la cuenta)
         const zoneSkin = getProfile().skin;
         const zoneLevels = zoneStatsOf(zone, zoneSkin);
-        // Rayos sin gastar: aviso dorado que late para que se usen (sin Rayos no se muestra nada)
-        if (zone.rays > 0) {
-          const pill = this.add.container(item.x + w / 2, top + 78);
-          const pw = Math.min(w - 24, 210);
-          const pg = this.add.graphics();
-          pg.fillStyle(0x3a2400, 1).fillRoundedRect(-pw / 2 - 2, -16, pw + 4, 32, 16);
-          pg.fillStyle(0xffc42e, 1).fillRoundedRect(-pw / 2, -14, pw, 28, 14);
-          pg.fillStyle(0xffffff, 0.3).fillRoundedRect(-pw / 2 + 6, -12, pw - 12, 9, 5);
-          const bolt = [{ x: 3, y: -11 }, { x: -6, y: 1 }, { x: 0, y: 1 }, { x: -3, y: 11 }, { x: 7, y: -2 }, { x: 1, y: -2 }];
-          pg.fillStyle(0x3a2400, 1).fillPoints(bolt.map((q) => ({ x: q.x - pw / 2 + 20, y: q.y })), true);
-          const pt = this.add.text(10, 0, `${zone.rays} ${zone.rays === 1 ? 'RAYO' : 'RAYOS'} PARA USAR`, { fontFamily: FONT, fontSize: '14px', color: '#3a2400' }).setOrigin(0.5);
-          if (pt.width > pw - 44) pt.setScale((pw - 44) / pt.width);
-          pill.add([pg, pt]);
-          this.tweens.add({ targets: pill, scale: { from: 1, to: 1.07 }, duration: 650, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
+        // (25-11-2026, usuario) sin el aviso "N RAYOS PARA USAR": con Rayos para gastar, la TARJETA ENTERA brilla y late (y el contador
+        // de arriba a la derecha también); el espacio ganado es para los atributos, más grandes y legibles
+        const canSpend = zone.rays > 0;
+        if (canSpend) {
+          const glow = this.add.graphics();
+          for (let i = 4; i >= 1; i--) glow.lineStyle(i * 5, 0xffd23f, 0.09).strokeRoundedRect(item.x - 2, top - 2, w + 4, h + 4, 18);
+          glow.lineStyle(3, 0xffe27a, 1).strokeRoundedRect(item.x, top, w, h, 16);
+          this.tweens.add({ targets: glow, alpha: { from: 0.35, to: 1 }, duration: 700, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
+          // un destello que recorre la tarjeta de arriba abajo
+          const shine = this.add.rectangle(item.x + w / 2, top + 72, w - 8, 26, 0xffffff, 0.1).setBlendMode(Phaser.BlendModes.ADD);
+          this.tweens.add({ targets: shine, y: top + h - 16, alpha: { from: 0.16, to: 0 }, duration: 1400, repeat: -1, repeatDelay: 600, ease: 'Sine.easeIn' });
         }
         const labels: Record<ZoneStatKey, string> = { strength: 'FUERZA', speed: 'VELOCIDAD', precision: 'PRECISIÓN', agility: 'AGILIDAD', resistance: 'RESISTENCIA' };
+        // filas desde bajo la cabecera hasta el borde de abajo, repartidas en todo el alto
+        const rowTop = top + 92;
+        const step = (h - 92 - 24) / (ZONE_STAT_KEYS.length - 1);
         ZONE_STAT_KEYS.forEach((key, index) => {
           const level = zoneLevels[key];
-          const cy = top + 112 + index * 34;
+          const cy = rowTop + index * step;
           // fila: nombre | barra | n/20 | botón +, con aire entre columnas
-          const lab = this.add.text(item.x + 14, cy, labels[key], { fontFamily: FONT, fontSize: '12px', color: '#e5f8ff' }).setOrigin(0, 0.5);
-          if (lab.width > 84) lab.setScale(84 / lab.width);
-          const bx = item.x + 106;
-          const bw = Math.max(38, w - 106 - 80);
+          const lab = this.add.text(item.x + 14, cy, labels[key], { fontFamily: FONT, fontSize: '15px', color: '#ffffff', stroke: '#061431', strokeThickness: 3 }).setOrigin(0, 0.5);
+          if (lab.width > 92) lab.setScale(92 / lab.width);
+          const bx = item.x + 112;
+          const bw = Math.max(38, w - 112 - 88);
           const bar = this.add.graphics();
-          bar.fillStyle(0x04132e, 1).fillRoundedRect(bx, cy - 6, bw, 12, 6);
-          bar.lineStyle(1, 0x3472a2, 0.8).strokeRoundedRect(bx, cy - 6, bw, 12, 6);
+          bar.fillStyle(0x04132e, 1).fillRoundedRect(bx, cy - 8, bw, 16, 8);
+          bar.lineStyle(1.5, 0x3472a2, 0.9).strokeRoundedRect(bx, cy - 8, bw, 16, 8);
           if (level > 0) {
-            const fw = Math.max(12, (bw * level) / ZONE_STAT_MAX);
-            bar.fillStyle(item.color, 1).fillRoundedRect(bx, cy - 6, fw, 12, 6);
-            bar.fillStyle(0xffffff, 0.45).fillRoundedRect(bx + 3, cy - 4, Math.max(0, fw - 6), 3, 1);
+            const fw = Math.max(16, (bw * level) / ZONE_STAT_MAX);
+            bar.fillStyle(item.color, 1).fillRoundedRect(bx, cy - 8, fw, 16, 8);
+            bar.fillStyle(0xffffff, 0.45).fillRoundedRect(bx + 4, cy - 5, Math.max(0, fw - 8), 4, 2);
           }
-          this.add.text(item.x + w - 44, cy, `${level}/20`, { fontFamily: FONT, fontSize: '11px', color: '#b9d9f2' }).setOrigin(1, 0.5);
+          this.add.text(item.x + w - 46, cy, `${level}/20`, { fontFamily: FONT, fontSize: '13px', color: '#d8eeff' }).setOrigin(1, 0.5);
           const plusX = item.x + w - 24;
-          const enabled = level < ZONE_STAT_MAX && zone.rays > 0;
+          const enabled = level < ZONE_STAT_MAX && canSpend;
           const plus = this.add.graphics({ x: plusX, y: cy }).setAlpha(enabled ? 1 : 0.42);
-          plus.fillStyle(enabled ? item.color : 0x54637d, 1).fillCircle(0, 0, 13);
-          plus.lineStyle(3, 0xffffff, 0.95).lineBetween(-6, 0, 6, 0).lineBetween(0, -6, 0, 6);
+          plus.fillStyle(enabled ? 0xffc42e : 0x54637d, 1).fillCircle(0, 0, 15);
+          plus.lineStyle(3.5, enabled ? 0x3a2400 : 0xffffff, 0.95).lineBetween(-7, 0, 7, 0).lineBetween(0, -7, 0, 7);
           // con Rayos para gastar, los + laten (invitan a mejorar)
           if (enabled) this.tweens.add({ targets: plus, scale: { from: 1, to: 1.18 }, duration: 600, delay: index * 90, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
-          const hit = this.add.zone(plusX, cy, 40, 32).setInteractive({ useHandCursor: true });
+          const hit = this.add.zone(plusX, cy, 44, Math.max(32, step)).setInteractive({ useHandCursor: true });
           hit.on('pointerup', () => {
             const result = commit((state) => upgradeZoneStat(state, key, zoneSkin));
             if (!result.ok) return this.toast(result.error === 'not_enough_rays' ? 'Gana Rayos en las recompensas semanales de la Liga' : 'Este atributo ya llegó al 20%');
@@ -1542,7 +1567,8 @@ ${unlockLabel(key)}`, { fontFamily: FONT, fontSize: '16px', color: '#ffd23f', st
             commit((s) => markTutorialSeen(s, GUIDE.defensive));
             commit((s) => markTutorialSeen(s, 'l02-defensivo'));
           }
-          this.focusDefensiveGuide(changed);
+          if (changed) this.equipDefensiveGuide();
+          else this.focusDefensiveGuide(false);
         } else if (changed) this.restartEquipped('defensive');
       },
     });

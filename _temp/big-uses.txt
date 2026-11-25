@@ -1,0 +1,112 @@
+## assets/liga/escenario-liga.webp 1774x887 keys=[] refs=scenes/RankedScene.ts:40
+
+## assets/menu/liga-card-2v2.webp 1774x887 keys=[] refs=scenes/MenuScene.ts:219
+
+## assets/menu/liga-card.webp 1774x887 keys=[] refs=scenes/MenuScene.ts:219
+
+## assets/ranking/ranking-global-titulo.webp 1774x887 keys=[] refs=ui/GlobalRanking.ts:180
+
+## assets/liga.webp 1271x1238 keys=[menu-liga] refs=scenes/MenuScene.ts:214 scenes/MenuScene.ts:2461 scenes/RankedScene.ts:37
+
+## assets/menu-bg.webp 941x1672 keys=[menu-bg] refs=scenes/BattlePassScene.ts:86 scenes/BootScene.ts:42 scenes/CustomizeScene.ts:193
+
+## assets/liga-2v2-titulo.webp 2170x725 keys=[liga-2v2-title] refs=scenes/RankedScene.ts:114
+
+## assets/liga-titulo.webp 2170x725 keys=[liga-title] refs=scenes/RankedScene.ts:113 scenes/RankedScene.ts:181
+
+## assets/personalizar-titulo.webp 2170x725 keys=[personalizar-title] refs=scenes/CustomizeScene.ts:195 scenes/CustomizeScene.ts:228
+   scenes/CustomizeScene.ts:231: this.add.image(W / 2, headY - 3, 'personalizar-title').setDisplaySize(titleW, titleW / 3);
+## assets/tienda-titulo.webp 2170x725 keys=[shop-title] refs=scenes/ShopScene.ts:140
+   scenes/ShopScene.ts:190: this.add.image(W / 2, headY - 3, 'shop-title').setDisplaySize(titleW, titleW / 3);
+## assets/bronce.webp 1312x1199 keys=[] refs=domain/ranks.ts:44 ui/GlobalRanking.ts:185
+
+## assets/diamante.webp 1312x1199 keys=[] refs=domain/ranks.ts:48
+
+## assets/oro.webp 1312x1199 keys=[] refs=domain/ranks.ts:46 scenes/BootScene.ts:51 ui/GlobalRanking.ts:183
+
+## assets/plata.webp 1312x1199 keys=[] refs=domain/ranks.ts:45 ui/GlobalRanking.ts:184
+
+## assets/platino.webp 1312x1199 keys=[] refs=domain/ranks.ts:47
+
+## assets/loading-bg.webp 1000x1573 keys=[loading-bg] refs=scenes/BootScene.ts:40 scenes/BootScene.ts:71 scenes/BootScene.ts:72
+
+## assets/personalizar-estilos.webp 1300x1210 keys=[] refs=scenes/CustomizeScene.ts:546
+
+## assets/personalizar-cargando.webp 1333x1180 keys=[] refs=scenes/CustomizeScene.ts:553
+
+## assets/personalizar-efecto.webp 1333x1180 keys=[] refs=scenes/CustomizeScene.ts:549
+
+## assets/personalizar-mascotas.webp 1333x1180 keys=[] refs=scenes/CustomizeScene.ts:557
+
+## assets/billetes.webp 1536x1024 keys=[daily-cash-art] refs=scenes/MenuScene.ts:208
+   ui/DailyLoginButton.ts:264: p.add(scene.add.image(pw / 2 - 82, ph / 2 - 61, 'daily-cash-art').setDisplaySize(120, 80));
+   ui/DailyLoginButton.ts:371: art = scene.add.image(x, artY, 'daily-cash-art').setDisplaySize(cardW * 0.82, cardH * 0.43);
+## assets/liga/fondo-liga.webp 1024x1536 keys=[] refs=scenes/RankedScene.ts:37 scenes/RankedScene.ts:165
+
+## assets/oferta-emotes.webp 1675x939 keys=[oferta-emotes] refs=scenes/ShopScene.ts:147 scenes/ShopScene.ts:853 scenes/ShopScene.ts:855
+   scenes/ShopScene.ts:855: const tex = this.textures.get('oferta-emotes').getSourceImage() as { width: number; height: number };
+   scenes/ShopScene.ts:861: const img = this.add.image(x + pad - cx * k, y + pad - cy * k, 'oferta-emotes').setOrigin(0, 0).setScale(k).setCrop(cx, cy, cw, chh);
+## assets/barra-inicio.webp 2172x724 keys=[] refs=scenes/MenuScene.ts:88 scenes/MenuScene.ts:108 scenes/MenuScene.ts:944
+
+## assets/premio-diario.webp 2172x724 keys=[daily-title-art] refs=scenes/MenuScene.ts:211
+   ui/DailyLoginButton.ts:84: p.add(scene.add.image(0, -ph / 2 + 56, 'daily-title-art').setDisplaySize(titleW, titleW / 3));
+## assets/ranked-titulo.webp 2169x725 keys=[] refs=
+
+## assets/bronce-2v2.webp 1254x1254 keys=[] refs=domain/ranks.ts:44
+
+## assets/btn-dash.webp 1254x1254 keys=[] refs=scenes/CustomizeScene.ts:52 ui/buttonArt.ts:10
+
+## assets/btn-emotes.webp 1254x1254 keys=[] refs=ui/buttonArt.ts:17
+
+## assets/btn-rendirse.webp 1254x1254 keys=[] refs=ui/buttonArt.ts:18
+
+## assets/btn-saque-efecto.webp 1254x1254 keys=[] refs=ui/buttonArt.ts:13
+
+## assets/btn-saque.webp 1254x1254 keys=[] refs=ui/buttonArt.ts:12
+
+## assets/btn-smash.webp 1254x1254 keys=[] refs=scenes/CustomizeScene.ts:53 ui/buttonArt.ts:11
+
+## assets/btn-ulti.webp 1254x1254 keys=[] refs=ui/buttonArt.ts:15
+
+## assets/challenger-2v2.webp 1254x1254 keys=[] refs=domain/ranks.ts:54
+
+## assets/challenger.webp 1254x1254 keys=[] refs=domain/friends.ts:86 domain/league2v2.ts:31 domain/rankedConfig.ts:81
+
+## assets/diamante-2v2.webp 1254x1254 keys=[] refs=domain/ranks.ts:48
+
+## assets/icon-zona.webp 1254x1254 keys=[icon-zona] refs=scenes/CustomizeScene.ts:194 scenes/CustomizeScene.ts:942 scenes/CustomizeScene.ts:943
+
+## assets/monedas.webp 1254x1254 keys=[daily-coins-art] refs=scenes/MenuScene.ts:207 scenes/MenuScene.ts:1313 scenes/MenuScene.ts:1455
+   ui/DailyLoginButton.ts:261: p.add(scene.add.image(-pw / 2 + 82, ph / 2 - 61, 'daily-coins-art').setDisplaySize(88, 88));
+   ui/DailyLoginButton.ts:369: art = scene.add.image(x, artY, 'daily-coins-art').setDisplaySize(cardW * 0.78, cardH * 0.49);
+## assets/oro-2v2.webp 1254x1254 keys=[] refs=domain/ranks.ts:46
+
+## assets/plata-2v2.webp 1254x1254 keys=[] refs=domain/ranks.ts:45
+
+## assets/platino-2v2.webp 1254x1254 keys=[] refs=domain/ranks.ts:47
+
+## assets/tienda-pj.webp 961x1451 keys=[shop-pj-card] refs=scenes/ShopScene.ts:150
+   scenes/ShopScene.ts:1176: if (this.textures.exists('shop-pj-card')) c.add(this.add.image(x, y, 'shop-pj-card').setOrigin(0, 0).setDisplaySize(w, h));
+## assets/buscando/contador.webp 2000x667 keys=[] refs=scenes/LanSearchScene.ts:100 scenes/MatchmakingScene.ts:123 ui/searchTimer.ts:5
+
+## assets/liga/botones-liga.webp 2000x667 keys=[] refs=scenes/RankedScene.ts:47 scenes/RankedScene.ts:807
+
+## assets/liga/btn-top100.webp 2000x667 keys=[] refs=scenes/RankedScene.ts:52 scenes/RankedScene.ts:757
+
+## assets/liga/panel-recompensa.webp 2000x667 keys=[] refs=scenes/RankedScene.ts:46 scenes/RankedScene.ts:440
+
+## assets/liga/pestanas-liga-2v2.webp 2000x667 keys=[] refs=scenes/RankedScene.ts:39 scenes/RankedScene.ts:1493
+
+## assets/liga/pestanas-liga.webp 2000x667 keys=[] refs=scenes/RankedScene.ts:38 scenes/RankedScene.ts:1493
+
+## assets/liga/titulo-lideres.webp 2000x667 keys=[] refs=scenes/RankedScene.ts:48 scenes/RankedScene.ts:622
+
+## assets/menu/pase-batalla.webp 2000x667 keys=[battle-pass-title,battle-pass-insignia] refs=scenes/BattlePassScene.ts:87 scenes/BattlePassScene.ts:88 scenes/MenuScene.ts:213
+   scenes/BattlePassScene.ts:174: if (this.textures.exists('battle-pass-title')) this.top.add(this.add.image(W / 2, 62, 'battle-pass-title').setDisplaySize(titleW, titleW / 3
+   scenes/BattlePassScene.ts:181: if (this.textures.exists('battle-pass-insignia')) this.top.add(this.add.image(px + 40, py + 20, 'battle-pass-insignia').setDisplaySize(80, 9
+   scenes/MenuScene.ts:1987: if (this.textures.exists('battle-pass-insignia')) c.add(this.add.image(bx0, h / 2 + 1, 'battle-pass-insignia').setDisplaySize((BH * 240) / 2
+## assets/ranking/marco-ranking.webp 968x1164 keys=[] refs=ui/GlobalRanking.ts:181
+
+## assets/nxo-logo.webp 1583x506 keys=[nxo-logo] refs=scenes/BootScene.ts:39 scenes/BootScene.ts:77
+
+## assets/ui/marcador-principal.webp 1500x320 keys=[] refs=ui/ScoreBoard.ts:40 ui/ScoreBoard.ts:45

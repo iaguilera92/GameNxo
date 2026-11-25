@@ -1735,3 +1735,233 @@ MAI HD ESPALDAS COMPLETA (16-11-2026): mai-ulti-6 (pickup) instalada; todas las 
 (24-11-2026) Tutorial: misiones por nivel 1-4 (tutorialMissions.ts), ejercicios niveles 2 (solo DEFENSIVO), 3 (direcciones) y 4 (ESPECIAL) con MatchCoach; menu por nivel (amigos 2, ligas 20, 16-19 amistoso completo, tutorial solo bots). Build 34. Sin probar en telefono.
 
 (24-11-2026) Tutorial: misiones niveles 5-15 (obligatorias solo 1-4); pantalla de inicio OnboardingScene (nombre + personaje unico, confirmacion); STARTER_ITEMS sin skin:nxo. Build 35. Sin probar en telefono.
+
+(24-11-2026) Pantalla de inicio: titulo con assets/ui/elige-tu-pj.webp y ficha con assets/ui/perfil-pj.webp (cara recortada a la izquierda, nombre, pasiva y descripcion); ELEGIR como JUGAR sin sombra (noShadow). PNG originales movidos de public/ a _temp/respaldo_oficial/ui/. Build 36. Sin probar en telefono.
+
+(24-11-2026) Pantalla de inicio: cards de personaje nuevas (marco grueso dorado el elegido con brillo y check, azul los demas, gris los PRONTO; placa del nombre abajo; brillo detras del retrato). Todo por codigo en OnboardingScene. Build 37. Sin probar en telefono.
+
+(24-11-2026) Pantalla de inicio, paso NOMBRE con el arte de como-te-llamas.png cortado en assets/ui/como-te-llamas.webp (titulo) y assets/ui/caja-nombre.webp (caja); subtitulo con lineas doradas, lapiz, pildora (i) con la regla, SIGUIENTE sin sombra; input alineado a la izquierda tras la barra amarilla, placeholder gris. PNG en _temp/respaldo_oficial/ui/ (cortes con _temp/cut-nombre.mjs). Build 38. Sin probar en telefono.
+
+(24-11-2026) Elige tu personaje: aviso en panel estandar (NAVY + borde neon) con (i) a la izquierda y UNO / Tienda en amarillo (OnboardingScene.notice); cara de la ficha centrada en la cabeza (faceOf: nxo cx 450, mai cx 480 en px del retrato). Build 39. Sin probar en telefono.
+
+(24-11-2026) Como te llamas: titulo en TITLE_Y (140) y ancho W-60 como el de Elige tu personaje; subtitulo justo bajo el titulo con lineas doradas de 34 px; texto del input un poco mas arriba (lineHeight = alto, sin relleno); SIGUIENTE en H - BTN_Y (110) como ELEGIR. Build 40. Sin probar en telefono.
+
+[build 42] Onboarding: aviso 'Solo puedes elegir' más abajo (y 304, rejilla 366); botón VOLVER a '¿Cómo te llamas?'; botones ELEGIR/VOLVER del diálogo sin sombra 3D (ConfirmDialog noShadow); ficha de perfil recoloreada por personaje (OnboardingScene.cardTexture, CARD_HUE) con giro de tono suave que respeta el borde dorado. Nxo rojo, Mai rosa, Jun naranja, Mat verde, Zac amarillo, Net morado, Isa fucsia, Rin celeste, Flo turquesa (provisional). Vista previa: _temp/para-chatgpt/fichas-colores3.png. Sin probar en teléfono ni navegador.
+
+[build 43] Bienvenida del menú: título '¡BIENVENIDO A LA COMPETICIÓN!' y texto motivador (arrasa a tus rivales, empiezas en el NIVEL 1, toca JUGAR); se cierra sola a los 5 s (antes 2 s). guideFocus (cuadro dorado del tutorial, menú y personaje): mano click (assets/ui/guide-click.webp, 300 px; original movido de public/click.png a _temp/respaldo_oficial/ui/click.png) abajo a la derecha del control, apuntando, con toque en bucle (se acerca, aprieta y suelta un anillo dorado). Sin probar en teléfono ni navegador.
+
+[build 44] guideFocus: texto centrado sobre el control marcado (no en el centro de la pantalla, sin salirse), 32 px (antes 26). Menú: 'TOCA PARA JUGAR'. Sin probar en teléfono ni navegador.
+
+[build 45] Menú, guía del tutorial (TOCA PARA JUGAR, etc.): el botón AJUSTES queda por encima del oscurecido (depth 8101) y se puede tocar; sin mano ni animación extra. Ahí irá INICIAR SESIÓN. MenuScene.gearBtn. Sin probar en teléfono ni navegador.
+
+[build 46] Primer partido (guide 'first'): el cuadro 'VE AL CUADRO' ahora está DENTRO de la cancha, en la mitad de fondo del rectángulo de abajo a la izquierda/derecha (de la línea de fondo a la mitad hasta la línea de saque, de la banda al centro); guideTargetY = LAT_C ± 90; el jugador puede entrar hasta ese cuadro. Cuadro de saque resaltado solo cuando sacas tú (todos los partidos: ya no se marca dónde saca el rival bot ni online). MatchmakingScene: rivales BOT con el nombre de su personaje en mayúsculas (rivalFor); 2v2: aliado y rival 1 = el otro personaje, rival 2 = el tuyo; se quitaron BOT_NAMES/PRACTICE_NAMES y el nombre de la tabla Ranked. El 2v2 online (botNamesFor) sin cambios. tsc ok. Sin probar en teléfono ni navegador.
+
+[build 47] Nivel 1 (guía 'first'): con un aviso en pantalla todo se oscurece (rectángulo 0.6, depth 5005, máscara de geometría invertida) menos tu personaje, el cuadro al que vas, la pelota y el joystick (Joystick.setSpotlight: encima y más visible); en el saque directo también el botón de saque. Aviso a media pantalla (46 % del alto) y 36 px. Saque tocando: mano click (tapHint en ui/guideFocus.ts) tocando el lado derecho. Solo el usuario (el rival bot queda oscurecido). Niveles 2+: el aviso sigue arriba (320, 27 px). tsc ok. Sin probar en teléfono ni navegador.
+
+[build 48] Nivel 1, primer punto guiado rehecho (MatchScene guideMove + guideRally): 1) rectángulo de abajo entero (línea de fondo a línea de saque), mitad izquierda -> check verde ¡BIEN! + sonido 'equipar'; 2) mitad derecha -> check + misión 'Usar joystick'; (se quitó la 3.ª vez 'VE AL CUADRO DE LA DERECHA'); 3) el bot saca a tu derecha y le pegas; 4) te la tira al cuadro de saque de arriba a la izquierda (el bot la retiene hasta que llegas; check), 5) arriba a la derecha, 6) todo el rectángulo de abajo; ese golpe da la misión nueva 'Joystick arriba y abajo' (guideJoystickUpDown, 15 monedas; matchMissions/tutorialMissions nivel 1 = 4 misiones/MatchEndScene) y la pelota bota dos veces en su campo: punto tuyo y el bot hace pointEnd(false). Si no le pegas, el bot la tira otra vez al mismo cuadro. Helpers: guideZoneRect, inGuideZone, guideCheck, guideServiceLine. tsc ok. Sin probar en teléfono ni navegador.
+
+[build 49] Nivel 1, oscurecido de la guía: ahora en depth 5600 (encima del marcador 5500, que queda opaco); tu personaje se ve por sus sprites (Actor.depthBoost = 6000 en placeActor, sin recuadro); sin el círculo de la pelota; encima también joystick (5610), botón de saque en su lección (5610) y el aviso de quién saca (ServeTurnTag.setFront, 5620). El primer cuadro (izquierda/derecha) es el rectángulo largo: de la línea de fondo a la red, la mitad. tsc ok. Sin probar en teléfono ni navegador.
+
+[build 50] Partido: DEFENSIVO / ESPECIAL bloqueados por nivel muestran 'NIVEL' + número grande en el centro del botón (AbilityButton.setLockText); ya no debajo. Nivel 1: el oscurecido de la guía ya no usa máscara (en el APK se veía mal): Graphics en coordenadas del mundo, 4 piezas alrededor del cuadro. Primer cuadro (izq./der.) otra vez solo el rectángulo de abajo (línea de fondo a línea de saque), la mitad. tsc ok. Sin probar en teléfono ni navegador.
+
+[build 51] VS (MatchmakingScene): en el tutorial (modo desarrollo apagado y nivel < 20) no se muestran las victorias de nadie. Imagen del check '¡BIEN!' del nivel 1 para mejorarla con ChatGPT: _temp/para-chatgpt/check-bien.png (760x720, fondo transparente; fuente check-bien.svg). Sin probar en teléfono ni navegador.
+
+[build 52] Nivel 1, primer punto: empiezas a la izquierda (placeForServe: jugador LAT_C-110, bot LAT_C+70 para que su saque caiga en tu cuadro izquierdo); 1) MUEVE EL JOYSTICK A LA DERECHA (cuadro derecho, check; el joystick hace UNA pulsación hacia ese lado: Joystick.pulse) 2) el bot saca a tu izquierda: AHORA VE A LA IZQUIERDA (check + misión Usar joystick) y le pegas; luego arriba izq., arriba der., abajo (igual que antes). Se quitó el paso de ir a la izquierda primero. Saques del jugador (lecciones tocar / directo): el oscurecido deja libre el cuadro de saque del rival y el rival (bot.depthBoost). tsc ok. Sin probar en teléfono ni navegador.
+
+[build 53] Nivel 1, peloteo guiado: el bot ya no se mueve tras el saque (guideBotFrozen: mv quieto). Tu golpe va a su raqueta (bota a 140 delante); al llegar, el bot queda congelado en la pose del golpe (swing + holdFollowThrough(3)) y la pelota quieta en ese punto hasta que entras al cuadro; entonces suelta la pose y te la tira. El último golpe va lejos de él (punto tuyo). tsc ok. Sin probar en teléfono ni navegador.
+
+[build 54] Nivel 1: el check '¡BIEN!' dibujado se cambia por la imagen ¡GENIAL! (assets/ui/genial.webp 320 px, textura 'guide-genial', se carga solo en el partido guiado; original movido de public/genial.png a _temp/respaldo_oficial/ui/genial.png). Se muestra a 190 px con la misma entrada, sonido y salida; si no cargara, queda el dibujo de antes. tsc ok. Sin probar en teléfono ni navegador.
+
+[build 55] Nivel 1, primer punto: bot a la IZQUIERDA (LAT_C-70), saca en diagonal a tu cuadro derecho cuando llegas a la derecha. Tras el bote del saque la pelota queda QUIETA en lo alto (guideRally 'held'): 'MUEVE EL JOYSTICK HACIA LA PELOTA'; al alcanzarla le pegas y se cumple 'Usar joystick'. Luego el bot (congelado con la pelota) espera a que vayas a la izquierda (AHORA VE A LA IZQUIERDA), después arriba izq., arriba der. y abajo (k 1..4, guideRallyZone). Con el oscurecido, la pelota también se ve (Ball.depthBoost). tsc ok. Sin probar en teléfono ni navegador.
+
+[build 56] Botones DEFENSIVO / ESPECIAL del partido (AbilityButton): etiqueta 10 px más abajo (R+32, antes R+22) y el nombre del poder en R+50 (antes R+43); centradas bajo el botón. La ULTI (con anillo de carga) sigue con su propia posición. Sin probar en teléfono ni navegador.
+
+[build 57] Nivel 1 (guía 'first'): marcador de arriba apagado (alpha 0.3) todo el partido; tu personaje entra caminando desde la IZQUIERDA (entranceWalk); el bot, mientras retiene la pelota esperando que llegues al cuadro, queda en la pose de CARGANDO (setCharging; botChargeTick la mantiene con guideRally 'wait') y el golpe (impacto) lo hace al llegar tú (guideFeed). tsc ok. Sin probar en teléfono ni navegador.
+
+[build 58] Nivel 1, peloteo guiado: tu golpe ahora bota a 200 del bot y la pelota se congela en lo alto de ese bote (o a 90 de él, antes de tocarle el cuerpo); antes esperaba a 40 de él y podía no detenerse. Vale para los 3 cuadros (izquierda abajo, arriba izq., arriba der.): bot quieto cargando y pelota quieta hasta que entras al cuadro. tsc ok. Sin probar en teléfono ni navegador.
+
+[build 59] Tutorial (isTutorialMatch, bajo el nivel 20): el bot lleva el kit DEFAULT (botKitFor: DASH, ESPECIAL y ULTI default, carga classic, colores de siempre) en vez del kit al azar; en el 2v2 del tutorial, los tres bots igual. Nivel 1, peloteo guiado: la pelota que te tira el bot en cada cuadro se queda quieta en lo alto de su bote ('held') con 'MUEVE EL JOYSTICK HACIA LA PELOTA' hasta que le pegas (ya no tira varias pelotas). tsc ok. Sin probar en teléfono ni navegador.
+
+[build 60] Menú, guía del nivel 2 (paso 'spin'): 'TOCA JUGAR PARA PRACTICAR EL DEFENSIVO' -> 'TOCA PARA JUGAR'. Sin probar en teléfono ni navegador.
+
+[build 61] Nivel 2 (guía 'spin'), primer punto: instrucción del saque a media pantalla ('TOCA EL LADO DERECHO PARA SACAR' / 'TOCA OTRA VEZ PARA GOLPEAR') con la mano tocando; el bot espera adelantado junto a su cuadro de saque (placeForServe: NET_X + 0.9 del cuadro, al centro del cuadro diagonal) y no se mueve durante el ejercicio; te tira esquinado al otro lado (feedPracticeReturn, igual que antes) y la pausa del entrenador (DEFENSIVO) sale cuando la pelota bota en tu lado (handleBounce), no al tirarla. tsc ok. Sin probar en teléfono ni navegador.
+
+[build 62] Partido: el aviso '2º SAQUE' baja de y 150 a 178 (estaba pegado al marcador). Sin probar en teléfono ni navegador.
+
+[build 63] Nivel 2, tiro del bot para el DEFENSIVO: golpe fuerte (swing(true), aimShot velocidad 720, plano) a la esquina contraria a la tuya (bota en COURT.left+120, a 25 de la línea lateral); antes 380 y a 125 del centro. La pausa ya no sale en el bote: se arma ahí (level2PauseArmed) y para el tiempo cuando la pelota se levanta (vz<=0 o z>=30). tsc ok. Sin probar en teléfono ni navegador.
+
+[build 64] Nivel 2 rehecho: al sacar, pantalla oscura salvo tu personaje, la pelota, el cuadro de saque y el rival (tickGuideDim también para 'spin'). Tu personaje queda quieto (l2Lock: inputVector = 0) desde el saque hasta el DEFENSIVO. El bot tira fuerte a tu IZQUIERDA (COURT.top+25); tras el bote, al subir un poco (z>=25 o vz<=0), la pelota se congela (l2Freeze guarda posición y velocidad), el bot queda en su golpe (swing(true)+holdFollowThrough(4)), sale 'USA EL DEFENSIVO' con la mano en el botón y el botón por encima del oscurecido. Al pulsar (activateDash) la pelota sigue y el DEFENSIVO la devuelve lejos del bot (aimShot a la esquina contraria); el bot ya no se mueve (l2Won) y el punto es tuyo. Una sola vez (antes: demo del juego + intento). Se quitó level2Coach (pausas del entrenador). tsc ok. Sin probar en teléfono ni navegador.
+
+[build 65] Nivel 2: corregido que el texto 'USA EL DEFENSIVO' (y con él la mano en el botón) se borraba: el texto del saque se ponía después y lo pisaba. El oscurecido del nivel 2 ya no depende del texto: siempre al sacar (server player en serve/toss) y en la pausa del DEFENSIVO; visibles tu personaje, el rival y la pelota (más el cuadro de saque al sacar, y el botón DEFENSIVO en la pausa). tsc ok. Sin probar en teléfono ni navegador.
+
+[build 66] Nivel 2: al pulsar DEFENSIVO la pelota SIGUE QUIETA en el aire (l2Dash): tu personaje corre en sprint del DASH hasta ella (tween 250-700 ms, burst, sonido, 'DEFENSIVO'); al llegar le pega (playerHit forzado con dashHit para que cuente como DEFENSIVO) y recién ahí sale la devolución lejos del bot (punto tuyo). Mientras corres se quitan el texto y la mano. tsc ok. Sin probar en teléfono ni navegador.
+
+[build 67] Nivel 2: el rival queda oscurecido (opaco) al sacar y en la pausa del DEFENSIVO (en el nivel 1 se sigue viendo al sacar). docs/TUTORIAL-PLAN.md sección 6: regla de enseñanza y lo hecho en los niveles 1 y 2. Sin probar en teléfono ni navegador.
+
+[build 64] Nivel 2 rehecho: P1 saque directo (boton con la mano encima; el bot no se mueve ni la devuelve: punto tuyo), P2 sacas y el bot pega fuerte -> DEFENSIVO (lo de antes, ahora en played 1), P3 saque con efecto (solo el boton morado, mano encima; el bot responde). Sacas tu los 3 (Score.fixedServer). REGLA TUTORIAL: los puntos guiados no suman (Score.pointTo practice; nivel 1 P1-P3, nivel 2 P1-P2; marcador apagado en ellos) y al empezar los que cuentan sale GANA 4 PUNTOS (showWinGoal). Ya no se repite el punto (tutorialReplayPoint borrado; el bot sigue fallando si vas perdiendo hasta el nivel 9). Tutorial PERDIDO: 0 EXP, 0 monedas, 0 monedas 2v2, 0 misiones y la guia no se marca vista: se repite el nivel. tsc + build 64 + cap sync OK. Sin probar en telefono ni navegador.
+
+[build 65] SAQUE CON EFECTO (usuario: se iba muy arriba y a los lados): ahora casi como el DIRECTO con una curva suave hacia el lado del que saca. config SERVE: spinSpeedMult 0.9->1.25, spinMargin 10->6, spinAy 260->110, spinBigAy 600->170, nuevo spinKick 0.12 (patada al botar, antes 0.35 fijo en Ball.stepBall). MatchScene.executeServe: signo de la curva = lado del que saca (antes segun la zona apuntada). Vale para todos (jugador, bot, online). Deja margen para pasivas de efecto. tsc + build 65 + cap sync OK. Sin probar en telefono ni navegador.
+
+[build 66] TURNO DE SAQUE del partido corto por los puntos que CUENTAN (Score.server usa points[0]+points[1], no played): 1 tu, 2 el bot, 2 tu... Los guiados no mueven el turno. Nivel 1: sin serverOffset 1; fixedServer en los guiados (P1 el bot, P2-P3 tu) y en los que cuentan empiezas tu. Nivel 2: fixedServer tu en P1-P2; P3 (con efecto, ya cuenta) es tu 1.er saque normal y luego saca 2 el bot. tsc + build 66 + cap sync OK. Sin probar en telefono ni navegador.
+
+[build 67] NIVEL 2 (usuario): P1 sacas directo (el bot no la devuelve). P2 SACA EL BOT (fixedServer 1, beginToss desde tickGuide a los 1,4 s; saque guiado hacia ti): la pelota queda QUIETA en lo alto del bote (l2Stage held, oscurecido, MUEVE EL JOYSTICK HACIA LA PELOTA) hasta que le pegas; va al bot (fly) y el te tira FUERTE al lado CONTRARIO al tuyo (feedPracticeReturn, fed); quedas quieto (l2Lock) y la pelota se congela -> DEFENSIVO como antes. P3 sacas con efecto, el bot responde; P1-P3 no cuentan (guidePracticeCount 3). P4: GANA 4 PUNTOS y empiezas sacando tu. tsc + build 67 + cap sync OK. Sin probar en telefono ni navegador.
+
+[build 68] NIVEL 2, P1 (saque directo): con la pelota en lo MAS ALTO del lanzamiento se pausa 1,5 s (L2_AIM_PAUSE_MS) la pelota, el tiempo del saque y la animacion del jugador (spritesIn pause); texto CON EL JOYSTICK APUNTAS A 6 ZONAS DEL CUADRO, sin la mano; se ven las 6 zonas del cuadro (renderServeAim, el oscurecido deja libre el cuadro); los botones de saque no responden en la pausa. Luego sigue sola (PULSA EL BOTON DE SAQUE EN EL ARO). tsc + build 68 + cap sync OK. Sin probar en telefono ni navegador.
+
+[build 68] Peso del APK (public de Android 60,2 -> 46,6 MB): las 7 fuentes charge-*.png (11,2 MB) pasan de public/assets/ a frontend/art/cargando/ (build-charge-fx.mjs apunta ahí); public/ambiente-3-figuras.png (2,5 MB, sin uso) a _temp/respaldo_oficial/ambientes/; las 8 miniaturas de emotes a WebP (11-15 KB c/u; PNG en _temp/respaldo_oficial/emotes/), Emotes.ts carga .webp y build-emote-thumbs.mjs ya escribe WebP. Las hojas de public/personajes/ siguen en PNG (fuentes; el build las quita del APK). En dist solo queda icon-192.png como PNG. tsc ok. Sin probar en teléfono ni navegador.
+
+[build 69] NIVEL 2, P1 (pausa del saque directo): el jugador queda CONGELADO de verdad (l2AimPose: guarda textura/frame de sus sprites y los repone cada fotograma, ademas de pausar las animaciones). RELOJ de 1 s (L2_AIM_PAUSE_MS) con barra circular amarilla que se llena y manecillas, sobre el texto; luego desaparece. El texto CON EL JOYSTICK APUNTAS A 6 ZONAS DEL CUADRO sigue, la pelota sigue quieta arriba (estado wait) y sale la mano en el boton de saque hasta que pulses; si no pulsas en 10 s (L2_AIM_AUTO_MS) el saque directo sale solo. l2AimStart / l2AimTick / l2AimRelease. tsc + build 69 + cap sync OK. Sin probar en telefono ni navegador.
+
+[build 70] NIVEL 2, P1: el reloj de la pausa va DEBAJO del texto (y 0.46*H + 120). Mientras dura el reloj (1 s) el oscurecido tapa TODO (jugador, pelota, joystick, botones, cuadro) menos el texto y el reloj; despues vuelve el oscurecido normal (tickGuideDim, l2AimPause on). tsc + build 70 + cap sync OK. Sin probar en telefono ni navegador.
+
+[build 71] NIVEL 2, P3 (saque con efecto): texto unico y corto USA SAQUE CON EFECTO (antes PULSA EL BOTON MORADO... / PULSA OTRA VEZ...); la mano sigue en el boton morado. tsc + build 71 + cap sync OK. Sin probar en telefono ni navegador.
+
+[build 72] Textos: USA SAQUE DIRECTO (niveles 1 y 2, las dos pulsaciones) y APUNTA CON EL JOYSTICK A CUALQUIERA DE LAS 6 ZONAS (pausa del nivel 2). Nivel 2: saque directo sale solo a los 15 s (L2_AIM_AUTO_MS) y el DEFENSIVO se usa solo a los 15 s de congelarse la pelota (L2_DEF_AUTO_MS, l2FreezeAt). SAQUE DEL JUGADOR cae en la ZONA apuntada (antes el saque guiado iba al centro del cuadro): con pasiva de PRECISION al centro de la zona; sin ella, al azar dentro de la zona y nunca en su centro (serveZoneOffset: 35-80 % de media columna / media fila). Perfecto = solo ese desvio; normal/flojo suman el error de siempre. Vale en todos los partidos (bot, online y tutorial). tsc + build 72 + cap sync OK. Sin probar en telefono ni navegador.
+
+[build 73] MENU tras una partida (tutorial): primero los premios (monedas, monedas 2v2, EXP con sus barras, ruleta si se abre) y DESPUES el oscurecido de la guia con lo que hay que tocar (refreshGuide dentro de tutorial(delay), junto a maybeShowTutorial). Sin premios pendientes la guia sale al instante como antes. tsc + build 73 + cap sync OK. Sin probar en telefono ni navegador.
+
+[build 74] NIVEL 2, P1: el boton de saque no golpea despues de lanzar hasta que pasa la pausa del reloj (antes un 2.o toque rapido, con la pelota aun subiendo, sacaba antes de la pausa: el salto). onServeButton ignora el toque en toss con l2AimPause none (y on). tsc + build 74 + cap sync OK. Sin probar en telefono ni navegador.
+
+[build 75] TUTORIAL: los puntos guiados SI cuentan (niveles 1 y 2; pointTo ya no pasa practice y vuelve el marcador del centro). El marcador de arriba se ve siempre; solo baja a 0.3 mientras esta el oscurecido de una instruccion (guideDim visible). GANA 4 PUNTOS sigue saliendo al empezar los puntos libres. tsc + build 75 + cap sync OK. Sin probar en telefono ni navegador.
+
+[build 76] TUTORIAL: sin DUELO EN LA RED antes del nivel 11 (donde se ensena): duelCheck sale si tutorial y nivel < TUTORIAL_DUEL_LEVEL (11). tsc + build 76 + cap sync OK. Sin probar en telefono ni navegador.
+
+[build 77] MENU: (1) los avisos de nivel (TutorialDialog.maybeShowTutorial) ya solo salen en el nivel 1 (bienvenida); los de los niveles 2-20 los reemplaza el tutorial guiado. (2) AL ABRIR LA APP (1.a entrada al menu de la sesion, registry session.levelIntro; tutorial bajo el nivel 20, sin modo desarrollo, cuenta que ya vio la bienvenida): todo oscuro + NIVEL N grande, vuela al cuadro del perfil y este hace el efecto de EQUIPADO (destello, borde dorado, anillo, chispas, sonido equipar y vibra). Despues sale la guia (refreshGuide). MenuScene.sessionLevelIntro / profileEquipFx / profileCardObj. tsc + build 77 + cap sync OK. Sin probar en telefono ni navegador.
+
+[build 78] Bienvenida del menu (nivel 1): titulo BIENVENID@! y texto Tu primer rival te espera. Empecemos! (antes BIENVENIDO A LA COMPETICION + texto largo). tsc + build 78 + cap sync OK. Sin probar en telefono ni navegador.
+
+[build 79] NIVEL 1, entrada: tu personaje entra caminando desde la IZQUIERDA hasta la parte izquierda de la cancha (donde recibe el saque del bot). Fallaba desde el build 66 (sin serverOffset el partido se colocaba como si sacaras tu, a la derecha, y luego saltaba). Ahora Score.fixedServer se fija al crear el marcador (nivel 1 = bot, nivel 2 = tu), antes de la colocacion de la entrada. tsc + build 79 + cap sync OK. Sin probar en telefono ni navegador.
+
+[build 80] NIVEL 1, peloteo guiado: SUBE AL CUADRO DE ARRIBA A LA IZQUIERDA -> DIRIGETE AL CUADRO MARCADO. tsc + build 80 + cap sync OK. Sin probar en telefono ni navegador.
+
+[build 81] NIVEL 1, peloteo guiado: los 4 cuadros dicen DIRIGETE AL CUADRO MARCADO (antes AHORA VE A LA IZQUIERDA / ARRIBA A LA DERECHA / BAJA AL RECTANGULO DE ABAJO). tsc + build 81 + cap sync OK. Sin probar en telefono ni navegador.
+
+[build 82] NIVEL 1: con MUEVE EL JOYSTICK A LA DERECHA el joystick hace UNA pulsacion hacia la derecha 0,45 s despues de salir el texto, mas visible (Joystick.pulse: aro 1.25 y perilla al 90 % del radio, con pausa). Ya no pulsa (hacia la izquierda) con MUEVE EL JOYSTICK HACIA LA PELOTA. tsc + build 82 + cap sync OK. Sin probar en telefono ni navegador.
+
+[build 83] NIVEL 1, peloteo guiado: solo 2 cuadros grandes (todo el de delante: MUEVE EL JOYSTICK A LA DERECHA; todo el de atras: MUEVE EL JOYSTICK A LA IZQUIERDA, ese golpe es el punto). Con cuadros de alto completo se arregla que no soltaba al pararse dentro. El joystick pulsa hacia el lado de cada texto. Mision renombrada a Joystick a los lados. tsc + build 83 + cap sync OK. Sin probar en telefono ni navegador.
+
+[build 84] NIVEL 1, peloteo guiado: tras golpear el saque, MUEVE EL JOYSTICK A LA IZQUIERDA (cuadro de atras a la izquierda, el contrario al primero) y luego MUEVE EL JOYSTICK HACIA ARRIBA (todo el de delante, ese golpe es el punto). Joystick.pulse acepta up. Margen del centro del cuadro 25->10. tsc + build 84 + cap sync OK. Sin probar en telefono ni navegador.
+
+[build 85] NIVEL 1: texto del saque TOCA EL LADO DERECHO PARA SACAR (antes PARA LANZAR LA PELOTA). tsc + build 85 + cap sync OK. Sin probar en telefono ni navegador.
+
+[build 69] Optimización grupo A (23 imágenes que el juego ajusta por proporción) a ~2x su mayor tamaño en pantalla (el lienzo del juego es 720x1280, sin devicePixelRatio): títulos tienda/personalizar/liga/liga 2v2 720 px, premio diario 900, 12 emblemas de liga 600 alto (RankBadge hornea a 1,5x, máx. 390), monedas 512, billetes 768, trofeo liga 256, icon-zona 256, logo NXO 1240, marco tienda-pj 660. Disco 4,4 -> 1,4 MB; memoria si se cargan todas ~141 -> ~30 MB. Originales en _temp/respaldo_oficial/ui-grandes/assets/ (script _temp/shrink-a.mjs). OJO: durante este build otro proceso estaba generando las tiras de MAT (mat-v2, mat-front-v2, mat-front-inferno, PNG intermedios victory.png / pickup.png): el build 69 pudo copiar ese estado a medias; recompilar cuando termine. Sin probar en teléfono ni navegador.
+
+[build 70] Optimización grupo B, pantalla LIGA (RankedScene): 13 imágenes a la mitad (pestañas 1v1/2v2, escenario, panel de recompensa, botones, título líderes, TOP 100: 2000 -> 1000 y 1774 -> 887; cards 0-2 y podio 0-2 ~320 px). Los recortes siguen en px del original: LIGA_ART lleva w0 (ancho original) y piece() escala el frame por (ancho real / w0); posiciones de textos sin cambios. Disco 1,2 -> 0,4 MB; memoria ~39 -> ~10 MB. Originales en _temp/respaldo_oficial/ui-grandes/assets/liga/. tsc ok. Sin probar en teléfono ni navegador.
+
+[build 86] TUTORIAL: guideCheck sin imagen GENIAL ni texto: solo un check verde con efecto (aro que se expande, 8 destellos, entrada con rebote y brillo que late). Ya no se carga assets/ui/genial.webp. tsc + build 86 + cap sync OK. Sin probar en telefono ni navegador.
+
+[build 87] NIVEL 1, tu primer saque (leccion tap): el cuadro de saque del rival se marca en AZUL con borde (solo esa vez). tsc + build 87 + cap sync OK. Sin probar en telefono ni navegador.
+
+[build 88] ELIGE TU PERSONAJE: en la ficha (perfil-pj) la cabeza sale un poco por encima del borde de arriba (mascara sube 34 px). MAT: pasiva EFECTO (id spin, verde): +curva del saque con efecto del jugador (1 + valor de maestria), icono de pelota con curva. tsc + build 88 + cap sync OK. Sin probar en telefono ni navegador.
+
+[build 89] PASIVAS (characterPassives.ts, 5 tipos): Nxo y Rin AGILIDAD, Mai PRECISION, Zac y Net FUERZA, Mat e Isa EFECTO, Jun y Flo RESISTENCIA (nueva: el DEFENSIVO se recarga antes, DASH_COOLDOWN x (1 - valor); icono bateria con rayo). Jun antes era FUERZA. docs/MAESTRIAS.md actualizado. tsc + build 89 + cap sync OK. Sin probar en telefono ni navegador.
+
+[build 90] ELIGE TU PERSONAJE: ficha de Mat con la cara un 10 % del ancho mas a la derecha (se ve la oreja; la raqueta puede cortarse). Personajes de la cuadricula mas grandes (alto ch - PLATE_H - 12, antes - 28). tsc + build 90 + cap sync OK. Sin probar en telefono ni navegador.
+
+[build 71] Optimización grupo B (resto): MENÚ barra de abajo 2172->1086, card del PASE 2000->1000, cards de LIGA 1774->887 (MenuScene: setScale corregido por ancho real / original), contador de búsqueda 2000->600 (searchTimer), título RANKING GLOBAL 1774->887 (GlobalRanking), fichas de PERSONALIZAR 1333->400, marcador del partido 1500->1000, oferta de emotes 1675->1000, btn-dash / btn-smash de PERSONALIZAR 1254->320. Los 7 btn-*.webp originales (fuentes de make-button-sprites) pasan de public/assets/ a frontend/art/botones/ (la herramienta lee de ahí). Originales del resto en _temp/respaldo_oficial/ui-grandes/. Queda sin tocar marco-ranking (nineslice con medidas en px). tsc ok. Sin probar en teléfono ni navegador.
+
+[build 91] COMO TE LLAMAS: el placeholder Tu nombre se escribe letra a letra (110 ms por letra, empieza a los 0,36 s). tsc + build 91 + cap sync OK. Sin probar en telefono ni navegador.
+
+[build 92] ELIGE TU PERSONAJE: las 10 cards entran de a una desde la derecha (105 ms entre cada una, 300 ms cada una; todas en ~1,3 s). PASIVA EFECTO: tambien tus golpes curvan hacia su lado (ay = 1200 x valor, bota en el mismo punto; no globos, cortitas, especial ni remate); texto Tu saque y tu golpe tienen mas efecto. tsc + build 92 + cap sync OK. Sin probar en telefono ni navegador.
+
+[build 93] COMO TE LLAMAS: el textbox solo deja letras y numeros (incluye tildes y ene; sin espacios ni simbolos). El lapiz aparece con rebote al terminar de escribirse Tu nombre (1,3 s). tsc + build 93 + cap sync OK. Sin probar en telefono ni navegador.
+
+[build 94] ELIGE TU PERSONAJE, ficha de la pasiva: el borde derecho del personaje se desvanece en degradado (BitmapMask con textura ob-face-fade, ultimo 32 % del ancho; sin WebGL, el corte de siempre). La ficha baja 44 px para que la cabeza no choque con las cards. tsc + build 94 + cap sync OK. Sin probar en telefono ni navegador.
+
+[build 72] Audio: ffmpeg instalado (winget Gyan.FFmpeg). Los 47 sonidos de public/mp3/ pasan a AAC .m4a 44,1 kHz: música (soundtrack-*, intro-1) 64 kbps, efectos 96 kbps (antes MP3 96 kbps la música, efectos MP3/M4A ~200 kbps y electricidad.wav 727 KB -> 34 KB). 12,6 -> 7,7 MB. Código: referencias .mp3/.wav -> .m4a (sfx.ts, matchMusic, introMusic, BootScene, MatchScene, ShopScene, CustomizeScene). Originales en _temp/respaldo_oficial/audio/ (script _temp/audio-conv2.mjs). La carpeta sigue llamándose mp3/. public de Android: 46,3 -> 41,4 MB. tsc ok. Sin probar en teléfono ni navegador (escuchar música del menú, VS, partido, victoria/derrota y efectos).
+
+[build 95] NIVEL 1, primer saque: se quita el cuadro azul de la cancha (vuelve como los demas); el cuadro azul con borde va en la PANTALLA, alrededor de la mano (donde tocar: 36 % x 20 % centrado en 0,72 W / 0,62 H). tsc + build 95 + cap sync OK. Sin probar en telefono ni navegador.
+
+[build 96] TUTORIAL (niveles 1 y 2): el aviso tras los puntos guiados dice los puntos que FALTAN (con 3-0: GANA 1 PUNTO; antes siempre GANA 4 PUNTOS). tsc + build 96 + cap sync OK. Sin probar en telefono ni navegador.
+
+[build 97] N1 P1 (peloteo guiado): la pelota se queda pegada justo tras el bote al subir 16 (GUIDE_HOLD_Z; antes en lo alto del bote, ya fuera del cuadro), en el saque del bot y en sus tiros. El bot queda congelado en la pose del impacto (holdFollowThrough 4) mientras la pelota esta pausada; se suelta cuando le pegas. tsc + build 97 + cap sync OK. Sin probar en telefono ni navegador.
+
+[build 98] N1 P1: la pelota se pega tras el bote al subir 34 (GUIDE_HOLD_Z, antes 16: avanza un poco mas). El bot saca en lo MAS ALTO del lanzamiento (botPlan.pressAt = tossVz/GRAVITY - serveContactDelay). Botones DEFENSIVO/ESPECIAL bloqueados: el numero del nivel mas abajo (0,2 -> 0,34 del radio) para no chocar con NIVEL. tsc + build 98 + cap sync OK. Sin probar en telefono ni navegador.
+
+[build 99] MENU, intro NIVEL N de la sesion: al llegar al perfil, el cuadro (con su contenido) sube sobre el oscurecido y se ve 1 s mas antes de que se quite el oscurecido; el borde dorado late mas (repeat 3). tsc + build 99 + cap sync OK. Sin probar en telefono ni navegador.
+
+[build 100] N1 P2 (primer saque): el cuadro azul cubre toda la zona tocable (de 0,55 W a la derecha) desde la red (su y en pantalla) hasta abajo. tsc + build 100 + cap sync OK. Sin probar en telefono ni navegador.
+
+[build 101] MENU, intro NIVEL N: el borde dorado del perfil late 1 s y se apaga en 350 ms, a la vez que se quita el oscurecido (antes seguia ~1 s mas). tsc + build 101 + cap sync OK. Sin probar en telefono ni navegador.
+
+[build 102] TUTORIAL: rival intercalado por nivel (characters/catalog.tutorialRivalFor): niveles impares del otro sexo, pares de tu sexo (otro personaje), rotando. Nxo: 1 Mai, 2 Mat, 3 Mai... Mai: 1 Nxo, 2 Mat (no hay otra mujer), 3 Mat... Lo usan MatchScene.rivalLk (tutorial 1v1) y la VS de MatchmakingScene (rival1Skin). tsc + build 102 + cap sync OK. Sin probar en telefono ni navegador.
+
+[build 103] N1 P1: la pelota ya no se pega por altura; tras el bote avanza hasta casi el final del cuadro de saque (linea de saque + 22) y ahi se queda (o en lo alto del bote si llega antes). En los tiros del bot del peloteo: al 20 % del cuadro marcado. tsc + build 103 + cap sync OK. Sin probar en telefono ni navegador.
+
+[build 104] RESULTADOS, tutorial perdido (todos los niveles, 1v1 contra el bot): botones CONTINUAR y REINTENTAR (reinicia el mismo partido con el mismo rival y la misma guia). tsc + build 104 + cap sync OK. Sin probar en telefono ni navegador.
+
+[build 73] Carga de personajes POR PARTIDA (NxoActor): sheetEntries(id) lista todas las tiras de una hoja; queueNxoSpriteLoads(load, ids) encola solo esas (antes TODAS al arrancar, ~250 MB GPU); releaseCharacterSprites(scene, keep) libera el resto; sheetsOf([[skin, vista]]). BootScene / MenuScene / CustomizeScene: tu personaje de espaldas y de frente (el menú y el resultado lo muestran de frente). MatchmakingScene y MatchScene (preload): + rival de frente (rival1Skin / rivalSkin, rival online vsOpp) y en el 2v2 tu compañero de espaldas; registerNxoAnims en cada create. MenuScene.create libera lo que no es tuyo si no hay Match / MatchEnd abiertos. 1v1 NXO vs MAI: ~120 MB (antes ~250 y creciendo). Prueba de humo en Chrome (vite preview): al abrir pide solo mai-v2, mai-inferno, mai-front-v2, mai-front-inferno, mai-front-end (web = Mai), sin errores. Partido sin probar. Doc de sprites §0 actualizado. OJO: tsc falla en domain/ranked.ts(97) por 'isa' (trabajo de otro proceso, no de este cambio) y otro proceso reemplazó la imagen ¡GENIAL! del nivel 1 por un dibujo (guideCheck). Sin probar en teléfono.
+
+[build 105] N1 P1, saque del bot pausado: el bot ya no pasa a la pose del golpe; se queda quieto en el sprite que tenia en ese momento (guideBotPose, se suelta al pegarle). En sus tiros del peloteo sigue la pose del impacto. tsc + build 105 + cap sync OK. Sin probar en telefono ni navegador.
+
+[build 106] MARCADOR FINAL (fx/matchFinale.ts): el trofeo junto al nombre del ganador mas pequeno (alto 46 -> 34, un poco mas cerca del nombre). tsc + build 106 + cap sync OK. Sin probar en telefono ni navegador.
+
+[build 107] PERSONALIZAR, tutorial DEFENSIVO (PowerDialog requireDemoBeforeEquip): ya no sale DESLIZA PARA VER; el boton es EQUIPAR pero no se puede tocar. Todo opaco y bloqueado menos la television (borde amarillo), con la mano DESLIZANDO de derecha a izquierda (guideFocus.swipeHint). Al deslizar y ver la demostracion 3 s (DEMO_VIEW_MS) se quita el opaco, se liberan los botones y la mano de clic senala EQUIPAR. tsc + build 107 + cap sync OK. Sin probar en telefono ni navegador.
+
+[build 108] guideFocus.swipeHint: la raya amarilla que deja la mano al deslizar se ve mucho menos (grosor 8 -> 4, opacidad 0.6 -> 0.25). tsc + build 108 + cap sync OK. Sin probar en telefono ni navegador.
+
+[build 109] PERSONALIZAR tutorial DEFENSIVO: al EQUIPAR, el opaco deja a la vista la tarjeta DEFENSIVO y se ve su animacion de equipar (playEquipFx con depth 8150); 1,5 s despues pasa a VUELVE AL MENU, con el texto 34 px mas abajo (guideFocus opts textDy / hand). tsc + build + cap sync OK. Sin probar en telefono ni navegador.
+
+[cambio 110] PERFIL (ui/ProfileDialog.ts): la primera vez que se abre, cartel breve "AQUI PODRAS VER: TU NIVEL / TUS PARTIDAS / TUS LIGAS" sobre opaco; se cierra al tocar (tutorial perfil-info). Desde ahora solo tsc (sin npm build ni cap sync, pedido del usuario). tsc OK. Sin probar en telefono ni navegador.
+
+[cambio 111] ELIGE TU PERSONAJE, card de la pasiva: ISA corrida a la derecha como MAT (SHIFT isa 0.1) para que se vea el cabello. tsc OK. Sin probar en telefono ni navegador.
+
+[cambio 112] Dialogo BIENVENID@ (ui/TutorialDialog.ts + MenuScene): ENTENDIDO sin sombra 3D (noShadow) y con el reloj de la tienda (rojo y blanco) a la izquierda del boton que se vacia en 2,5 s; el dialogo se cierra solo a los 2,5 s (antes 5 s). tsc OK. Sin probar en telefono ni navegador.
+
+[cambio 113] TUTORIAL N1/N2 (MatchScene): N1 P3 saque directo ahora con la pausa en lo mas alto + "APUNTA ... 6 ZONAS" (aimPausePoint, antes N2 P1). N2 queda en 2 puntos guiados: P1 SACA (normal o directo), tu saque va al bot (l2Stage fly), te tira fuerte al otro lado, quieto y DEFENSIVO; P2 saque con efecto. fixedServer N2: sacas tu los 2. docs/TUTORIAL-PLAN.md al dia. tsc OK. Sin probar en telefono ni navegador.
+
+[cambio 114] N1: la pausa en lo mas alto del saque (APUNTA ... 6 ZONAS) ahora en P2 (saque normal tocando) y P3 (saque directo). El check del tutorial se dibuja por DETRAS de tu personaje (depth segun su posicion). tsc OK. Sin probar en telefono ni navegador.
+
+[cambio 115] N1 check del tutorial: su profundidad sigue cada cuadro a la de tu personaje - 4 (keepCheckBehind en tickGuide); antes quedaba encima cuando el oscurecido cambiaba el depthBoost. tsc OK. Sin probar en telefono ni navegador.
+
+[cambio 116] Cuenta nueva con 0 monedas (domain/player.ts STARTING_COINS 5000 -> 0). Las cuentas ya creadas conservan las suyas. tsc OK. Sin probar en telefono ni navegador.
+
+[cambio 117] PowerDialog (En accion / poderes): tocar fuera solo cierra si el toque EMPIEZA fuera; soltar fuera al final de un deslizamiento ya no cierra. tsc OK. Sin probar en telefono ni navegador.
+
+[cambio 118] PERFIL, resumen "AQUI PODRAS VER": se cierra solo a los 3 s con el reloj (clockTimer de TutorialDialog, ahora exportado) en vez de "TOCA PARA SEGUIR" (tocar tambien lo cierra); al cerrarse, la mano de clic senala CERRAR del perfil. tsc OK. Sin probar en telefono ni navegador.
+
+[cambio 119] N2 P1: el bot espera tu saque justo DETRAS de la linea de saque (NET_X + sl + 45), fuera del cuadro (antes dentro, sl*0.9). tsc OK. Sin probar en telefono ni navegador.
+
+[cambio 120] N2 P1 texto "TE TOCA SACAR" (antes SACA). Saque con efecto mas notorio (config SERVE spinAy 110->180, spinBigAy 170->260, spinKick 0.12->0.18). MAT rival (vista front) mas grande: standHeight 150->135 en los 6 mat-front-*.json (~11 %). tsc OK. Sin probar en telefono ni navegador.
+
+[cambio 121] N2 P1: mientras estas quieto (l2Lock, desde que devuelves/sacas hasta el DEFENSIVO) el joystick se ve BLOQUEADO: aro rojo, fondo oscuro y candado (Joystick.setLocked); tocarlo hace temblar el candado. tsc OK. Sin probar en telefono ni navegador.
+
+[cambio 122] PUNTOS GUIADOS (MatchScene spKind/spBotShot/tickScripted/spBlockHits/spRetry): N2 P3 GLOBO (sacas, el bot devuelve y sube a la red, pelota quieta delante de ti, JOYSTICK ARRIBA; mision nueva t02Lob). N3 nueva guia l3 (domain/tutorial GUIDE.l3, MenuScene, MatchEndScene): P1 CORTITA (bot se queda atras, JOYSTICK ABAJO), P2 REMATE (globo corto del bot, VE AL CIRCULO / TOCA PARA REMATAR), P3 ESPECIAL del rival forzado (spForceSpecial; no se puede devolver), P4 libre. Misiones N3: Cortita, Remata un globo, Gana. Joystick.pulse(down). docs/TUTORIAL-PLAN.md al dia. tsc OK. Sin probar en telefono ni navegador.
+
+[cambio 123] Partido: oculto siempre el boton de prueba de la estrella (A LAS ESTRELLAS recibido, bajo AUTO), tambien en modo desarrollo. tsc OK. Sin probar en telefono ni navegador.
+
+[cambio 124] N1 pausa del saque (reloj): el boton SAQUE DIRECTO se ve en GRIS bloqueado, como las habilidades bloqueadas por nivel (ServeButton.setGrey), visible sobre el oscuro en P3. tsc OK. Sin probar en telefono ni navegador.
+
+[cambio 125] MARCADOR FINAL: trofeo del ganador 5 px mas abajo (y - 2 -> y + 3) para quedar centrado con el nombre. tsc OK. Sin probar en telefono ni navegador.
+
+[cambio 126] N1 saque del bot: la pelota quieta avanza un poco mas (pasa la linea de saque: serviceLine - 30) para no chocar con MUEVE EL JOYSTICK HACIA LA PELOTA; la sombra de la pelota tambien sobre el oscuro (Ball shadow depth + depthBoost).
+
+[cambio 127] MENU: la card MODO RIESGO solo desde el nivel 20 (o modo desarrollo). tsc OK. Sin probar en telefono ni navegador.
+
+[cambio 128] N1 P2/P3: al lanzar la pelota desaparecen el cuadro azul (solo en la espera del saque) y el boton SAQUE DIRECTO; durante el reloj no hay mano (pantalla limpia); despues del reloj la mano senala tocar a la derecha y CUALQUIER toque (o boton) golpea (onServeButton en wait). tsc OK. Sin probar en telefono ni navegador.
+
+[cambio 129] N1 P1 saque del bot: la pelota quieta avanza mas (serviceLine - 60) y el texto MUEVE EL JOYSTICK HACIA LA PELOTA sale mas arriba (0,34 H en vez de 0,46; solo ese). tsc OK. Sin probar en telefono ni navegador.
+
+[cambio 130] Tutorial: alcance para pegarle a la pelota quieta (N1 held y N2 held) ahora el normal (HIT_RANGE x1, antes x1,7: golpeaba muy antes de llegar); la que viene en movimiento en N1 x1,3. tsc OK. Sin probar en telefono ni navegador.
+
+[cambio 131] Tutorial: con MUEVE EL JOYSTICK HACIA LA PELOTA, la pelota quieta tiene un pulso (dos aros amarillo/blanco que crecen cada 0,9 s, sobre el oscuro; tickBallPulse). tsc OK. Sin probar en telefono ni navegador.
+
+[cambio 132] N1 P2: el cuadro azul del saque normal vuelve a salir junto con la mano cuando termina el reloj (l2AimPause wait). tsc OK. Sin probar en telefono ni navegador.
+
+[cambio 133] N1 P3: tras el reloj vuelve el boton SAQUE DIRECTO con la mano encima y se golpea SOLO con el (P2 solo tocando la pantalla). tsc OK. Sin probar en telefono ni navegador.
+
+[cambio 134] N1 P2/P3: la mano de clic tambien desaparece al lanzar el saque y vuelve tras el reloj (con el boton / cuadro azul). tsc OK. Sin probar en telefono ni navegador.
+
+[cambio 135] MENU al volver de la partida: la guia (opaco + que tocar) sale 0,2 s despues de que termina la animacion de EXP/subida de nivel (playXpGain onDone) en vez de 6,5 s fijos (respaldo 9 s). Texto de la guia DEFENSIVO: ABRIR PERSONALIZAR PERSONAJE. tsc OK. Sin probar en telefono ni navegador.
+
+[cambio 136] MENU guia DEFENSIVO: ABRIR PERSONALIZAR PERSONAJE centrado en el ancho de la pantalla (guideFocus opts.centerText). tsc OK. Sin probar en telefono ni navegador.
+
+[build 74] Memoria: (1) AMBIENTES: ya no se cargan los 5 al arrancar (BootScene sin queueAmbienteLoad). CourtView: el sorteo elige entre todos (ambientesFor / resolveAmbiente sin mirar si están cargados), queueAmbiente(load, key) y releaseAmbientes(scene); drawCourtView no dibuja la imagen si falta. MatchmakingScene carga el elegido durante la búsqueda; MatchScene.preload lo resuelve y carga (y solo los espectadores / figuras de ESE ambiente); MenuScene.create libera ambientes con los personajes. (2) ui/sceneTextures.ts releaseSceneTexturesOnExit(scene): las imágenes y hojas que carga el preload de Liga, Tienda, Pase y Personalizar se liberan al salir (con sus animaciones), salvo lo compartido (personajes, emotes, emblemas, monedas/dinero, botones del partido, retratos). Prueba en Chrome con vite dev (window.__game): Menú -> Liga -> Menú -> Tienda -> Menú -> Personalizar -> Menú -> búsqueda -> partido -> Menú, sin errores; la Liga carga 17 piezas y al volver quedan 0; Tienda y Personalizar cargan los 10 aros de carga y al volver 0; el partido carga solo ambiente-1 y MAT de frente (rival de MAI) y al volver al menú se liberan. tsc ok. Sin probar en teléfono.
+
+[build 75] 2v2 contra bots con variedad: catalog.doublesSkinsFor(skin) elige al azar compañero, rival 1 y rival 2 distintos entre sí y del tuyo (con pocos personajes se repiten como antes). MatchmakingScene lo sortea en init (nombres, VS: mateSkin / rivals / cards, carga de hojas) y lo pasa al partido (data.duo); MatchScene usa duo en rivalLk, rival2Skin(), skinOf, actores, kits (randomDoublesKits / tutorial), carga de hojas y miradas (queueGazeArt); la revancha lo conserva (MatchEndData.doubles.duo). 2v2 online sin cambios (compañero = el otro humano, rivales como antes). Prueba en Chrome (vite dev, jugando con MAI): 3 partidos 2v2 -> compañero NXO / rivales ISA y MAT, y otro con compañero ISA / rivales MAT y NXO; nombres iguales a los personajes; sin errores. tsc ok. Sin probar en teléfono.
+
+[build 76] 1v1 contra el bot con el MODO DESARROLLO encendido: el rival varía al azar entre los personajes listos (catalog.randomRivalFor: con arte de frente y distinto del tuyo). MatchmakingScene lo sortea en init (VS, nombre, carga de hojas) y lo pasa al partido (data.rivalSkin -> MatchScene.rivalPick, usado en rivalLk); la revancha lo repite (MatchEndData.rivalSkin). Con el modo apagado no cambia nada (rivalFor / tutorialRivalFor). Prueba en Chrome (vite dev, MAI, modo desarrollo ON): rivales ISA, ISA, ISA, MAT; nombres iguales; sin errores. tsc ok. Sin probar en teléfono.
+
+[build 77] PERSONALIZAR, tarjeta ZONA: sin el aviso 'N RAYOS PARA USAR'. Con Rayos para gastar la tarjeta entera brilla en dorado y late (borde + halo, destello que la recorre), los + pasan a dorados y laten, y el contador de rayos de arriba a la derecha también brilla y late (raysPill). Los 5 atributos ocupan el espacio ganado: filas repartidas en todo el alto (desde top+92), nombre 15 px con borde, barra 16 px, valor 13 px, + de 15 px. Capturas (Chrome, 720x1280): _temp/para-chatgpt/personalizar-a.png (0 rayos) y personalizar-rayos-a.png (5 rayos). tsc ok. Sin probar en teléfono.
+
+[Claude, zona] PERSONALIZAR, tarjeta ZONA: sin el aviso 'N RAYOS PARA USAR'. Con Rayos para gastar la tarjeta entera brilla en dorado y late (borde + halo, destello que la recorre), los + pasan a dorados y laten, y el contador de rayos de arriba a la derecha también brilla y late (raysPill). Los 5 atributos usan el espacio ganado: filas repartidas en todo el alto (desde top+92), nombre 15 px con borde, barra 16 px, valor 13 px, + de 15 px. Capturas (Chrome, 720x1280): _temp/para-chatgpt/personalizar-a.png (0 rayos) y personalizar-rayos-a.png (5 rayos). tsc ok (antes del build). OJO: el npm run build de este cambio se quedó colgado en tsc más de 5 min (la máquina parecía ocupada, quizá con otro proceso compilando a la vez; además otro proceso usa los mismos números de build en estas notas). No se sincronizó con Android. Sin probar en teléfono.

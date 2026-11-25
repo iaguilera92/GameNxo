@@ -29,6 +29,7 @@ const TRAIL_STEP = 4.5;
 export const ZONE_EYES: Record<string, { front: { up: number; dx: number }; back: { up: number; dx: number } }> = {
   nxo: { front: { up: 132, dx: 9 }, back: { up: 117, dx: 10 } },
   mai: { front: { up: 110, dx: 7 }, back: { up: 121, dx: 10 } },
+  mat: { front: { up: 114, dx: 12 }, back: { up: 117, dx: 10 } },
 };
 /** ojos del personaje `skin` en la vista `view` (los desconocidos, como NXO) */
 export function zoneEyes(skin: string | undefined, view: 'front' | 'back') {

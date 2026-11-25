@@ -87,8 +87,8 @@ export function playMatchFinale(scene: Phaser.Scene, o: MatchFinaleOpts): number
     numbers.push(n);
     if (r.winner && scene.textures.exists('ui-trofeo')) {
       // (21-11-2026, usuario) TROFEO (trofeo.png, textura 'ui-trofeo' que carga MatchScene) en lugar de la corona dibujada, junto al nombre del ganador
-      const tr = scene.add.image(-pw / 2 + 40 + name.displayWidth + 34, y - 2, 'ui-trofeo');
-      const k = 46 / tr.height;
+      const tr = scene.add.image(-pw / 2 + 40 + name.displayWidth + 28, y + 3, 'ui-trofeo'); // (25-11-2026, usuario) 5 px mas abajo: centrado con el nombre
+      const k = 34 / tr.height; // (25-11-2026, usuario) más pequeño (antes 46)
       tr.setScale(0).setAngle(-20);
       panel.add(tr);
       scene.tweens.add({ targets: tr, scale: k, angle: 0, delay: 900, duration: 380, ease: 'Back.easeOut' });

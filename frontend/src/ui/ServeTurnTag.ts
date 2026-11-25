@@ -45,6 +45,10 @@ export class ServeTurnTag {
     this.c.add(this.img ? [this.img, this.pill, this.label, this.arrow] : [this.pill, this.label, this.arrow]);
   }
   /** `x, y` = punto sobre la cabeza (pantalla/mundo). `who` = quién saca, o null para ocultar. */
+  /** (25-11-2026) nivel 1: por encima del oscurecido de la guía */
+  setFront(on: boolean) {
+    this.c.setDepth(on ? 5620 : 4600);
+  }
   update(dt: number, who: 'player' | 'bot' | null, x: number, y: number) {
     this.t += dt;
     if (who && who !== this.who) this.build(who);

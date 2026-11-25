@@ -28,15 +28,22 @@ export class Score {
 
   /** Saca el jugador en juegos pares y el bot en impares (con serverOffset 1, al revés). */
   get server(): Side {
-    if (this.shortMatch) return ((this.serverOffset + Math.floor((this.played + 1) / 2)) % 2) as Side;
+    if (this.fixedServer !== null) return this.fixedServer;
+    // (25-11-2026, usuario) por los puntos que CUENTAN (los guiados del tutorial no): 1 el jugador, 2 el bot, 2 el jugador...
+    if (this.shortMatch) return ((this.serverOffset + Math.floor((this.points[0] + this.points[1] + 1) / 2)) % 2) as Side;
     return ((this.gameIndex + this.serverOffset) % 2) as Side;
   }
 
   /** puntos jugados en el partido (crece siempre, también en iguales/ventaja): numera los estados en red */
   played = 0;
 
-  pointTo(w: Side): PointResult {
+  /** (25-11-2026, usuario) tutorial: quién saca, fijo (puntos guiados); null = el turno de siempre */
+  fixedServer: Side | null = null;
+
+  /** `practice` (25-11-2026, usuario): punto guiado del tutorial, se juega pero NO suma al marcador */
+  pointTo(w: Side, practice = false): PointResult {
     this.played++;
+    if (practice) return { gameWinner: null, matchWinner: null };
     if (this.shortMatch) {
       this.points[w]++;
       return { gameWinner: null, matchWinner: this.points[w] >= 4 ? w : null };

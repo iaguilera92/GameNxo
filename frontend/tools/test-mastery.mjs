@@ -23,10 +23,10 @@ const test = (name, fn) => {
   console.log(`  ✓ ${name}`);
 };
 
-test('cada personaje con pasiva: Nxo AGILIDAD, Mai PRECISIÓN', () => {
+test('Nxo tiene Agilidad, Mai Precisión y Jun Resistencia', () => {
   assert.equal(P.passiveOf('nxo').id, 'agility');
   assert.equal(P.passiveOf('mai').id, 'precision');
-assert.equal(P.passiveOf('jun').id, 'strength'); // (21-11-2026) Jun = FUERZA
+  assert.equal(P.passiveOf('jun').id, 'resistance');
   assert.equal(P.passiveOf('otro'), undefined);
 });
 test('curva: nivel 0 sin puntos, una victoria = nivel 1, nivel 10 con el total y nunca más', () => {

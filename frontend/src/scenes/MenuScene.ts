@@ -2,6 +2,8 @@ import Phaser from 'phaser';
 import { C, FONT, restartOnResize, textStyle } from '../ui/theme';
 import { Character, playerLook } from '../objects/Character';
 import { getProfile, levelProgress } from '../logic/Profile';
+import { queueNxoSpriteLoads, registerNxoAnims, releaseCharacterSprites, sheetsOf } from '../objects/NxoActor';
+import { releaseAmbientes } from '../view/CourtView';
 import { addPortrait } from '../characters/portrait';
 import { applyCharColor } from '../fx/CharColorFx';
 import type { SkinId } from '../characters/skins';
@@ -121,21 +123,93 @@ export class MenuScene extends Phaser.Scene {
   private refreshGuide() {
     this.guideOverlay?.destroy();
     this.guideOverlay = undefined;
+    this.gearBtn?.setDepth(0);
     if (isDevMode() || !this.guideRects) return;
     const p = getPlayer();
     const step = guidedStep(p.level, p.tutorial);
     if (!step) return;
     const target = step === 'defensive' ? this.guideRects.defensive : step === 'profile' ? this.guideRects.profile : this.modeRects[0];
     if (!target) return;
-    const labels = { play: 'TOCA JUGAR', defensive: 'ABRE PERSONAJE PARA VER TU DEFENSIVO', profile: 'TOCA TU PERFIL', spin: 'TOCA JUGAR PARA PRACTICAR EL DEFENSIVO' }; // (24-11-2026) nivel 2: solo DEFENSIVO
-    this.guideOverlay = guideFocus(this, target, labels[step]);
+    const labels = { play: 'TOCA PARA JUGAR', defensive: 'ABRIR PERSONALIZAR PERSONAJE', profile: 'TOCA TU PERFIL', spin: 'TOCA PARA JUGAR', l3: 'TOCA PARA JUGAR' }; // (24-11-2026) nivel 2: solo DEFENSIVO
+    const focus = step === 'play' ? { ...target, h: target.h + 24 } : target;
+    this.guideOverlay = guideFocus(this, focus, labels[step], { centerText: step === 'defensive' }); // (25-11-2026, usuario) centrado: no choca con el personaje ni la mano
+    // (25-11-2026, usuario) AJUSTES sigue disponible durante la guía (ahí irá INICIAR SESIÓN): por encima del oscurecido, sin mano ni animación
+    this.gearBtn?.setDepth(8101);
   }
+  /** el cuadro del perfil (arriba): destino del NIVEL N al abrir la app */
+  private profileCardObj?: Phaser.GameObjects.Container;
+
+  /**
+   * (25-11-2026, usuario) AL ABRIR LA APP (primera vez que se entra al menú en esta sesión; tutorial, sin modo desarrollo): todo oscuro y "NIVEL N"
+   * grande en el centro; vuela al cuadro del perfil y el cuadro hace el efecto de EQUIPADO (destello, borde dorado, anillo, chispas y vibra).
+   * No sale en la primera entrada de una cuenta nueva (allí está la bienvenida). true = se muestra (y llama a `done` al terminar).
+   */
+  private sessionLevelIntro(done: () => void): boolean {
+    const first = !this.registry.get('session.levelIntro');
+    this.registry.set('session.levelIntro', true);
+    const pl = getPlayer();
+    const r = this.guideRects?.profile;
+    if (!first || isDevMode() || pl.level >= MAX_LEVEL || !pl.tutorial?.includes(GUIDE.welcome) || !r || !this.profileCardObj) return false;
+    const W = this.scale.width;
+    const H = this.scale.height;
+    const dim = this.add.rectangle(0, 0, W, H, 0x02060f, 0.75).setOrigin(0).setDepth(9000).setAlpha(0).setInteractive();
+    const t = this.add.text(W / 2, H * 0.45, 'NIVEL ' + pl.level, { ...textStyle(84, '#ffd23f'), stroke: '#2a1600', strokeThickness: 10 }).setOrigin(0.5).setDepth(9001).setScale(0.3).setAlpha(0);
+    this.tweens.add({ targets: dim, alpha: 1, duration: 250 });
+    this.tweens.add({ targets: t, alpha: 1, scale: 1, duration: 420, ease: 'Back.easeOut' });
+    this.time.delayedCall(1300, () => {
+      if (!t.active) return;
+      this.tweens.add({ targets: t, x: r.x, y: r.y, scale: 0.22, duration: 600, ease: 'Cubic.easeIn', onComplete: () => {
+        t.destroy();
+        // (25-11-2026, usuario) el cuadro del perfil (con su contenido) se ve sobre el oscurecido 1 s más antes de volver
+        const card = this.profileCardObj;
+        const d0 = card?.depth ?? 0;
+        card?.setDepth(9001);
+        this.profileEquipFx(r);
+        this.tweens.add({ targets: dim, alpha: 0, delay: 1000, duration: 350, onComplete: () => { dim.destroy(); card?.setDepth(d0); done(); } });
+      } });
+    });
+    return true;
+  }
+
+  /** efecto de EQUIPADO (como en PERSONAJE) sobre el cuadro del perfil, y el cuadro vibra */
+  private profileEquipFx(c: { x: number; y: number; w: number; h: number }) {
+    sfx(this, 'equipar');
+    const r = { x: c.x - c.w / 2, y: c.y - c.h / 2, w: c.w, h: c.h };
+    const GOLD = 0xffd23f, RAD = 20, D = 9002;
+    const card = this.profileCardObj;
+    if (card) {
+      const x0 = card.x;
+      this.tweens.add({ targets: card, x: x0 + 5, duration: 45, yoyo: true, repeat: 5, onComplete: () => card.setX(x0) });
+    }
+    const flash = this.add.graphics().setDepth(D).setBlendMode(Phaser.BlendModes.ADD);
+    flash.fillStyle(0xffffff, 0.6).fillRoundedRect(r.x, r.y, r.w, r.h, RAD);
+    this.tweens.add({ targets: flash, alpha: 0, duration: 520, ease: 'Cubic.easeOut', onComplete: () => flash.destroy() });
+    const edge = this.add.graphics().setDepth(D + 1).setBlendMode(Phaser.BlendModes.ADD);
+    edge.lineStyle(10, GOLD, 0.35).strokeRoundedRect(r.x - 2, r.y - 2, r.w + 4, r.h + 4, RAD + 2);
+    edge.lineStyle(4, 0xfff6c8, 1).strokeRoundedRect(r.x, r.y, r.w, r.h, RAD);
+    // (25-11-2026, usuario) el borde se apaga A LA VEZ que el cuadro vuelve bajo el oscurecido (1 s de latido + 350 ms, como el oscurecido)
+    this.tweens.add({ targets: edge, alpha: { from: 1, to: 0.25 }, duration: 250, yoyo: true, repeat: 1, onComplete: () => this.tweens.add({ targets: edge, alpha: 0, duration: 350, onComplete: () => edge.destroy() }) });
+    const ring = this.add.graphics({ x: c.x, y: c.y }).setDepth(D).setBlendMode(Phaser.BlendModes.ADD);
+    ring.lineStyle(5, GOLD, 0.9).strokeRoundedRect(-r.w / 2, -r.h / 2, r.w, r.h, RAD);
+    this.tweens.add({ targets: ring, scale: 1.28, alpha: 0, duration: 620, ease: 'Cubic.easeOut', onComplete: () => ring.destroy() });
+    for (let i = 0; i < 12; i++) {
+      const px = r.x + Math.random() * r.w;
+      const py = Math.random() < 0.5 ? r.y : r.y + r.h;
+      const star = this.add.star(px, py, 4, 2, 7, i % 2 ? GOLD : 0xffffff).setDepth(D + 2).setBlendMode(Phaser.BlendModes.ADD).setScale(0.4);
+      this.tweens.add({ targets: star, y: py + (py === r.y ? -1 : 1) * Phaser.Math.Between(14, 38), x: px + Phaser.Math.Between(-16, 16), scale: 1.1, alpha: 0, angle: 140, duration: Phaser.Math.Between(500, 800), delay: Phaser.Math.Between(0, 220), ease: 'Cubic.easeOut', onComplete: () => star.destroy() });
+    }
+  }
+
+  /** botón de AJUSTES (engranaje) de la barra de arriba */
+  private gearBtn?: Phaser.GameObjects.Container;
   constructor() {
     super('Menu');
   }
 
   preload() {
+    queueNxoSpriteLoads(this.load, sheetsOf([[getProfile().skin, 'back'], [getProfile().skin, 'front']])); // (25-11-2026) tu personaje (p. ej. recién elegido o cambiado)
     if (!this.textures.exists('menu-bg')) this.load.image('menu-bg', 'assets/menu-bg.webp');
+    if (!this.textures.exists('guide-click')) this.load.image('guide-click', 'assets/ui/guide-click.webp'); // mano del tutorial (guideFocus)
     queueProfileFrameArt(this.load); // marcos del perfil por liga (assets/marcos/<liga>.webp)
     if (!this.textures.exists('ruleta-frame')) this.load.image('ruleta-frame', 'assets/ruleta-frame.webp'); // marco de las ruletas pequeñas (DailyWheels)
     if (!this.textures.exists('daily-coins-art')) this.load.image('daily-coins-art', 'assets/monedas.webp');
@@ -202,6 +276,13 @@ export class MenuScene extends Phaser.Scene {
   }
 
   create() {
+    // (25-11-2026, usuario) los personajes del partido que terminó se liberan (solo queda el tuyo); nunca con un partido abierto
+    registerNxoAnims(this);
+    const busy = ['Match', 'MatchEnd'].some((k) => this.scene.isActive(k) || this.scene.isPaused(k) || this.scene.isSleeping(k));
+    if (!busy) {
+      releaseCharacterSprites(this, sheetsOf([[getProfile().skin, 'back'], [getProfile().skin, 'front']]));
+      releaseAmbientes(this); // (25-11-2026) el fondo de cancha del partido que terminó
+    }
     const W = this.scale.width;
     const H = this.scale.height;
     restartOnResize(this);
@@ -319,7 +400,7 @@ export class MenuScene extends Phaser.Scene {
       const p = getPlayer();
       if (!isDevMode() && p.level <= 15) {
         const step = guidedStep(p.level, p.tutorial);
-        this.scene.start('Matchmaking', { skipSearch: true, from: 'Menu', guide: step === 'play' ? 'first' : step === 'spin' ? 'spin' : undefined });
+        this.scene.start('Matchmaking', { skipSearch: true, from: 'Menu', guide: step === 'play' ? 'first' : step === 'spin' ? 'spin' : step === 'l3' ? 'l3' : undefined });
         return;
       }
       // (24-11-2026, usuario) niveles 16 a 19: partido COMPLETO amistoso contra el bot (sin apuesta: las ligas se abren en el nivel 20)
@@ -348,24 +429,30 @@ export class MenuScene extends Phaser.Scene {
     const wheelOpened = showAfterFirstMatch ? this.dailyWheels(W, playY) : false;
     // (24-11-2026, usuario) regalos del tutorial de los niveles ya alcanzados (gris en el 8, estela azul en el 10)
     if (!isDevMode()) commit((s) => grantTutorialGifts(s));
-    this.refreshGuide();
+    // (25-11-2026, usuario) la guía del tutorial (oscurecido + qué tocar) sale DESPUÉS de los premios de la partida (monedas, EXP, ruleta): ver tutorial()
     const guidePlayer = getPlayer();
     if (!isDevMode() && guidePlayer.level === 1 && !guidePlayer.tutorial?.includes(GUIDE.welcome)) {
-      openTutorialDialog(this, { id: GUIDE.welcome, level: 1, title: '¡BIENVENIDO!', pages: ['Tu primer partido empieza aquí.'] }, () => {
+      openTutorialDialog(this, { id: GUIDE.welcome, level: 1, title: '¡BIENVENID@!', pages: ['Tu primer rival te espera. ¡Empecemos!'] }, () => {
         commit((s) => markTutorialSeen(s, GUIDE.welcome));
         commit((s) => markTutorialSeen(s, 'l01-bienvenida'));
-      }, 2000);
+      }, 2500);
     }
     // EXP de la partida: "+N EXP" y las barras de nivel y del pase se llenan; con ruleta, DESPUÉS de cerrarla
     // TUTORIAL por nivel (domain/tutorial.ts; solo con el modo desarrollo apagado): DESPUÉS de la ruleta y de la presentación de la EXP
     // (que dura ~6 s), para que el aviso de un nivel recién alcanzado no se pise con ellas
-    const tutorial = (delay: number) => this.time.delayedCall(delay, () => maybeShowTutorial(this));
+    let tutDone = false;
+    const tutorial = (delay: number) => this.time.delayedCall(delay, () => {
+      if (tutDone) return;
+      tutDone = true;
+      this.refreshGuide();
+      maybeShowTutorial(this);
+    });
     // (21-11-2026, usuario) ORDEN al volver de una partida: 1) las MONEDAS, todas juntas en UN solo vuelo al monedero (partida + adicionales + ruleta),
     // 2) las MONEDAS 2V2 (si ganaste), 3) la EXP y 4) la MAESTRÍA (es la 3.ª oleada de la EXP: playXpGain). Con la ruleta abriéndose sola, todo espera a que se cierre
     // (y lo suyo lo muestra wheelClosed).
     const coinsTotal = this.matchCoins + (wheelOpened ? 0 : this.pendingCoins);
     if (!wheelOpened) this.pendingCoins = 0; // ya va dentro del total
-    const xpStep = () => (this.xpGain > 0 ? (this.playXpGain(), tutorial(6500)) : tutorial(500));
+    const xpStep = () => (this.xpGain > 0 ? (this.playXpGain(() => tutorial(200)), tutorial(9000)) : tutorial(500)); // 9 s: respaldo
     const coins2Step = () => (this.coins2v2Gain > 0 ? this.playCoins2v2(this.coins2v2Gain, xpStep) : xpStep());
     const coinsStep = () => (coinsTotal > 0 ? this.playMatchCoins(coinsTotal, coins2Step) : coins2Step());
     if (coinsTotal > 0 || this.coins2v2Gain > 0) {
@@ -373,16 +460,20 @@ export class MenuScene extends Phaser.Scene {
       else this.time.delayedCall(450, coinsStep);
     } else if (this.xpGain > 0) {
       const play = () => {
-        this.playXpGain();
-        tutorial(6500);
+        this.playXpGain(() => tutorial(200));
+        tutorial(9000); // respaldo
       };
       if (wheelOpened) this.time.delayedCall(700, () => whenWheelReady(this, (w) => w.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.time.delayedCall(250, play))));
       else this.time.delayedCall(550, play);
     } else if (wheelOpened) this.time.delayedCall(700, () => whenWheelReady(this, (w) => w.events.once(Phaser.Scenes.Events.SHUTDOWN, () => tutorial(500))));
-    else tutorial(1600); // tras el fundido y la cascada de ruletas
+    else {
+      // sin premios pendientes: la guía ya (al abrir la app, después del NIVEL N)
+      if (!this.sessionLevelIntro(() => this.sys.isActive() && this.refreshGuide())) this.refreshGuide();
+      this.time.delayedCall(1600, () => maybeShowTutorial(this)); // tras el fundido y la cascada de ruletas
+    }
     if (this.textures.exists(NAV.key)) this.navImage(W, H);
     else this.bottomBar(W, navTop, navH);
-    this.riskCard(W, playY);
+    if (isDevMode() || getPlayer().level >= MAX_LEVEL) this.riskCard(W, playY); // (25-11-2026, usuario) MODO RIESGO: invisible hasta el nivel 20
   }
 
   /** zonas de los botones JUGAR y 2v2 (playRow): el MODO RIESGO los hace brillar mientras corre */
@@ -869,7 +960,9 @@ export class MenuScene extends Phaser.Scene {
     const top = bottom - (y1 - y0) * s;
     // origen = esquina inferior izquierda del contenido visible (la imagen trae margen transparente)
     // (21-11-2026, usuario) el arte nuevo (nav-bar.png -> barra-inicio.webp) ya trae LIGA / INICIO / TORNEO escritos: ya no se escribe nada encima
-    this.add.image(NAV.side, bottom, NAV.key).setOrigin(x0 / NAV.w, y1 / NAV.h).setScale(s).setDepth(100);
+    // (25-11-2026) la imagen puede estar achicada: las medidas siguen en px del original (NAV.w), la escala se corrige por el ancho real
+    const navK = NAV.w / (this.textures.get(NAV.key).getSourceImage() as { width: number }).width;
+    this.add.image(NAV.side, bottom, NAV.key).setOrigin(x0 / NAV.w, y1 / NAV.h).setScale(s * navK).setDepth(100);
 
     const zone = (from: number, to: number, onClick: () => void) => {
       const zx = NAV.side + (W - NAV.side * 2) * from;
@@ -897,7 +990,7 @@ export class MenuScene extends Phaser.Scene {
 
   // ---------------------------------------------------------------- ruletas diarias
   /** "+N EXP" sobre las cards de arriba y animación de sus barras (EXP de la partida recién terminada). */
-  private playXpGain() {
+  private playXpGain(onDone?: () => void) {
     if (!this.sys.isActive()) return;
     // PRESENTACIÓN de la EXP ganada (el sonido recolectar-exp trae 3 "pings"): la pantalla se oscurece, las cards de NIVEL y
     // PASE quedan encendidas encima, el total ganado se ve grande en el centro y sale en 3 oleadas de orbes hacia las dos
@@ -1059,6 +1152,7 @@ export class MenuScene extends Phaser.Scene {
       this.tweens.add({ targets: dim, fillAlpha: 0, delay: 1100, duration: 500, onComplete: () => {
         dim.destroy();
         lifted.forEach((l) => l.obj?.setDepth(l.prev));
+        onDone?.(); // (25-11-2026, usuario) la guía sale apenas termina (antes 6,5 s fijos)
       } });
     };
     // las barras empiezan a llenarse con la primera llegada y siguen mientras entran las oleadas
@@ -1840,7 +1934,7 @@ export class MenuScene extends Phaser.Scene {
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => offCash());
     cash.setSize(COUNTER_W, COUNTER_H).setInteractive(new Phaser.Geom.Rectangle(0, 0, COUNTER_W, COUNTER_H), Phaser.Geom.Rectangle.Contains);
     cash.on('pointerup', () => this.scene.start('Shop'));
-    this.gearButton(gx, gy, gs, () => showSettings(this));
+    this.gearBtn = this.gearButton(gx, gy, gs, () => showSettings(this));
   }
 
   /** PASE DE BATALLA terminado (fin de mes): bloqueado con candado hasta que llegue otro. */
@@ -1896,7 +1990,9 @@ export class MenuScene extends Phaser.Scene {
     if (art) {
       g.fillStyle(0x000000, 0.3).fillRoundedRect(3, 6, w, h, 20);
       c.add(g);
-      c.add(this.add.image(-A.bx * sx, -A.by * sy, 'menu-pass-card').setOrigin(0).setScale(sx, sy));
+      // (25-11-2026) medidas en px del original (2000): la escala se corrige si el archivo está achicado
+      const pk = 2000 / (this.textures.get('menu-pass-card').getSourceImage() as { width: number }).width;
+      c.add(this.add.image(-A.bx * sx, -A.by * sy, 'menu-pass-card').setOrigin(0).setScale(sx * pk, sy * pk));
     }
     const bx0 = art ? ax(A.shieldX) : 10 + 43;
     if (!art) {
@@ -2039,6 +2135,7 @@ export class MenuScene extends Phaser.Scene {
     const dy = (ch - 96) / 2; // el contenido se diseñó para 96 de alto: se centra
     const cw = Math.min(maxW, 380); // compacto
     const card = this.add.container(x, y);
+    this.profileCardObj = card;
 
     // fondo (mismo lenguaje que el botón de ajustes y las tarjetas laterales)
     const g = this.add.graphics();
@@ -2256,6 +2353,7 @@ export class MenuScene extends Phaser.Scene {
       this.tweens.add({ targets: gear, angle: gear.angle + 45, duration: 300, ease: 'Back.easeOut' });
       onClick();
     });
+    return c;
   }
 
   /**
@@ -2371,7 +2469,9 @@ export class MenuScene extends Phaser.Scene {
       g.fillStyle(0x000000, 0.35).fillRoundedRect(3, 6, w, h, R);
       if (art) {
         c.add(g);
-        c.add(this.add.image(-A.bx * sx, -A.by * sy, artKey).setOrigin(0).setScale(sx, sy));
+        // (25-11-2026) medidas en px del original (1774): la escala se corrige si el archivo está achicado
+        const lk = 1774 / (this.textures.get(artKey).getSourceImage() as { width: number }).width;
+        c.add(this.add.image(-A.bx * sx, -A.by * sy, artKey).setOrigin(0).setScale(sx * lk, sy * lk));
       } else {
         g.lineStyle(8, accent, 0.2).strokeRoundedRect(0, 0, w, h, R);
         g.fillStyle(0x0b1733, 0.96).fillRoundedRect(0, 0, w, h, R);

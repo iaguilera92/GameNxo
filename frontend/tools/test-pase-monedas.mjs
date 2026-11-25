@@ -12,6 +12,8 @@ export async function resolve(spec, ctx, next) {
 register('data:text/javascript,' + encodeURIComponent(hook), import.meta.url);
 const { newPlayer } = await import('../src/domain/player.ts');
 const { BP_SEASON, bpClaim } = await import('../src/domain/battlePass.ts');
+const { equipColor, equipSkin } = await import('../src/domain/operations.ts');
+const { migratePlayer } = await import('../src/domain/migrate.ts');
 const { WHEEL, validateWheelConfig } = await import('../src/domain/wheelConfig.ts');
 const W = await import('../src/domain/dailyWheel.ts');
 let ok = 0;
@@ -23,6 +25,38 @@ const full = () => {
   s.bp = { ...s.bp, season: BP_SEASON.id, xp: BP_SEASON.tiers.length * BP_SEASON.xpPerTier };
   return s;
 };
+
+t('el nivel 30 entrega a Jun y el premio prémium añade su color Dorado', () => {
+  const s = full();
+  assert.equal(equipSkin(s, 'jun').error, 'not_owned');
+  assert.equal(bpClaim(s, 'prem', 30).error, 'not_premium');
+  const free = bpClaim(s, 'free', 30);
+  assert.ok(free.ok);
+  assert.ok(free.state.owned.includes('skin:jun'));
+  assert.ok(!free.state.owned.includes('color:dorado:jun'));
+  const premium = bpClaim({ ...free.state, bp: { ...free.state.bp, premium: true } }, 'prem', 30);
+  assert.ok(premium.ok);
+  assert.ok(premium.state.owned.includes('color:dorado:jun'));
+  assert.equal(bpClaim(premium.state, 'prem', 30).error, 'already_claimed');
+});
+
+t('el nivel 30 reclamado antes de la activación entrega a Jun al cargar', () => {
+  const saved = full();
+  saved.bp.free = [30];
+  saved.bp.prem = [30];
+  saved.bp.premium = true;
+  const restored = migratePlayer(saved);
+  assert.ok(restored.owned.includes('skin:jun'));
+  assert.equal(restored.gems, saved.gems);
+  const selected = equipSkin(restored, 'jun');
+  assert.ok(selected.ok);
+  const painted = equipColor(selected.state, 'dorado');
+  assert.ok(painted.ok);
+  const reloaded = migratePlayer(painted.state);
+  assert.equal(reloaded.equipped.skin, 'jun');
+  assert.equal(reloaded.equipped.color, 'dorado');
+  assert.equal(reloaded.owned.filter((id) => id === 'skin:jun').length, 1);
+});
 
 t('el camino GRATIS trae monedas 1v1 y monedas 2v2, y nunca seguidas del mismo tipo', () => {
   const free = BP_SEASON.tiers.map((x) => x.free);

@@ -11,6 +11,7 @@
  * - Cuantos más jugadores reales haya en la liga, menos bots: bots = tableSize − reales.
  */
 import { RANKED, league } from './rankedConfig';
+import type { PlayableSkinId } from '../characters/catalog';
 import type { RankId } from './ranks';
 
 export interface BoardEntry {
@@ -25,7 +26,7 @@ export interface BoardEntry {
   /** cuándo alcanzó esa puntuación (desempate final); 0 = sin dato */
   reachedAt: number;
   /** avatar: personaje y color de marco */
-  avatar: { skin: 'nxo' | 'mai'; color: number };
+  avatar: { skin: PlayableSkinId; color: number };
   position: number;
 }
 

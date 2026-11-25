@@ -1,0 +1,35 @@
+{
+  "source": "Isa/jugador/isa-{movimientos,golpes,reacciones,extras}-*.png",
+  "view": "back",
+  "cell": {
+    "w": 128,
+    "h": 199
+  },
+  "origin": {
+    "x": 0.5,
+    "y": 0.9799
+  },
+  "standHeight": 190,
+  "turnExit": 5,
+  "turnRate": 2.2,
+  "landFrom": 1,
+  "landExit": 3,
+  "landEnd": 4,
+  "landRate": 2.6,
+  "animations": {
+    "brake-turn": {
+      "file": "brake-turn.webp",
+      "frames": 8,
+      "fps": 14,
+      "loop": false,
+      "cell": {
+        "w": 182,
+        "h": 187
+      },
+      "origin": {
+        "x": 0.5,
+        "y": 0.97861
+      }
+    }
+  }
+}

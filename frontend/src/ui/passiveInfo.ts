@@ -29,6 +29,16 @@ export function drawPassiveIcon(g: Phaser.GameObjects.Graphics, id: PassiveId, r
       .fillRoundedRect(r * 0.66, -r * 0.62, r * 0.36, r * 1.24, r * 0.1)
       .fillRoundedRect(-r * 0.68, -r * 0.4, r * 0.22, r * 0.8, r * 0.08)
       .fillRoundedRect(r * 0.46, -r * 0.4, r * 0.22, r * 0.8, r * 0.08);
+  } else if (id === 'resistance') {
+    // RESISTENCIA: una batería que se recarga (con un rayo)
+    g.lineStyle(Math.max(2.5, r * 0.2), color, 1).strokeRoundedRect(-r * 0.95, -r * 0.55, r * 1.7, r * 1.1, r * 0.15);
+    g.fillStyle(color, 1).fillRect(r * 0.78, -r * 0.25, r * 0.22, r * 0.5);
+    g.fillTriangle(r * 0.1, -r * 0.45, -r * 0.45, r * 0.08, -r * 0.05, r * 0.08).fillTriangle(-r * 0.15, r * 0.45, r * 0.4, -r * 0.08, 0, -r * 0.08);
+  } else if (id === 'spin') {
+    // EFECTO: una pelota con una curva que la rodea
+    g.fillStyle(color, 1).fillCircle(r * 0.35, r * 0.1, r * 0.42);
+    g.lineStyle(Math.max(2.5, r * 0.22), color, 1).beginPath().arc(0, 0, r * 0.95, Math.PI * 0.75, Math.PI * 1.95, false).strokePath();
+    g.fillTriangle(r * 0.95, -r * 0.55, r * 1.05, r * 0.05, r * 0.55, -r * 0.15);
   } else {
     g.lineStyle(Math.max(2, r * 0.2), color, 1).strokeCircle(0, 0, r * 0.82);
     g.lineStyle(Math.max(2, r * 0.2), color, 1).strokeCircle(0, 0, r * 0.4);

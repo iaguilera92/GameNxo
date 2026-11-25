@@ -33,7 +33,7 @@ function ensureLoaded(scene: Phaser.Scene, key: string, onReady?: () => void) {
     return;
   }
   requested.add(key);
-  scene.load.audio(key, `mp3/${key}.mp3`);
+  scene.load.audio(key, `mp3/${key}.m4a`);
   // si el archivo falta, COMPLETE llega igual y simplemente no suena (sin error)
   if (onReady) scene.load.once(Phaser.Loader.Events.COMPLETE, onReady);
   if (!scene.load.isLoading()) scene.load.start();

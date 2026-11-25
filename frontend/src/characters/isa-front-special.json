@@ -1,0 +1,32 @@
+{
+  "source": "Isa/rival/hd/isa-rival-{movimientos,golpes,reacciones,extras}-*.png",
+  "view": "front",
+  "cell": {
+    "w": 100,
+    "h": 158
+  },
+  "origin": {
+    "x": 0.5,
+    "y": 0.97468
+  },
+  "standHeight": 150,
+  "start": 2,
+  "animations": {
+    "smash-power": {
+      "file": "smash-power.webp",
+      "frames": 8,
+      "fps": 14,
+      "loop": false,
+      "impact": 4,
+      "scale": 1,
+      "cell": {
+        "w": 140,
+        "h": 188
+      },
+      "origin": {
+        "x": 0.5,
+        "y": 0.97872
+      }
+    }
+  }
+}

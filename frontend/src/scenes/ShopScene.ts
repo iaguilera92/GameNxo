@@ -1,4 +1,5 @@
 import { isDevMode } from '../domain/devMode';
+import { releaseSceneTexturesOnExit } from '../ui/sceneTextures';
 import { installTapSound } from '../fx/uiSound';
 import Phaser from 'phaser';
 import { FONT, restartOnResize, textStyle } from '../ui/theme';
@@ -136,6 +137,7 @@ export class ShopScene extends Phaser.Scene {
   }
 
   preload() {
+    releaseSceneTexturesOnExit(this); // (25-11-2026) sus imágenes propias se liberan al salir (ui/sceneTextures.ts)
     if (!this.textures.exists('menu-bg')) this.load.image('menu-bg', 'assets/menu-bg.webp');
     if (!this.textures.exists('shop-title')) this.load.image('shop-title', 'assets/tienda-titulo.webp');
     if (!this.textures.exists('cash-1')) this.load.image('cash-1', 'assets/dinero-virtual-1.webp'); // icono de DINERO (16-11-2026)
@@ -153,7 +155,7 @@ export class ShopScene extends Phaser.Scene {
     queueChargeFxArt(this.load, ['fire', 'energy', 'hielo', 'light', 'wild', 'glitch', 'tulip', 'shadow', 'luz', 'time']); // aros de carga (vista previa)
     queueButtonArt(this.load); // botón SMASH (vista previa de sus poderes)
     // sonidos del partido que usan las demostraciones EN ACCIÓN (fx/powerDemo.ts): carga, golpe y golpe de la ULTI
-    for (const [k, file] of [['cargando', 'mp3/cargando.mp3'], ['inferno-hit', 'mp3/inferno.mp3'], ['golpe-fuerte', 'mp3/golpe-fuerte.mp3']] as const) if (!this.cache.audio.exists(k)) this.load.audio(k, file);
+    for (const [k, file] of [['cargando', 'mp3/cargando.m4a'], ['inferno-hit', 'mp3/inferno.m4a'], ['golpe-fuerte', 'mp3/golpe-fuerte.m4a']] as const) if (!this.cache.audio.exists(k)) this.load.audio(k, file);
   }
 
   /** al entrar: a qué sección baja sola ('cash' = DINERO; viene del + del menú) */

@@ -11,6 +11,8 @@ import { VIEW, project } from '../view/projection';
  *   warp    1 = normal, 0 = desaparecido (DASH de teletransporte, DESTELLO)
  */
 export interface PoseActor {
+  /** (25-11-2026) se suma a la profundidad (p. ej. tu personaje por encima del oscurecido de la guía del nivel 1) */
+  depthBoost?: number;
   x: number;
   y: number;
   warp: number;
@@ -44,7 +46,8 @@ export function placeActor(ch: Phaser.GameObjects.Container & { shadow: Phaser.G
   }
   const sq = a.squat ?? 0;
   ch.setPosition(px, py).setScale(k * a.warp * (1 + 0.08 * sq), k * (1 + (1 - a.warp) * 0.8) * (1 - 0.2 * sq));
-  if (ch.depth !== p.sy) ch.setDepth(p.sy);
+  const depth = p.sy + (a.depthBoost ?? 0);
+  if (ch.depth !== depth) ch.setDepth(depth);
   if (a.spin || a.spinWas) ch.setAngle(((a.spin ?? 0) * 180) / Math.PI); // al terminar vuelve a 0
   a.spinWas = !!a.spin;
   ch.setAlpha(0.25 + 0.75 * a.warp);

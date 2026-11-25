@@ -79,6 +79,22 @@ export class ServeButton extends Phaser.GameObjects.Container {
     if (on) this.setCue(false);
   }
 
+  /** (25-11-2026, usuario) bloqueado en GRIS como las habilidades bloqueadas por nivel (tutorial: mientras corre el reloj) */
+  private grey?: Phaser.GameObjects.Graphics;
+  setGrey(on: boolean) {
+    if (on === !!this.grey?.visible) return;
+    if (on && !this.grey) {
+      const R = this.radius;
+      this.grey = this.scene.add.graphics();
+      this.grey.fillStyle(0x4b5262, 0.86).fillCircle(0, 0, R + 7);
+      this.grey.lineStyle(5, 0x8a93a6, 0.9).strokeCircle(0, 0, R + 8);
+      this.add(this.grey);
+    }
+    this.grey?.setVisible(on);
+    this.locked = on;
+    if (on) this.setCue(false);
+  }
+
   /** Marca este botón como el tipo de saque elegido. */
   setChosen(on: boolean) {
     this.chosen.setVisible(on);

@@ -12,6 +12,7 @@ export type TutorialMissionId =
   | 'tWin'
   | 't02Def'
   | 't02DefReturn'
+  | 't02Lob'
   | 't03Left'
   | 't03Right'
   | 't03Drop'
@@ -43,6 +44,7 @@ export const TUTORIAL_MISSION_DEFS: Record<TutorialMissionId, { title: string; c
   tWin: { title: 'Gana el partido', coins: 10 },
   t02Def: { title: 'Usa el DEFENSIVO', coins: 10 },
   t02DefReturn: { title: 'Devuélvela', coins: 10 },
+  t02Lob: { title: 'Haz un globo', coins: 10 },
   t03Left: { title: 'A la izquierda', coins: 10 },
   t03Right: { title: 'A la derecha', coins: 10 },
   t03Drop: { title: 'Cortita', coins: 10 },
@@ -69,9 +71,9 @@ export const TUTORIAL_MISSION_DEFS: Record<TutorialMissionId, { title: string; c
 
 /** Misiones del partido del tutorial de cada nivel (orden de las cards). 16 a 19: las normales (partidos completos). */
 const BY_LEVEL: Record<number, string[]> = {
-  1: ['guideJoystick', 'guideDirectServe', 'tWin'], // primer partido guiado
-  2: ['t02Def', 't02DefReturn', 'tWin'], // DEFENSIVO
-  3: ['t03Left', 't03Right', 't03Drop', 'tWin'], // dirección del golpe
+  1: ['guideJoystick', 'guideJoystickUpDown', 'guideDirectServe', 'tWin'], // primer partido guiado
+  2: ['t02Def', 't02DefReturn', 't02Lob', 'tWin'], // DEFENSIVO y globo
+  3: ['t03Drop', 'tRemate', 'tWin'], // (25-11-2026, usuario) cortita, remate en la red (el ESPECIAL del rival no es misión)
   4: ['t04Arm', 't04Stun', 'tWin'], // ESPECIAL
   5: ['tGood', 'tPerfect', 'tStreak2', 'tWin'], // PERFECT TIMING
   6: ['tUlti', 'tRacket', 'tWin'], // ULTI

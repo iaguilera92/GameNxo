@@ -46,8 +46,8 @@ const BASE_ITEMS: ShopItem[] = [
   // personajes (rareza sin clasificar: preguntar al usuario)
   { id: 'skin:mai', kind: 'skin', name: 'Mai', ...CHARACTER_PRICE, minLevel: 1, available: false }, // retirada de Nuevos personajes; queda como personaje inicial para las cuentas web existentes
   { id: 'skin:net', kind: 'skin', name: 'Net', ...CHARACTER_PRICE, minLevel: 1, available: true }, // (21-11-2026) aún no jugable: solo queda en propiedad
-  { id: 'skin:mat', kind: 'skin', name: 'Mat', ...CHARACTER_PRICE, minLevel: 1, available: true }, // nuevo personaje de la Tienda; se guarda en propiedad hasta que sea jugable
-  { id: 'skin:isa', kind: 'skin', name: 'Isa', ...CHARACTER_PRICE, minLevel: 1, available: true }, // nuevo personaje de la Tienda; se guarda en propiedad hasta que sea jugable
+  { id: 'skin:mat', kind: 'skin', name: 'Mat', ...CHARACTER_PRICE, minLevel: 1, available: true },
+  { id: 'skin:isa', kind: 'skin', name: 'Isa', ...CHARACTER_PRICE, minLevel: 1, available: true },
   { id: 'skin:rin', kind: 'skin', name: 'Rin', ...CHARACTER_PRICE, minLevel: 1, available: true }, // nuevo personaje de la Tienda; se guarda en propiedad hasta que sea jugable
   // estilos (estela de los golpes)
   { id: 'style:blue', kind: 'style', name: 'Azul', price: 40, clp: 490, minLevel: 1, available: true }, // (24-11-2026) regalo del tutorial (nivel 10)

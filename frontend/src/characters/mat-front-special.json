@@ -1,0 +1,32 @@
+{
+  "source": "Mat/rival/hd/mat-rival-{movimientos,golpes,reacciones,extras}-*.png",
+  "view": "front",
+  "cell": {
+    "w": 96,
+    "h": 157
+  },
+  "origin": {
+    "x": 0.5,
+    "y": 0.97452
+  },
+  "standHeight": 135,
+  "start": 2,
+  "animations": {
+    "smash-power": {
+      "file": "smash-power.webp",
+      "frames": 8,
+      "fps": 14,
+      "loop": false,
+      "impact": 4,
+      "scale": 1,
+      "cell": {
+        "w": 144,
+        "h": 196
+      },
+      "origin": {
+        "x": 0.5,
+        "y": 0.97959
+      }
+    }
+  }
+}

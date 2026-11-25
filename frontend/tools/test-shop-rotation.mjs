@@ -13,6 +13,7 @@ register('data:text/javascript,' + encodeURIComponent(hook), import.meta.url);
 const R = await import('../src/domain/shopRotation.ts');
 const { SHOP_ITEMS } = await import('../src/domain/shopCatalog.ts');
 const { newPlayer } = await import('../src/domain/player.ts');
+const { equipSkin } = await import('../src/domain/operations.ts');
 let ok = 0;
 const test = (name, fn) => {
   fn();
@@ -30,6 +31,38 @@ test('cada categoría con rotación muestra 3 (o los que haya)', () => {
 test('EFECTO PELOTA no rota: están todos los que se venden', () => {
   assert.equal(R.shopOffers('style', t0).length, count('style'));
   assert.equal(R.offersChangeIn('style', t0), null);
+});
+
+test('Isa ocupa un espacio fijo y los demás personajes pasan por el segundo', () => {
+  const rotating = SHOP_ITEMS.filter((item) => item.kind === 'skin' && item.available && item.id !== 'skin:isa');
+  const seen = new Set();
+  let now = t0;
+  for (let i = 0; i < rotating.length; i++) {
+    const offered = ids('skin', now);
+    assert.equal(offered.length, 2);
+    assert.equal(offered[0], 'skin:isa');
+    assert.ok(R.isOnSale('skin:isa', now));
+    seen.add(offered[1]);
+    now += R.rotationWindow(now, 24).nextMs + 1000;
+  }
+  assert.deepEqual(seen, new Set(rotating.map((item) => item.id)));
+  const rerolled = R.rerollShop({ ...newPlayer(), gems: 1000 }, 'skin', t0);
+  assert.ok(rerolled.ok);
+  const after = R.shopOffers('skin', t0, rerolled.state).map((item) => item.id);
+  assert.equal(after[0], 'skin:isa');
+  assert.notEqual(after[1], ids('skin', t0)[1]);
+});
+
+test('Isa se compra con billetes y se puede equipar después', () => {
+  const player = { ...newPlayer(), gems: 1000 };
+  assert.equal(equipSkin(player, 'isa').error, 'not_owned');
+  const bought = R.purchaseOffered(player, 'skin:isa', t0);
+  assert.ok(bought.ok);
+  assert.equal(bought.state.gems, 0);
+  assert.equal(R.purchaseOffered(bought.state, 'skin:isa', t0).error, 'already_owned');
+  const equipped = equipSkin(bought.state, 'isa');
+  assert.ok(equipped.ok);
+  assert.equal(equipped.state.equipped.skin, 'isa');
 });
 test('CARGANDO GOLPE tiene 3: se ven todas siempre y el contador sale igual (21-11-2026)', () => {
   if (count('charge') <= 3) {
@@ -108,7 +141,7 @@ test('CAMBIO de ofertas: cobra 100, trae otros ítems y solo una vez por categor
 });
 test('CAMBIO: sin más ítems que mostrar o sin dinero no cobra', () => {
   const s = { ...newPlayer(), gems: 250 };
-  assert.equal(R.rerollShop(s, 'charge', t0).error, 'nothing_to_change');
+  assert.equal(R.rerollShop(s, 'style', t0).error, 'nothing_to_change');
   assert.equal(R.rerollShop(s, 'zone', t0).error, 'nothing_to_change');
   assert.equal(R.rerollShop({ ...s, gems: 99 }, 'smash', t0).error, 'not_enough_cash');
   assert.equal(s.gems, 250);

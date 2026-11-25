@@ -45,7 +45,7 @@ export function charColorInfo(id: CharColorId): CharColorInfo {
  * (19-11-2026, usuario) Los estilos de color son POR PERSONAJE: ítem `color:<id>:<skin>` (p. ej. `color:azul:nxo` solo pinta a NXO).
  * Los `color:<id>` antiguos (sin personaje, ganados antes) siguen valiendo para TODOS los personajes.
  */
-export const COLOR_SKINS = ['nxo', 'mai'] as const;
+export const COLOR_SKINS = ['nxo', 'mai', 'jun'] as const;
 export type ColorSkin = (typeof COLOR_SKINS)[number];
 
 /** Ítem del color `id` para el personaje `skin`. */

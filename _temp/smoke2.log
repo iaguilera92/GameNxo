@@ -1,0 +1,12 @@
+inicio      {"act":["Menu"],"chars":{"nxo":1,"nxof":0,"mai":51,"maif":27,"mat":0,"matf":0},"amb":[],"liga":0,"shop":0,"charge":0,"total":158}
+Menu         {"act":["Menu"],"chars":{"nxo":1,"nxof":0,"mai":51,"maif":27,"mat":0,"matf":0},"amb":[],"liga":0,"shop":0,"charge":0,"total":158}
+Ranked       {"act":["Ranked"],"chars":{"nxo":1,"nxof":0,"mai":51,"maif":27,"mat":0,"matf":0},"amb":[],"liga":17,"shop":0,"charge":0,"total":200}
+Menu         {"act":["Menu"],"chars":{"nxo":1,"nxof":0,"mai":51,"maif":27,"mat":0,"matf":0},"amb":[],"liga":0,"shop":0,"charge":0,"total":169}
+Shop         {"act":["Shop"],"chars":{"nxo":1,"nxof":0,"mai":51,"maif":27,"mat":0,"matf":0},"amb":[],"liga":0,"shop":3,"charge":10,"total":344}
+Menu         {"act":["Menu"],"chars":{"nxo":1,"nxof":0,"mai":51,"maif":27,"mat":0,"matf":0},"amb":[],"liga":0,"shop":0,"charge":0,"total":204}
+Customize    {"act":["Customize"],"chars":{"nxo":1,"nxof":0,"mai":51,"maif":27,"mat":0,"matf":0},"amb":[],"liga":0,"shop":0,"charge":10,"total":246}
+Menu         {"act":["Menu"],"chars":{"nxo":1,"nxof":0,"mai":51,"maif":27,"mat":0,"matf":0},"amb":[],"liga":0,"shop":0,"charge":0,"total":212}
+Matchmaking  {"act":["Match"],"chars":{"nxo":1,"nxof":0,"mai":52,"maif":27,"mat":8,"matf":28},"amb":["ambiente-1","ambiente-paloma"],"liga":0,"shop":0,"charge":0,"total":267}
+partido     {"act":["Match"],"chars":{"nxo":1,"nxof":0,"mai":52,"maif":27,"mat":8,"matf":28},"amb":["ambiente-1","ambiente-paloma"],"liga":0,"shop":0,"charge":0,"total":267}
+Menu         {"act":["Menu"],"chars":{"nxo":1,"nxof":0,"mai":52,"maif":27,"mat":0,"matf":0},"amb":["ambiente-paloma"],"liga":0,"shop":0,"charge":0,"total":243}
+sin errores

@@ -91,16 +91,18 @@ export function openTutorialDialog(scene: Phaser.Scene, step: TutorialStep, onDo
     }
     action.removeAll(true);
     const last = page >= n - 1;
+    const bw = Math.min(380, pw - 90);
     action.add(
-      arcadeButton(scene, 0, 0, Math.min(380, pw - 90), 76, last ? '¡ENTENDIDO!' : 'SIGUIENTE', () => {
+      arcadeButton(scene, 0, 0, bw, 76, last ? '¡ENTENDIDO!' : 'SIGUIENTE', () => {
         if (!last) {
           page++;
           scene.time.delayedCall(0, show); // el botón se rehace fuera de su propio clic
           return;
         }
         finish();
-      }, { palette: last ? 'yellow' : 'blue', chevron: last }),
+      }, { palette: last ? 'yellow' : 'blue', chevron: last, noShadow: !!autoCloseMs }),
     );
+    if (autoCloseMs && last) action.add(clockTimer(scene, -bw / 2 + 44, 0, autoCloseMs));
   };
   show();
   if (autoCloseMs) scene.time.delayedCall(autoCloseMs, finish);
@@ -114,6 +116,28 @@ export function openTutorialDialog(scene: Phaser.Scene, step: TutorialStep, onDo
   scene.tweens.add({ targets: panel, x: 0, y: 0, duration: 200, ease: 'Back.easeOut' });
 }
 
+/** (25-11-2026, usuario) reloj de la tienda (blanco y rojo) cuya parte roja se vacía en `ms`: el diálogo se cierra solo al terminar */
+export function clockTimer(scene: Phaser.Scene, x: number, y: number, ms: number) {
+  const c = scene.add.container(x, y);
+  const g = scene.add.graphics();
+  c.add(g);
+  const R = 18;
+  const st = { t: 0 };
+  const draw = () => {
+    g.clear();
+    g.fillStyle(0xffffff, 1).fillCircle(0, 0, R + 4);
+    g.fillStyle(0x7a1020, 1).fillCircle(0, 0, R);
+    const a0 = -Math.PI / 2 + st.t * Math.PI * 2;
+    if (st.t < 1) g.fillStyle(0xc4192e, 1).slice(0, 0, R, a0, Math.PI * 1.5, false).fillPath();
+    g.lineStyle(3, 0xffffff, 1).lineBetween(0, 0, Math.cos(a0) * (R - 4), Math.sin(a0) * (R - 4));
+    g.fillStyle(0xffffff, 1).fillCircle(0, 0, 3);
+  };
+  draw();
+  scene.tweens.add({ targets: st, t: 1, duration: ms, onUpdate: draw });
+  scene.tweens.add({ targets: c, scale: { from: 1, to: 1.12 }, duration: 500, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
+  return c;
+}
+
 /**
  * Muestra el siguiente aviso pendiente del jugador (si lo hay) y, al aceptarlo, lo marca como visto y sigue con el que venga.
  * SOLO con el MODO DESARROLLO apagado (con él encendido el perfil es de pruebas, nivel máximo y sin tutorial).
@@ -123,7 +147,8 @@ export function maybeShowTutorial(scene: Phaser.Scene) {
   const p = getPlayer();
   if (guidedStep(p.level, p.tutorial)) return;
   const step = pendingTutorial(p.level, p.tutorial);
-  if (!step) return;
+  // (25-11-2026, usuario) solo la bienvenida del nivel 1: los avisos de los demás niveles los reemplaza el tutorial guiado
+  if (!step || step.level > 1) return;
   openTutorialDialog(scene, step, () => {
     commit((s) => markTutorialSeen(s, step.id));
     scene.time.delayedCall(350, () => maybeShowTutorial(scene));

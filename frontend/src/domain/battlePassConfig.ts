@@ -23,7 +23,7 @@ export type BpReward =
    * al reclamarlo no se entrega `skin:<id>` (no se puede elegir para jugar) y se guarda solo que el nivel está reclamado. `style` = estilo de la
    * pelota (Oro); `color` = estilo de COLOR del personaje (domain/charColors.ts: el premium de JUN lo trae DORADO) y se entrega como ítem `color:<id>`.
    */
-  | { kind: 'character'; skin: SkinId | 'jun'; style?: StyleId; color?: CharColorId; soon?: true; name: string }
+  | { kind: 'character'; skin: SkinId; style?: StyleId; color?: CharColorId; soon?: true; name: string }
   /** Rayos de la ZONA (zone.rays): se gastan en sus atributos (PERSONALIZACIÓN) */
   | { kind: 'rays'; amount: number }
   /**
@@ -122,9 +122,8 @@ export const BP_SEASON = {
     { free: $(2), prem: it('emote:treasure', 'Tesoro') }, // 27 (TESORO: emote LEGENDARIO animado)
     { free: $(3), prem: $(3) }, // 28
     { free: $(3), prem: $(4) }, // 29
-    // (21-11-2026, usuario) JUN reemplaza a MAI como personaje del nivel 30; aún NO se puede jugar (solo tiene retrato): `soon`. Premium: JUN con el
-    // color DORADO. Cuando tenga sus hojas (docs/COMO-TRABAJAR-SPRITES-MOVIMIENTOS.md) se quita `soon` y se entrega `skin:jun`.
-    { free: { kind: 'character', skin: 'jun', soon: true, name: 'Jun' }, prem: { kind: 'character', skin: 'jun', color: 'dorado', soon: true, name: 'Jun · Color Dorado' } },
+    // Jun se desbloquea en el nivel 30. El premio prémium también incluye su color Dorado.
+    { free: { kind: 'character', skin: 'jun', name: 'Jun' }, prem: { kind: 'character', skin: 'jun', color: 'dorado', name: 'Jun · Color Dorado' } },
   ] as BpTier[],
 };
 

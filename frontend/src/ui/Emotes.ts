@@ -79,13 +79,13 @@ export function queueEmoteArt(load: Phaser.Loader.LoaderPlugin) {
     if (load.scene.textures.exists(key)) continue;
     const a = EMOTE_ANIM[kind as EmoteKind];
     if (a) load.spritesheet(key, `assets/emotes/${key}.webp`, { frameWidth: a.cell, frameHeight: a.cell });
-    else load.image(key, `assets/emotes/${key}.png`);
+    else load.image(key, `assets/emotes/${key}.webp`); // (25-11-2026) miniaturas en WebP
   }
   for (const [kind, key] of Object.entries(MAI_EMOTE_TEXTURE)) {
     if (!key || load.scene.textures.exists(key)) continue;
     const a = EMOTE_ANIM[kind as EmoteKind];
     if (a) load.spritesheet(key, `assets/emotes/${key}.webp`, { frameWidth: a.cell, frameHeight: a.cell });
-    else load.image(key, `assets/emotes/${key}.png`);
+    else load.image(key, `assets/emotes/${key}.webp`); // (25-11-2026) miniaturas en WebP
   }
 }
 

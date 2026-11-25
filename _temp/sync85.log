@@ -1,0 +1,2 @@
+[error] The web assets directory (.\dist) must contain an index.html file.
+        It will be the entry point for the web portion of the Capacitor app.

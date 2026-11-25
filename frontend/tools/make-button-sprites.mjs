@@ -2,7 +2,7 @@
 //
 //   node tools/make-button-sprites.mjs
 //
-// Entrada : public/assets/btn-dash.webp, btn-smash.webp, btn-saque.webp, btn-saque-efecto.webp, btn-ulti.webp, btn-emotes.webp, btn-rendirse.webp (arte original, no se toca)
+// Entrada : art/botones/btn-dash.webp (25-11-2026: los originales salieron de public/; PERSONALIZAR usa public/assets/btn-dash y btn-smash a 320 px), btn-smash.webp, btn-saque.webp, btn-saque-efecto.webp, btn-ulti.webp, btn-emotes.webp, btn-rendirse.webp (arte original, no se toca)
 // Salida  : public/assets/ui/<mismo nombre>.webp  (lo que carga MatchScene; el original pesa ~1 MB y 1312x1199)
 // Si cambias el arte original, vuelve a ejecutar este script.
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
@@ -25,7 +25,7 @@ mkdirSync(join(ROOT, 'public', 'assets', 'ui'), { recursive: true });
 for (const name of NAMES) {
   // el original está en WebP: se pasa a un PNG temporal para leerlo
   const tmp = mkdtempSync(join(tmpdir(), 'btn-'));
-  const { w, h, px } = decode(webpToPng(join(ROOT, 'public', 'assets', `${name}.webp`), join(tmp, `${name}.png`)));
+  const { w, h, px } = decode(webpToPng(join(ROOT, 'art', 'botones', `${name}.webp`), join(tmp, `${name}.png`)));
   rmSync(tmp, { recursive: true, force: true });
   // caja del círculo visible (alfa > 20)
   let x0 = w, x1 = -1, y0 = h, y1 = -1;

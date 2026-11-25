@@ -21,21 +21,22 @@ import { pngToWebp } from './image-out.mjs';
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const SHEETS = {
   // fuente nueva (11-11-2026, cargando-fuego.webp → .png con tools/convert-image.mjs); la anterior en art/cargando/Old/
-  fuego: { id: 'fire', mode: 'bands', src: 'public/assets/charge-fire.png' },
+  // (25-11-2026) las fuentes charge-*.png viven en art/cargando/ (fuera de public/: no llegan al APK)
+  fuego: { id: 'fire', mode: 'bands', src: 'art/cargando/charge-fire.png' },
   energia: { id: 'energy', mode: 'grid', inset: 0, autoRow: true, floor: 6, strong: 90 },
   // fuente nueva (11-11-2026, cargando-tulipan.webp → .png con tools/convert-image.mjs): fondo transparente, sin rejilla ni
   // bruma; se corta como el fuego. (La anterior, con rejilla gris y bruma blanca, está en art/cargando/Old/.)
   tulipan: { id: 'tulip', mode: 'bands' },
   // Rayo (22-11-2026): hoja 5x2 con transparencia y halo suave.
-  rayo: { id: 'light', mode: 'grid', inset: 0, edgeFade: 24, ramp: [64, 255], floor: 6, strong: 90, src: 'public/assets/charge-light.png' },
+  rayo: { id: 'light', mode: 'grid', inset: 0, edgeFade: 24, ramp: [64, 255], floor: 6, strong: 90, src: 'art/cargando/charge-light.png' },
   // Sombra y Wild (22-11-2026): hojas transparentes 5x2 con halos; se recortan por celda.
-  sombra: { id: 'shadow', mode: 'grid', inset: 0, edgeFade: 24, ramp: [64, 255], floor: 6, strong: 90, src: 'public/assets/charge-shadow.png' },
+  sombra: { id: 'shadow', mode: 'grid', inset: 0, edgeFade: 24, ramp: [64, 255], floor: 6, strong: 90, src: 'art/cargando/charge-shadow.png' },
   // (22-11-2026, usuario: se veía cortado) Viento: sus frames no caen en la rejilla 5x2 (los grandes pasan de su celda), se cortan por franjas vacías
-  wild: { id: 'wild', mode: 'bands', ramp: [64, 255], floor: 6, strong: 90, src: 'public/assets/charge-wild.png' },
-  luz: { id: 'luz', mode: 'grid', inset: 0, edgeFade: 24, ramp: [64, 255], floor: 6, strong: 90, src: 'public/assets/charge-luz.png' },
-  hielo: { id: 'hielo', mode: 'grid', inset: 0, edgeFade: 24, ramp: [64, 255], floor: 6, strong: 90, src: 'public/assets/charge-hielo.png' },
-  glitch: { id: 'glitch', mode: 'grid', inset: 0, edgeFade: 24, ramp: [64, 255], floor: 6, strong: 90, src: 'public/assets/charge-glitch.png' },
-  tiempo: { id: 'time', mode: 'grid', inset: 0, edgeFade: 24, ramp: [64, 255], floor: 6, strong: 90, src: 'public/assets/charge-time.png' },
+  wild: { id: 'wild', mode: 'bands', ramp: [64, 255], floor: 6, strong: 90, src: 'art/cargando/charge-wild.png' },
+  luz: { id: 'luz', mode: 'grid', inset: 0, edgeFade: 24, ramp: [64, 255], floor: 6, strong: 90, src: 'art/cargando/charge-luz.png' },
+  hielo: { id: 'hielo', mode: 'grid', inset: 0, edgeFade: 24, ramp: [64, 255], floor: 6, strong: 90, src: 'art/cargando/charge-hielo.png' },
+  glitch: { id: 'glitch', mode: 'grid', inset: 0, edgeFade: 24, ramp: [64, 255], floor: 6, strong: 90, src: 'art/cargando/charge-glitch.png' },
+  tiempo: { id: 'time', mode: 'grid', inset: 0, edgeFade: 24, ramp: [64, 255], floor: 6, strong: 90, src: 'art/cargando/charge-time.png' },
 };
 const COLS = 5;
 const ROWS = 2;

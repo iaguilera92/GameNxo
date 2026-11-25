@@ -14,7 +14,7 @@ import { COINS_WIN } from '../config';
 import { COINS_2V2 } from './coins2v2';
 
 import { TUTORIAL_MISSION_DEFS, type TutorialMissionId, isTutorialMissionId } from './tutorialMissions';
-export type MissionId = 'dropZero' | 'skyLaunch' | 'netDuel' | 'specialLob' | 'guideJoystick' | 'guideDirectServe' | TutorialMissionId; // (24-11-2026) + las del tutorial (domain/tutorialMissions.ts)
+export type MissionId = 'dropZero' | 'skyLaunch' | 'netDuel' | 'specialLob' | 'guideJoystick' | 'guideJoystickUpDown' | 'guideDirectServe' | TutorialMissionId; // (24-11-2026) + las del tutorial (domain/tutorialMissions.ts)
 
 export interface MissionDef {
   id: MissionId;
@@ -92,6 +92,7 @@ export function missionPoint(t: MissionTracker, p: MissionPoint): MissionId[] {
 
 export function missionDef(id: MissionId): MissionDef {
   if (id === 'guideJoystick') return { id, title: 'Usar joystick', coins: 20 };
+  if (id === 'guideJoystickUpDown') return { id, title: 'Joystick a los lados', coins: 15 }; // (25-11-2026, usuario) nivel 1
   if (id === 'guideDirectServe') return { id, title: 'Saque directo', coins: 20 };
   if (isTutorialMissionId(id)) return { id, ...TUTORIAL_MISSION_DEFS[id] };
   return MISSIONS.find((m) => m.id === id)!;

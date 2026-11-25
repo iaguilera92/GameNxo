@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { ALLEY, BOUNCE_DAMP, COURT, GRAVITY, HIT_MAX_Z, NET_BALL_CLEARANCE, NET_X, NET_Y_MAX, NET_Y_MIN, netTapeHeight } from '../config';
+import { ALLEY, BOUNCE_DAMP, COURT, GRAVITY, HIT_MAX_Z, NET_BALL_CLEARANCE, NET_X, NET_Y_MAX, NET_Y_MIN, SERVE, netTapeHeight } from '../config';
 import { C } from '../ui/theme';
 import { project } from '../view/projection';
 import type { SmashPower } from '../domain/smashPowers';
@@ -146,7 +146,7 @@ export function stepBall(s: BallState, dt: number, crossing?: NetCrossing): Ball
     s.g = undefined;
     if (s.ay) {
       // el efecto se transforma en un bote abierto hacia el lado
-      s.vy += s.ay * 0.35;
+      s.vy += s.ay * SERVE.spinKick;
       s.ay = undefined;
     }
     const f = s.fric ?? 0.88;
@@ -345,6 +345,8 @@ export class Ball {
   /** giro extra del fieltro (rad/s) aunque la pelota esté quieta (DUELO RED: la pelota del aro gira en el sitio) */
   spinExtra = 0;
 
+  /** (25-11-2026) se suma a la profundidad del dibujo (nivel 1: la pelota por encima del oscurecido de la guía) */
+  depthBoost = 0;
   constructor(private scn: Phaser.Scene) {
     this.shadow = scn.add.ellipse(0, 0, 30, 12, 0x000000, 0.5).setDepth(1);
     this.guide = scn.add.graphics().setDepth(2);
@@ -498,6 +500,7 @@ export class Ball {
     const air = project(x, y, z);
     const k = Math.max(0.5, 1 - z / 320);
     this.shadow.setPosition(ground.sx, ground.sy).setScale(k * ground.s * 0.95).setAlpha(0.55 * k + 0.1);
+    this.shadow.setDepth(1 + this.depthBoost); // (25-11-2026, usuario) con el oscurecido del tutorial, la sombra también se ve
     const sy = air.sy;
     const scale = air.s * 0.8 * (1 + Math.min(z, 220) / 700);
     this.sprite.setPosition(air.sx, sy);
@@ -510,7 +513,7 @@ export class Ball {
     // efecto: el fieltro gira según la velocidad (y el sentido) de la pelota
     const v = Math.hypot(this.s.vx, this.s.vy, this.s.vz);
     this.felt.rotation += (Math.sign(this.s.vx || 1) * Math.min(v, 1600) * dt) / 70 + this.spinExtra * dt;
-    const depth = ground.sy + 2;
+    const depth = ground.sy + 2 + this.depthBoost;
     if (this.sprite.depth !== depth) this.sprite.setDepth(depth);
     if (this.trail.depth !== depth - 1) this.trail.setDepth(depth - 1);
 

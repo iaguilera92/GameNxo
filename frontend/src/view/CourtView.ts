@@ -92,8 +92,9 @@ export const AMBIENTES: Ambiente[] = [
 ];
 
 /** (19-11-2026) Ambientes cargados para este modo: el 2v2 usa los suyos (`only: '2v2'`) si hay alguno cargado; el 1v1 nunca los usa. */
-function ambientesFor(scene: Phaser.Scene, doubles: boolean): Ambiente[] {
-  const loaded = AMBIENTES.filter((a) => scene.textures.exists(a.key));
+function ambientesFor(_scene: Phaser.Scene, doubles: boolean): Ambiente[] {
+  // (25-11-2026) se elige entre TODOS (ya no se cargan al arrancar): el elegido lo carga el partido (queueAmbiente)
+  const loaded = AMBIENTES;
   const own = loaded.filter((a) => a.only === '2v2');
   if (doubles && own.length) return own;
   const all1v1 = loaded.filter((a) => !a.only);
@@ -118,8 +119,17 @@ const COVER_W = VIEW.W + 400;
 
 const LAT_C = (COURT.top + COURT.bottom) / 2;
 
-export function queueAmbienteLoad(load: Phaser.Loader.LoaderPlugin) {
-  for (const a of AMBIENTES) if (!load.textureManager.exists(a.key)) load.image(a.key, a.file);
+/**
+ * (25-11-2026, usuario) Solo el ambiente del partido: antes se cargaban los 5 al arrancar (~9 MB de memoria cada uno). La búsqueda / el
+ * partido encolan el elegido y el menú libera los demás al volver (releaseAmbientes).
+ */
+export function queueAmbiente(load: Phaser.Loader.LoaderPlugin, key: string | null | undefined) {
+  const a = AMBIENTES.find((x) => x.key === key);
+  if (a && !load.textureManager.exists(a.key)) load.image(a.key, a.file);
+}
+/** Libera de la memoria las imágenes de ambiente (salvo `keep`). Llamar sin ningún partido abierto. */
+export function releaseAmbientes(scene: Phaser.Scene, keep: string[] = []) {
+  for (const a of AMBIENTES) if (!keep.includes(a.key) && scene.textures.exists(a.key)) scene.textures.remove(a.key);
 }
 
 /** Pared del fondo tal como se dibujó (para que la pelota choque donde se ve): base en pantalla y alturas en px. */
@@ -168,8 +178,7 @@ export function pickAmbiente(scene: Phaser.Scene, doubles = false): string | nul
 
 /** (21-11-2026) Ambiente que se usará en el partido (mismo criterio que drawCourtView): 'dev.ambiente' puede forzar cualquiera, luego el elegido (preferred) y si no, sorteo. null = no hay imágenes cargadas. */
 export function resolveAmbiente(scene: Phaser.Scene, preferred?: string | null, doubles = false): Ambiente | null {
-  const loaded = AMBIENTES.filter((a) => scene.textures.exists(a.key));
-  if (!loaded.length) return null;
+  const loaded = AMBIENTES; // (25-11-2026) el elegido se carga aparte (queueAmbiente); drawCourtView no lo dibuja si falta
   const available = ambientesFor(scene, doubles);
   let forced: string | null = null;
   try {
@@ -186,7 +195,7 @@ export function resolveAmbiente(scene: Phaser.Scene, preferred?: string | null, 
  */
 export function drawCourtView(scene: Phaser.Scene, preferred?: string | null, doubles = false): DrawnWall | null {
   const amb = resolveAmbiente(scene, preferred, doubles);
-  if (!amb) return null;
+  if (!amb || !scene.textures.exists(amb.key)) return null; // sin la imagen: la cancha dibujada de siempre
   COURT_SHIFT.y = amb.courtDY ?? 0; // antes de dibujar nada (la cancha, la red y los personajes usan project)
   const H = Math.max(scene.scale.height, VIEW.H);
 

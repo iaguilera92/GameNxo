@@ -71,6 +71,22 @@ const MAI_LEGACY_MOVES = {
  * Campos de `ulti` (todos opcionales): greenDetails, hold, preStrike, impact, racketFree, pickupGrab.
  */
 export const CHARACTERS = {
+  jun: { view: 'back', dir: 'Jun', prefix: 'pj-jun' },
+  'jun-front': { view: 'front', dir: 'Jun/rival', prefix: 'pj-jun-rival' },
+  isa: { view: 'back', dir: 'Isa', prefix: 'pj-isa' },
+  'isa-front': { view: 'front', dir: 'Isa/rival', prefix: 'pj-isa-rival' },
+  mat: {
+    view: 'back',
+    dir: 'Mat',
+    prefix: 'pj-mat',
+    chroma: 'magenta', // las fuentes de Mat se procesan solo con build-hd
+  },
+  'mat-front': {
+    view: 'front',
+    dir: 'Mat/rival',
+    prefix: 'pj-mat-rival',
+    chroma: 'magenta',
+  },
   nxo: {
     view: 'back',
     dir: 'Nxo',

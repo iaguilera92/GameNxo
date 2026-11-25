@@ -1,0 +1,3 @@
+exit 0 
+[info] Sync finished in 12.916s
+[build 77] MENU: (1) los avisos de nivel (TutorialDialog.maybeShowTutorial) ya solo salen en el nivel 1 (bienvenida); los de los niveles 2-20 los reemplaza el tutorial guiado. (2) AL ABRIR LA APP (1.a entrada al menu de la sesion, registry session.levelIntro; tutorial bajo el nivel 20, sin modo desarrollo, cuenta que ya vio la bienvenida): todo oscuro + NIVEL N grande, vuela al cuadro del perfil y este hace el efecto de EQUIPADO (destello, borde dorado, anillo, chispas, sonido equipar y vibra). Despues sale la guia (refreshGuide). MenuScene.sessionLevelIntro / profileEquipFx / profileCardObj. tsc + build 77 + cap sync OK. Sin probar en telefono ni navegador.

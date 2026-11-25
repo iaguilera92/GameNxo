@@ -25,18 +25,18 @@ import Phaser from 'phaser';
  *  stun                          el personaje queda aturdido por el ESPECIAL o la ULTI (ImpactFx.powerImpactFx)
  *  recolectar-exp                Menú al volver de la partida (MenuScene.playXpGain): 3 oleadas de EXP a nivel y pase
  *  power-up                      Menú: sube el NIVEL de la cuenta (card del perfil, MenuScene.animateTo) y la MAESTRÍA llega al personaje (heroLevelUp)
- * Los .m4a y el .wav se cargan igual que los mp3 (Phaser elige por la extensión).
+ * (25-11-2026) Todo el audio va en AAC (.m4a): música 64 kbps, efectos 96 kbps. Originales en _temp/respaldo_oficial/audio/ (script _temp/audio-conv2.mjs).
  */
 export const SFX_FILES: Record<string, string> = {
   'ball-saque-1': 'mp3/ball-saque-1.m4a',
   'ball-saque-2': 'mp3/ball-saque-2.m4a',
-  'ball-recibir-ulti-ataque': 'mp3/ball-recibir-ulti-ataque.mp3',
+  'ball-recibir-ulti-ataque': 'mp3/ball-recibir-ulti-ataque.m4a',
   'ball-ulti-pared': 'mp3/ball-ulti-pared.m4a',
   'ball-impacto-pared': 'mp3/ball-impacto-pared.m4a', // (18-11-2026) ULTI o ESPECIAL chocan con la pared (MatchScene.checkBackWall)
-  electricidad: 'mp3/electricidad.wav',
-  'dash-1': 'mp3/dash-1.mp3',
+  electricidad: 'mp3/electricidad.m4a',
+  'dash-1': 'mp3/dash-1.m4a',
   'dash-electirco-1': 'mp3/dash-electirco-1.m4a',
-  'dash-shadow': 'mp3/dash-shadow.mp3',
+  'dash-shadow': 'mp3/dash-shadow.m4a',
   'dash-jump': 'mp3/dash-jump.m4a',
   'dash-destello': 'mp3/dash-destello.m4a',
   'recoger-raqueta': 'mp3/recoger-raqueta.m4a',
@@ -44,12 +44,12 @@ export const SFX_FILES: Record<string, string> = {
   'recolectar-monedas': 'mp3/recolectar-monedas.m4a',
   'recolectar-exp': 'mp3/recolectar-exp.m4a',
   'power-up': 'mp3/power-up.m4a',
-  'modo-riesgo': 'mp3/modo-riesgo.mp3', // (20-11-2026) carga del MODO RIESGO x2 mientras se mantiene (MenuScene.holdPress, se corta a los 2 s)
+  'modo-riesgo': 'mp3/modo-riesgo.m4a', // (20-11-2026) carga del MODO RIESGO x2 mientras se mantiene (MenuScene.holdPress, se corta a los 2 s)
   'tornado-1': 'mp3/tornado-1.m4a',
   'impacto-ulti-fuego': 'mp3/impacto-ulti-fuego.m4a',
   'ulti-rayo': 'mp3/ulti-rayo.m4a',
   'ulti-fuego': 'mp3/ulti-fuego.m4a',
-  stun: 'mp3/stun.mp3',
+  stun: 'mp3/stun.m4a',
   'ulti-hielo': 'mp3/ulti-hielo.m4a',
   'impacto-ulti-hielo': 'mp3/impacto-ulti-hielo.m4a',
   'impacto-ulti-rayo': 'mp3/impacto-ulti-rayo.m4a',

@@ -76,6 +76,14 @@ const SCALE_AS = { 'point-cheer': 'idle', 'point-doubt': 'idle', 'point-sad': 'i
 // ------------------------------------------------------------------ croma (igual que build-moves.mjs)
 function chroma(px, i) {
   const r = px[i], g = px[i + 1], b = px[i + 2];
+  if (CHAR.chroma === 'magenta') {
+    const d = Math.min(r, b) - g;
+    if (d > 70) return [0, 0, 0, 0];
+    if (d <= 12) return [r, g, b, px[i + 3]];
+    const a = Math.round(px[i + 3] * (70 - d) / 58);
+    const spill = d - 12;
+    return [r - spill, g, b - spill, a];
+  }
   const m = Math.max(r, b);
   const d = g - m;
   if (d > 60) return [0, 0, 0, 0];

@@ -21,10 +21,10 @@ import { SHOP_ITEMS, type ShopItem, shopItem } from './shopCatalog';
 
 /** cuántos se ven a la vez en una categoría con rotación */
 export const ROTATION_SHOW = 3;
-/** categorías con rotación: cada cuántas horas cambian, cuántos se ven a la vez (por defecto ROTATION_SHOW) y si el contador sale siempre */
-export const ROTATION: Partial<Record<ItemKind, { hours: 12 | 24 | 168; show?: number; alwaysTimer?: boolean }>> = {
-  // PERSONAJES: 2 a la vez, cambian cada 24 h (NET, MAT, ISA y RIN)
-  skin: { hours: 24, show: 2, alwaysTimer: true },
+/** Categorías con rotación: frecuencia, espacios visibles, contador y oferta fija opcional. */
+export const ROTATION: Partial<Record<ItemKind, { hours: 12 | 24 | 168; show?: number; alwaysTimer?: boolean; fixed?: ItemId }>> = {
+  // PERSONAJES: Isa siempre a la venta y un segundo espacio que cambia cada 24 h.
+  skin: { hours: 24, show: 2, alwaysTimer: true, fixed: 'skin:isa' },
   charge: { hours: 12, alwaysTimer: true }, // (21-11-2026, usuario) con contador en el titulo como la ULTI (hoy solo hay 3, se ven todas)
   smash: { hours: 12 },
   defensive: { hours: 12 },
@@ -76,8 +76,8 @@ function pool(kind: ItemKind): ShopItem[] {
 }
 
 /** Orden fijo de la rotación de una categoría (mezcla con semilla del nombre de la categoría, sobre los ids ordenados). */
-function rotationOrder(kind: ItemKind): ShopItem[] {
-  const list = [...pool(kind)].sort((a, b) => (a.id < b.id ? -1 : 1));
+function rotationOrder(kind: ItemKind, items: ShopItem[]): ShopItem[] {
+  const list = [...items].sort((a, b) => (a.id < b.id ? -1 : 1));
   const rnd = seeded(hash(`shop:${kind}`));
   for (let i = list.length - 1; i > 0; i--) {
     const j = Math.floor(rnd() * (i + 1));
@@ -86,7 +86,7 @@ function rotationOrder(kind: ItemKind): ShopItem[] {
   return list;
 }
 
-/** Lo que la Tienda muestra AHORA de una categoría. Sin rotación: todo. Con 3 o menos: todo. */
+/** Ofertas visibles ahora. Una oferta fija ocupa uno de los espacios de la categoría. */
 export function shopOffers(kind: ItemKind, now: number, s?: RerollView): ShopItem[] {
   const rot = ROTATION[kind];
   const items = pool(kind);
@@ -95,11 +95,14 @@ export function shopOffers(kind: ItemKind, now: number, s?: RerollView): ShopIte
     ? list.sort((a, b) => ['default', 'especial', 'epica', 'legendaria'].indexOf(a.rarity ?? 'default') - ['default', 'especial', 'epica', 'legendaria'].indexOf(b.rarity ?? 'default') || a.name.localeCompare(b.name, 'es'))
     : list;
   if (!rot || items.length <= show) return byRarity(items);
-  const order = rotationOrder(kind);
+  const fixed = items.find((item) => item.id === rot.fixed);
+  const slots = fixed ? show - 1 : show;
+  const order = rotationOrder(kind, fixed ? items.filter((item) => item !== fixed) : items);
   const w = rotationWindow(now, rot.hours);
   // (21-11-2026, usuario) con el CAMBIO pagado de esta semana se salta a la siguiente ventana: salen otros ítems
-  const start = ((w.id + rerollShift(s, kind, now)) * show) % order.length;
-  return byRarity(Array.from({ length: show }, (_, i) => order[(start + i) % order.length]));
+  const start = ((w.id + rerollShift(s, kind, now)) * slots) % order.length;
+  const offers = Array.from({ length: slots }, (_, i) => order[(start + i) % order.length]);
+  return byRarity(fixed ? [fixed, ...offers] : offers);
 }
 
 /** ms para que cambie lo que muestra una categoría; null si no rota o no hay otros que mostrar. */

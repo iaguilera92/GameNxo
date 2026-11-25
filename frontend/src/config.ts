@@ -131,8 +131,8 @@ export const SERVE = {
   abilityLock: 1.5,
   /** Multiplicador de velocidad (sobre SERVE_SPEED) según calidad; [primer saque, segundo saque]. */
   speed: { perfect: [1.3, 1.05], normal: [1.1, 0.88], weak: [0.9, 0.75] },
-  /** El saque con efecto es algo más lento. */
-  spinSpeedMult: 0.9,
+  /** (25-11-2026, usuario) el saque con efecto es casi como el DIRECTO (rápido y plano; el directo es 1,4) con una curva suave. Antes 0,9. */
+  spinSpeedMult: 1.25,
   /** Error de ejecución (fracción del cuadro de saque, desviación típica): lateral y de profundidad. */
   error: { perfect: [0.03, 0.04], normal: [0.13, 0.13], weak: [0.26, 0.24] },
   /** Probabilidad de golpe defectuoso (sale más bajo: red / let / corto) y cuánta velocidad vertical pierde. */
@@ -157,11 +157,13 @@ export const SERVE = {
   /** Saque por TOQUE (sin botón) dado en el aro: fuerte pero sin directo ni efecto; sale un poco alto. */
   tapPerfect: { margin: 34 },
   /** Saque con EFECTO sin aro: buen efecto pero vuelo más bajo (margen sobre la red). */
-  spinMargin: 10,
+  spinMargin: 6, // (25-11-2026) antes 10: más plano, como el directo
   /** Saque con EFECTO dado en el aro: curva grande (aceleración lateral, px/s²). */
-  spinBigAy: 600,
+  spinBigAy: 260, // (25-11-2026, usuario) 170 -> 260: que se note. (25-11-2026, usuario) antes 600: se iba demasiado a los lados. Las pasivas de efecto podrán subirlo
   /** Aceleración lateral del saque con efecto (px/s²) y su "patada" al botar (ver stepBall). */
-  spinAy: 260,
+  spinAy: 180, // (25-11-2026, usuario) 110 -> 180: que se note. (25-11-2026) antes 260
+  /** (25-11-2026) parte de la curva que pasa al bote ("patada" hacia el lado). Antes 0,35. */
+  spinKick: 0.18, // (25-11-2026, usuario) antes 0,12
   /** Zona de cinta de la red: un saque que roza la red por encima y cae bien es let. */
   letBand: 8,
   /** El jugador se mueve más despacio mientras se coloca para sacar (fracción de PLAYER_SPEED). */

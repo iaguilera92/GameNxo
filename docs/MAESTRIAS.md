@@ -36,7 +36,7 @@ El objetivo del diseño es **retención**: que el jugador se interese por la pas
 
 | Tema | Decisión |
 |---|---|
-| Pasivas | **Nxo = Agilidad. Mai = Precisión. Jun = Fuerza** (21-11-2026; Jun aún no es jugable). Más personajes después (Net: sin definir), cada uno con la suya. |
+| Pasivas | (25-11-2026, usuario) **Nxo y Rin = Agilidad. Mai = Precisión. Zac y Net = Fuerza. Mat e Isa = Efecto (más curva del saque con efecto). Jun y Flo = Resistencia (el DEFENSIVO se recarga antes).** |
 | Tope | Cada pasiva llega a **+10 %** para su personaje. |
 | Niveles | Máximo **nivel 10 de maestría**. Cada nivel = **+1 %** de la pasiva (nivel 10 = 10 %). |
 | Cómo se gana | **Solo jugando partidos y ganando.** Un partido ganado da **1 maestría**. No se compra ni se regala. |
@@ -75,7 +75,7 @@ Con esa tabla, el nivel 10 son 158 victorias con ese personaje. **DECIDIDO por e
 |---|---|---|
 | **Nxo** | **Agilidad** | Velocidad de movimiento × (1 + `P`) y alcance de la raqueta × (1 + `P`). |
 | **Mai** | **Precisión** | Reduce el desvío de tus golpes (error lateral y de profundidad) en `P`, también en el saque. |
-| **Jun** | **Fuerza** (id `strength`, 21-11-2026) | Velocidad de tus golpes × (1 + `P`), salvo globos y dejadas (`MatchScene.passiveStrength`, junto a la fuerza de la ZONA, que se multiplica aparte). Valor propuesto por la IA: el usuario solo dijo "pasiva Fuerza". Jun no es jugable aún: se activa cuando se pueda elegir. |
+| **Jun** | **Resistencia** (id `resistance`, 25-11-2026) | Reduce el tiempo de recarga del DEFENSIVO. Se activa al jugar con Jun. |
 
 Dónde engancharlo en el código (todo en `scenes/MatchScene.ts`; es el mismo mecanismo que ya usa la ZONA):
 
@@ -121,7 +121,7 @@ Así cada personaje tiene **dos progresiones**: Maestría (pasiva, por victorias
 
 ## 7. Pase de Batalla
 
-El Pase regala personajes (hoy Jun, sin pasiva ni hojas todavía, es el premio del nivel 30; antes Mai; `domain/battlePassConfig.ts`, recompensa `kind: 'character'`, y la escena
+El Pase regala personajes. Jun, con la pasiva Resistencia, es el premio del nivel 30 (`domain/battlePassConfig.ts`, recompensa `kind: 'character'`, y la escena
 `scenes/BattlePassScene.ts`). Para una recompensa de personaje, el Pase debe mostrar:
 
 - **Su pasiva y una frase breve** ("PASIVA · PRECISIÓN: tus golpes se desvían menos") en la tarjeta o el panel del personaje.

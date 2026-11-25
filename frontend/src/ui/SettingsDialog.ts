@@ -45,7 +45,7 @@ export function showSettings(scene: Phaser.Scene, o: { depth?: number; onClose?:
   // PRIVACIDAD DE ANUNCIOS: solo donde aplica el aviso de consentimiento (UE); en Chile no aparece
   const privacy = adsPrivacyAvailable();
   const dev = isDevMode(); // (24-11-2026) con el modo desarrollo: fila PROBAR TUTORIAL LVL
-  const rows = (privacy ? 8 : 7) + (dev ? 1 : 0);
+  const rows = 7 + (privacy ? 1 : 0) + (dev ? 1 : 0);
   const rowH = rows > 7 ? 100 : 108;
   const ph = headH + rowH * rows + footH;
   const panel = scene.add.container(W / 2, H / 2).setScrollFactor(0).setDepth(depth + 1);
@@ -159,15 +159,25 @@ export function showSettings(scene: Phaser.Scene, o: { depth?: number; onClose?:
     next++;
   }
 
-  // GUÍA DE TIMING: aro que se cierra sobre la pelota en el momento ideal del toque (Perfect Timing)
-  label(next, 'GUÍA DE TIMING', 'Aro sobre la pelota al golpear', timingIcon);
-  panel.add(toggle(scene, x + pw - 92, rowY(next), s.timingGuide, (on) => setSettings({ timingGuide: on })));
-  next++;
-
   if (privacy) {
     label(next, 'PRIVACIDAD', 'Consentimiento de anuncios', shieldIcon);
     panel.add(pillButton(scene, x + pw - 34, rowY(next), 'ELEGIR', () => void openAdsPrivacy()));
   }
+
+  const signInY = rowY(rows - 1);
+  const signInLeft = x + 30;
+  const signInWidth = pw - 70;
+  const signInHeight = 64;
+  const signInTop = signInY - signInHeight / 2;
+  const signInBorder = scene.add.graphics();
+  signInBorder.fillStyle(0x0a1638, 1).fillRoundedRect(signInLeft, signInTop, signInWidth, signInHeight, signInHeight / 2);
+  signInBorder.lineStyle(2, NEON, 0.82).strokeRoundedRect(signInLeft, signInTop, signInWidth, signInHeight, signInHeight / 2);
+  signInBorder.fillStyle(0x1b2d5c, 1).fillCircle(x + 62, signInY, 23);
+  signInBorder.fillStyle(0xc5d8ff, 1).fillCircle(x + 62, signInY - 7, 5);
+  signInBorder.fillRoundedRect(x + 52, signInY + 1, 20, 10, 5);
+  const signInLabel = scene.add.text(x + 108, signInY, 'INICIAR SESIÓN', { fontFamily: FONT, fontSize: '26px', color: '#ffffff' }).setOrigin(0, 0.5);
+  const signInStatus = scene.add.text(x + pw - 60, signInY, 'PRONTO', { fontFamily: FONT, fontSize: '16px', color: '#8ea8da' }).setOrigin(1, 0.5);
+  panel.add([signInBorder, signInLabel, signInStatus]);
 
   // ---------------------------------------------------------------- pie
   const btnY = y + ph - 92;
@@ -355,13 +365,6 @@ function tutorialIcon(g: Phaser.GameObjects.Graphics) {
   g.lineStyle(2.5, 0xffd23f, 1).lineBetween(12, -2, 12, 9);
   g.fillStyle(0xffd23f, 1).fillCircle(12, 11, 3);
 }
-function timingIcon(g: Phaser.GameObjects.Graphics) {
-  // pelota con el aro guía alrededor
-  g.fillStyle(0xd7f25a, 1).fillCircle(0, 0, 6);
-  g.lineStyle(2, 0xffffff, 0.6).strokeCircle(0, 0, 10);
-  g.lineStyle(3, 0xffe066, 1).strokeCircle(0, 0, 16);
-}
-
 function shieldIcon(g: Phaser.GameObjects.Graphics) {
   g.fillStyle(0xffffff, 1);
   g.beginPath().moveTo(0, -15).lineTo(13, -9).lineTo(11, 5).lineTo(0, 15).lineTo(-11, 5).lineTo(-13, -9).closePath().fillPath();

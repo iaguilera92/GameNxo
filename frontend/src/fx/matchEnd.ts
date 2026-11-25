@@ -45,11 +45,14 @@ export function playMatchEnd(scene: Phaser.Scene, o: MatchEndOpts) {  // 1) sin 
   // clips de frente (reposo -> victoria / derrota) para los cuadros del duelo; `poses` queda como respaldo
   const wc = o.winner.endClips();
   const lc = o.loser.endClips();
+  const me = o.data.win ? o.winner : o.loser;
+  const rival = o.data.win ? o.loser : o.winner;
   const data: MatchEndData = {
     ...o.data,
     matchKey: scene.scene.key,
     poses: { me: o.data.win ? wp : lp, rival: o.data.win ? lp : wp },
     clips: { me: (o.data.win ? wc : lc) ?? undefined, rival: (o.data.win ? lc : wc) ?? undefined },
+    skins: { me: me.skinId, rival: rival.skinId, mate: o.mate?.skinId, rival2: o.rival2?.skinId },
     ...(o.data.doubles ? { clips2: { me: o.mate?.endClips() ?? undefined, rival: o.rival2?.endClips() ?? undefined } } : {}),
   };
   scene.time.delayedCall(450, () => {

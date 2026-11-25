@@ -1,0 +1,428 @@
+[
+ {
+  "p": "ambiente-1-2v2.webp",
+  "w": 1536,
+  "h": 1536,
+  "kb": 168
+ },
+ {
+  "p": "ambiente-1.webp",
+  "w": 1536,
+  "h": 1536,
+  "kb": 109
+ },
+ {
+  "p": "ambiente-2.webp",
+  "w": 1536,
+  "h": 1536,
+  "kb": 224
+ },
+ {
+  "p": "ambiente-3.webp",
+  "w": 1536,
+  "h": 1536,
+  "kb": 164
+ },
+ {
+  "p": "ambiente-4.webp",
+  "w": 1536,
+  "h": 1536,
+  "kb": 192
+ },
+ {
+  "p": "assets/liga/escenario-liga.webp",
+  "w": 1774,
+  "h": 887,
+  "kb": 166
+ },
+ {
+  "p": "assets/menu/liga-card-2v2.webp",
+  "w": 1774,
+  "h": 887,
+  "kb": 87
+ },
+ {
+  "p": "assets/menu/liga-card.webp",
+  "w": 1774,
+  "h": 887,
+  "kb": 86
+ },
+ {
+  "p": "assets/ranking/ranking-global-titulo.webp",
+  "w": 1774,
+  "h": 887,
+  "kb": 438
+ },
+ {
+  "p": "assets/liga.webp",
+  "w": 1271,
+  "h": 1238,
+  "kb": 140
+ },
+ {
+  "p": "assets/menu-bg.webp",
+  "w": 941,
+  "h": 1672,
+  "kb": 50
+ },
+ {
+  "p": "assets/liga-2v2-titulo.webp",
+  "w": 2170,
+  "h": 725,
+  "kb": 223
+ },
+ {
+  "p": "assets/liga-titulo.webp",
+  "w": 2170,
+  "h": 725,
+  "kb": 165
+ },
+ {
+  "p": "assets/personalizar-titulo.webp",
+  "w": 2170,
+  "h": 725,
+  "kb": 245
+ },
+ {
+  "p": "assets/tienda-titulo.webp",
+  "w": 2170,
+  "h": 725,
+  "kb": 243
+ },
+ {
+  "p": "assets/bronce.webp",
+  "w": 1312,
+  "h": 1199,
+  "kb": 191
+ },
+ {
+  "p": "assets/diamante.webp",
+  "w": 1312,
+  "h": 1199,
+  "kb": 245
+ },
+ {
+  "p": "assets/oro.webp",
+  "w": 1312,
+  "h": 1199,
+  "kb": 209
+ },
+ {
+  "p": "assets/plata.webp",
+  "w": 1312,
+  "h": 1199,
+  "kb": 185
+ },
+ {
+  "p": "assets/platino.webp",
+  "w": 1312,
+  "h": 1199,
+  "kb": 225
+ },
+ {
+  "p": "assets/loading-bg.webp",
+  "w": 1000,
+  "h": 1573,
+  "kb": 10
+ },
+ {
+  "p": "assets/personalizar-estilos.webp",
+  "w": 1300,
+  "h": 1210,
+  "kb": 124
+ },
+ {
+  "p": "assets/personalizar-cargando.webp",
+  "w": 1333,
+  "h": 1180,
+  "kb": 166
+ },
+ {
+  "p": "assets/personalizar-efecto.webp",
+  "w": 1333,
+  "h": 1180,
+  "kb": 147
+ },
+ {
+  "p": "assets/personalizar-mascotas.webp",
+  "w": 1333,
+  "h": 1180,
+  "kb": 176
+ },
+ {
+  "p": "assets/billetes.webp",
+  "w": 1536,
+  "h": 1024,
+  "kb": 202
+ },
+ {
+  "p": "assets/liga/fondo-liga.webp",
+  "w": 1024,
+  "h": 1536,
+  "kb": 69
+ },
+ {
+  "p": "assets/oferta-emotes.webp",
+  "w": 1675,
+  "h": 939,
+  "kb": 287
+ },
+ {
+  "p": "assets/barra-inicio.webp",
+  "w": 2172,
+  "h": 724,
+  "kb": 104
+ },
+ {
+  "p": "assets/premio-diario.webp",
+  "w": 2172,
+  "h": 724,
+  "kb": 182
+ },
+ {
+  "p": "assets/ranked-titulo.webp",
+  "w": 2169,
+  "h": 725,
+  "kb": 246
+ },
+ {
+  "p": "assets/bronce-2v2.webp",
+  "w": 1254,
+  "h": 1254,
+  "kb": 193
+ },
+ {
+  "p": "assets/btn-dash.webp",
+  "w": 1254,
+  "h": 1254,
+  "kb": 131
+ },
+ {
+  "p": "assets/btn-emotes.webp",
+  "w": 1254,
+  "h": 1254,
+  "kb": 114
+ },
+ {
+  "p": "assets/btn-rendirse.webp",
+  "w": 1254,
+  "h": 1254,
+  "kb": 87
+ },
+ {
+  "p": "assets/btn-saque-efecto.webp",
+  "w": 1254,
+  "h": 1254,
+  "kb": 73
+ },
+ {
+  "p": "assets/btn-saque.webp",
+  "w": 1254,
+  "h": 1254,
+  "kb": 88
+ },
+ {
+  "p": "assets/btn-smash.webp",
+  "w": 1254,
+  "h": 1254,
+  "kb": 136
+ },
+ {
+  "p": "assets/btn-ulti.webp",
+  "w": 1254,
+  "h": 1254,
+  "kb": 143
+ },
+ {
+  "p": "assets/challenger-2v2.webp",
+  "w": 1254,
+  "h": 1254,
+  "kb": 232
+ },
+ {
+  "p": "assets/challenger.webp",
+  "w": 1254,
+  "h": 1254,
+  "kb": 294
+ },
+ {
+  "p": "assets/diamante-2v2.webp",
+  "w": 1254,
+  "h": 1254,
+  "kb": 232
+ },
+ {
+  "p": "assets/icon-zona.webp",
+  "w": 1254,
+  "h": 1254,
+  "kb": 73
+ },
+ {
+  "p": "assets/monedas.webp",
+  "w": 1254,
+  "h": 1254,
+  "kb": 194
+ },
+ {
+  "p": "assets/oro-2v2.webp",
+  "w": 1254,
+  "h": 1254,
+  "kb": 195
+ },
+ {
+  "p": "assets/plata-2v2.webp",
+  "w": 1254,
+  "h": 1254,
+  "kb": 192
+ },
+ {
+  "p": "assets/platino-2v2.webp",
+  "w": 1254,
+  "h": 1254,
+  "kb": 208
+ },
+ {
+  "p": "assets/tienda-pj.webp",
+  "w": 961,
+  "h": 1451,
+  "kb": 47
+ },
+ {
+  "p": "assets/buscando/contador.webp",
+  "w": 2000,
+  "h": 667,
+  "kb": 118
+ },
+ {
+  "p": "assets/liga/botones-liga.webp",
+  "w": 2000,
+  "h": 667,
+  "kb": 68
+ },
+ {
+  "p": "assets/liga/btn-top100.webp",
+  "w": 2000,
+  "h": 667,
+  "kb": 61
+ },
+ {
+  "p": "assets/liga/panel-recompensa.webp",
+  "w": 2000,
+  "h": 667,
+  "kb": 98
+ },
+ {
+  "p": "assets/liga/pestanas-liga-2v2.webp",
+  "w": 2000,
+  "h": 667,
+  "kb": 74
+ },
+ {
+  "p": "assets/liga/pestanas-liga.webp",
+  "w": 2000,
+  "h": 667,
+  "kb": 398
+ },
+ {
+  "p": "assets/liga/titulo-lideres.webp",
+  "w": 2000,
+  "h": 667,
+  "kb": 92
+ },
+ {
+  "p": "assets/menu/pase-batalla.webp",
+  "w": 2000,
+  "h": 667,
+  "kb": 146
+ },
+ {
+  "p": "assets/ranking/marco-ranking.webp",
+  "w": 968,
+  "h": 1164,
+  "kb": 74
+ },
+ {
+  "p": "assets/nxo-logo.webp",
+  "w": 1583,
+  "h": 506,
+  "kb": 175
+ },
+ {
+  "p": "assets/inferno-ball-tulip-trail.webp",
+  "w": 1920,
+  "h": 348,
+  "kb": 288
+ },
+ {
+  "p": "assets/inferno-ball-tulip.webp",
+  "w": 1920,
+  "h": 348,
+  "kb": 151
+ },
+ {
+  "p": "assets/charge-tulip.webp",
+  "w": 1280,
+  "h": 512,
+  "kb": 260
+ },
+ {
+  "p": "assets/charge-hielo.webp",
+  "w": 1280,
+  "h": 486,
+  "kb": 155
+ },
+ {
+  "p": "assets/charge-energy.webp",
+  "w": 1280,
+  "h": 460,
+  "kb": 179
+ },
+ {
+  "p": "assets/charge-glitch.webp",
+  "w": 1280,
+  "h": 456,
+  "kb": 159
+ },
+ {
+  "p": "assets/charge-fire.webp",
+  "w": 1280,
+  "h": 452,
+  "kb": 165
+ },
+ {
+  "p": "assets/charge-luz.webp",
+  "w": 1280,
+  "h": 444,
+  "kb": 124
+ },
+ {
+  "p": "assets/charge-wild.webp",
+  "w": 1280,
+  "h": 440,
+  "kb": 148
+ },
+ {
+  "p": "assets/charge-light.webp",
+  "w": 1280,
+  "h": 408,
+  "kb": 145
+ },
+ {
+  "p": "assets/charge-shadow.webp",
+  "w": 1280,
+  "h": 386,
+  "kb": 120
+ },
+ {
+  "p": "assets/ui/marcador-principal.webp",
+  "w": 1500,
+  "h": 320,
+  "kb": 62
+ },
+ {
+  "p": "assets/charge-time.webp",
+  "w": 1280,
+  "h": 300,
+  "kb": 119
+ }
+]

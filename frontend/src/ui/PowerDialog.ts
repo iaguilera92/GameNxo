@@ -4,6 +4,7 @@ import type { ArcadePalette } from './modeButtons';
 import { sfx } from '../fx/sfx';
 import { RARITY_LABEL, type ItemRarity } from '../domain/shopCatalog';
 import { RARITY_STYLE, drawRarityFrame } from './rarity';
+import { swipeHint, tapHint } from './guideFocus';
 
 /** Cuántos huecos muestra el diálogo: 2 filas × 5. */
 export const POWER_SLOTS = 10;
@@ -40,6 +41,8 @@ export interface PowerSlot {
   demoName?: string;
   name: string;
   desc: string;
+  /** Aviso de este hueco mientras el jugador no lo tiene. */
+  lockedNote?: string;
   /** lo tiene el jugador (si no, sale bloqueado y se compra en la Tienda) */
   owned: boolean;
   /** está en uso ahora */
@@ -106,6 +109,8 @@ const NAVY = 0x0b1733;
 const BORDER_IN = 3;
 /** verde del poder equipado (borde y sello ✓ del hueco) */
 const EQUIP_GREEN = 0x24c25a;
+/** (25-11-2026, usuario) tutorial: lo que se deja ver la demostración antes de liberar EQUIPAR (ms) */
+const DEMO_VIEW_MS = 3000;
 
 /**
  * Congela lo que ya hay en la escena (lo que queda DETRÁS del diálogo): se esconde (el velo casi negro apenas lo dejaba ver y así no se
@@ -176,6 +181,14 @@ export function openPowerDialog(scene: Phaser.Scene, opts: PowerDialogOpts) {
   const timers: Phaser.Time.TimerEvent[] = [];
   let changed = false;
   let demoSeen = !opts.requireDemoBeforeEquip;
+  /**
+   * (25-11-2026, usuario) tutorial: todo opaco menos la televisión, con la mano DESLIZANDO; tras deslizar y ver la demostración
+   * (DEMO_VIEW_MS) se quita el opaco, se liberan los botones y la mano señala EQUIPAR.
+   */
+  let released = !(opts.requireDemoBeforeEquip && demo);
+  let swipeHand: Phaser.GameObjects.Container | null = null;
+  let equipHand: Phaser.GameObjects.Container | null = null;
+  let releaseGuide = () => {};
   let closed = false;
 
   // fondo oscuro que bloquea lo de detrás; tocar fuera del panel cierra
@@ -236,6 +249,8 @@ export function openPowerDialog(scene: Phaser.Scene, opts: PowerDialogOpts) {
     for (const t of sparkTweens) t.remove();
     actionPulse?.remove();
     actionPulse = null;
+    swipeHand?.destroy();
+    equipHand?.destroy();
     demoCleanup();
     gridCleanup();
     scene.tweens.killTweensOf(xg);
@@ -243,7 +258,11 @@ export function openPowerDialog(scene: Phaser.Scene, opts: PowerDialogOpts) {
     scene.tweens.add({ targets: root, alpha: 0, duration: 120, onComplete: () => root.destroy() });
     onClose?.({ changed });
   };
-  dim.on('pointerup', close);
+  // (25-11-2026, usuario) solo cierra un toque que EMPIEZA fuera (soltar fuera al terminar un deslizamiento no cierra)
+  let dimDown = false;
+  dim.on('pointerdown', () => { dimDown = true; });
+  dim.on('pointerup', () => { if (dimDown) close(); dimDown = false; });
+  dim.on('pointerout', () => { dimDown = false; });
   const cx0 = px + pw - 38;
   const cy0 = py + 36;
   // la X sola (sin círculo), centrada en su propio origen para poder girarla; al abrirse da 3 vueltas y frena
@@ -405,6 +424,9 @@ export function openPowerDialog(scene: Phaser.Scene, opts: PowerDialogOpts) {
             if (!demoSeen) {
               demoSeen = true;
               show(selected);
+              swipeHand?.destroy();
+              swipeHand = null;
+              timers.push(scene.time.delayedCall(DEMO_VIEW_MS, () => releaseGuide()));
             }
           }
         },
@@ -520,11 +542,8 @@ export function openPowerDialog(scene: Phaser.Scene, opts: PowerDialogOpts) {
     grey: { fill: 0x44506b, band: 0xffffff, bandA: 0.08, stroke: '#1b2338', text: '#c4cfe8' },
   };
   const tag = (label: string, palette: ArcadePalette, onTap?: () => void, check = false) => {
-    if (!demoSeen && label === 'EQUIPAR') {
-      label = 'DESLIZA PARA VER';
-      palette = 'blue';
-      onTap = undefined;
-    }
+    // (25-11-2026, usuario) tutorial: EQUIPAR se ve pero no se puede tocar hasta deslizar y ver la demostración
+    if (!released && label === 'EQUIPAR') onTap = undefined;
     actionPulse?.remove();
     actionPulse = null;
     for (const o of action.list) scene.tweens.killTweensOf(o); // el latido del botón anterior
@@ -556,6 +575,8 @@ export function openPowerDialog(scene: Phaser.Scene, opts: PowerDialogOpts) {
       hit.on('pointerout', () => scene.tweens.add({ targets: action, scale: 1, duration: 120, ease: 'Quad.easeOut' }));
       hit.on('pointerup', () => {
         scene.tweens.add({ targets: action, scale: 1, duration: 120, ease: 'Back.easeOut' });
+        equipHand?.destroy();
+        equipHand = null;
         onTap();
       });
       action.add(hit);
@@ -696,7 +717,7 @@ export function openPowerDialog(scene: Phaser.Scene, opts: PowerDialogOpts) {
       screen.add(scene.add.text(bx, top + 62, 'PARA QUÉ SIRVE', { fontFamily: FONT, fontSize: '14px', color: '#9fb4e0' }).setOrigin(0, 0.5).setLetterSpacing(2));
       const descY = top + 80;
       const room = sy + sh - 56 - descY;
-      const desc = scene.add.text(bx, descY, s.owned ? s.desc : `${s.desc}\n${lockedNote}`, { fontFamily: FONT, fontSize: '19px', color: '#e6f0ff', lineSpacing: 4, wordWrap: { width: bw2 } }).setOrigin(0, 0);
+      const desc = scene.add.text(bx, descY, s.owned ? s.desc : `${s.desc}\n${s.lockedNote ?? lockedNote}`, { fontFamily: FONT, fontSize: '19px', color: '#e6f0ff', lineSpacing: 4, wordWrap: { width: bw2 } }).setOrigin(0, 0);
       for (let fs = 19; desc.height > room && fs > 12; fs--) desc.setFontSize(fs);
       screen.add(desc);
       // línea fina entre las dos columnas
@@ -775,7 +796,7 @@ export function openPowerDialog(scene: Phaser.Scene, opts: PowerDialogOpts) {
         const nm = scene.add.text(tx, ty, s.name.toUpperCase(), { ...textStyle(26), color: '#aebfe6', align }).setOrigin(origin, 0.5);
         if (nm.width > tw) nm.setScale(tw / nm.width);
         screen.add(nm);
-        screen.add(scene.add.text(tx, ty + (side ? 24 : 32), `${s.desc}\n${lockedNote}`, { fontFamily: FONT, fontSize: '14px', color: '#8ea3ce', align, wordWrap: { width: tw } }).setOrigin(origin, 0));
+        screen.add(scene.add.text(tx, ty + (side ? 24 : 32), `${s.desc}\n${s.lockedNote ?? lockedNote}`, { fontFamily: FONT, fontSize: '14px', color: '#8ea3ce', align, wordWrap: { width: tw } }).setOrigin(origin, 0));
       }
       if (onShop) tag(shopLabel, 'blue', () => onShop());
       else tag('BLOQUEADO', 'grey');
@@ -989,6 +1010,26 @@ export function openPowerDialog(scene: Phaser.Scene, opts: PowerDialogOpts) {
     panel.bringToTop(frame);
   }
   if (shine) panel.bringToTop(shine);
+
+  if (!released) {
+    // todo opaco (y sin tocar) menos la pantalla, donde se desliza
+    const guideLayer = scene.add.container(0, 0);
+    const R = { x: sx, y: sy, w: sw, h: sh };
+    for (const [x, y, w, h] of [[0, 0, W, R.y], [0, R.y + R.h, W, H - R.y - R.h], [0, R.y, R.x, R.h], [R.x + R.w, R.y, W - R.x - R.w, R.h]]) {
+      if (w > 0 && h > 0) guideLayer.add(scene.add.rectangle(x, y, w, h, 0x02060f, 0.72).setOrigin(0).setInteractive());
+    }
+    guideLayer.add(scene.add.graphics().lineStyle(4, 0xffd23f, 1).strokeRoundedRect(R.x - 3, R.y - 3, R.w + 6, R.h + 6, 14));
+    root.add(guideLayer);
+    swipeHand = swipeHint(scene, R.x + R.w * 0.78, R.x + R.w * 0.22, R.y + R.h * 0.55, 8100);
+    releaseGuide = () => {
+      if (closed || released) return;
+      released = true;
+      scene.tweens.add({ targets: guideLayer, alpha: 0, duration: 300, onComplete: () => guideLayer.destroy() });
+      show(selected);
+      const s = slots[selected];
+      if (s?.owned && !s.equipped) equipHand = tapHint(scene, action.x, action.y, 8100);
+    };
+  }
 
   // entrada suave
   panel.setAlpha(0).setScale(0.96);

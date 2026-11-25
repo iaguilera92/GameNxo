@@ -1,0 +1,35 @@
+{
+  "source": "Mat/rival/hd/mat-rival-{movimientos,golpes,reacciones,extras}-*.png",
+  "view": "front",
+  "cell": {
+    "w": 96,
+    "h": 157
+  },
+  "origin": {
+    "x": 0.5,
+    "y": 0.97452
+  },
+  "standHeight": 135,
+  "turnExit": 5,
+  "turnRate": 2.2,
+  "landFrom": 1,
+  "landExit": 3,
+  "landEnd": 4,
+  "landRate": 2.6,
+  "animations": {
+    "brake-turn": {
+      "file": "brake-turn.webp",
+      "frames": 8,
+      "fps": 14,
+      "loop": false,
+      "cell": {
+        "w": 138,
+        "h": 149
+      },
+      "origin": {
+        "x": 0.5,
+        "y": 0.97315
+      }
+    }
+  }
+}

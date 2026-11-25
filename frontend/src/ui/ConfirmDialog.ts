@@ -20,6 +20,8 @@ export interface ConfirmOpts {
   onCancel: () => void;
   lockSeconds?: number;
   depth?: number;
+  /** (24-11-2026) botones sin la sombra de color (pantalla de inicio) */
+  noShadow?: boolean;
 }
 
 const NAVY = 0x0b1733;
@@ -81,10 +83,10 @@ export function showConfirm(scene: Phaser.Scene, o: ConfirmOpts): Phaser.GameObj
   const objs: Phaser.GameObjects.GameObject[] = [shade, panel];
   const fix = (c: Phaser.GameObjects.Container) => c.setScrollFactor(0).setDepth(depth + 2);
 
-  const cancel = fix(arcadeButton(scene, rightX, by, bw, bh, o.cancelLabel, o.onCancel, { palette: 'yellow' }));
+  const cancel = fix(arcadeButton(scene, rightX, by, bw, bh, o.cancelLabel, o.onCancel, { palette: 'yellow', noShadow: o.noShadow }));
   objs.push(cancel);
 
-  const makeConfirm = () => fix(arcadeButton(scene, leftX, by, bw, bh, o.confirmLabel, o.onConfirm, { palette: 'red' }));
+  const makeConfirm = () => fix(arcadeButton(scene, leftX, by, bw, bh, o.confirmLabel, o.onConfirm, { palette: 'red', noShadow: o.noShadow }));
   const lock = Math.max(0, Math.floor(o.lockSeconds ?? 0));
   if (!lock) {
     objs.push(makeConfirm());

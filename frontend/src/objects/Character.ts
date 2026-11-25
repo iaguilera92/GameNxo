@@ -34,6 +34,7 @@ export const PLAYER_LOOK: CharacterLook = {
 
 /** Look del jugador con la skin elegida en el perfil (o una skin dada). */
 export function playerLook(skinId?: string): CharacterLook {
+  if (skinId === 'mat') return MAT_LOOK;
   return { ...PLAYER_LOOK, id: (skinId as CharacterLook['id']) ?? PLAYER_LOOK.id };
 }
 /** Rival automático: el personaje del catálogo distinto al del jugador (se elige por id). */
@@ -44,12 +45,13 @@ export function rivalLook(playerSkin?: string): CharacterLook {
  * Look de CUALQUIER skin del catálogo en la vista pedida (p. ej. el personaje real del rival en LAN:
  * `lookForSkin(opponent.skin, 'front')`).
  *  - 'back': el look del jugador con esa skin (playerLook).
- *  - 'front': el look de rival con esa skin, si tiene hoja frontal en el catálogo.
- * Si la skin es desconocida (llega por red: no es de fiar) o no tiene hoja frontal, se usa el respaldo de
+ *  - 'front': el look de rival con esa skin.
+ * Si la skin es desconocida (llega por red: no es de fiar), se usa el respaldo de
  * siempre: rivalLook(fallbackPlayerSkin) = el personaje del catálogo distinto al del jugador.
  */
 export function lookForSkin(skinId: string | undefined, view: CharacterView = 'front', fallbackPlayerSkin?: string): CharacterLook {
   if (view === 'back') return playerLook(skinId);
+  if (skinId === 'mat') return MAT_LOOK;
   if (sheetFor(skinId, 'front')) return { ...BOT_LOOK, id: skinId as CharacterLook['id'] };
   return rivalLook(fallbackPlayerSkin);
 }
@@ -64,6 +66,12 @@ const BOT_LOOK: CharacterLook = {
   skin: 0xf2b27c,
   skinDark: 0xd1834d,
   shoe: C.yellow,
+};
+
+/** Paleta de Mat para el respaldo vectorial si no se cargan sus sprites. */
+const MAT_LOOK: CharacterLook = {
+  ...BOT_LOOK, id: 'mat', shirt: 0x147037, shirtDark: 0x084825, shorts: 0xf5f5f5,
+  hair: 0x392319, band: 0x83d323, shoe: 0x235d35,
 };
 
 /** 'back' = visto de espaldas (jugador, cámara detrás); 'front' = de frente (rival / menús). */
@@ -108,11 +116,13 @@ export class Character extends Phaser.GameObjects.Container {
   private usesSkin = false;
   /** Ángulo de reposo del brazo. Imagen: cae al costado (95°). Vectorial: hacia arriba (-60°). */
   readonly restAngle: number;
+  readonly skinId?: SkinId;
   /** Animaciones por sprites (solo NXO de espaldas en el partido); undefined = dibujo de siempre. */
   private nxo?: NxoActor;
 
   constructor(scene: Phaser.Scene, x: number, y: number, look: CharacterLook, view: CharacterView = 'front') {
     super(scene, x, y);
+    this.skinId = look.id;
 
     // NXO de espaldas (partido): spritesheet animado, si cargó y las skins no están desactivadas
     const spriteId = sheetFor(look.id, view);
@@ -539,6 +549,10 @@ export class Character extends Phaser.GameObjects.Container {
 
   impactStun(kind: 'smash' | 'inferno', ms: number, throwRacket = true): boolean {
     return this.nxo?.impactStun(kind, ms, throwRacket) ?? false;
+  }
+
+  get racketReleaseMs() {
+    return this.nxo?.racketReleaseMs;
   }
 
   /** Sin raqueta (ULTI recibida): reposo y carrera sin raqueta si la hoja los trae (ver NxoActor.setNoRacket). */

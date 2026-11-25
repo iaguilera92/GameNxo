@@ -4,6 +4,7 @@
  * nombre, skin y habilidades.
  */
 import { MAX_LEVEL } from '../config';
+import { CATALOG } from '../characters/catalog';
 import { type ItemId, type ItemKind, type PlayerState, type StarterSkin, type StyleId, STARTER_ITEMS, itemId, newPlayer } from './player';
 import { SHOP_ITEMS } from './shopCatalog';
 import { sanitizeWheel } from './dailyWheel';
@@ -30,8 +31,7 @@ import { isFrameId } from './profileFrames';
 // Los emotes solo se ganan en el Pase de Batalla.
 const KNOWN_ITEMS = new Set<string>([
   ...STARTER_ITEMS,
-  'skin:nxo',
-  'skin:mai',
+  ...CATALOG.map(({ id }) => itemId.skin(id)),
   ...SHOP_ITEMS.map((i) => i.id),
   ...EMOTES.map((k) => itemId.emote(k)),
   // estilos de color del personaje (premios del Pase; domain/charColors.ts)

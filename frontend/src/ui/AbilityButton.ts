@@ -1,4 +1,4 @@
-import Phaser from 'phaser';
+﻿import Phaser from 'phaser';
 import { C, textStyle } from './theme';
 import { drawAbilityIcon, drawDisc } from './icons';
 import type { AbilityIcon } from '../logic/Abilities';
@@ -67,10 +67,11 @@ export class AbilityButton extends Phaser.GameObjects.Container {
     this.secs = scene.add.text(0, 0, '', textStyle(Math.round(R * 0.6))).setOrigin(0.5);
     this.add(this.secs);
     this.baseLabel = label;
-    this.labelText = scene.add.text(0, R + 22, label, textStyle(20)).setOrigin(0.5);
+    // (25-11-2026, usuario) etiqueta un poco más abajo (antes R + 22: quedaba pegada al borde del botón), centrada bajo él
+    this.labelText = scene.add.text(0, R + 32, label, textStyle(20)).setOrigin(0.5, 0.5);
     this.add(this.labelText);
     // nombre del poder equipado, en pequeño bajo la etiqueta
-    this.subText = scene.add.text(0, R + 43, '', { fontFamily: '"Lilita One", "Arial Black", sans-serif', fontSize: '14px', color: '#cfe0ff', stroke: '#0a1638', strokeThickness: 3 }).setOrigin(0.5);
+    this.subText = scene.add.text(0, R + 50, '', { fontFamily: '"Lilita One", "Arial Black", sans-serif', fontSize: '14px', color: '#cfe0ff', stroke: '#0a1638', strokeThickness: 3 }).setOrigin(0.5);
     this.add(this.subText);
 
     this.setSize(R * 2 + 20, R * 2 + 20);
@@ -132,6 +133,21 @@ export class AbilityButton extends Phaser.GameObjects.Container {
   setSubLabel(text: string) {
     this.baseSub = text;
     if (!this.infernoMode) this.subText.setText(text);
+  }
+
+  /** (25-11-2026) bloqueado por nivel: "NIVEL n" grande en el centro del botón (null lo quita) */
+  private lockText?: Phaser.GameObjects.Container;
+  setLockText(text: string | null) {
+    this.lockText?.destroy();
+    this.lockText = undefined;
+    if (!text) return;
+    const [word, num] = text.split(' ');
+    const st = { fontFamily: '"Lilita One", "Arial Black", sans-serif', color: '#ffd23f', stroke: '#0a1638', strokeThickness: 6 };
+    const c = this.scene.add.container(0, 0);
+    c.add(this.scene.add.text(0, -this.radius * 0.3, word, { ...st, fontSize: `${Math.round(this.radius * 0.36)}px` }).setOrigin(0.5));
+    c.add(this.scene.add.text(0, this.radius * 0.34, num ?? '', { ...st, fontSize: `${Math.round(this.radius * 0.8)}px` }).setOrigin(0.5)); // (25-11-2026, usuario) el número más abajo (0,2 → 0,34): no choca con NIVEL
+    this.add(c);
+    this.lockText = c;
   }
 
   /** Sin etiqueta ni subtítulo (jugadores en nivel máximo: ya conocen los botones). */

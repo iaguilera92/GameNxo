@@ -10,7 +10,7 @@
  */
 import { MAX_LEVEL } from '../config';
 
-export type PassiveId = 'agility' | 'precision' | 'strength';
+export type PassiveId = 'agility' | 'precision' | 'strength' | 'spin' | 'resistance';
 
 export interface PassiveDef {
   /** id de personaje (skin del catálogo) */
@@ -27,36 +27,33 @@ export interface PassiveDef {
   css: string;
 }
 
-/** Una pasiva por personaje. */
+/**
+ * (25-11-2026, usuario) Las 5 pasivas (varios personajes pueden compartir una). `skin` y el nombre del personaje se ponen al asignarla.
+ */
+const KINDS: Record<PassiveId, Omit<PassiveDef, 'skin' | 'detail'> & { what: string }> = {
+  agility: { id: 'agility', name: 'AGILIDAD', short: 'Corres más rápido y llegas más lejos a la pelota.', what: 'Aumenta tu velocidad de movimiento y el alcance de tu raqueta.', color: 0x45d9ff, css: '#8fe8ff' },
+  precision: { id: 'precision', name: 'PRECISIÓN', short: 'Tus golpes y tu saque se desvían menos.', what: 'Reduce el desvío de tus golpes (a los lados y en profundidad) y de tu saque.', color: 0xff8fc4, css: '#ffc2dd' },
+  strength: { id: 'strength', name: 'FUERZA', short: 'Tus golpes salen más fuertes y rápidos.', what: 'Aumenta la velocidad de tus golpes (no los globos ni las dejadas).', color: 0xff8a4a, css: '#ffb98f' },
+  spin: { id: 'spin', name: 'EFECTO', short: 'Tu saque y tu golpe tienen más efecto.', what: 'Aumenta la curva de tu saque con efecto y de tus golpes.', color: 0x5be37a, css: '#9ff0b4' },
+  resistance: { id: 'resistance', name: 'RESISTENCIA', short: 'Tu DEFENSIVO se recarga antes.', what: 'Reduce la espera para volver a usar tu DEFENSIVO.', color: 0xffd23f, css: '#ffe58a' },
+};
+
+const def = (skin: string, name: string, id: PassiveId): PassiveDef => {
+  const { what, ...k } = KINDS[id];
+  return { ...k, skin, detail: `${what} Cada nivel de maestría suma un 1 % (hasta un 10 % en el nivel 10) y se aplica en todos tus partidos con ${name}.` };
+};
+
+/** Una pasiva por personaje (25-11-2026, usuario: Jun = Resistencia, Zac y Net = Fuerza, Rin = Agilidad, Isa = Efecto, Flo = Resistencia). */
 export const PASSIVES: Record<string, PassiveDef> = {
-  nxo: {
-    skin: 'nxo',
-    id: 'agility',
-    name: 'AGILIDAD',
-    short: 'Corres más rápido y llegas más lejos a la pelota.',
-    detail: 'Aumenta tu velocidad de movimiento y el alcance de tu raqueta. Cada nivel de maestría suma un 1 % (hasta un 10 % en el nivel 10) y se aplica en todos tus partidos con Nxo.',
-    color: 0x45d9ff,
-    css: '#8fe8ff',
-  },
-  mai: {
-    skin: 'mai',
-    id: 'precision',
-    name: 'PRECISIÓN',
-    short: 'Tus golpes y tu saque se desvían menos.',
-    detail: 'Reduce el desvío de tus golpes (a los lados y en profundidad) y de tu saque. Cada nivel de maestría suma un 1 % (hasta un 10 % en el nivel 10) y se aplica en todos tus partidos con Mai.',
-    color: 0xff8fc4,
-    css: '#ffc2dd',
-  },
-  // (21-11-2026, usuario) JUN = FUERZA. Jun aún no es jugable (sin hojas): la pasiva ya está definida y se aplica en cuanto se pueda elegir.
-  jun: {
-    skin: 'jun',
-    id: 'strength',
-    name: 'FUERZA',
-    short: 'Tus golpes salen más fuertes y rápidos.',
-    detail: 'Aumenta la velocidad de tus golpes (no los globos ni las dejadas). Cada nivel de maestría suma un 1 % (hasta un 10 % en el nivel 10) y se aplica en todos tus partidos con Jun.',
-    color: 0xff8a4a,
-    css: '#ffb98f',
-  },
+  nxo: def('nxo', 'Nxo', 'agility'),
+  mai: def('mai', 'Mai', 'precision'),
+  jun: def('jun', 'Jun', 'resistance'),
+  mat: def('mat', 'Mat', 'spin'),
+  zac: def('zac', 'Zac', 'strength'),
+  net: def('net', 'Net', 'strength'),
+  rin: def('rin', 'Rin', 'agility'),
+  isa: def('isa', 'Isa', 'spin'),
+  flo: def('flo', 'Flo', 'resistance'),
 };
 
 /** Pasiva de un personaje (undefined si aún no tiene). */

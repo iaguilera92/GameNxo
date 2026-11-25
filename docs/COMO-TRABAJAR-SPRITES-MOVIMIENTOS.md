@@ -89,6 +89,13 @@ personaje mide ~110-120 px y el teléfono lo agranda 3-4 veces, así que se ve b
 
 ## 0. Reglas para las IA (resumen; el detalle está en las secciones siguientes)
 
+**Carga por personaje (25-11-2026, usuario).** Las tiras ya NO se cargan todas al arrancar (eran ~250 MB de memoria gráfica y
+crecían con cada personaje). `NxoActor.queueNxoSpriteLoads(load, ids)` encola solo las hojas pedidas (`sheetsOf([[skin, vista]])`) y
+`releaseCharacterSprites(scene, keep)` libera las demás. Arranque, menú y PERSONALIZAR: tu personaje de espaldas y de frente.
+Búsqueda y partido: además el rival de frente (y en el 2v2 tu compañero de espaldas). El menú libera al volver (nunca con un partido
+abierto). Un pack nuevo en `PACKS` entra solo en este sistema (`sheetEntries`); si una pantalla nueva dibuja a otro personaje, tiene
+que pedir su hoja en su `preload` y llamar a `registerNxoAnims` en su `create`.
+
 1. **Fuente única.** Los sprites de un personaje salen SIEMPRE de sus hojas en `frontend/public/personajes/<Personaje>/`
    (el rival, en `rival/`). Una imagen nueva (de Descargas, de un chat…) se deja primero ahí, con el nombre exacto que
    lee la herramienta. Nunca se copia directo a `assets/characters/`.
@@ -142,11 +149,42 @@ frontend/public/personajes/
 │   ├── jugador/  emotes/               HD de espaldas y fuentes de sus emotes
 │   └── rival/                          pj-mai-rival-1..4.png / -ulti.png (antiguas) y hd/ (las de ahora)
 ├── Jun/
-│   └── pj-jun.png                      arte del retrato sobre verde croma; SIN hojas (personaje del PASE, aún no jugable; ver §8)
+│   ├── pj-jun.png                      fuente del retrato del Pase de Batalla
+│   ├── jugador/                        32 hojas HD de espaldas
+│   └── rival/hd/                       32 hojas HD de frente
+├── Isa/
+│   ├── pj-isa.png                      diseño oficial del personaje
+│   ├── jugador/                        32 fuentes HD de espaldas (isa-*.png)
+│   └── rival/hd/                       32 fuentes HD de frente (isa-rival-*.png)
+├── Mat/
+│   ├── pj-mat.png                      diseño oficial del personaje
+│   ├── jugador/                       fuentes HD mat-movimientos-1..10, mat-golpes-1..9, mat-reacciones-1..5, mat-extras-1..3 y mat-ulti-1..6
+│   └── rival/hd/                      fuentes HD mat-rival-: movimientos 1–10, golpes 1–8, reacciones 1–5, extras 1–3 y ULTI 1–6
 └── Net/
     └── pj-net.png                      arte del retrato sobre verde croma (21-11-2026); SIN hojas (aún no jugable). Su retrato sin el verde es
                                         assets/characters/net_portrait.webp (159 KB; medidas en characters/passPortrait.ts, SOON_PORTRAITS)
 ```
+
+**Isa (25-11-2026).** Hay 32 hojas fuente por vista, en `Isa/jugador/` y `Isa/rival/hd/`, con croma verde `#00FF00`. Cada vista incluye 10 movimientos, ocho golpes, cinco reacciones, tres extras y seis clips de la ULTI. Se usó a Mai como referencia de poses, expresiones y efectos. Para `isa-rival-movimientos-8.png` (caminata) se usó a NXO rival. La raqueta fucsia conserva el cordaje blanco. Las hojas horizontales miden 1536 × 1024 y tienen ocho cuadros. Las verticales de la ULTI miden 1024 × 1536 y tienen nueve cuadros (Jugador 2–5, Rival 2–6).
+
+`node tools/build-hd.mjs isa` y `node tools/build-hd.mjs isa-front` generan 26 tiras de cancha cada uno. Con `--ulti` se generan las seis tiras adicionales por vista. Isa se equipa desde CAMBIAR PERSONAJE cuando está desbloqueada y es el rival automático de Mat. En ambas vistas la raqueta suelta es fucsia y sale a los 143 ms, cuando empieza el cuadro 3 de la reacción al impacto. La recogida frontal retira la raqueta del suelo desde el cuadro 3 (`pickupGrab: 2`) porque ya se ve en la hoja. En la vista de espaldas se retira en el cuadro 4 (`pickupGrab: 3`). Se calibró el centro del cordaje del saque frontal normal en el cuadro 6 `{dx: -5, z: 149}`, y en el cuadro 5 para el frontal con efecto `{dx: 14, z: 155}` y ambos saques de espaldas (`normal {dx: 28, z: 161}`, `spin {dx: 27, z: 167}`).
+
+**Jun Jugador (25-11-2026).** Las 32 hojas fuente en `Jun/jugador/` cubren 10 movimientos, ocho golpes, cinco reacciones, tres extras y seis clips de la ULTI. Las hojas horizontales tienen ocho cuadros en 4 × 2 y las verticales (`jun-ulti-2` a `jun-ulti-5`) tienen nueve en 3 × 3. Todas usan croma verde. El retrato `Jun/pj-jun.png` define la ropa naranja y blanca, la coronilla calva y la raqueta naranja con cordaje blanco. Para el reposo se tomó la postura y el encuadre de Mat. Para las demás hojas se pidió conservar el Jun de ese reposo y seguir las poses y efectos de la animación correspondiente de Isa. En `jun-ulti-2`, Jun queda desarmado tras el segundo cuadro. En `jun-ulti-6`, la raqueta vuelve a su mano en el cuarto.
+
+**Jun Rival (25-11-2026).** Las 32 hojas fuente de frente están en `Jun/rival/hd/`, con prefijo `jun-rival-`. El retrato de Jun define su cara y el uniforme naranja y blanco. El reposo fija la raqueta naranja en la mano derecha, a la izquierda de la pantalla. Las otras hojas siguen las poses, los efectos y las expresiones de NXO Rival. Hay ocho cuadros por hoja horizontal y nueve por hoja vertical (`jun-rival-ulti-2` a `jun-rival-ulti-6`). En el pelotazo la raqueta sale de la mano en el cuadro 2 y desaparece desde el 3. En la recogida se dibuja en el suelo en el cuadro 3 y Jun la agarra en el 4. Para la integración, retirar la raqueta independiente al entrar en el cuadro 3 de la recogida.
+
+Los packs `jun` y `jun-front` se generan con `node tools/build-hd.mjs`, 26 tiras de cancha y seis más con `--ulti` para cada vista. El cordaje del saque de espaldas se midió en el cuadro 5 para ambas variantes (`normal {dx: 25, z: 168}`, `spin {dx: 27, z: 171}`). De frente se midió el normal en el cuadro 5 (`{dx: 9, z: 169}`) y el saque con efecto en el cuadro 6 (`{dx: -4, z: 161}`). El cálculo del saque con efecto suma la altura de salto del cuadro de impacto. En la ULTI frontal la espera se congela en el cuadro 3, la estela comienza en el 4 y el destello de contacto aparece en el 6.
+
+**Mat Jugador (25-11-2026).** Hay 33 hojas fuente de 1536 × 1024, con 8 cuadros en 4 × 2. Se tomó la hoja correspondiente de NXO como referencia de cada animación. La ULTI completa incluye `inferno-swing`, `ulti-hit`, `ulti-stun`, `idle-nr`, `run-nr` y `pickup`, en ese orden. En `ulti-hit` la raqueta se suelta en el cuadro 2 y desaparece de la hoja desde el 3. En `pickup` aparece en la mano de Mat en el cuadro 4. Las hojas de Mat usan croma magenta `#FF00FF` para conservar el verde de la ropa y la raqueta. Se conservan las primeras versiones generadas.
+
+`node tools/build-hd.mjs mat` recorta las 27 tiras de cancha y `node tools/build-hd.mjs mat --ulti` recorta las seis de la ULTI. El registro activa el croma magenta. El recorte por componentes separa el polvo y los arcos que cruzan casillas. En los casos donde dos efectos se tocan, el corte coincide con el límite de la casilla. Si Chrome no puede convertir a WebP, `GAMENXO_IMAGE_PYTHON` permite usar un ejecutable de Python con Pillow y soporte WebP.
+
+Mat se equipa desde CAMBIAR PERSONAJE y usa las tiras en la vista Jugador. La raqueta suelta de Mat tiene el aro verde. Se midieron los saques sobre el centro del cordaje del quinto cuadro, con coordenadas locales `normal {dx: 21, z: 157}` y `spin {dx: -5, z: 160}`. El destello de Inferno Drive coincide con el sexto cuadro (`impact: 5`).
+
+**Mat Rival (25-11-2026).** Las 32 hojas fuente en `Mat/rival/hd/` siguen la numeración de NXO rival. Cada archivo mide 1536 × 1024, con ocho cuadros en 4 × 2 y croma magenta. Se usó cada hoja frontal de NXO como referencia de poses, expresiones y efectos. En `golpes-1` Mat mantiene la boca cerrada al preparar el golpe y aprieta los dientes en los cuadros 4 a 7. El remate potenciado conserva el gesto de esfuerzo y el destello sobre la raqueta.
+
+`node tools/build-hd.mjs mat-front` genera 26 tiras de cancha y `node tools/build-hd.mjs mat-front --ulti` genera seis de la ULTI. El recorte usa croma magenta y un alto de pie de 150 px. Las tiras se usan en cancha y en las tarjetas de resultados. En la rotación automática, Mat es el rival de Mai. En `ulti-hit` la raqueta deja de aparecer desde el cuadro 2 (`racketFree: 1`, 71 ms a 14 fps). La recogida conserva el agarre en el cuadro 4. Los centros del cordaje de los saques frontales en el quinto cuadro son `normal {dx: 18, z: 173}` y `spin {dx: 8, z: 161}`. El destello del golpe de derecha aparece en el sexto cuadro (`impact: 5`).
+
 En CAMBIAR PERSONAJE (PERSONALIZAR, 21-11-2026) salen los 4 personajes: NXO y MAI (jugables) y JUN y NET bloqueados. Sus retratos de JUN y NET se piden al abrir el diálogo.
 
 **Limpieza del 21-11-2026 (usuario):** se borraron las hojas ANTIGUAS de espaldas `pj-nxo-1..4.png`, `pj-nxo-ulti.png`, `pj-mai-1..4.png` y
@@ -198,6 +236,12 @@ Por personaje y por vista (espaldas = jugador, frente = rival):
 | `nxo-front` | frente | `Nxo/rival/pj-nxo-rival-1..4.png` | `Nxo/rival/pj-nxo-rival-ulti.png` (6 × 9, tiras WebP) | `nxo-front-v2/`, `nxo-front-inferno/` | `nxo-front-*.json` |
 | `mai` | espaldas | `Mai/jugador/mai-*.png` (HD, `build-hd.mjs`; las hojas `pj-mai-1..4.png` se borraron el 21-11-2026) | `Mai/jugador/mai-ulti-1..6.png` (HD, `--ulti`; `pj-mai-ulti.png` borrada) | `mai-v2/`, `mai-inferno/` | `mai-*.json` |
 | `mai-front` | frente | `Mai/rival/hd/mai-rival-*.png` (HD, `build-hd.mjs`, 17-11-2026) | `Mai/rival/hd/mai-rival-ulti-1..6.png` (HD, `--ulti`) | `mai-front-v2/`, `mai-front-inferno/` | `mai-front-*.json` |
+| `mat` | espaldas | `Mat/jugador/mat-{movimientos,golpes,reacciones,extras}-*.png` | `Mat/jugador/mat-ulti-1..6.png` (HD, `--ulti`) | `mat-v2/`, `mat-inferno/` | `mat-*.json` |
+| `mat-front` | frente | `Mat/rival/hd/mat-rival-{movimientos,golpes,reacciones,extras}-*.png` | `Mat/rival/hd/mat-rival-ulti-1..6.png` (HD, `--ulti`) | `mat-front-v2/`, `mat-front-inferno/` | `mat-front-*.json` |
+| `isa` | espaldas | `Isa/jugador/isa-{movimientos,golpes,reacciones,extras}-*.png` | `Isa/jugador/isa-ulti-1..6.png` (HD, `--ulti`) | `isa-v2/`, `isa-inferno/` | `isa-*.json` |
+| `isa-front` | frente | `Isa/rival/hd/isa-rival-{movimientos,golpes,reacciones,extras}-*.png` | `Isa/rival/hd/isa-rival-ulti-1..6.png` (HD, `--ulti`) | `isa-front-v2/`, `isa-front-inferno/` | `isa-front-*.json` |
+| `jun` | espaldas | `Jun/jugador/jun-{movimientos,golpes,reacciones,extras}-*.png` | `Jun/jugador/jun-ulti-1..6.png` (HD, `--ulti`) | `jun-v2/`, `jun-inferno/` | `jun-*.json` |
+| `jun-front` | frente | `Jun/rival/hd/jun-rival-{movimientos,golpes,reacciones,extras}-*.png` | `Jun/rival/hd/jun-rival-ulti-1..6.png` (HD, `--ulti`) | `jun-front-v2/`, `jun-front-inferno/` | `jun-front-*.json` |
 
 Qué pack usa cada personaje: `src/characters/catalog.ts`. Carga de los packs: `PACKS` en
 `src/objects/NxoActor.ts`.
@@ -626,13 +670,7 @@ Personaje nuevo: las mismas 4 hojas, la ULTI y la mirada, con este contrato. Pas
 
 ## 8. Pendiente de arte (hojas por redibujar)
 
-**JUN (21-11-2026): personaje nuevo, SIN hojas todavía.** Solo existe `public/personajes/Jun/pj-jun.png` (cuerpo entero sobre verde croma, 1122 × 1402). Es el
-personaje del nivel 30 del PASE DE BATALLA (reemplaza a Mai) pero NO se puede elegir ni jugar: no está en `SkinId`, `characters.mjs`, `NxoActor` ni
-`catalog.ts`. Su retrato `public/assets/characters/jun_portrait.webp` se hizo quitando el verde con el mismo croma de `build-hd.mjs` (caja visible y datos
-en `characters/passPortrait.ts`; la fuente PNG no llega al APK). Para volverlo jugable: seguir "Personaje nuevo" (§7: hojas en `personajes/Jun/` con los
-nombres de siempre, entrada en `tools/characters.mjs`, `build-moves` / `build-hd` y `build-ulti`, conectar el pack, pasiva) y quitar `soon` de su premio en
-`domain/battlePassConfig.ts`; los jugadores que ya reclamaron el nivel 30 reciben `skin:jun` al cargar (`bpGrantClaimedItemsInPlace`). Su color DORADO
-(premium del Pase) usa el tono de la ropa de Jun medido en `fx/CharColorFx.ts` (`SOURCE.jun`, con `boost.dorado` por ser ropa oscura).
+**JUN (25-11-2026).** Se desbloquea en el nivel 30 del Pase de Batalla y se equipa en CAMBIAR PERSONAJE. El premio Premium incluye su color Dorado. Al cargar un perfil que ya reclamó el nivel 30, `bpGrantClaimedItemsInPlace` entrega los ítems que falten según el tramo reclamado. Sus dos vistas están en el catálogo de personajes y su retrato WebP se carga desde `characters/portrait.ts`. La pasiva de Jun es Resistencia.
 
 Anotado el 12-11-2026. Ninguna de estas hojas se instala hasta que cumpla el contrato (�4 y �5); mientras tanto el juego sigue con lo que ya tiene.
 

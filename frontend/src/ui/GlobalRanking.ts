@@ -296,7 +296,9 @@ function openGlobalRankingArt(scene: Phaser.Scene) {
   const inT = T + 147 * k;
   const inB = B - 84 * k;
   const titleTop = T - titleOver;
-  const titleImg = scene.add.image(W / 2 - titleW / 2 - TB[0] * ts, titleTop - TB[1] * ts, RK_ART.title.key).setOrigin(0, 0).setScale(ts);
+  // (25-11-2026) TB y ts en px del original (1774): la escala se corrige si el archivo está achicado
+  const tk = 1774 / (scene.textures.get(RK_ART.title.key).getSourceImage() as { width: number }).width;
+  const titleImg = scene.add.image(W / 2 - titleW / 2 - TB[0] * ts, titleTop - TB[1] * ts, RK_ART.title.key).setOrigin(0, 0).setScale(ts * tk);
   root.add(titleImg);
   // subtítulo y placa TU PUESTO, bajo el título
   const subY = titleTop + titleH + 14;

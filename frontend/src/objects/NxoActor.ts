@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { SHEETS, SHEET_IDS, type SheetCfg, type SheetId } from '../characters/sheets';
+import { sheetFor } from '../characters/catalog';
 import { CHAR_UNITS_H, skinMode } from '../characters/skins';
 import nxoHits from '../characters/nxo-hits.json';
 import nxoSpecial from '../characters/nxo-special.json';
@@ -21,6 +22,36 @@ import maiFHits from '../characters/mai-front-hits.json';
 import maiFSpecial from '../characters/mai-front-special.json';
 import maiFMove from '../characters/mai-front-move.json';
 import maiFExtra from '../characters/mai-front-extra.json';
+import matHits from '../characters/mat-hits.json';
+import matSpecial from '../characters/mat-special.json';
+import matMove from '../characters/mat-move.json';
+import matExtra from '../characters/mat-extra.json';
+import matInferno from '../characters/mat-inferno.json';
+import matFrontHits from '../characters/mat-front-hits.json';
+import matFrontSpecial from '../characters/mat-front-special.json';
+import matFrontMove from '../characters/mat-front-move.json';
+import matFrontExtra from '../characters/mat-front-extra.json';
+import matFrontInferno from '../characters/mat-front-inferno.json';
+import isaHits from '../characters/isa-hits.json';
+import isaSpecial from '../characters/isa-special.json';
+import isaMove from '../characters/isa-move.json';
+import isaExtra from '../characters/isa-extra.json';
+import isaInferno from '../characters/isa-inferno.json';
+import isaFrontHits from '../characters/isa-front-hits.json';
+import isaFrontSpecial from '../characters/isa-front-special.json';
+import isaFrontMove from '../characters/isa-front-move.json';
+import isaFrontExtra from '../characters/isa-front-extra.json';
+import isaFrontInferno from '../characters/isa-front-inferno.json';
+import junHits from '../characters/jun-hits.json';
+import junSpecial from '../characters/jun-special.json';
+import junMove from '../characters/jun-move.json';
+import junExtra from '../characters/jun-extra.json';
+import junInferno from '../characters/jun-inferno.json';
+import junFrontHits from '../characters/jun-front-hits.json';
+import junFrontSpecial from '../characters/jun-front-special.json';
+import junFrontMove from '../characters/jun-front-move.json';
+import junFrontExtra from '../characters/jun-front-extra.json';
+import junFrontInferno from '../characters/jun-front-inferno.json';
 import { runAnimRate } from '../logic/PlayerMotion';
 
 /**
@@ -43,10 +74,15 @@ const DIVE_CUT = 5;
 /** cuadro (índice) de la recuperación desde el que se sigue: de rodillas con la mano en el suelo (sin el de tumbado) */
 const RECOVER_FROM = 1;
 /** clips de estirada que ya terminan de pie (se ven enteros, sin recover-*): ver NxoActor.diveSelfRecover */
-const DIVE_SELF_RECOVER = new Set<string>([extraKey('dive-left', 'nxo'), extraKey('dive-right', 'nxo'), extraKey('dive-right', 'mai'), extraKey('dive-left', 'mai'), extraKey('dive-left', 'maif'), extraKey('dive-right', 'maif'), extraKey('dive-right', 'nxof'), extraKey('dive-left', 'nxof')]);
+const DIVE_SELF_RECOVER = new Set(['nxo', 'mai', 'maif', 'nxof', 'mat', 'matf', 'isa', 'isaf', 'jun', 'junf']);
 
 /** Raqueta suelta (sale volando al recibir el INFERNO): imagen generada por cÃ³digo. */
-export const LOOSE_RACKET = 'nxo-loose-racket';
+const LOOSE_RACKET_PALETTES = {
+  nxo: { neck: 0xc62828, outline: 0x7a0f14, rim: 0xe53935 },
+  mat: { neck: 0x4b9915, outline: 0x20541c, rim: 0x83d323 },
+  isa: { neck: 0xd80d7c, outline: 0x5b1239, rim: 0xff3ca1 },
+  jun: { neck: 0xd35b0e, outline: 0x562309, rim: 0xff841b },
+};
 
 /**
  * NXO de espaldas con animaciones por sprites (tiras cortadas con tools/build-moves.mjs; ver docs/COMO-TRABAJAR-SPRITES-MOVIMIENTOS.md).
@@ -249,7 +285,7 @@ type Pack = {
   inf: InfCfg;
   infDir: string;
 };
-const PACKS = {
+const PACKS: Record<SheetId, Pack> = {
   // (14-11-2026) sin bote antes de sacar (el usuario lo descartó en los sprites HD): espera en reposo, como Mai
   // (14-11-2026) lanzamiento = principio del saque HD (`golpes-5` / `-6`), no `serve-toss` (`golpes-9`): decisión del usuario
   nxo: { dir: V2_DIR, key: 'nxo', hits: HITS, special: SPECIAL, move: MOVE, extra: EXTRA, bounce: null, ownToss: false, inf: INF, infDir: 'nxo-inferno' },
@@ -291,7 +327,34 @@ const PACKS = {
     inf: maiFInferno as unknown as InfCfg,
     infDir: 'mai-front-inferno',
   },
-} as Record<'nxo' | 'nxo-front' | 'mai' | 'mai-front', Pack> & Partial<Record<SheetId, Pack>>;
+  mat: {
+    dir: 'mat-v2', key: 'mat', hits: matHits, special: matSpecial, move: matMove, extra: matExtra,
+    bounce: null, ownToss: false, inf: matInferno, infDir: 'mat-inferno',
+  },
+  'mat-front': {
+    dir: 'mat-front-v2', key: 'matf', hits: matFrontHits, special: matFrontSpecial,
+    move: matFrontMove, extra: matFrontExtra, bounce: null, ownToss: false,
+    inf: matFrontInferno, infDir: 'mat-front-inferno',
+  },
+  isa: {
+    dir: 'isa-v2', key: 'isa', hits: isaHits, special: isaSpecial, move: isaMove, extra: isaExtra,
+    bounce: null, ownToss: false, inf: isaInferno, infDir: 'isa-inferno',
+  },
+  'isa-front': {
+    dir: 'isa-front-v2', key: 'isaf', hits: isaFrontHits, special: isaFrontSpecial,
+    move: isaFrontMove, extra: isaFrontExtra, bounce: null, ownToss: false,
+    inf: isaFrontInferno, infDir: 'isa-front-inferno',
+  },
+  jun: {
+    dir: 'jun-v2', key: 'jun', hits: junHits, special: junSpecial, move: junMove, extra: junExtra,
+    bounce: null, ownToss: false, inf: junInferno, infDir: 'jun-inferno',
+  },
+  'jun-front': {
+    dir: 'jun-front-v2', key: 'junf', hits: junFrontHits, special: junFrontSpecial,
+    move: junFrontMove, extra: junFrontExtra, bounce: null, ownToss: false,
+    inf: junFrontInferno, infDir: 'jun-front-inferno',
+  },
+};
 const PACK_LIST = Object.values(PACKS) as Pack[];
 /** frame (0 = el primero) en que se CONGELA la celebración de victoria de cada personaje de espaldas (la mano / raqueta arriba) */
 const VICTORY_HOLD: Record<string, number> = { nxo: 3 };
@@ -310,71 +373,94 @@ const LAUNCH_ONLY: Partial<Record<SpriteCharId, { key: string; file: string; inf
   'mai-front': { key: 'mai-front-launch-hit', file: 'assets/characters/mai-front-inferno/ulti-hit.webp', inf: maiFInferno as unknown as InfCfg },
 };
 
-export function queueNxoSpriteLoads(load: Phaser.Loader.LoaderPlugin) {
+/** una tira cargable: clave (textura = animación), archivo, info de la animación y celda del grupo */
+type StripEntry = { key: string; url: string; info: AnimInfo; group: { cell: { w: number; h: number } } };
+/**
+ * (25-11-2026) TODAS las tiras de un juego de hojas (una vista de un personaje): las de siempre (SHEETS), movimiento, extras,
+ * golpes, ESPECIAL, ULTI y, para MAI de frente, la derrota y el pelotazo sueltos. Base de cargar y liberar por personaje.
+ */
+function sheetEntries(id: SheetId): StripEntry[] {
+  const out: StripEntry[] = [];
+  const sprites = skinMode() !== 'off';
+  const c = CFGS[id];
+  if (sprites && c) for (const a of NXO_ANIMS) out.push({ key: spriteKey(id, a), url: `assets/characters/${sheetDir(id)}/${A(id)[a].file}`, info: A(id)[a], group: c });
+  const p = PACKS[id];
+  if (sprites && p) {
+    const at = (dir: string, info: AnimInfo) => `assets/characters/${dir}/${info.file}`;
+    for (const a of Object.keys(p.move.animations) as MoveAnim[]) out.push({ key: moveKey(a, p.key), url: at(p.dir, p.move.animations[a]), info: p.move.animations[a], group: p.move });
+    for (const [a, info] of extrasOf(p)) out.push({ key: extraKey(a, p.key), url: at(p.dir, info), info, group: p.extra });
+    for (const a of HIT_ANIMS) out.push({ key: hitKey(a, p.key), url: at(p.dir, p.hits.animations[a]), info: p.hits.animations[a], group: p.hits });
+    for (const a of Object.keys(p.special.animations) as SpecialAnim[]) out.push({ key: specialKey(a, p.key), url: at(p.dir, p.special.animations[a]), info: p.special.animations[a], group: p.special });
+    out.push({ key: infernoKey(p.key), url: at(p.infDir, p.inf.animations['inferno-swing']), info: p.inf.animations['inferno-swing'], group: p.inf });
+    for (const a of ULTI_ANIMS) {
+      const info = p.inf.animations[a];
+      if (info) out.push({ key: ultiKey(a, p.key), url: at(p.infDir, info), info, group: p.inf });
+    }
+  }
   // (18-11-2026) la tira ulti-hit trae su PROPIA celda (130 x 175); con la general de la hoja (132 x 177) salían cero frames
-  for (const l of Object.values(LAUNCH_ONLY)) {
-    if (!l || load.textureManager.exists(l.key)) continue;
+  const l = LAUNCH_ONLY[id];
+  if (l) {
     const cell = (l.inf.animations['ulti-hit'] as (AnimInfo & { cell?: { w: number; h: number } }) | undefined)?.cell ?? l.inf.cell;
-    load.spritesheet(l.key, l.file, { frameWidth: cell.w, frameHeight: cell.h });
+    out.push({ key: l.key, url: l.file, info: { file: l.file, frames: 9, fps: 14, loop: false } as AnimInfo, group: { cell } });
   }
-  if (!load.textureManager.exists(MAI_DEFEAT.key)) load.spritesheet(MAI_DEFEAT.key, MAI_DEFEAT.file, { frameWidth: MAI_DEFEAT.w, frameHeight: MAI_DEFEAT.h });
-  if (skinMode() !== 'off') {
-    for (const p of PACK_LIST) {
-      for (const a of Object.keys(p.move.animations) as MoveAnim[]) {
-        loadStrip(load, moveKey(a, p.key), `assets/characters/${p.dir}/${p.move.animations[a].file}`, p.move.animations[a], p.move);
-      }
-      for (const [a, info] of extrasOf(p)) {
-        loadStrip(load, extraKey(a, p.key), `assets/characters/${p.dir}/${info.file}`, info, p.extra);
-      }
-    }
-  }
-  if (skinMode() !== 'off') {
-    for (const p of PACK_LIST) {
-      loadStrip(load, infernoKey(p.key), `assets/characters/${p.infDir}/${p.inf.animations['inferno-swing'].file}`, p.inf.animations['inferno-swing'], p.inf);
-      // clips de la ULTI completa (solo los packs cuya hoja los trae)
-      for (const a of ULTI_ANIMS) {
-        const info = p.inf.animations[a];
-        if (info) loadStrip(load, ultiKey(a, p.key), `assets/characters/${p.infDir}/${info.file}`, info, p.inf);
-      }
-    }
-  }
-  queueBaseLoads(load);
+  if (id === 'mai-front') out.push({ key: MAI_DEFEAT.key, url: MAI_DEFEAT.file, info: { file: MAI_DEFEAT.file, frames: 8, fps: MAI_DEFEAT.fps, loop: false } as AnimInfo, group: { cell: { w: MAI_DEFEAT.w, h: MAI_DEFEAT.h } } });
+  return out;
 }
 
-function queueBaseLoads(load: Phaser.Loader.LoaderPlugin) {
-  if (skinMode() === 'off') return;
-  for (const id of IDS) {
-    const c = CFGS[id];
-    for (const a of NXO_ANIMS) {
-      loadStrip(load, spriteKey(id, a), `assets/characters/${sheetDir(id)}/${A(id)[a].file}`, A(id)[a], c);
-    }
+/** (25-11-2026) hojas (vista de un personaje) de una lista [personaje, vista]; sin repetir, sin las que no existen */
+export function sheetsOf(list: [string | undefined, 'back' | 'front'][]): SheetId[] {
+  const out = new Set<SheetId>();
+  for (const [skin, view] of list) {
+    const id = sheetFor(skin, view);
+    if (id) out.add(id);
   }
-  for (const p of PACK_LIST) {
-    for (const a of HIT_ANIMS) {
-      loadStrip(load, hitKey(a, p.key), `assets/characters/${p.dir}/${p.hits.animations[a].file}`, p.hits.animations[a], p.hits);
-    }
-    for (const a of Object.keys(p.special.animations) as SpecialAnim[]) {
-      loadStrip(load, specialKey(a, p.key), `assets/characters/${p.dir}/${p.special.animations[a].file}`, p.special.animations[a], p.special);
+  return [...out];
+}
+
+/**
+ * (25-11-2026, usuario) Carga SOLO los personajes que se usan (antes se cargaban todos al arrancar: ~250 MB de memoria gráfica, más con
+ * cada personaje nuevo). Encola las tiras de esas hojas que aún no estén cargadas; después, registerNxoAnims(scene) en el create.
+ * Menú, PERSONALIZAR y Tienda: tu personaje de espaldas y de frente. Partido: además el rival de frente (y en el 2v2, tu compañero de
+ * espaldas). Ver releaseCharacterSprites.
+ */
+export function queueNxoSpriteLoads(load: Phaser.Loader.LoaderPlugin, ids: SheetId[]) {
+  for (const id of ids) {
+    for (const e of sheetEntries(id)) if (!load.textureManager.exists(e.key)) loadStrip(load, e.key, e.url, e.info, e.group);
+  }
+}
+
+/** (25-11-2026) Libera de la memoria las hojas que NO estén en `keep` (texturas y sus animaciones). Llamar sin ningún partido abierto. */
+export function releaseCharacterSprites(scene: Phaser.Scene, keep: SheetId[]) {
+  for (const id of IDS) {
+    if (keep.includes(id)) continue;
+    for (const e of sheetEntries(id)) {
+      if (scene.anims.exists(e.key)) scene.anims.remove(e.key);
+      if (scene.textures.exists(e.key)) scene.textures.remove(e.key);
     }
   }
 }
-/** Raqueta suelta (misma paleta que la del sprite: aro rojo, cordaje claro, mango negro). */
-export function ensureLooseRacket(scene: Phaser.Scene) {
-  if (scene.textures.exists(LOOSE_RACKET)) return;
+
+/** Raqueta suelta con la paleta del personaje, cordaje claro y mango negro. */
+export function ensureLooseRacket(scene: Phaser.Scene, skin?: string): string {
+  const paletteId = skin === 'mat' || skin === 'isa' || skin === 'jun' ? skin : 'nxo';
+  const key = `${paletteId}-loose-racket`;
+  if (scene.textures.exists(key)) return key;
+  const colors = LOOSE_RACKET_PALETTES[paletteId];
   const g = scene.make.graphics({}, false);
   // dibujada en vertical: cabeza arriba, mango abajo (32x64)
   g.fillStyle(0x1a1016, 1).fillRoundedRect(13, 34, 6, 28, 3); // mango
-  g.fillStyle(0xc62828, 1).fillRect(14, 30, 4, 8); // cuello
-  g.fillStyle(0x7a0f14, 1).fillEllipse(16, 17, 30, 34); // aro (borde oscuro)
-  g.fillStyle(0xe53935, 1).fillEllipse(16, 17, 26, 30);
+  g.fillStyle(colors.neck, 1).fillRect(14, 30, 4, 8); // cuello
+  g.fillStyle(colors.outline, 1).fillEllipse(16, 17, 30, 34); // aro (borde oscuro)
+  g.fillStyle(colors.rim, 1).fillEllipse(16, 17, 26, 30);
   g.fillStyle(0xf3e6d0, 1).fillEllipse(16, 17, 19, 23); // cordaje
   g.lineStyle(1, 0xc9b79a, 0.8);
   for (let i = -2; i <= 2; i++) {
     g.lineBetween(16 + i * 3.5, 7, 16 + i * 3.5, 27);
     g.lineBetween(7, 17 + i * 4, 25, 17 + i * 4);
   }
-  g.generateTexture(LOOSE_RACKET, 32, 64);
+  g.generateTexture(key, 32, 64);
   g.destroy();
+  return key;
 }
 
 export function nxoSpritesReady(scene: Phaser.Scene, id: SpriteCharId = 'nxo') {
@@ -1067,12 +1153,14 @@ export class NxoActor {
   /**
    * Dónde está el centro del cordaje en el frame de impacto del saque en curso (medido sobre las tiras, ver
    * tools/build-moves.mjs): `z` = altura sobre los pies y `dx` = lado (+ = derecha de la pantalla), en unidades del
-   * personaje. El saque con efecto suma el salto por código del propio sprite (jumpAt), que ya está en el frame 5.
+   * personaje. El saque con efecto suma el salto de `jumpAt` en el cuadro de impacto de su hoja.
    */
   serveRacket(): RacketSpot {
-    const spin = this.serveClip().key === this.xk('serve-spin');
+    const { key, info } = this.serveClip();
+    const spin = key === this.xk('serve-spin');
     const r = this.P.hits.serveRacket[spin ? 'spin' : 'normal'];
-    return { dx: r.dx, z: r.z + (spin ? JUMP_H * (JUMP_ARC[2] ?? 0) : 0) };
+    const jump = spin ? JUMP_H * (JUMP_ARC[(info.impact ?? 4) - 2] ?? 0) : 0;
+    return { dx: r.dx, z: r.z + jump };
   }
 
   /**
@@ -1141,7 +1229,7 @@ export class NxoActor {
   }
 
   private diveSelfRecover(): boolean {
-    return DIVE_SELF_RECOVER.has(this.xk(this.diveSide > 0 ? 'dive-right' : 'dive-left'));
+    return DIVE_SELF_RECOVER.has(this.P.key);
   }
 
   lunge(side: number, hold = false): boolean {
@@ -1172,7 +1260,7 @@ export class NxoActor {
     this.sprite.anims.timeScale = 1;
     if (kind === 'inferno' && this.ur('ulti-hit')) {
       // hoja de la ULTI completa: recibe el pelotazo (ulti-hit) y encadena el aturdido sin raqueta (ulti-stun, en bucle)
-      this.looseAt = throwRacket ? (this.P.inf.racketFree ?? 2) : -1; // desde el frame 3 la mano queda vacía
+      this.looseAt = throwRacket ? (this.P.inf.racketFree ?? 2) : -1;
       this.playClip(ultiKey('ulti-hit', this.P.key));
     } else if (kind === 'inferno' && this.xr('inferno-hit')) {
       this.looseAt = throwRacket ? 2 : -1; // desde el frame 3 la mano queda vacÃ­a: la raqueta sale volando
@@ -1183,6 +1271,13 @@ export class NxoActor {
     }
     this.scene.time.delayedCall(ms, () => this.endBusy('stun'));
     return true;
+  }
+
+  /** Tiempo hasta el primer cuadro de la ULTI recibida en el que ya no se dibuja la raqueta. */
+  get racketReleaseMs() {
+    const hit = this.P.inf.animations['ulti-hit'];
+    if (!hit || !this.ur('ulti-hit')) return undefined;
+    return Math.round(1000 * (this.P.inf.racketFree ?? 2) / hit.fps);
   }
 
   /**
@@ -1360,12 +1455,12 @@ export class NxoActor {
 
   /** La raqueta sale despedida girando (imagen suelta, dentro del Character) y espera a volver a la mano. */
   private throwLooseRacket() {
-    ensureLooseRacket(this.scene);
+    const racket = ensureLooseRacket(this.scene, this.id.replace(/-front$/, ''));
     this.dropLooseRacket();
     const parent = this.sprite.parentContainer;
     if (!parent) return;
     const k = CHAR_UNITS_H / 140;
-    const r = this.scene.add.image(28 * k, -70 * k, LOOSE_RACKET).setScale(k * 1.1).setAngle(-30);
+    const r = this.scene.add.image(28 * k, -70 * k, racket).setScale(k * 1.1).setAngle(-30);
     parent.add(r);
     this.looseRacket = r;
     this.scene.tweens.add({ targets: r, x: 120 * k, duration: 520, ease: 'Quad.easeOut' });

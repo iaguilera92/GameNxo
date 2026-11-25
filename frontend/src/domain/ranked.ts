@@ -17,6 +17,7 @@
  *  - Todo es idempotente por id de partida / id de semana.
  */
 import { cycleIdAt } from './dailyWheel';
+import { skinById } from '../characters/catalog';
 import { type PlayerState, clonePlayer } from './player';
 import { LEAGUE_ORDER, RANKED, league, matchStakes, nextLeague, positionPrize, weeklyChestCash } from './rankedConfig';
 import { type BoardEntry, type BotClock, buildBoard, buildGlobalBoard, prizePosition } from './rankedBots';
@@ -93,7 +94,7 @@ export function playerEntry(s: PlayerState): Omit<BoardEntry, 'position'> {
     wins: s.ranked.weekWins,
     losses: s.ranked.weekLosses,
     reachedAt: s.ranked.weekReachedAt,
-    avatar: { skin: s.equipped.skin === 'mai' ? 'mai' : 'nxo', color: 0xffc42e },
+    avatar: { skin: skinById(s.equipped.skin).id, color: 0xffc42e },
   };
 }
 

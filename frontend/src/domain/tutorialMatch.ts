@@ -2,10 +2,11 @@
  * (24-11-2026, usuario) REGLAS DEL PARTIDO DEL TUTORIAL (datos puros, sin Phaser). Plan completo: docs/TUTORIAL-PLAN.md.
  *
  * - Partido del tutorial = contra el bot (1v1 o 2v2 sin red), con el MODO DESARROLLO apagado y la cuenta por debajo del nivel 20.
- * - Un partido = un nivel: gane o pierda, da justo la EXP que falta para el siguiente nivel.
+ * - Un partido ganado = un nivel: da justo la EXP que falta para el siguiente nivel.
  * - Sin rendirse (ni AUTO): el botón no aparece. Si se cierra la app a mitad, el partido no se guarda y se juega de nuevo.
- * - Hasta el nivel 9 gana siempre: en los puntos libres el bot falla más cuanto mejor va, y si el bot fuese a ganar el partido el
- *   punto se repite.
+ * - Hasta el nivel 9, en los puntos libres el bot falla más cuanto mejor va.
+ * - (25-11-2026, usuario) Hay que GANAR (a 4 puntos): si se pierde, el nivel se repite sin EXP ni premios (MatchEndScene). Los puntos
+ *   guiados también suman al marcador.
  */
 import { MAX_LEVEL, xpToNext } from '../config';
 

@@ -1,0 +1,228 @@
+{
+  "source": "Mat/jugador/mat-{movimientos,golpes,reacciones,extras}-*.png",
+  "view": "back",
+  "cell": {
+    "w": 110,
+    "h": 200
+  },
+  "origin": {
+    "x": 0.5,
+    "y": 0.98
+  },
+  "standHeight": 190,
+  "animations": {
+    "dash": {
+      "file": "dash.webp",
+      "frames": 8,
+      "fps": 18,
+      "loop": true,
+      "cell": {
+        "w": 158,
+        "h": 189
+      },
+      "origin": {
+        "x": 0.5,
+        "y": 0.97884
+      }
+    },
+    "defeat": {
+      "file": "defeat.webp",
+      "frames": 8,
+      "fps": 10,
+      "loop": false,
+      "cell": {
+        "w": 148,
+        "h": 198
+      },
+      "origin": {
+        "x": 0.5,
+        "y": 0.9798
+      }
+    },
+    "serve-spin": {
+      "file": "serve-spin.webp",
+      "frames": 8,
+      "fps": 12,
+      "loop": false,
+      "impact": 4,
+      "cell": {
+        "w": 184,
+        "h": 232
+      },
+      "origin": {
+        "x": 0.5,
+        "y": 0.98276
+      }
+    },
+    "dive-right": {
+      "file": "dive-right.webp",
+      "frames": 8,
+      "fps": 18,
+      "loop": false,
+      "cell": {
+        "w": 298,
+        "h": 197
+      },
+      "origin": {
+        "x": 0.5,
+        "y": 0.9797
+      }
+    },
+    "dive-left": {
+      "file": "dive-left.webp",
+      "frames": 8,
+      "fps": 18,
+      "loop": false,
+      "cell": {
+        "w": 340,
+        "h": 197
+      },
+      "origin": {
+        "x": 0.5,
+        "y": 0.9797
+      }
+    },
+    "stunned": {
+      "file": "stunned.webp",
+      "frames": 8,
+      "fps": 12,
+      "loop": true,
+      "cell": {
+        "w": 144,
+        "h": 195
+      },
+      "origin": {
+        "x": 0.5,
+        "y": 0.97949
+      },
+      "scale": 1.1
+    },
+    "point-won": {
+      "file": "point-won.webp",
+      "frames": 8,
+      "fps": 12,
+      "loop": false,
+      "cell": {
+        "w": 208,
+        "h": 242
+      },
+      "origin": {
+        "x": 0.5,
+        "y": 0.98347
+      }
+    },
+    "point-lost": {
+      "file": "point-lost.webp",
+      "frames": 8,
+      "fps": 10,
+      "loop": false,
+      "cell": {
+        "w": 172,
+        "h": 223
+      },
+      "origin": {
+        "x": 0.5,
+        "y": 0.98206
+      }
+    },
+    "serve-toss": {
+      "file": "serve-toss.webp",
+      "frames": 8,
+      "fps": 14,
+      "loop": false,
+      "cell": {
+        "w": 182,
+        "h": 207
+      },
+      "origin": {
+        "x": 0.5,
+        "y": 0.98068
+      }
+    },
+    "walk": {
+      "file": "walk.webp",
+      "frames": 8,
+      "fps": 40,
+      "loop": false,
+      "cell": {
+        "w": 144,
+        "h": 204
+      },
+      "origin": {
+        "x": 0.5,
+        "y": 0.98039
+      }
+    },
+    "inferno-hit": {
+      "file": "inferno-hit.webp",
+      "frames": 8,
+      "fps": 14,
+      "loop": false,
+      "cell": {
+        "w": 166,
+        "h": 184
+      },
+      "origin": {
+        "x": 0.5,
+        "y": 0.97826
+      }
+    },
+    "volley": {
+      "file": "volley.webp",
+      "frames": 8,
+      "fps": 16,
+      "loop": false,
+      "impact": 4,
+      "cell": {
+        "w": 234,
+        "h": 197
+      },
+      "origin": {
+        "x": 0.5,
+        "y": 0.9797
+      }
+    },
+    "walk-intro": {
+      "file": "walk-intro.webp",
+      "frames": 8,
+      "fps": 8,
+      "loop": true,
+      "cell": {
+        "w": 158,
+        "h": 199
+      },
+      "origin": {
+        "x": 0.5,
+        "y": 0.9799
+      }
+    },
+    "point-doubt": {
+      "file": "point-doubt.webp",
+      "frames": 8,
+      "fps": 8,
+      "loop": false,
+      "cell": {
+        "w": 140,
+        "h": 197
+      },
+      "origin": {
+        "x": 0.5,
+        "y": 0.9797
+      }
+    },
+    "point-cheer": {
+      "file": "point-cheer.webp",
+      "frames": 8,
+      "fps": 10,
+      "loop": false,
+      "cell": {
+        "w": 158,
+        "h": 193
+      },
+      "origin": {
+        "x": 0.5,
+        "y": 0.96891
+      }
+    }
+  }
+}

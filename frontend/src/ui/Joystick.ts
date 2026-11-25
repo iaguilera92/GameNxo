@@ -83,6 +83,50 @@ export class Joystick {
 
   /** (21-11-2026, usuario) atenúa más el joystick mientras dura la ULTI (1 = normal, p. ej. 0.35 = más opaco). */
   private dim = 1;
+  /** (25-11-2026) primer partido del tutorial: UNA pulsación del joystick (la base late y la palanca se mueve hacia `dir`: -1 izq., 1 der.) */
+  pulse(dir: -1 | 1 | 'up' | 'down') {
+    if (this.pointerId !== null) return;
+    const s = this.scene;
+    // (25-11-2026, usuario) más visible: el aro crece más y la perilla llega casi al borde
+    s.tweens.add({ targets: this.base, scale: { from: 1, to: 1.25 }, duration: 240, yoyo: true, hold: 200, ease: 'Quad.easeOut' });
+    const to = dir === 'up' ? { y: this.home.y - this.radius * 0.9 } : dir === 'down' ? { y: this.home.y + this.radius * 0.9 } : { x: this.home.x + dir * this.radius * 0.9 }; // (25-11-2026, usuario) también hacia arriba
+    s.tweens.add({ targets: this.knob, ...to, duration: 300, yoyo: true, hold: 300, ease: 'Quad.easeInOut', onComplete: () => this.pointerId === null && this.knob.setPosition(this.home.x, this.home.y) });
+  }
+
+  /** (25-11-2026, usuario) tutorial nivel 2: joystick BLOQUEADO (gris con candado); tocarlo hace temblar el candado */
+  private locked = false;
+  private lockIcon?: Phaser.GameObjects.Container;
+  setLocked(on: boolean) {
+    if (on === this.locked) return;
+    this.locked = on;
+    if (on) {
+      this.release();
+      if (!this.lockIcon) {
+        const c = this.scene.add.container(0, 0).setScrollFactor(0).setDepth(5620);
+        const g = this.scene.add.graphics();
+        g.fillStyle(0x000000, 0.5).fillCircle(0, 0, this.radius + 14);
+        g.lineStyle(6, 0xff4f5e, 0.95).strokeCircle(0, 0, this.radius + 6);
+        // candado
+        g.lineStyle(8, 0xffffff, 1).beginPath().arc(0, -10, 18, Math.PI, 0, false).strokePath();
+        g.fillStyle(0xffffff, 1).fillRoundedRect(-28, -10, 56, 44, 8);
+        g.fillStyle(0xc42536, 1).fillCircle(0, 8, 7).fillRect(-3, 8, 6, 14);
+        c.add(g);
+        this.lockIcon = c;
+      }
+      this.lockIcon.setPosition(this.home.x, this.home.y).setVisible(true).setScale(0.5).setAlpha(0);
+      this.scene.tweens.add({ targets: this.lockIcon, scale: 1, alpha: 1, duration: 220, ease: 'Back.easeOut' });
+    } else if (this.lockIcon) {
+      const ic = this.lockIcon;
+      this.scene.tweens.add({ targets: ic, scale: 0.5, alpha: 0, duration: 180, onComplete: () => ic.setVisible(false) });
+    }
+  }
+
+  /** (25-11-2026) primer partido del tutorial: el joystick, por encima del oscurecido de la guía y más visible */
+  setSpotlight(on: boolean) {
+    this.base.setDepth(on ? 5610 : 5000);
+    this.knob.setDepth(on ? 5611 : 5001);
+    this.setDim(on ? 2 : 1);
+  }
   setDim(k: number) {
     this.dim = k;
     this.base.setAlpha((this.pointerId === null ? 0.28 : 0.55) * k);
@@ -91,6 +135,11 @@ export class Joystick {
 
   private onDown(p: Phaser.Input.Pointer) {
     if (!this.enabled || this.pointerId !== null) return;
+    if (this.locked) {
+      const ic = this.lockIcon;
+      if (ic && p.x < this.scene.scale.width / 2) this.scene.tweens.add({ targets: ic, x: { from: this.home.x - 8, to: this.home.x }, duration: 260, ease: 'Elastic.easeOut' });
+      return;
+    }
     // zona del joystick: mitad izquierda, parte inferior de la pantalla (vertical)
     if (p.x > this.scene.scale.width * 0.55 || p.y < this.scene.scale.height * 0.4) return;
     this.pointerId = p.id;

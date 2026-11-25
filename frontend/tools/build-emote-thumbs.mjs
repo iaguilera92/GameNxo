@@ -1,9 +1,11 @@
 // Miniaturas de los EMOTES (las caritas del partido, que también son premios del Pase de Batalla).
 //   node tools/build-emote-thumbs.mjs
 // Fuentes: public/personajes/Nxo/emojis/nxo-<nombre>.png y (18-11-2026) public/personajes/Mai/emotes/mai-<nombre>.png (~1300 px, ~1,1 MB)
-// Salida:  public/assets/emotes/emote-<pj>-<nombre>.png: emote-nxo-… (NXO) y emote-mai-… (MAI), cuadradas de SIZE px con el dibujo centrado.
+// Salida:  public/assets/emotes/emote-<pj>-<nombre>.webp (25-11-2026: WebP con tools/convert-image.mjs; antes .png): emote-nxo-… (NXO) y emote-mai-… (MAI), cuadradas de SIZE px con el dibujo centrado.
 // El juego las muestra a 54-58 px: con 160 sobra nitidez y cada una pesa decenas de KB en vez de más de 1 MB.
-import { existsSync, mkdirSync, readdirSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { decode, save } from './png-lite.mjs';
@@ -18,6 +20,7 @@ const SIZE = 160;
 const PAD = 4;
 
 mkdirSync(OUT_DIR, { recursive: true });
+const TMP = mkdtempSync(join(tmpdir(), 'emote-thumbs-'));
 for (const { dir: SRC_DIR, re, out: outName } of SOURCES)
 for (const f of (existsSync(SRC_DIR) ? readdirSync(SRC_DIR) : []).filter((n) => re.test(n))) {
   const { w, h, px } = decode(join(SRC_DIR, f));
@@ -55,7 +58,11 @@ for (const f of (existsSync(SRC_DIR) ? readdirSync(SRC_DIR) : []).filter((n) => 
       out[di] = Math.round(r / a); out[di + 1] = Math.round(g / a); out[di + 2] = Math.round(b / a);
       out[di + 3] = Math.min(255, Math.round((a / n) * 255));
     }
-  const name = outName(f);
-  save(join(OUT_DIR, name), SIZE, SIZE, out);
+  const name = outName(f).replace(/\.png$/, '.webp');
+  const tmpPng = join(TMP, name.replace(/\.webp$/, '.png'));
+  save(tmpPng, SIZE, SIZE, out);
+  const r = spawnSync(process.execPath, [join(ROOT, 'tools', 'convert-image.mjs'), tmpPng, join(OUT_DIR, name), '0.9'], { stdio: 'inherit' });
+  if (r.status !== 0) throw new Error(`${f}: no se pudo convertir a WebP`);
   console.log(`${f} (${w}x${h}) -> assets/emotes/${name} ${SIZE}x${SIZE}`);
 }
+rmSync(TMP, { recursive: true, force: true });

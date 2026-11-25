@@ -13,6 +13,7 @@
  * TODAS las cifras de LEAGUE_2V2 son PROVISIONALES (pendientes de definir con el usuario).
  */
 import { type PlayerState, clonePlayer } from './player';
+import { skinById } from '../characters/catalog';
 import type { RankId } from './ranks';
 import { LEAGUE_ORDER, RANKED, nextLeague, weeklyChestCash } from './rankedConfig';
 import { type BoardEcon, type BoardEntry, buildBoard } from './rankedBots';
@@ -94,7 +95,7 @@ function playerEntry(s: PlayerState, l: League2v2State): Omit<BoardEntry, 'posit
     wins: l.weekWins,
     losses: l.weekLosses,
     reachedAt: l.weekReachedAt,
-    avatar: { skin: s.equipped.skin === 'mai' ? 'mai' : 'nxo', color: 0xffc42e },
+    avatar: { skin: skinById(s.equipped.skin).id, color: 0xffc42e },
   };
 }
 

@@ -187,15 +187,17 @@ export const GUIDE = {
   defensive: 'guide-defensive',
   profile: 'guide-profile',
   spin: 'guide-spin',
+  l3: 'guide-l3', // (25-11-2026, usuario) partido guiado del nivel 3: cortita, remate, ESPECIAL del rival
 } as const;
-export type GuidedMatch = 'first' | 'spin';
+export type GuidedMatch = 'first' | 'spin' | 'l3';
 export const GUIDE_FIRST_WHEEL = 'guide-first-wheel';
 export function guidedStep(level: number, seen: readonly string[] = []) {
   if (level === 1 && !seen.includes(GUIDE.firstMatch)) return 'play';
   if (!seen.includes(GUIDE.firstMatch)) return null;
   if (!seen.includes(GUIDE.defensive)) return 'defensive';
   if (!seen.includes(GUIDE.profile)) return 'profile';
-  return seen.includes(GUIDE.spin) ? null : 'spin';
+  if (!seen.includes(GUIDE.spin)) return 'spin';
+  return level === 3 && !seen.includes(GUIDE.l3) ? 'l3' : null;
 }
 
 /**
@@ -206,6 +208,7 @@ export function tutorialSeenBefore(level: number): string[] {
   const seen = TUTORIAL_STEPS.filter((s) => s.level < level).map((s) => s.id);
   if (level >= 2) seen.push(GUIDE.welcome, GUIDE.firstMatch);
   if (level >= 3) seen.push(GUIDE.defensive, GUIDE.profile, GUIDE.spin);
+  if (level >= 4) seen.push(GUIDE.l3);
   return seen;
 }
 

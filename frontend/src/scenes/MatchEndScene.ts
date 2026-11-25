@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import type { DoublesSkins } from '../characters/catalog';
 import { FONT } from '../ui/theme';
 import { COINS_LOSS, COINS_SURRENDER, COINS_WIN, XP_LOSS, XP_SURRENDER, XP_WIN, xpToNext, MAX_LEVEL } from '../config';
 import { addCoins, addCoins2v2, addXp, getProfile, grantCoins2v2 } from '../logic/Profile';
@@ -32,6 +33,8 @@ import { showInterstitial } from '../ads/ads';
 import { ambienteEdges, footerDark } from '../view/CourtView';
 import { xpToLevelUp } from '../domain/tutorialMatch';
 import type { EndClip } from '../objects/NxoActor';
+import { addPortrait } from '../characters/portrait';
+import type { SkinId } from '../characters/skins';
 
 type DuelClips = { idle: EndClip; victory: EndClip; defeat: EndClip };
 /** Lo que muestran los dos cuadros del duelo: entrada de cada uno, bolsa y cambio neto. `demo` = solo visual (sin monedas). */
@@ -61,6 +64,7 @@ export interface MatchEndData {
   clips?: { me?: DuelClips; rival?: DuelClips };
   /** 2v2: clips del compañero (me) y del segundo rival (rival) */
   clips2?: { me?: DuelClips; rival?: DuelClips };
+  skins?: { me?: SkinId; rival?: SkinId; mate?: SkinId; rival2?: SkinId };
   /** 2v2: puntos ganados por cada jugador (me, compañero, rival 1 = el activo, rival 2) */
   pointStats?: { me: number; ally: number; r1: number; r2: number };
   win: boolean;
@@ -76,8 +80,10 @@ export interface MatchEndData {
   botName: string;
   /** nivel del rival: la revancha es contra el mismo rival (misma dificultad) */
   rivalLevel?: number;
+  /** (25-11-2026) rival del 1v1 elegido por la búsqueda (modo desarrollo); la revancha lo repite */
+  rivalSkin?: string;
   /** (21-11-2026) 2v2 contra bots: la REVANCHA vuelve a ser 2v2 con los mismos nombres */
-  doubles?: { allyName: string; rival2Name: string };
+  doubles?: { allyName: string; rival2Name: string; duo?: DoublesSkins };
   /** partido en red (multijugador 1v1): REVANCHA vuelve a buscar rival */
   lan?: boolean;
   /** (24-11-2026, usuario) partido del TUTORIAL: gane o pierda, da justo la EXP del siguiente nivel (domain/tutorialMatch.ts) */
@@ -473,20 +479,22 @@ export class MatchEndScene extends Phaser.Scene {
     const base = d.surrendered ? XP_SURRENDER : d.rivalLeft ? (d.playerGames >= 1 ? XP_LOSS : 0) : d.win ? XP_WIN : d.guide === 'first' ? 0 : XP_LOSS;
     // (24-11-2026, usuario) tutorial: un partido = un nivel, gane o pierda (el primer partido guiado se gana siempre)
     const allMissions = !d.missionsRequired || !d.missionList || d.missionList.every((id) => d.missions?.includes(id));
-    const gained = d.tutorial && !allMissions ? 0 : d.tutorial && !d.surrendered && !d.rivalLeft && !(d.guide === 'first' && !d.win) ? xpToLevelUp(getPlayer().level, getPlayer().xp) : base;
+    // (25-11-2026, usuario) tutorial PERDIDO: se repite el nivel, sin EXP ni premios (monedas, monedas 2v2 ni misiones)
+    const tutLoss = !!d.tutorial && !d.win;
+    const gained = tutLoss || (d.tutorial && !allMissions) ? 0 : d.tutorial ? xpToLevelUp(getPlayer().level, getPlayer().xp) : base;
     if (!store._xp) {
       store._xp = addXp(gained);
       // el MENÚ, al volver, muestra "+N EXP" y llena las barras de nivel y del pase (después de la ruleta, si se abre)
       this.registry.set('menu.xpGain', gained);
-      if (!d.surrendered && d.guide && (d.guide !== 'first' || d.win)) {
-        commit((s) => markTutorialSeen(s, d.guide === 'first' ? GUIDE.firstMatch : GUIDE.spin));
+      if (!d.surrendered && d.guide && d.win) {
+        commit((s) => markTutorialSeen(s, d.guide === 'first' ? GUIDE.firstMatch : d.guide === 'l3' ? GUIDE.l3 : GUIDE.spin));
       }
     }
     // 2v2 (21-11-2026, usuario): no se ganan monedas de 1v1, solo las MONEDAS 2v2
-    if (!store._coins) store._coins = d.doubles ? { before: getPlayer().coins, gained: 0, after: getPlayer().coins } as ReturnType<typeof addCoins> : addCoins(d.surrendered ? COINS_SURRENDER : d.win ? COINS_WIN : COINS_LOSS);
+    if (!store._coins) store._coins = d.doubles ? { before: getPlayer().coins, gained: 0, after: getPlayer().coins } as ReturnType<typeof addCoins> : addCoins(tutLoss ? 0 : d.surrendered ? COINS_SURRENDER : d.win ? COINS_WIN : COINS_LOSS);
     // MONEDAS 2v2 (domain/coins2v2.ts): contador propio del 2v2 (online y contra bots), una vez por partido
     const c2 = d as MatchEndData & { _c2?: ReturnType<typeof addCoins2v2> };
-    if (d.doubles && !c2._c2) c2._c2 = addCoins2v2(d.surrendered ? 'surrender' : d.win ? 'win' : 'loss', loadBet2v2()); // (21-11-2026) con la apuesta x1 / x2 del menú
+    if (d.doubles && !c2._c2 && !tutLoss) c2._c2 = addCoins2v2(d.surrendered ? 'surrender' : d.win ? 'win' : 'loss', loadBet2v2()); // (21-11-2026) con la apuesta x1 / x2 del menú
     // (21-11-2026, usuario) lo que se GANO en monedas 2v2: el MENU lo hace llegar al monedero 2v2 (tras las monedas y antes de la EXP). Se acumula (REVANCHA no pasa por el menu)
     const c2g = d as MatchEndData & { _c2Gain?: boolean };
     if (c2._c2 && !c2g._c2Gain) {
@@ -497,7 +505,7 @@ export class MatchEndScene extends Phaser.Scene {
     const mst = d as MatchEndData & { _missionCoins?: number };
     if (d.missions && mst._missionCoins === undefined) {
       // (23-11-2026, usuario) en el 2v2 se pagan en MONEDAS 2v2, equivalentes a las del 1v1 (missionReward); el MENÚ las hace llegar al monedero 2v2
-      const amount = missionCoins(d.missions, !!d.doubles);
+      const amount = tutLoss ? 0 : missionCoins(d.missions, !!d.doubles);
       if (d.doubles) {
         mst._missionCoins = amount > 0 ? grantCoins2v2(amount) : 0;
         if (mst._missionCoins > 0) this.registry.set('menu.coin2v2Gain', ((this.registry.get('menu.coin2v2Gain') as number | undefined) ?? 0) + mst._missionCoins);
@@ -880,7 +888,7 @@ export class MatchEndScene extends Phaser.Scene {
       // centrado en alto dentro del cuadro (si el ancho lo achica, no queda pegado al borde de abajo)
       sp.setOrigin(b.cx / b.fw, b.bottom / b.fh).setScale(s).setY(Math.min(feetY, (b.h * s) / 2 + 6));
     };
-    type Who = { clips?: DuelClips; pose?: { key: string; frame: number }; pts?: number; mvp?: boolean; mine?: boolean };
+    type Who = { clips?: DuelClips; pose?: { key: string; frame: number }; skin?: SkinId; pts?: number; mvp?: boolean; mine?: boolean };
     /** pastilla de puntos sobre un personaje (2v2); la del que hizo MÁS puntos va dorada, con brillo */
     // (23-11-2026, usuario) los puntos van en la 2.ª fila de la card, DEBAJO de cada personaje: placa ancha con la cifra grande y "PTS"
     // pequeño al lado; entra con un rebote y cuenta desde 0. La del que hizo MÁS puntos es dorada, con ★ y brillo que late.
@@ -959,9 +967,10 @@ export class MatchEndScene extends Phaser.Scene {
           const ch = this.add.image(cx, feetY, pose.key, pose.frame).setOrigin(0.5, 0.94);
           ch.setScale(Math.min(1.1, (bh - 30) / (fr.height * 0.94)));
           bc.add(ch);
-        } else if (useDefault) {
-          // Retrato frontal de NXO como respaldo para animaciones ausentes o skins sin hoja de poses finales.
-          bc.add(this.add.image(cx, feetY, 'portrait-nxo').setOrigin(0.5, 1).setDisplaySize(two ? 56 : 84, two ? 72 : 108));
+        } else {
+          const portrait = u.skin && addPortrait(this, u.skin, cx, feetY, two ? 72 : 108);
+          if (portrait) bc.add(portrait);
+          else if (useDefault) bc.add(this.add.image(cx, feetY, 'portrait-nxo').setOrigin(0.5, 1).setDisplaySize(two ? 56 : 84, two ? 72 : 108));
         }
         if (two && u.pts !== undefined) pill(bc, cx, u.pts, !!u.mvp, 900 + ((x > 0 ? 2 : 0) + i) * 140); // una tras otra: tu equipo y luego el rival
       });
@@ -1005,15 +1014,17 @@ export class MatchEndScene extends Phaser.Scene {
     // MAI de frente: sus 3 poses salen de su hoja nueva (tools/build-end-poses.mjs; la del partido no trae derrota)
     const clipsMe = endPosesFor(this, d.clips?.me);
     const clipsRv = endPosesFor(this, d.clips?.rival);
-    let leftWho: Who[] = [{ clips: clipsMe, pose: d.poses?.me, mine: true }];
-    let rightWho: Who[] = [{ clips: clipsRv, pose: d.poses?.rival }];
+    const meWho: Who = { clips: clipsMe, pose: d.poses?.me, skin: d.skins?.me, mine: true };
+    const rivalWho: Who = { clips: clipsRv, pose: d.poses?.rival, skin: d.skins?.rival };
+    let leftWho = [meWho];
+    let rightWho = [rivalWho];
     if (two) {
       // 4 personajes: [compañero, tú] y [rival 2, rival 1]; puntos de cada uno y el que hizo MÁS destacado
       const ps = d.pointStats;
       const max = ps ? Math.max(ps.me, ps.ally, ps.r1, ps.r2) : 0;
       const pt = (n?: number) => (ps ? { pts: n ?? 0, mvp: max > 0 && n === max } : {});
-      leftWho = [{ clips: endPosesFor(this, d.clips2?.me), ...pt(ps?.ally) }, { clips: clipsMe, pose: d.poses?.me, mine: true, ...pt(ps?.me) }];
-      rightWho = [{ clips: endPosesFor(this, d.clips2?.rival), ...pt(ps?.r2) }, { clips: clipsRv, pose: d.poses?.rival, ...pt(ps?.r1) }];
+      leftWho = [{ clips: endPosesFor(this, d.clips2?.me), skin: d.skins?.mate, ...pt(ps?.ally) }, { ...meWho, ...pt(ps?.me) }];
+      rightWho = [{ clips: endPosesFor(this, d.clips2?.rival), skin: d.skins?.rival2, ...pt(ps?.r2) }, { ...rivalWho, ...pt(ps?.r1) }];
     }
     const me = box(lx, 0x3a7bff, entry, leftWho);
     const rv = box(rx, 0xff4f5e, rivalStake, rightWho);
@@ -1127,7 +1138,7 @@ export class MatchEndScene extends Phaser.Scene {
     const missions = this.d.missionList
       ? this.d.missionList.map((id) => missionDef(id))
       : this.d.guide === 'first'
-        ? [missionDef('guideJoystick'), missionDef('guideDirectServe')]
+        ? [missionDef('guideJoystick'), missionDef('guideJoystickUpDown'), missionDef('guideDirectServe')]
         : MISSIONS;
     const reward = (m: (typeof MISSIONS)[number]) => missionReward(m, dbl);
     const coinArt = dbl ? coin2v2Image : coinIcon;
@@ -1372,7 +1383,10 @@ export class MatchEndScene extends Phaser.Scene {
 
     // un solo cambio de pantalla por overlay (un doble toque no abre dos ruletas ni arranca dos veces)
     let leaving = false;
-    const cont = arcadeButton(this, d.guide ? W / 2 : x0, y, bw, bh, 'CONTINUAR', () => {
+    // (25-11-2026, usuario) tutorial PERDIDO: CONTINUAR y REINTENTAR (el mismo nivel otra vez)
+    const tutRetry = !!d.tutorial && !d.win && !d.lan && !d.doubles;
+    const single = !!d.guide && !tutRetry;
+    const cont = arcadeButton(this, single ? W / 2 : x0, y, bw, bh, 'CONTINUAR', () => {
       if (leaving) return;
       leaving = true;
       resetMatchEnd(this.scene.get(matchKey));
@@ -1406,6 +1420,19 @@ export class MatchEndScene extends Phaser.Scene {
       }
       this.scene.start('Menu');
     }, { palette: 'yellow', noShadow: true }); // (21-11-2026, usuario) sin la sombra azul
+    if (tutRetry) {
+      const retry = arcadeButton(this, x1, y, bw, bh, 'REINTENTAR', () => {
+        if (leaving) return;
+        leaving = true;
+        resetMatchEnd(this.scene.get(matchKey));
+        this.scene.start(matchKey, { botName: d.botName, rivalLevel: d.rivalLevel, ...(d.guide ? { guide: d.guide } : {}) });
+      }, { palette: 'blue' });
+      for (const [b, delay] of [[cont, 550], [retry, 620]] as const) {
+        b.setAlpha(0).setY(y + 40);
+        this.tweens.add({ targets: b, alpha: 1, y, duration: 380, delay, ease: 'Back.easeOut' });
+      }
+      return;
+    }
     if (d.guide) {
       cont.setAlpha(0).setY(y + 40);
       this.tweens.add({ targets: cont, alpha: 1, y, duration: 380, delay: 550, ease: 'Back.easeOut' });
@@ -1433,7 +1460,7 @@ export class MatchEndScene extends Phaser.Scene {
         this.scene.start('LanSearch', { fallback: { unranked: true, from: 'Menu' } });
         return;
       }
-      this.scene.start(matchKey, d.doubles ? { botName: d.botName, rivalLevel: d.rivalLevel, mode: '2v2', allyName: d.doubles.allyName, rival2Name: d.doubles.rival2Name } : { botName: d.botName, rivalLevel: d.rivalLevel });
+      this.scene.start(matchKey, d.doubles ? { botName: d.botName, rivalLevel: d.rivalLevel, mode: '2v2', allyName: d.doubles.allyName, rival2Name: d.doubles.rival2Name, duo: d.doubles.duo } : { botName: d.botName, rivalLevel: d.rivalLevel, rivalSkin: d.rivalSkin });
     }, { palette: 'blue' });
     for (const [b, delay] of [[cont, 550], [again, 620]] as const) {
       b.setAlpha(0).setY(y + 40);

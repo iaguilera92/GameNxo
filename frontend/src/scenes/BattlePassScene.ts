@@ -1,4 +1,5 @@
 import { installTapSound, uiSound } from '../fx/uiSound';
+import { releaseSceneTexturesOnExit } from '../ui/sceneTextures';
 import Phaser from 'phaser';
 import { FONT, restartOnResize, textStyle } from '../ui/theme';
 import { stadiumBg } from '../ui/ui';
@@ -83,6 +84,7 @@ export class BattlePassScene extends Phaser.Scene {
   }
 
   preload() {
+    releaseSceneTexturesOnExit(this); // (25-11-2026) sus imágenes propias se liberan al salir (ui/sceneTextures.ts)
     if (!this.textures.exists('menu-bg')) this.load.image('menu-bg', 'assets/menu-bg.webp');
     if (!this.textures.exists('battle-pass-title')) this.load.image('battle-pass-title', 'assets/titulo-pase-batalla.webp');
     if (!this.textures.exists('battle-pass-insignia')) this.load.image('battle-pass-insignia', 'assets/insignia-pase-batalla.webp');

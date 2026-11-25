@@ -13,6 +13,26 @@ const [inp, out, q = '0.92', tw] = process.argv.slice(2); // tw (opcional, 21-11
 if (!inp || !out) throw new Error('uso: node tools/convert-image.mjs <entrada> <salida.png|salida.webp> [calidad webp]');
 const mime = out.toLowerCase().endsWith('.webp') ? 'image/webp' : 'image/png';
 const quality = Math.min(1, Math.max(0, Number(q)));
+const pillowPython = process.env.GAMENXO_IMAGE_PYTHON;
+if (pillowPython) {
+  const convert = `
+from PIL import Image
+import sys
+
+src, dst, file_type, quality, width = sys.argv[1:]
+with Image.open(src) as source:
+    image = source.convert('RGBA')
+    width = int(width)
+    if width > 0:
+        image = image.resize((width, max(1, round(image.height * width / image.width))), Image.Resampling.LANCZOS)
+    options = dict(quality=int(quality), method=6) if file_type == 'WEBP' else {}
+    image.save(dst, format=file_type, **options)
+`;
+  const result = spawnSync(pillowPython, ['-c', convert, inp, out, mime === 'image/webp' ? 'WEBP' : 'PNG', String(Math.round(quality * 100)), String(Math.max(0, Math.round(Number(tw) || 0)))], { stdio: 'inherit' });
+  if (result.error) throw result.error;
+  if (result.status !== 0) throw new Error('falló la conversión con Pillow');
+  process.exit(0);
+}
 const chrome = process.env.CHROME || 'C:/Program Files/Google/Chrome/Application/chrome.exe';
 const ud = mkdtempSync(join(tmpdir(), 'webp2png-'));
 // puerto al azar: con uno fijo, un Chrome huérfano de una corrida anterior respondía en su lugar y devolvía otra imagen

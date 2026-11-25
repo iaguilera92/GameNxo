@@ -1,4 +1,5 @@
 import { installTapSound } from '../fx/uiSound';
+import { releaseSceneTexturesOnExit } from '../ui/sceneTextures';
 import Phaser from 'phaser';
 import { FONT, restartOnResize } from '../ui/theme';
 import { stadiumBg } from '../ui/ui';
@@ -35,21 +36,23 @@ const SEASON_LID_Y = 100;
 // Para que las secciones no queden con huecos enormes, se colocan por el DIBUJO visible (restando ese padding), no por la caja.
 const LIGA_ART = {
   bg: { key: 'liga-bg', file: 'assets/liga/fondo-liga.webp', ar: 1024 / 1536, pad: [0, 0] },
-  tabs1: { key: 'liga-tabs', file: 'assets/liga/pestanas-liga.webp', ar: 2000 / 667, pad: [0.244, 0.199] },
-  tabs2: { key: 'liga-tabs-2v2', file: 'assets/liga/pestanas-liga-2v2.webp', ar: 2000 / 667, pad: [0.237, 0.201] },
-  stage: { key: 'liga-stage', file: 'assets/liga/escenario-liga.webp', ar: 1774 / 887, pad: [0.122, 0.08] }, // (21-11-2026) escenario más bajo, laureles cerca del centro
+  // (25-11-2026) `w0` = ancho ORIGINAL del archivo: los recortes (LIGA_PIECES, `off`) siguen en px del original y piece() los escala al
+  // ancho real del archivo (las imágenes se achicaron a la mitad: se ven a ≤ 660 px en un lienzo de 720)
+  tabs1: { key: 'liga-tabs', file: 'assets/liga/pestanas-liga.webp', w0: 2000, ar: 2000 / 667, pad: [0.244, 0.199] },
+  tabs2: { key: 'liga-tabs-2v2', file: 'assets/liga/pestanas-liga-2v2.webp', w0: 2000, ar: 2000 / 667, pad: [0.237, 0.201] },
+  stage: { key: 'liga-stage', file: 'assets/liga/escenario-liga.webp', w0: 1774, ar: 1774 / 887, pad: [0.122, 0.08] }, // (21-11-2026) escenario más bajo, laureles cerca del centro
   // (21-11-2026) las 3 cards y las 3 del podio, en archivos SUELTOS con margen transparente: recortadas de una hoja, el filtrado lineal
   // sangraba el borde de la pieza vecina y se veían RAYAS. `off` = coordenada de la hoja original donde empieza cada archivo.
-  card0: { key: 'liga-card-0', file: 'assets/liga/card-0.webp', off: [30, 130] },
-  card1: { key: 'liga-card-1', file: 'assets/liga/card-1.webp', off: [643, 130] },
-  card2: { key: 'liga-card-2', file: 'assets/liga/card-2.webp', off: [1253, 130] },
-  reward: { key: 'liga-reward', file: 'assets/liga/panel-recompensa.webp', ar: 2000 / 667, pad: [0.168, 0.189] },
-  buttons: { key: 'liga-buttons', file: 'assets/liga/botones-liga.webp', ar: 2000 / 667, pad: [0.312, 0.304] },
-  leaders: { key: 'liga-leaders-title', file: 'assets/liga/titulo-lideres.webp', ar: 2000 / 667, pad: [0.294, 0.316] },
-  pod0: { key: 'liga-pod-0', file: 'assets/liga/podio-0.webp', off: [36, 115] },
-  pod1: { key: 'liga-pod-1', file: 'assets/liga/podio-1.webp', off: [566, 115] },
-  pod2: { key: 'liga-pod-2', file: 'assets/liga/podio-2.webp', off: [1197, 115] },
-  top100: { key: 'liga-top100', file: 'assets/liga/btn-top100.webp', ar: 2000 / 667, pad: [0.297, 0.313] },
+  card0: { key: 'liga-card-0', file: 'assets/liga/card-0.webp', w0: 638, off: [30, 130] },
+  card1: { key: 'liga-card-1', file: 'assets/liga/card-1.webp', w0: 635, off: [643, 130] },
+  card2: { key: 'liga-card-2', file: 'assets/liga/card-2.webp', w0: 639, off: [1253, 130] },
+  reward: { key: 'liga-reward', file: 'assets/liga/panel-recompensa.webp', w0: 2000, ar: 2000 / 667, pad: [0.168, 0.189] },
+  buttons: { key: 'liga-buttons', file: 'assets/liga/botones-liga.webp', w0: 2000, ar: 2000 / 667, pad: [0.312, 0.304] },
+  leaders: { key: 'liga-leaders-title', file: 'assets/liga/titulo-lideres.webp', w0: 2000, ar: 2000 / 667, pad: [0.294, 0.316] },
+  pod0: { key: 'liga-pod-0', file: 'assets/liga/podio-0.webp', w0: 542, off: [36, 115] },
+  pod1: { key: 'liga-pod-1', file: 'assets/liga/podio-1.webp', w0: 643, off: [566, 115] },
+  pod2: { key: 'liga-pod-2', file: 'assets/liga/podio-2.webp', w0: 541, off: [1197, 115] },
+  top100: { key: 'liga-top100', file: 'assets/liga/btn-top100.webp', w0: 2000, ar: 2000 / 667, pad: [0.297, 0.313] },
 } as const;
 
 /**
@@ -104,6 +107,7 @@ export class RankedScene extends Phaser.Scene {
   }
 
   preload() {
+    releaseSceneTexturesOnExit(this); // (25-11-2026) sus imágenes propias se liberan al salir (ui/sceneTextures.ts)
     if (!this.textures.exists('menu-bg')) this.load.image('menu-bg', 'assets/menu-bg.webp');
     for (const a of Object.values(LIGA_ART)) if (!this.textures.exists(a.key)) this.load.image(a.key, a.file); // (21-11-2026) arte de la pantalla LIGA
     if (!this.textures.exists('liga-chest-week')) this.load.image('liga-chest-week', 'assets/cofre-semanal.webp'); // (21-11-2026) cofre del panel de la recompensa semanal
@@ -140,13 +144,15 @@ export class RankedScene extends Phaser.Scene {
    * Imagen de una PIEZA recortada (frame exacto de LIGA_PIECES) con su borde superior-izquierdo en (left, top) y `w` de ancho.
    * Devuelve la escala y conversores de px de la imagen original a px de pantalla, para colocar textos encima. null si falta la imagen.
    */
-  private piece(art: { key: string; off?: readonly number[] }, name: string, r: Piece, left: number, top: number, w: number) {
+  private piece(art: { key: string; off?: readonly number[]; w0?: number }, name: string, r: Piece, left: number, top: number, w: number) {
     if (!this.textures.exists(art.key)) return null;
     const tex = this.textures.get(art.key);
     // `off`: el archivo es un trozo de la hoja original que empieza en (off[0], off[1]); `r` sigue en coordenadas de la hoja
     const ox = art.off?.[0] ?? 0;
     const oy = art.off?.[1] ?? 0;
-    if (!tex.has(name)) tex.add(name, 0, r[0] - ox, r[1] - oy, r[2], r[3]);
+    // (25-11-2026) el archivo puede estar achicado: el recorte (en px del original) se pasa a px del archivo real
+    const k = art.w0 ? (tex.getSourceImage() as { width: number }).width / art.w0 : 1;
+    if (!tex.has(name)) tex.add(name, 0, (r[0] - ox) * k, (r[1] - oy) * k, r[2] * k, r[3] * k);
     const s = w / r[2];
     const img = this.add.image(left, top, art.key, name).setOrigin(0, 0).setDisplaySize(w, r[3] * s);
     return { img, s, w, h: r[3] * s, X: (px: number) => left + (px - r[0]) * s, Y: (py: number) => top + (py - r[1]) * s };
@@ -1506,7 +1512,7 @@ export class RankedScene extends Phaser.Scene {
     }
     // (21-11-2026, revisión) recorte exacto de las pestañas; los textos en px de la imagen: centro del CUERPO de cada pestaña (y≈322, sin el
     // piquito) y, en x, el centro del hueco a la derecha de la(s) pelota(s): LIGA x 420..980 → 700 · LIGA 2V2 x 1390..1940 → 1665
-    const P = this.piece({ key }, is2 ? 'tabs2' : 'tabs1', LIGA_PIECES.tabs, W / 2 - bw / 2, visTop, bw)!;
+    const P = this.piece(is2 ? LIGA_ART.tabs2 : LIGA_ART.tabs1, is2 ? 'tabs2' : 'tabs1', LIGA_PIECES.tabs, W / 2 - bw / 2, visTop, bw)!;
     const visBot = visTop + P.h;
     const midY = P.Y(322);
     const half = (560 * P.s) / 0.6; // (fitText usa half*0.6 = ancho del hueco del texto)

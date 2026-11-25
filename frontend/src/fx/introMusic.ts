@@ -8,7 +8,7 @@ import Phaser from 'phaser';
  * El fundido va por reloj real (setInterval): no depende de que la escena siga activa.
  */
 const KEY = 'intro-1';
-const FILE = 'mp3/intro-1.mp3';
+const FILE = 'mp3/intro-1.m4a';
 const VOLUME = 0.35;
 /** ms finales de cada vuelta en los que el volumen baja hasta 0 */
 const FADE_MS = 3000;

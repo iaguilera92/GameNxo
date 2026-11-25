@@ -25,7 +25,9 @@ export function searchTimer(scene: Phaser.Scene, parent: Phaser.GameObjects.Cont
   const s = w / (ART.x1 - ART.x0);
   const cx = (ART.x0 + ART.x1) / 2;
   const cy = (ART.y0 + ART.y1) / 2;
-  const img = scene.add.image(x - (cx - ART.imgW / 2) * s, y - (cy - ART.imgH / 2) * s, KEY).setScale(s);
+  // (25-11-2026) medidas en px del original (ART.imgW): la escala se corrige si el archivo está achicado
+  const k = ART.imgW / (scene.textures.get(KEY).getSourceImage() as { width: number }).width;
+  const img = scene.add.image(x - (cx - ART.imgW / 2) * s, y - (cy - ART.imgH / 2) * s, KEY).setScale(s * k);
   const t = scene.add
     .text(x + (ART.textX - cx) * s, y + (ART.textY - cy) * s, '0:00', { fontFamily: FONT, fontSize: '34px', color: '#ffffff', stroke: '#0a1638', strokeThickness: 5 })
     .setOrigin(0.5)

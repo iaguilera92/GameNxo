@@ -4,10 +4,13 @@ import type { PlayerState } from '../domain/player';
 import { equippedFrame } from '../domain/profileFrames';
 import { FONT, restartOnResize, textStyle } from '../ui/theme';
 import { UI, flatButton, stadiumBg } from '../ui/ui';
-import { playerLook, rivalLook } from '../objects/Character';
-import { rivalFor } from '../characters/catalog';
+import { lookForSkin, playerLook } from '../objects/Character';
+import { type DoublesSkins, doublesSkinsFor, randomRivalFor, rivalFor, skinById, tutorialRivalFor } from '../characters/catalog';
+import { isTutorialMatch } from '../domain/tutorialMatch';
 import { rivalLevelFor } from '../ai/BotProfile';
 import { getProfile } from '../logic/Profile';
+import { queueAmbiente } from '../view/CourtView';
+import { queueNxoSpriteLoads, registerNxoAnims, sheetsOf } from '../objects/NxoActor';
 import type { SkinId } from '../characters/skins';
 import { totalWins } from '../logic/Stats';
 import { playMatchMusic, prepareMatchMusic, stopMatchMusic } from '../fx/matchMusic';
@@ -21,10 +24,11 @@ import { preloadSearchTimer, searchTimer, styleSearchTitle } from '../ui/searchT
 import { searchSpinner } from '../ui/searchSpinner';
 import { startIntroMusic, stopIntroMusic } from '../fx/introMusic';
 import { MAX_LEVEL } from '../config';
+import { isDevMode } from '../domain/devMode';
 import type { GuidedMatch } from '../domain/tutorial';
 
-const BOT_NAMES = ['RoboAce', 'BotNadal', 'TopSpin-3000', 'NetBot', 'Volea.exe'];
-const PRACTICE_NAMES = ['Álex', 'Dani', 'Nico', 'Sam'];
+/** (25-11-2026, usuario) los rivales BOT se llaman como su personaje (antes, nombres inventados: RoboAce, BotNadal…) */
+const charName = (id: string) => skinById(id as SkinId).name.toUpperCase();
 
 /** "Buscando partida..." (presentación competitiva) y pantalla VS antes del partido. */
 export class MatchmakingScene extends Phaser.Scene {
@@ -48,15 +52,23 @@ export class MatchmakingScene extends Phaser.Scene {
   private doubles = false;
   private allyName = 'Aliado';
   private rival2Name = 'Rival 2';
+  /** (25-11-2026) personajes del 2v2 (compañero y los dos rivales) */
+  private duo: DoublesSkins = { ally: 'mai', rival1: 'mai', rival2: 'nxo' };
+  /** (25-11-2026) rival del 1v1 al azar (modo desarrollo); null = el de siempre */
+  private devRival: SkinId | null = null;
   private guide?: GuidedMatch;
 
   init(data?: { ranked?: { bet: number }; unranked?: boolean; from?: string; skipSearch?: boolean; mode?: '2v2'; guide?: GuidedMatch }) {
     this.guide = data?.guide;
     this.doubles = data?.mode === '2v2';
     {
-      const names = Phaser.Utils.Array.Shuffle([...BOT_NAMES.filter((n) => n.length <= 9)]);
-      this.allyName = names[0];
-      this.rival2Name = names[1];
+      // (25-11-2026, usuario) 2v2: compañero y rivales, tres personajes distintos al azar (doublesSkinsFor); se pasan al partido
+      const skin = getProfile().skin;
+      this.duo = doublesSkinsFor(skin);
+      // (25-11-2026, usuario) 1v1 con el modo desarrollo encendido: el rival varía entre los personajes listos (se pasa al partido)
+      this.devRival = !this.doubles && isDevMode() ? randomRivalFor(skin) : null;
+      this.allyName = charName(this.duo.ally);
+      this.rival2Name = charName(this.duo.rival2);
     }
     this.skipSearch = !!data?.skipSearch;
     this.rankedBet = data?.ranked?.bet ?? null;
@@ -75,6 +87,9 @@ export class MatchmakingScene extends Phaser.Scene {
   }
 
   preload() {
+    // (25-11-2026) los personajes del partido: el rival de frente (y en el 2v2 tu compañero de espaldas); el partido los usa ya cargados
+    const me = getProfile().skin;
+    queueNxoSpriteLoads(this.load, sheetsOf([[me, 'back'], [me, 'front'], [this.rival1Skin(), 'front'], ...(this.doubles ? [[this.duo.ally, 'back'], [this.duo.rival2, 'front']] as [string, 'back' | 'front'][] : [])]));
     if (!this.textures.exists('menu-bg')) this.load.image('menu-bg', 'assets/menu-bg.webp');
     if (this.rankedBet || this.unranked) preloadRankBadges(this.load, [rankedView().league]);
     preloadSearchTimer(this.load);
@@ -83,6 +98,7 @@ export class MatchmakingScene extends Phaser.Scene {
   }
 
   create() {
+    registerNxoAnims(this);
     const W = this.scale.width;
     const H = this.scale.height;
     restartOnResize(this);
@@ -92,14 +108,16 @@ export class MatchmakingScene extends Phaser.Scene {
     // ambiente del próximo partido elegido ya: su música se carga mientras se busca y suena desde el VS
     this.toMatch = false;
     this.ambiente = prepareMatchMusic(this, this.doubles);
+    // (25-11-2026) y su imagen, mientras se busca (el partido ya la encuentra cargada)
+    queueAmbiente(this.load, this.ambiente);
+    if (!this.load.isLoading()) this.load.start();
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       if (!this.toMatch) stopMatchMusic(this); // vuelta atrás / sin monedas: la música no sigue sonando
     });
 
     // tras agotarse la búsqueda online y elegir JUGAR VS BOT: directo al VS (sin la pantalla de búsqueda otra vez)
     if (this.skipSearch) {
-      const rk0 = !!this.rankedBet || this.unranked;
-      this.showVersus(rk0 ? this.rankedRivalName() : Phaser.Utils.Array.GetRandom(PRACTICE_NAMES));
+      this.showVersus(this.rival1Name());
       return;
     }
 
@@ -140,7 +158,7 @@ export class MatchmakingScene extends Phaser.Scene {
       cancel.destroy();
       if (ranked) this.tweens.add({ targets: ranked, alpha: 0, duration: 220, onComplete: () => ranked.forEach((o) => o.destroy()) });
       this.tweens.add({ targets: searching, alpha: 0, scale: 0.85, duration: 220, onComplete: () => searching.destroy() });
-      this.showVersus(this.doubles ? this.rival1Name() : rk ? this.rankedRivalName() : Phaser.Utils.Array.GetRandom(BOT_NAMES));
+      this.showVersus(this.rival1Name());
     });
   }
 
@@ -152,16 +170,18 @@ export class MatchmakingScene extends Phaser.Scene {
     // nivel REAL del rival: cerca del tuyo; define su dificultad (src/ai/BotProfile.ts). En Ranked sube con la liga.
     const tier = this.rankedBet || this.unranked ? LEAGUE_ORDER.indexOf(rankedView().league) : 0;
     const rivalLevel = Math.min(MAX_LEVEL, rivalLevelFor(p.level) + tier * 2);
+    // (25-11-2026, usuario) en el tutorial (bajo el nivel 20) la VS no muestra las victorias de nadie
+    const tutorial = !isDevMode() && p.level < MAX_LEVEL;
     showVersusScreen(
       this,
-      { name: this.doubles ? `${p.name} + ${this.allyName}` : p.name, level: p.level, look: playerLook(p.skin), portraitSkin: p.skin as SkinId, wins: totalWins(), color: p.color, frame: equippedFrame(getPlayer() as PlayerState) }, // tu color y tu MARCO; el rival, el suyo de siempre
+      { name: this.doubles ? `${p.name} + ${this.allyName}` : p.name, level: p.level, look: playerLook(p.skin), portraitSkin: p.skin as SkinId, wins: tutorial ? undefined : totalWins(), color: p.color, frame: equippedFrame(getPlayer() as PlayerState) }, // tu color y tu MARCO; el rival, el suyo de siempre
       {
         name: botName,
         level: rivalLevel,
-        look: rivalLook(p.skin),
-        portraitSkin: rivalFor(p.skin),
+        look: lookForSkin(this.rival1Skin(), 'front', p.skin),
+        portraitSkin: this.rival1Skin(),
         // el rival simulado también lleva victorias (proporcionales a su nivel), como un jugador real
-        wins: Math.round(rivalLevel * Phaser.Math.FloatBetween(2, 5)),
+        wins: tutorial ? undefined : Math.round(rivalLevel * Phaser.Math.FloatBetween(2, 5)),
         // en la Liga el rival simulado también luce un marco (de su liga o de una anterior; a veces ninguno), como un jugador real
         frame: tier >= 0 && (this.rankedBet || this.unranked) && Math.random() < 0.75 ? LEAGUE_ORDER[Phaser.Math.Between(0, tier)] : null,
       },
@@ -170,14 +190,14 @@ export class MatchmakingScene extends Phaser.Scene {
       this.doubles
         ? {
             mySkin: p.skin,
-            mateSkin: rivalFor(p.skin),
-            rivals: [rivalFor(p.skin), p.skin],
+            mateSkin: this.duo.ally,
+            rivals: [this.duo.rival1, this.duo.rival2],
             // (19-11-2026, usuario) una card por persona: tú, tu aliado y los 2 rivales (bots)
             cards: {
               me: { name: p.name, level: p.level, look: playerLook(p.skin) },
-              mate: { name: this.allyName, level: p.level, look: rivalLook(p.skin) },
-              rival1: { name: botName, level: rivalLevel, look: rivalLook(p.skin) },
-              rival2: { name: this.rival2Name, level: rivalLevel, look: rivalLook(p.skin) },
+              mate: { name: this.allyName, level: p.level, look: lookForSkin(this.duo.ally, 'front', p.skin) },
+              rival1: { name: botName, level: rivalLevel, look: lookForSkin(this.duo.rival1, 'front', p.skin) },
+              rival2: { name: this.rival2Name, level: rivalLevel, look: lookForSkin(this.duo.rival2, 'front', p.skin) },
             },
           }
         : undefined,
@@ -195,21 +215,22 @@ export class MatchmakingScene extends Phaser.Scene {
           if (!res.ok) return this.back(res.error === 'not_enough_coins' ? 'No te alcanzan las monedas' : 'No se pudo entrar a la Liga');
         }
         this.toMatch = true;
-        this.scene.start('Match', this.doubles ? { botName, rivalLevel, ambiente: this.ambiente, mode: '2v2', allyName: this.allyName, rival2Name: this.rival2Name } : { botName, rivalLevel, ambiente: this.ambiente, guide: this.guide });
+        this.scene.start('Match', this.doubles ? { botName, rivalLevel, ambiente: this.ambiente, mode: '2v2', allyName: this.allyName, rival2Name: this.rival2Name, duo: this.duo } : { botName, rivalLevel, rivalSkin: this.devRival ?? undefined, ambiente: this.ambiente, guide: this.guide });
       });
     });
   }
 
-  /** 2v2: el nombre del rival 1 (distinto del aliado y del rival 2) */
+  /** el rival (1v1) o el rival 1 (2v2): el nombre de su personaje (rivalFor, el mismo que sale en la VS y en el partido) */
   private rival1Name() {
-    const rest = BOT_NAMES.filter((n) => n !== this.allyName && n !== this.rival2Name && n.length <= 9);
-    return Phaser.Utils.Array.GetRandom(rest.length ? rest : BOT_NAMES) as string;
+    return charName(this.rival1Skin());
   }
 
-  /** Rival Ranked: un participante (simulado) de tu tabla con una posición cercana a la tuya. */
-  private rankedRivalName() {
-    const v = rankedView();
-    const near = v.board.filter((e) => e.bot && Math.abs(e.position - (v.position ?? 50)) <= 8);
-    return (Phaser.Utils.Array.GetRandom(near.length ? near : v.board.filter((e) => e.bot)) as { name: string } | undefined)?.name ?? 'Rival';
+  /** (25-11-2026, usuario) el personaje del rival 1: en el tutorial (1v1 contra el bot) intercalado por nivel (tutorialRivalFor), si no rivalFor */
+  private rival1Skin() {
+    const p = getPlayer();
+    const skin = getProfile().skin;
+    if (this.doubles) return this.duo.rival1;
+    if (this.devRival) return this.devRival;
+    return isTutorialMatch(p.level, isDevMode(), false) ? tutorialRivalFor(skin, p.level) : rivalFor(skin);
   }
 }

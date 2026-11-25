@@ -1,0 +1,8 @@
+√ Copying web assets from dist to android\app\src\main\assets\public in 3.19s
+√ Creating capacitor.config.json in android\app\src\main\assets in 4.19ms
+√ copy android in 3.24s
+√ Updating Android plugins in 2.99ms
+[info] Found 1 Capacitor plugin for android:
+       @capacitor-community/admob@6.2.0
+√ update android in 175.69ms
+[info] Sync finished in 3.455s

@@ -13,6 +13,9 @@ import { type FrameSet, addProfileFrameArt } from './profileFrameArt';
 import { bestLeague2v2 } from '../domain/league2v2';
 import { commit, getPlayer, onPlayerChange } from '../domain/playerStore';
 import { totalPlayed, totalWins } from '../logic/Stats';
+import { markTutorialSeen } from '../domain/operations';
+import { clockTimer } from './TutorialDialog';
+import { tapHint } from './guideFocus';
 
 const NAVY = 0x0b1733;
 const GOLD = 0xffc42e;
@@ -332,5 +335,49 @@ export function openProfileDialog(scene: Phaser.Scene, onToast: (m: string) => v
   paint();
   root.setAlpha(0);
   scene.tweens.add({ targets: root, alpha: 1, duration: 180 });
+  if (!getPlayer().tutorial?.includes(PROFILE_INFO)) {
+    // (25-11-2026, usuario) al cerrarse el resumen, la mano señala CERRAR
+    profileInfo(scene, root, () => {
+      if (!root.active) return;
+      const f = body.scaleX;
+      const hand = tapHint(scene, body.x + (W / 2) * f, body.y + (top + L.closeY) * f, 9600);
+      root.once('destroy', () => hand.destroy());
+    });
+  }
   return root;
+}
+
+const PROFILE_INFO = 'perfil-info';
+const PROFILE_INFO_MS = 3000;
+
+/** (25-11-2026, usuario) la primera vez que se abre el perfil: explicación breve (se cierra al tocar) */
+function profileInfo(scene: Phaser.Scene, root: Phaser.GameObjects.Container, onDone: () => void) {
+  const W = scene.scale.width;
+  const H = scene.scale.height;
+  const box = scene.add.container(0, 0);
+  const dim = scene.add.rectangle(0, 0, W, H, 0x03091a, 0.72).setOrigin(0).setInteractive();
+  const cw = Math.min(460, W - 60);
+  const ch = 330;
+  const cx = W / 2;
+  const cy = H / 2;
+  const g = scene.add.graphics();
+  g.fillStyle(0x0a1638, 0.98).fillRoundedRect(cx - cw / 2, cy - ch / 2, cw, ch, 24);
+  g.lineStyle(4, 0xffd23f).strokeRoundedRect(cx - cw / 2, cy - ch / 2, cw, ch, 24);
+  const title = scene.add.text(cx, cy - ch / 2 + 50, 'AQUÍ PODRÁS VER', { fontFamily: FONT, fontSize: '32px', color: '#fff3bb', stroke: '#071332', strokeThickness: 7 }).setOrigin(0.5);
+  const items = ['TU NIVEL', 'TUS PARTIDAS', 'TUS LIGAS'].map((t, i) =>
+    scene.add.text(cx - cw / 2 + 70, cy - ch / 2 + 115 + i * 52, `•  ${t}`, { fontFamily: FONT, fontSize: '28px', color: '#ffffff', stroke: '#071332', strokeThickness: 6 }).setOrigin(0, 0.5).setAlpha(0));
+  // (25-11-2026, usuario) se cierra solo a los 3 s: el reloj (como el de BIENVENID@) se vacía
+  const hint = clockTimer(scene, cx, cy + ch / 2 - 40, PROFILE_INFO_MS);
+  box.add([dim, g, title, ...items, hint]);
+  root.add(box);
+  items.forEach((t, i) => scene.tweens.add({ targets: t, alpha: 1, x: { from: t.x + 30, to: t.x }, delay: 250 + i * 180, duration: 260, ease: 'Back.easeOut' }));
+  let done = false;
+  const finish = () => {
+    if (done || !box.active) return;
+    done = true;
+    commit((s) => markTutorialSeen(s, PROFILE_INFO));
+    scene.tweens.add({ targets: box, alpha: 0, duration: 200, onComplete: () => { box.destroy(); onDone(); } });
+  };
+  dim.once('pointerup', finish);
+  scene.time.delayedCall(PROFILE_INFO_MS, finish);
 }

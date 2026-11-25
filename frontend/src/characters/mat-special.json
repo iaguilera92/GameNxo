@@ -1,0 +1,32 @@
+{
+  "source": "Mat/jugador/mat-{movimientos,golpes,reacciones,extras}-*.png",
+  "view": "back",
+  "cell": {
+    "w": 110,
+    "h": 200
+  },
+  "origin": {
+    "x": 0.5,
+    "y": 0.98
+  },
+  "standHeight": 190,
+  "start": 2,
+  "animations": {
+    "smash-power": {
+      "file": "smash-power.webp",
+      "frames": 8,
+      "fps": 14,
+      "loop": false,
+      "impact": 4,
+      "scale": 1,
+      "cell": {
+        "w": 184,
+        "h": 249
+      },
+      "origin": {
+        "x": 0.5,
+        "y": 0.98394
+      }
+    }
+  }
+}

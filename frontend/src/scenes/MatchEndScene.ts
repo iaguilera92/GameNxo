@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import type { DoublesSkins } from '../characters/catalog';
 import { FONT } from '../ui/theme';
-import { COINS_LOSS, COINS_SURRENDER, COINS_WIN, XP_LOSS, XP_SURRENDER, XP_WIN, xpToNext, MAX_LEVEL } from '../config';
+import { COINS_LOSS, COINS_SURRENDER, COINS_WIN, XP_LOSS, XP_SURRENDER, XP_WIN } from '../config';
 import { addCoins, addCoins2v2, addXp, getProfile, grantCoins2v2 } from '../logic/Profile';
 import { loadBet2v2 } from '../ui/PlayEntry2v2';
 import { COINS_2V2, friendly2v2 } from '../domain/coins2v2';
@@ -11,7 +11,7 @@ import { arcadeButton } from '../ui/modeButtons';
 import { fitText } from '../ui/fitText';
 import type { RankId } from '../domain/ranks';
 import { resetMatchEnd } from '../fx/matchEnd';
-import { markWheelPresented, recordMatchWin, wheelToPresent, wheelStatuses } from '../logic/Wheels';
+import { grantTutorialSpin, markTutorialWheelPresented, markWheelPresented, recordMatchWin, tutorialWheelToPresent, wheelToPresent, wheelStatuses } from '../logic/Wheels';
 import { GUIDE, GUIDE_FIRST_WHEEL, type GuidedMatch } from '../domain/tutorial';
 import { markTutorialSeen } from '../domain/operations';
 import { openWheel, whenWheelReady } from './WheelScene';
@@ -297,10 +297,17 @@ export class MatchEndScene extends Phaser.Scene {
     }
 
     // ruletas diarias: cada partida COMPLETADA (ganada o perdida; no rendición) cuenta UNA vez (id único guardado)
-    const wstore = d as MatchEndData & { _matchId?: string; _wheel?: number | null; _playedId?: string };
+    const wstore = d as MatchEndData & { _matchId?: string; _wheel?: number | null; _playedId?: string; _tutWheel?: boolean };
     // partidas jugadas (PERFIL): toda partida terminada, también la rendida; una sola vez aunque la escena se repita
     if (!wstore._playedId) recordPlayed((wstore._playedId = newMatchId()));
-    if (!d.surrendered && (d.guide !== 'first' || win) && !wstore._matchId) {
+    if (d.tutorial && !d.surrendered && !wstore._matchId) {
+      // (25-11-2026, usuario) TUTORIAL: UNA ruleta por NIVEL subido (ganado y con sus misiones), fuera del tope diario; se abre sola al salir
+      const allM = !d.missionsRequired || !d.missionList || d.missionList.every((id) => d.missions?.includes(id));
+      wstore._matchId = d.guide === 'first' ? GUIDE_FIRST_WHEEL : newMatchId();
+      if (win && allM) wstore._tutWheel = grantTutorialSpin(d.guide === 'first' ? GUIDE_FIRST_WHEEL : `tutorial-level:${getPlayer().level}`) >= 0;
+      wstore._wheel = null;
+      if (win) recordWin(wstore._matchId);
+    } else if (!d.surrendered && (d.guide !== 'first' || win) && !wstore._matchId) {
       wstore._matchId = d.guide === 'first' ? GUIDE_FIRST_WHEEL : newMatchId();
       wstore._wheel = recordMatchWin(wstore._matchId); // índice de la ruleta desbloqueada (o null)
       if (win) recordWin(wstore._matchId); // victorias totales (se muestran en la pantalla VS)
@@ -547,7 +554,7 @@ export class MatchEndScene extends Phaser.Scene {
    * (una vez por partida); aquí solo se muestran.
    */
   private rewardCards(c: Phaser.GameObjects.Container, W: number, top: number, w: number, y0: number) {
-    const d = this.d as MatchEndData & { _xp?: ReturnType<typeof addXp>; _coins?: ReturnType<typeof addCoins>; _wheel?: number | null; _c2?: { before: number; after: number; delta: number; bet: number } };
+    const d = this.d as MatchEndData & { _xp?: ReturnType<typeof addXp>; _coins?: ReturnType<typeof addCoins>; _wheel?: number | null; _tutWheel?: boolean; _c2?: { before: number; after: number; delta: number; bet: number } };
     const xp = d._xp!;
     // 2v2: la primera card son las MONEDAS 2v2 (cambio con signo, morada); 1v1: las monedas de siempre
     const c2 = d.doubles ? d._c2 : undefined;
@@ -584,53 +591,29 @@ export class MatchEndScene extends Phaser.Scene {
       if (coins.gained > 0) this.coinShower(c, xs[0], y0 + 70, xs[0], y0 + 40, Math.min(7, 2 + Math.round(coins.gained / 10)));
     });
 
-    // --- 2) EXP (+ barra de nivel; sube de nivel si corresponde)
+    // --- 2) EXP: (25-11-2026, usuario) solo la cantidad, como las monedas (sin la barra de nivel); sube de nivel si corresponde
     const e = this.card(c, xs[1], y0, cw, 'EXP', 0x5fd0ff, 0x0a2a4a);
     drawXpIcon(e.icon, 32);
     e.value.setText('+0').setColor('#8fd0ff');
     e.sub.setText(`NIVEL ${xp.before.level}`);
-    const bw = cw - 30;
-    const bh = 10;
-    const bx = -bw / 2;
-    // cifra un poco más arriba; debajo la barra de nivel y el nivel
-    e.value.setY(126);
-    const by = CARD_H - 46;
-    const track = this.add.graphics();
-    track.fillStyle(0x05112c, 1).fillRoundedRect(bx, by, bw, bh, bh / 2);
-    track.lineStyle(1, 0x2a4a8a, 1).strokeRoundedRect(bx, by, bw, bh, bh / 2);
-    const bar = this.add.graphics();
-    e.cont.add([track, bar]);
-    e.sub.setY(CARD_H - 20);
-    const drawBar = (p: number) => {
-      bar.clear();
-      if (p <= 0) return;
-      const fw = Math.max(bh, bw * Math.min(1, p));
-      bar.fillStyle(0x1f7bff, 1).fillRoundedRect(bx, by, fw, bh, bh / 2);
-      bar.fillStyle(0x5fd0ff, 1).fillRoundedRect(bx, by, fw, bh * 0.5, { tl: bh / 2, tr: bh / 2, bl: 0, br: 0 });
-    };
-    const prog = (lv: number, v: number) => (lv >= MAX_LEVEL ? 1 : v / xpToNext(lv));
-    drawBar(prog(xp.before.level, xp.before.xp));
     this.pop(e.cont, base + step, () => {
       const cnt = { v: 0 };
-      this.tweens.add({ targets: cnt, v: xp.gained, duration: 800, ease: 'Cubic.easeOut', onUpdate: () => e.value.setText(`+${Math.round(cnt.v)}`) });
-      const p = { v: prog(xp.before.level, xp.before.xp) };
-      const steps: { to: number; reset?: boolean; level?: number }[] =
-        xp.levelsUp > 0 ? [{ to: 1 }, { to: prog(xp.after.level, xp.after.xp), reset: true, level: xp.after.level }] : [{ to: prog(xp.after.level, xp.after.xp) }];
-      const run = (i: number) => {
-        const s = steps[i];
-        if (!s) return;
-        if (s.reset) {
-          p.v = 0;
-          e.sub.setText(`¡NIVEL ${s.level}!`).setColor('#ffd23f');
-          this.levelUp(W / 2, top - 26, s.level!);
-        }
-        this.tweens.add({ targets: p, v: s.to, duration: 650, ease: 'Cubic.easeOut', onUpdate: () => drawBar(p.v), onComplete: () => run(i + 1) });
-      };
-      run(0);
+      this.tweens.add({
+        targets: cnt,
+        v: xp.gained,
+        duration: 800,
+        ease: 'Cubic.easeOut',
+        onUpdate: () => e.value.setText(`+${Math.round(cnt.v)}`),
+        onComplete: () => {
+          if (xp.levelsUp <= 0) return;
+          e.sub.setText(`¡NIVEL ${xp.after.level}!`).setColor('#ffd23f');
+          this.levelUp(W / 2, top - 26, xp.after.level);
+        },
+      });
     });
 
     // --- 3) RULETA (se desbloqueó una con esta partida, o no)
-    const unlocked = d._wheel !== undefined && d._wheel !== null;
+    const unlocked = (d._wheel !== undefined && d._wheel !== null) || !!d._tutWheel;
     const r = this.card(c, xs[2], y0, cw, 'RULETA', unlocked ? 0xb27bff : 0x55607a, unlocked ? 0x2a1250 : 0x141c33);
     const wheel = this.add.container(0, r.icon.y);
     const rim = this.add.graphics();
@@ -648,11 +631,11 @@ export class MatchEndScene extends Phaser.Scene {
     const done = wheelStatuses().filter((s) => s !== 'locked').length;
     if (unlocked) {
       r.value.setText('¡NUEVA!').setColor('#ffd23f');
-      r.sub.setText(`${(d._wheel ?? 0) + 1}/${WHEEL.perDay} HOY`);
+      r.sub.setText(d._tutWheel ? 'POR SUBIR DE NIVEL' : `${(d._wheel ?? 0) + 1}/${WHEEL.perDay} HOY`);
     } else {
       wheel.setAlpha(0.45);
       r.value.setText(d.surrendered ? 'SIN RULETA' : 'MÁXIMO').setColor('#9aa6c4');
-      r.sub.setText(d.surrendered ? 'POR RENDIRTE' : `${done}/${WHEEL.perDay} HOY`);
+      r.sub.setText(d.surrendered ? 'POR RENDIRTE' : d.tutorial ? 'GANA PARA SUBIR' : `${done}/${WHEEL.perDay} HOY`);
     }
     fitText(r.value, cw - 16);
     this.pop(r.cont, base + step * 2, () => {
@@ -1395,11 +1378,13 @@ export class MatchEndScene extends Phaser.Scene {
         this.scene.start('Menu');
         return;
       }
-      // Si la partida desbloqueó una ruleta, mostrarla antes de entrar al menú.
-      const wheelIndex = wheelToPresent();
+      // Si la partida desbloqueó una ruleta, mostrarla antes de entrar al menú. (25-11-2026, usuario) la del TUTORIAL primero (giro bonus)
+      const tutWheel = tutorialWheelToPresent();
+      const wheelIndex = tutWheel >= 0 ? tutWheel : wheelToPresent();
       if (wheelIndex >= 0) {
-        markWheelPresented(wheelIndex);
-        openWheel(this, wheelIndex);
+        if (tutWheel >= 0) markTutorialWheelPresented(tutWheel);
+        else markWheelPresented(wheelIndex);
+        openWheel(this, wheelIndex, tutWheel >= 0 ? { bonus: true } : undefined);
         // la ruleta puede quedar en cola de Phaser hasta el siguiente fotograma (openWheel devuelve null): se espera a que
         // exista antes de escuchar su cierre. Antes se usaba directamente y daba "Cannot read properties of null
         // (reading 'events')": la app quedaba pegada en el resultado.

@@ -37,6 +37,8 @@ Actualizado el 24-11-2026 con la segunda ronda de respuestas. Lo marcado **[conf
 
 ## 3. Tabla
 
+> **(25-11-2026, usuario) Niveles cambiados:** CARGANDO GOLPE en el **8** (antes 12), ZONA y PASE DE BATALLA en el **10** (antes 15 y sin nivel), ESTILOS en el **15** (antes 8; el regalo del color GRIS va con ellos) y SAQUE CON EFECTO sigue en el 15. Misiones: las de carga pasan al 8, el 12 queda libre y el 15 ya no pide la ZONA. Fuente: `domain/unlocks.ts`. Las filas de la tabla todavía describen el orden anterior en lo que no sea desbloqueo.
+
 Partido: **corto** = a 4 puntos (niveles 1 a 15); **tiebreak 2v2** = a 7 puntos; **completo** = amistoso normal (16 a 19).
 
 | Nivel | Menú | Partido y puntos guiados | Misiones (máx. 4) | Premio | Desbloqueo |
@@ -110,3 +112,4 @@ ewPlayer) nace con todo en Default, y el OFF siempre empieza limpio.
 - (25-11-2026) **Nivel 1 rehecho** (guía `first`, `guideMove` + `guideRally`): entras desde la izquierda; MUEVE EL JOYSTICK A LA DERECHA (pulso del joystick, ¡GENIAL! `assets/ui/genial.webp` con sonido); el bot, a la izquierda, saca a tu derecha; tras el bote la pelota queda quieta ("MUEVE EL JOYSTICK HACIA LA PELOTA", misión Usar joystick); en cada cuadro siguiente (abajo izq., arriba izq., arriba der., todo el de abajo) el bot espera quieto cargando con la pelota quieta hasta que llegas, te la tira y la pelota vuelve a quedar quieta hasta que le pegas; el último golpe es punto tuyo (misión nueva `guideJoystickUpDown` "Joystick arriba y abajo", 15). P2 saque con dos toques y P3 saque directo, como antes.
 - (25-11-2026) **Nivel 2 rehecho** (guía `spin`): sacas con la pantalla oscura; tu personaje queda quieto (`l2Lock`); el bot, adelantado junto a su cuadro de saque, tira fuerte a tu izquierda; tras el bote, al subir, la pelota se congela (`l2Freeze`) y el bot queda en su golpe; "USA EL DEFENSIVO" con la mano en el botón; al pulsarlo corres hasta la pelota quieta (`l2Dash`), le pegas, va lejos del bot y es punto tuyo (misiones del DEFENSIVO). Una sola vez, sin pausas del entrenador. **Pendiente de probar en el teléfono.**
 - (25-11-2026) El bot del tutorial lleva todo Default (`botKitFor`). La VS del tutorial no muestra victorias. DEFENSIVO / ESPECIAL bloqueados muestran "NIVEL n" en el centro del botón.
+- (25-11-2026) **Nivel 3, menú:** el botón DIARIO aparece en el nivel 3 (antes tras el primer partido) y la guía enseña a cobrarlo (`GUIDE.daily`: ABRE TU PREMIO DIARIO → COBRA TU PREMIO en RECLAMAR) antes de TOCA PARA JUGAR. **Nivel 2:** P1 Defensivo, P2 Saque con efecto (no se devuelve; fallar repite el saque), P3 Globo simple (bota en la T, se para, vas a ella, joystick arriba), P4 gana 1 punto. Misiones: Defensivo · Haz un globo · Gana.

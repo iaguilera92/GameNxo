@@ -518,6 +518,11 @@ export class Character extends Phaser.GameObjects.Container {
   }
 
   /** Recibe un ataque especial (aturdido / impacto del INFERNO). false = sin hoja: el llamador usa el giro de siempre. */
+  /** Tutorial: congela la pose actual (sin temblor ni animación). */
+  freezePose() {
+    this.nxo?.freezePose();
+  }
+
   /** REMATE del globo: pose de preparación del remate con salto congelada hasta el golpe (false = sin hoja). */
   remateHold(): boolean {
     return this.nxo?.remateHold() ?? false;

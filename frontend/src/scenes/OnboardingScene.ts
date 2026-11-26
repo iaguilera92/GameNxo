@@ -18,7 +18,7 @@ const GOLD = 0xffd23f;
  * (24-11-2026, usuario) PANTALLA DE INICIO (antes del menú, una sola vez por cuenta; operations.needsOnboarding):
  *   1. NOMBRE DE USUARIO (3 a 12 caracteres).
  *   2. ELIGE TU PERSONAJE: los 10 (5 hombres arriba, 5 mujeres abajo). Se regala SOLO UNO; los demás se desbloquean en la Tienda. Hoy solo se
- *      pueden elegir los jugables que no sean el premio del Pase. Se confirma porque no hay vuelta atrás.
+ *      pueden elegir los jugables, incluido Jun aunque también sea premio del Pase. Se confirma porque no hay vuelta atrás.
  * Lo elegido queda en la cuenta (PlayerState: name, owned, equipped.skin, onboarded). Hoy la cuenta se guarda en el teléfono; con la base de
  * datos irá al servidor (docs/BASE-DE-DATOS.md).
  */
@@ -41,7 +41,7 @@ const ROSTER: { id: string; name: string }[][] = [
   ],
 ];
 const PASS_HERO = passHeroSkin();
-const PLAYABLE: readonly string[] = CATALOG.filter((c) => c.id !== PASS_HERO).map((c) => c.id);
+const PLAYABLE: readonly string[] = CATALOG.filter((c) => c.id !== PASS_HERO || c.id === 'jun').map((c) => c.id);
 /**
  * (24-11-2026, usuario) COLOR de la ficha de cada personaje: [tono 0-360, × saturación, × brillo]. NXO = la roja de la imagen. ISA = el fucsia de
  * su raqueta; FLO = el verde azulado de su raqueta (el usuario no lo definió: se toma de su ropa y raqueta).
@@ -355,6 +355,9 @@ export class OnboardingScene extends Phaser.Scene {
     const popY = cardTop - 34;
     const maskG = this.make.graphics({}, false).fillStyle(0xffffff).fillRect(faceA.x, popY, faceB.x - faceA.x, faceB.y - popY);
     let faceMask: Phaser.Display.Masks.GeometryMask | Phaser.Display.Masks.BitmapMask = maskG.createGeometryMask();
+    /** (25-11-2026, usuario) MAI e ISA: el desvanecido de la derecha empieza más tarde (se ve más cara) */
+    let faceMaskLate: Phaser.Display.Masks.GeometryMask | Phaser.Display.Masks.BitmapMask = faceMask;
+    const LATE_FADE = new Set(['mai', 'isa']);
     // (25-11-2026, usuario) el borde DERECHO del personaje se desvanece en degradado (sin corte limpio); solo con WebGL (si no, el corte de siempre)
     if (this.renderer.type === Phaser.WEBGL) {
       const mw = Math.round(faceB.x - faceA.x);
@@ -372,6 +375,19 @@ export class OnboardingScene extends Phaser.Scene {
         tex.refresh();
         const mImg = this.make.image({ x: faceA.x, y: popY, key: 'ob-face-fade' }, false).setOrigin(0, 0);
         faceMask = mImg.createBitmapMask();
+      }
+      if (this.textures.exists('ob-face-fade-late')) this.textures.remove('ob-face-fade-late');
+      const texL = this.textures.createCanvas('ob-face-fade-late', mw, mh);
+      if (texL) {
+        const ctx = texL.getContext();
+        const grad = ctx.createLinearGradient(0, 0, mw, 0);
+        grad.addColorStop(0, 'rgba(255,255,255,1)');
+        grad.addColorStop(0.8, 'rgba(255,255,255,1)');
+        grad.addColorStop(1, 'rgba(255,255,255,0)');
+        ctx.fillStyle = grad;
+        ctx.fillRect(0, 0, mw, mh);
+        texL.refresh();
+        faceMaskLate = this.make.image({ x: faceA.x, y: popY, key: 'ob-face-fade-late' }, false).setOrigin(0, 0).createBitmapMask();
       }
     }
     let face: Phaser.GameObjects.GameObject | undefined;
@@ -407,7 +423,7 @@ export class OnboardingScene extends Phaser.Scene {
         face = this.add.image(faceA.x + zw / 2, popY + 4, fd.key).setOrigin(fd.cx / fd.w, fd.top / fd.h).setScale(sc);
       } else face = undefined;
       if (face) {
-        (face as Phaser.GameObjects.Image).setMask(faceMask);
+        (face as Phaser.GameObjects.Image).setMask(LATE_FADE.has(selected) ? faceMaskLate : faceMask);
         card.addAt(face, 1);
       }
       nameT.setText(r ? r.name.toUpperCase() : '');
@@ -527,14 +543,16 @@ export class OnboardingScene extends Phaser.Scene {
    * de la cabeza a los hombros. Sin datos: el centro y el tercio de arriba de la caja visible.
    */
   private faceOf(id: string): { key: string; w: number; h: number; cx: number; top: number; fh: number } | null {
-    const FACE: Record<string, { cx: number; top: number; fh: number }> = { nxo: { cx: 450, top: 18, fh: 600 }, mai: { cx: 480, top: 10, fh: 600 } };
+    const FACE: Record<string, { cx: number; top: number; fh: number }> = { nxo: { cx: 450, top: 18, fh: 600 }, mai: { cx: 440, top: 10, fh: 600 } };
     const key = id === 'nxo' ? 'portrait-nxo' : id === 'mai' ? 'portrait-mai' : rosterPortrait(id)?.key;
     if (!key || !this.textures.exists(key)) return null;
     const src = this.textures.get(key).getSourceImage() as { width: number; height: number };
     const p = rosterPortrait(id);
     // (25-11-2026, usuario) Mat: la cara un poco más a la derecha para que se vea la oreja (la raqueta puede cortarse)
-    const SHIFT: Record<string, number> = { mat: 0.1, isa: 0.1 };
-    const f = FACE[id] ?? (p ? { cx: (p.box.x0 + p.box.x1) / 2 - (p.box.x1 - p.box.x0) * (SHIFT[id] ?? 0), top: p.box.y0, fh: (p.box.y1 - p.box.y0) * 0.42 } : { cx: src.width / 2, top: 0, fh: src.height * 0.42 });
+    // (25-11-2026, usuario) Jun: también a la derecha (se ve la oreja) y un poco más pequeño (FH: más alto de cara = dibujo más chico)
+    const SHIFT: Record<string, number> = { mat: 0.1, isa: 0.16, jun: 0.1 };
+    const FH: Record<string, number> = { jun: 1.15, isa: 1.15 };
+    const f = FACE[id] ?? (p ? { cx: (p.box.x0 + p.box.x1) / 2 - (p.box.x1 - p.box.x0) * (SHIFT[id] ?? 0), top: p.box.y0, fh: (p.box.y1 - p.box.y0) * 0.42 * (FH[id] ?? 1) } : { cx: src.width / 2, top: 0, fh: src.height * 0.42 });
     return { key, w: src.width, h: src.height, ...f };
   }
 

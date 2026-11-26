@@ -15,7 +15,7 @@ import { arcadeButton, modeBand, modeShape } from '../ui/modeButtons';
 import { chestStatus } from '../domain/chest';
 import { gameClock } from '../domain/timeSource';
 import { isDevMode } from '../domain/devMode';
-import { maybeShowTutorial, openTutorialDialog } from '../ui/TutorialDialog';
+import { maybeShowTutorial } from '../ui/TutorialDialog';
 import { GUIDE, guidedStep } from '../domain/tutorial';
 import { grantTutorialGifts, markTutorialSeen } from '../domain/operations';
 import { guideFocus } from '../ui/guideFocus';
@@ -42,6 +42,7 @@ import { DailyWheels } from '../ui/DailyWheels';
 import { showSettings } from '../ui/SettingsDialog';
 import { BP_TIERS, bpClaimable, bpLevel, syncSeason } from '../domain/battlePass';
 import { bpSeasonInfo } from '../domain/battlePassConfig';
+import { UNLOCK_LEVEL } from '../domain/unlocks';
 import { totalPlayed } from '../logic/Stats';
 import type { PlayerState } from '../domain/player';
 import { openWheel, whenWheelReady } from './WheelScene';
@@ -50,8 +51,10 @@ import { sfx } from '../fx/sfx';
 import { masteryLevel, masteryProgress, passiveOf } from '../domain/characterPassives';
 import { drawPassiveIcon } from '../ui/passiveInfo';
 import { startIntroMusic } from '../fx/introMusic';
-import { grantTestSpin, markWheelPresented, syncWheels, wheelToPresent } from '../logic/Wheels';
+import { grantTestSpin, markTutorialWheelPresented, markWheelPresented, syncWheels, tutorialWheelToPresent, wheelToPresent } from '../logic/Wheels';
 
+/** (25-11-2026, usuario) nivel desde el que se ve el botón DIARIO (premio por iniciar sesión) */
+const DAILY_LOGIN_LEVEL = 3;
 /** ancho máximo del número en los contadores (entre el icono y el botón +) */
 /** ancho de los contadores de monedas / dinero y del texto de su cifra */
 const COUNTER_W = 172;
@@ -118,7 +121,7 @@ const NAV = {
 
 export class MenuScene extends Phaser.Scene {
   private guideOverlay?: Phaser.GameObjects.Container;
-  private guideRects?: { defensive: { x: number; y: number; w: number; h: number }; profile?: { x: number; y: number; w: number; h: number } };
+  private guideRects?: { defensive: { x: number; y: number; w: number; h: number }; profile?: { x: number; y: number; w: number; h: number }; daily?: { x: number; y: number; w: number; h: number } };
 
   private refreshGuide() {
     this.guideOverlay?.destroy();
@@ -128,11 +131,11 @@ export class MenuScene extends Phaser.Scene {
     const p = getPlayer();
     const step = guidedStep(p.level, p.tutorial);
     if (!step) return;
-    const target = step === 'defensive' ? this.guideRects.defensive : step === 'profile' ? this.guideRects.profile : this.modeRects[0];
+    const target = step === 'defensive' || step === 'special' ? this.guideRects.defensive : step === 'profile' ? this.guideRects.profile : step === 'daily' ? this.guideRects.daily : this.modeRects[0];
     if (!target) return;
-    const labels = { play: 'TOCA PARA JUGAR', defensive: 'ABRIR PERSONALIZAR PERSONAJE', profile: 'TOCA TU PERFIL', spin: 'TOCA PARA JUGAR', l3: 'TOCA PARA JUGAR' }; // (24-11-2026) nivel 2: solo DEFENSIVO
+    const labels = { play: 'TOCA PARA JUGAR', defensive: 'ABRIR PERSONALIZAR PERSONAJE', profile: 'TOCA TU PERFIL', spin: 'TOCA PARA JUGAR', daily: 'ABRE TU PREMIO DIARIO', l3: 'TOCA PARA JUGAR', special: '¡ESPECIAL DESBLOQUEADO!\nABRIR PERSONALIZAR PERSONAJE' }; // (24-11-2026) nivel 2: solo DEFENSIVO
     const focus = step === 'play' ? { ...target, h: target.h + 24 } : target;
-    this.guideOverlay = guideFocus(this, focus, labels[step], { centerText: step === 'defensive' }); // (25-11-2026, usuario) centrado: no choca con el personaje ni la mano
+    this.guideOverlay = guideFocus(this, focus, labels[step], { centerText: step === 'defensive' || step === 'special' }); // (25-11-2026, usuario) centrado: no choca con el personaje ni la mano
     // (25-11-2026, usuario) AJUSTES sigue disponible durante la guía (ahí irá INICIAR SESIÓN): por encima del oscurecido, sin mano ni animación
     this.gearBtn?.setDepth(8101);
   }
@@ -169,6 +172,32 @@ export class MenuScene extends Phaser.Scene {
       } });
     });
     return true;
+  }
+
+  /**
+   * (25-11-2026, usuario) BIENVENIDA (cuenta nueva, nivel 1): en vez del diálogo, como el NIVEL N al abrir la app: todo oscuro, "¡BIENVENIDO!"
+   * grande en el centro, debajo "¡LISTOS PARA COMPETIR!" un momento después, y todo el mensaje (y el oscuro) se desvanece. Debajo queda la guía.
+   */
+  private welcomeIntro() {
+    const W = this.scale.width;
+    const H = this.scale.height;
+    const dim = this.add.rectangle(0, 0, W, H, 0x02060f, 0.75).setOrigin(0).setDepth(9000).setAlpha(0).setInteractive();
+    const t = this.add.text(W / 2, H * 0.42, '¡BIENVENIDO!', { ...textStyle(76, '#ffd23f'), stroke: '#2a1600', strokeThickness: 10 }).setOrigin(0.5).setDepth(9001).setScale(0.3).setAlpha(0);
+    const sub = this.add.text(W / 2, H * 0.42 + 92, 'TU PRIMER RIVAL TE ESPERA', { ...textStyle(40, '#ffffff'), stroke: '#0a1638', strokeThickness: 8 }).setOrigin(0.5).setDepth(9001).setAlpha(0);
+    const fit = (o: Phaser.GameObjects.Text) => o.width > W - 40 && o.setScale((W - 40) / o.width);
+    this.tweens.add({ targets: dim, alpha: 1, duration: 250 });
+    this.tweens.add({ targets: t, alpha: 1, scale: 1, duration: 420, ease: 'Back.easeOut', onComplete: () => fit(t) });
+    this.time.delayedCall(900, () => {
+      if (!sub.active) return;
+      fit(sub);
+      const s0 = sub.scale;
+      sub.setScale(s0 * 0.6);
+      this.tweens.add({ targets: sub, alpha: 1, scale: s0, duration: 360, ease: 'Back.easeOut' });
+    });
+    this.time.delayedCall(2600, () => {
+      if (!dim.active) return;
+      this.tweens.add({ targets: [dim, t, sub], alpha: 0, duration: 600, ease: 'Sine.easeIn', onComplete: () => [dim, t, sub].forEach((o) => o.destroy()) });
+    });
   }
 
   /** efecto de EQUIPADO (como en PERSONAJE) sobre el cuadro del perfil, y el cuadro vibra */
@@ -249,6 +278,8 @@ export class MenuScene extends Phaser.Scene {
   private coinObj: Phaser.GameObjects.Container | null = null;
   /** monedas de una ruleta ya cobrada que esperan a verse llegar a su card */
   private pendingCoins = 0;
+  /** al volver de una partida con la ruleta abierta: la secuencia única de premios (la lanza wheelClosed tras sumar la ruleta) */
+  private returnSeq: (() => void) | null = null;
   /**
    * (21-11-2026, usuario) MONEDAS 2V2 ganadas (partida 2v2 y ruleta): se ven llegar DESPUÉS de las monedas normales y ANTES de la EXP (playCoins2v2).
    * `hold2v2` = lo que el contador 2v2 y la card de la LIGA 2V2 todavía NO muestran (baja al llegar cada moneda).
@@ -304,6 +335,7 @@ export class MenuScene extends Phaser.Scene {
     this.xpAnims = [];
     this.xpAt = [];
     this.pendingCoins = this.wheelGain?.coins ?? 0;
+    this.returnSeq = null; // (la escena se reutiliza: sin restos de la visita anterior)
     // (18-11-2026, usuario) monedas que entraron con la(s) partida(s) (MatchEndScene): vuelan al monedero ANTES de la EXP
     this.matchCoins = Math.max(0, (this.registry.get('menu.coinGain') as number | undefined) ?? 0);
     this.registry.remove('menu.coinGain');
@@ -371,7 +403,7 @@ export class MenuScene extends Phaser.Scene {
     const SIDE_STEP = 152;
     const SIDE_LIFT = 22;
     const sideY = Math.max(PASS_BOTTOM + 10 + 68, Math.min(H * 0.4, feetY - 300, dailyMaxY - 84 / 2 - 30 - 136 / 2 - SIDE_STEP) - SIDE_LIFT);
-    this.guideRects = { defensive: { x: 128, y: sideY, w: 214, h: 136 }, profile: this.guideRects?.profile };
+    this.guideRects = { defensive: { x: 128, y: sideY, w: 214, h: 136 }, profile: this.guideRects?.profile, daily: this.guideRects?.daily };
     this.sideButton(128, sideY, 'PERSONAJE', 'user', false, () => go('Customize'));
     this.sideButton(128, sideY + SIDE_STEP, 'TIENDA', 'shop', false, () => go('Shop'));
     // premio diario: bajo TIENDA, mitad de su ancho (214/2); se marca en dorado pero NUNCA se abre solo
@@ -385,7 +417,27 @@ export class MenuScene extends Phaser.Scene {
     // alineado a la izquierda con TIENDA (su borde izquierdo está en 128 − 214/2)
     const showAfterFirstMatch = isDevMode() || p.level > 1 || getPlayer().tutorial?.includes(GUIDE.firstMatch);
     if (showAfterFirstMatch) {
-      dailyLoginButton(this, 128 - 214 / 2 + dailyW / 2, dailyY, (m) => this.toast(m), dailyW, dailyH);
+      // (25-11-2026, usuario) el PREMIO DIARIO aparece en el nivel 3 (antes, tras el primer partido)
+      if (isDevMode() || p.level >= DAILY_LOGIN_LEVEL) {
+        const dx = 128 - 214 / 2 + dailyW / 2;
+        // (25-11-2026, usuario) nivel 3: la guía abre el DIARIO, enseña a cobrarlo y luego pasa a JUGAR
+        dailyLoginButton(this, dx, dailyY, (m) => this.toast(m), dailyW, dailyH, () => {
+          const pl = getPlayer();
+          const active = !isDevMode() && guidedStep(pl.level, pl.tutorial) === 'daily';
+          if (active) {
+            this.guideOverlay?.destroy();
+            this.guideOverlay = undefined;
+          }
+          return {
+            active,
+            done: () => {
+              commit((s) => markTutorialSeen(s, GUIDE.daily));
+              if (this.sys.isActive()) this.refreshGuide();
+            },
+          };
+        });
+        if (this.guideRects) this.guideRects.daily = { x: dx, y: dailyY, w: dailyW, h: dailyH };
+      }
       globalRankingButton(this, 128 - 214 / 2 + dailyW / 2, dailyY + globalRow, dailyW, dailyH);
     }
     // (24-11-2026, usuario) AMIGOS desde el nivel 2 (antes 5): para probar con amigos pronto (allí todo va en Default)
@@ -432,10 +484,12 @@ export class MenuScene extends Phaser.Scene {
     // (25-11-2026, usuario) la guía del tutorial (oscurecido + qué tocar) sale DESPUÉS de los premios de la partida (monedas, EXP, ruleta): ver tutorial()
     const guidePlayer = getPlayer();
     if (!isDevMode() && guidePlayer.level === 1 && !guidePlayer.tutorial?.includes(GUIDE.welcome)) {
-      openTutorialDialog(this, { id: GUIDE.welcome, level: 1, title: '¡BIENVENID@!', pages: ['Tu primer rival te espera. ¡Empecemos!'] }, () => {
-        commit((s) => markTutorialSeen(s, GUIDE.welcome));
-        commit((s) => markTutorialSeen(s, 'l01-bienvenida'));
-      }, 2500);
+      // (25-11-2026, usuario) sin diálogo: como el NIVEL N al abrir la app (sessionLevelIntro): oscuro, "¡BIENVENIDO!" grande, debajo
+      // "¡LISTOS PARA COMPETIR!" un momento después, y todo se desvanece
+      commit((s) => markTutorialSeen(s, GUIDE.welcome));
+      commit((s) => markTutorialSeen(s, 'l01-bienvenida'));
+      this.registry.set('session.levelIntro', true); // en esta entrada no sale también el NIVEL 1 (sessionLevelIntro)
+      this.welcomeIntro();
     }
     // EXP de la partida: "+N EXP" y las barras de nivel y del pase se llenan; con ruleta, DESPUÉS de cerrarla
     // TUTORIAL por nivel (domain/tutorial.ts; solo con el modo desarrollo apagado): DESPUÉS de la ruleta y de la presentación de la EXP
@@ -450,22 +504,26 @@ export class MenuScene extends Phaser.Scene {
     // (21-11-2026, usuario) ORDEN al volver de una partida: 1) las MONEDAS, todas juntas en UN solo vuelo al monedero (partida + adicionales + ruleta),
     // 2) las MONEDAS 2V2 (si ganaste), 3) la EXP y 4) la MAESTRÍA (es la 3.ª oleada de la EXP: playXpGain). Con la ruleta abriéndose sola, todo espera a que se cierre
     // (y lo suyo lo muestra wheelClosed).
-    const coinsTotal = this.matchCoins + (wheelOpened ? 0 : this.pendingCoins);
-    if (!wheelOpened) this.pendingCoins = 0; // ya va dentro del total
-    const xpStep = () => (this.xpGain > 0 ? (this.playXpGain(() => tutorial(200)), tutorial(9000)) : tutorial(500)); // 9 s: respaldo
-    const coins2Step = () => (this.coins2v2Gain > 0 ? this.playCoins2v2(this.coins2v2Gain, xpStep) : xpStep());
-    const coinsStep = () => (coinsTotal > 0 ? this.playMatchCoins(coinsTotal, coins2Step) : coins2Step());
-    if (coinsTotal > 0 || this.coins2v2Gain > 0) {
-      if (wheelOpened) this.time.delayedCall(700, () => whenWheelReady(this, (w) => w.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.time.delayedCall(250, coinsStep))));
-      else this.time.delayedCall(450, coinsStep);
-    } else if (this.xpGain > 0) {
-      const play = () => {
-        this.playXpGain(() => tutorial(200));
-        tutorial(9000); // respaldo
-      };
-      if (wheelOpened) this.time.delayedCall(700, () => whenWheelReady(this, (w) => w.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.time.delayedCall(250, play))));
-      else this.time.delayedCall(550, play);
-    } else if (wheelOpened) this.time.delayedCall(700, () => whenWheelReady(this, (w) => w.events.once(Phaser.Scenes.Events.SHUTDOWN, () => tutorial(500))));
+    // (25-11-2026, usuario) con la ruleta abierta al volver, lo que da la ruleta se SUMA a lo del partido (wheelClosed con returnSeq): un solo
+    // vuelo con el total de monedas (partido + misiones + ruleta) y una sola EXP. Antes la ruleta animaba lo suyo a la vez que el partido.
+    let seqDone = false;
+    const runSeq = () => {
+      if (seqDone || !this.sys.isActive()) return;
+      seqDone = true;
+      this.returnSeq = null;
+      const coinsTotal = this.matchCoins + this.pendingCoins;
+      this.pendingCoins = 0; // ya va dentro del total
+      const xpStep = () => (this.xpGain > 0 ? (this.playXpGain(() => tutorial(200)), tutorial(9000)) : tutorial(500)); // 9 s: respaldo
+      const coins2Step = () => (this.coins2v2Gain > 0 ? this.playCoins2v2(this.coins2v2Gain, xpStep) : xpStep());
+      if (coinsTotal > 0) this.playMatchCoins(coinsTotal, coins2Step);
+      else coins2Step();
+    };
+    const anyGain = this.matchCoins + this.pendingCoins > 0 || this.coins2v2Gain > 0 || this.xpGain > 0;
+    if (wheelOpened) {
+      this.returnSeq = runSeq; // wheelClosed suma el premio de la ruleta y lo lanza
+      // respaldo: si el aviso de la ruleta no llegara, al cerrarse se lanza igual
+      this.time.delayedCall(700, () => whenWheelReady(this, (w) => w.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.time.delayedCall(400, runSeq))));
+    } else if (anyGain) this.time.delayedCall(450, runSeq);
     else {
       // sin premios pendientes: la guía ya (al abrir la app, después del NIVEL N)
       if (!this.sessionLevelIntro(() => this.sys.isActive() && this.refreshGuide())) this.refreshGuide();
@@ -1010,7 +1068,8 @@ export class MenuScene extends Phaser.Scene {
     const PER_WAVE = 5; // orbes por tarjeta y oleada
     const src = { x: W / 2, y: H * 0.46 };
     // (21-11-2026) en NIVEL MÁXIMO la cuenta ya no gana EXP: solo la recibe el pase
-    const cards = this.xpAt.filter((c) => c.kind === 'pass' || getPlayer().level < MAX_LEVEL);
+    // (25-11-2026, usuario) el PASE recibe la EXP solo desde su nivel (UNLOCK_LEVEL.pass); antes, solo el nivel de la cuenta
+    const cards = this.xpAt.filter((c) => (c.kind === 'pass' ? getPlayer().level >= UNLOCK_LEVEL.pass : getPlayer().level < MAX_LEVEL));
     const gain = this.xpGain;
     const share = (w: number) => (w < XP_WAVES - 1 ? Math.floor(gain / XP_WAVES) : gain - Math.floor(gain / XP_WAVES) * (XP_WAVES - 1));
     // (14-11-2026) el sonido suena UNA VEZ POR OLEADA (3 veces), cuando cada oleada sale hacia las cards (ver el bucle)
@@ -1175,6 +1234,18 @@ export class MenuScene extends Phaser.Scene {
     this.pendingCoins = 0;
     const xp = g?.xp ?? 0;
     const c2 = g?.coins2v2 ?? 0;
+    // ruleta abierta al volver de una partida: su premio se suma al de la partida y sale todo junto (create, runSeq)
+    if (this.returnSeq) {
+      this.pendingCoins = coins;
+      this.xpGain += xp;
+      if (c2 > 0) {
+        this.coins2v2Gain += c2;
+        this.hold2v2 += c2;
+        this.leagueRepaint?.();
+      }
+      this.returnSeq();
+      return;
+    }
     // nada que mostrar con orbes: los contadores se ponen al día sin más (por si el premio fue otro)
     if (xp <= 0) {
       this.profileRefresh?.();
@@ -1196,7 +1267,7 @@ export class MenuScene extends Phaser.Scene {
       this.xpGain = xp;
       this.xpAnims = [];
       if (getPlayer().level < MAX_LEVEL && this.profileRefresh) this.xpAnims.push(this.profileRefresh);
-      if (this.passRefresh) this.xpAnims.push(this.passRefresh);
+      if (this.passRefresh && getPlayer().level >= UNLOCK_LEVEL.pass) this.xpAnims.push(this.passRefresh);
       this.time.delayedCall(wait, () => this.playXpGain());
     }
   }
@@ -1796,6 +1867,13 @@ export class MenuScene extends Phaser.Scene {
         if (i >= 0) openWheel(this, i, { bonus: true, test: true });
       },
     });
+    // (25-11-2026, usuario) la ruleta del TUTORIAL (una por nivel, giro bonus) también se abre sola (p. ej. tras el primer partido, que va directo al menú)
+    const tutAuto = tutorialWheelToPresent();
+    if (tutAuto >= 0) {
+      markTutorialWheelPresented(tutAuto);
+      this.time.delayedCall(650, () => openWheel(this, tutAuto, { bonus: true }));
+      return true;
+    }
     const auto = wheelToPresent();
     if (auto >= 0) {
       markWheelPresented(auto); // antes de abrir: no se repite aunque se cierre o se reinicie el menú
@@ -2178,7 +2256,7 @@ export class MenuScene extends Phaser.Scene {
         if (this.sys.isActive()) this.refreshGuide();
       });
     });
-    this.guideRects = { defensive: this.guideRects?.defensive ?? { x: 128, y: 0, w: 214, h: 136 }, profile: { x: x + cw / 2, y: y + ch / 2, w: cw, h: ch } };
+    this.guideRects = { defensive: this.guideRects?.defensive ?? { x: 128, y: 0, w: 214, h: 136 }, profile: { x: x + cw / 2, y: y + ch / 2, w: cw, h: ch }, daily: this.guideRects?.daily };
     card.add(cardHit);
 
     // insignia de rango a la izquierda (en lugar del avatar)

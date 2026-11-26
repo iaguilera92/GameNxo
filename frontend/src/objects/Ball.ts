@@ -167,6 +167,26 @@ export function stepBall(s: BallState, dt: number, crossing?: NetCrossing): Ball
  * `maxStretch`: cuánto puede alargarse el vuelo (× el tiempo base) para pasar la red. Sin tope, un golpe desde muy abajo
  * acababa en un globo gigante; con tope (p. ej. el SAQUE), si no alcanza a pasar se va a la red, como en el tenis real.
  */
+/**
+ * (25-11-2026, usuario) Tiro con CAÍDA (como un liftado): llega a (tx, ty) en `T` s pasando la red con su margen gracias a una
+ * gravedad PROPIA mayor (sube poco y cae en picada tras la red). Para destinos muy cerca de la red (saque a la fila de abajo),
+ * donde un tiro normal tendría que ir en globo. Si con la gravedad normal ya pasa, queda como un tiro normal. La gravedad propia
+ * dura hasta el bote (stepBall la quita y ajusta el rebote).
+ */
+export function aimDipShot(from: BallState, tx: number, ty: number, T: number, netMargin = 6): void {
+  const dx = tx - from.x;
+  const dy = ty - from.y;
+  aimShot(from, tx, ty, Math.hypot(dx, dy) / T, netMargin, 1); // velocidades base en T (sin alargar el vuelo)
+  const tn = (NET_X - from.x) / (dx / T);
+  if (!(tn > 0 && tn < T)) return;
+  const netY = Math.max(NET_Y_MIN, Math.min(NET_Y_MAX, from.y + dy * (tn / T)));
+  const need = netTapeHeight(netY) + NET_BALL_CLEARANCE + netMargin;
+  // altura en la red: z0·(1 − tn/T) + g·tn·(T − tn)/2 ≥ need
+  const g = Math.max(GRAVITY, (2 * (need - from.z * (1 - tn / T))) / (tn * (T - tn)));
+  from.vz = (0.5 * g * T * T - from.z) / T;
+  if (g > GRAVITY) from.g = g;
+}
+
 export function aimShot(from: BallState, tx: number, ty: number, speed: number, netMargin = 18, maxStretch = Infinity): void {
   const dx = tx - from.x;
   const dy = ty - from.y;

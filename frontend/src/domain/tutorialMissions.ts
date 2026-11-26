@@ -42,12 +42,12 @@ export const TUTORIAL_MISSIONS_MAX = 4;
 
 export const TUTORIAL_MISSION_DEFS: Record<TutorialMissionId, { title: string; coins: number }> = {
   tWin: { title: 'Gana el partido', coins: 10 },
-  t02Def: { title: 'Usa el DEFENSIVO', coins: 10 },
+  t02Def: { title: 'Defensivo', coins: 10 }, // (25-11-2026, usuario) antes 'Usa el DEFENSIVO'
   t02DefReturn: { title: 'Devuélvela', coins: 10 },
   t02Lob: { title: 'Haz un globo', coins: 10 },
   t03Left: { title: 'A la izquierda', coins: 10 },
   t03Right: { title: 'A la derecha', coins: 10 },
-  t03Drop: { title: 'Cortita', coins: 10 },
+  t03Drop: { title: 'Drop shot', coins: 10 }, // (25-11-2026, usuario) antes 'Cortita'
   t04Arm: { title: 'Arma el ESPECIAL', coins: 10 },
   t04Stun: { title: 'Aturde al rival', coins: 15 },
   tGood: { title: 'Golpe BIEN', coins: 10 },
@@ -72,20 +72,20 @@ export const TUTORIAL_MISSION_DEFS: Record<TutorialMissionId, { title: string; c
 /** Misiones del partido del tutorial de cada nivel (orden de las cards). 16 a 19: las normales (partidos completos). */
 const BY_LEVEL: Record<number, string[]> = {
   1: ['guideJoystick', 'guideJoystickUpDown', 'guideDirectServe', 'tWin'], // primer partido guiado
-  2: ['t02Def', 't02DefReturn', 't02Lob', 'tWin'], // DEFENSIVO y globo
+  2: ['t02Def', 't02Lob', 'tWin'], // DEFENSIVO y globo (25-11-2026, usuario: sin Devuélvela, repetía el DEFENSIVO)
   3: ['t03Drop', 'tRemate', 'tWin'], // (25-11-2026, usuario) cortita, remate en la red (el ESPECIAL del rival no es misión)
   4: ['t04Arm', 't04Stun', 'tWin'], // ESPECIAL
   5: ['tGood', 'tPerfect', 'tStreak2', 'tWin'], // PERFECT TIMING
   6: ['tUlti', 'tRacket', 'tWin'], // ULTI
   7: ['tRemate', 'tSpecial', 'tWin'], // globo del rival y remate
-  8: ['tPerfect', 'tDef', 'tWin'], // estilos (color GRIS): partido libre
+  8: ['tCharge', 'tChargedLob', 'tDrop0'], // CARGANDO GOLPE (25-11-2026: antes en el 12)
   9: ['tDive', 'tUlti', 'tWin'], // estirada
   10: ['tTeamPoint', 'tPoints3', 'tSpecial'], // 2v2
   11: ['tDuel', 'tDef', 'tSpecial'], // Duelo en la Red
-  12: ['tCharge', 'tChargedLob', 'tDrop0'], // CARGANDO GOLPE
+  12: ['tPerfect', 'tDef', 'tWin'], // partido libre
   13: ['tDef', 'tSpecial', 'tUlti'], // tus poderes
   14: ['tTeamPoint', 'tUlti', 'tPoints3'], // Pase (partido 2v2)
-  15: ['tSpinServe', 'tZone', 'tPerfect'], // saque con efecto y ZONA
+  15: ['tSpinServe', 'tPerfect', 'tWin'], // saque con efecto y ESTILOS (la ZONA pasó al 10)
 };
 
 /** niveles cuyo partido trae ejercicio guiado: allí las misiones son obligatorias para subir */

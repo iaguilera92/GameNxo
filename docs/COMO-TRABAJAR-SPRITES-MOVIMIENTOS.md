@@ -161,9 +161,16 @@ frontend/public/personajes/
 │   ├── jugador/                       fuentes HD mat-movimientos-1..10, mat-golpes-1..9, mat-reacciones-1..5, mat-extras-1..3 y mat-ulti-1..6
 │   └── rival/hd/                      fuentes HD mat-rival-: movimientos 1–10, golpes 1–8, reacciones 1–5, extras 1–3 y ULTI 1–6
 └── Net/
-    └── pj-net.png                      arte del retrato sobre verde croma (21-11-2026); SIN hojas (aún no jugable). Su retrato sin el verde es
-                                        assets/characters/net_portrait.webp (159 KB; medidas en characters/passPortrait.ts, SOON_PORTRAITS)
+    ├── pj-net.png                      diseño oficial del personaje sobre verde croma
+    ├── jugador/                       29 hojas fuente HD de espaldas (net-*.png)
+    └── rival/hd/                       32 hojas fuente HD de frente (net-rival-*.png)
 ```
+
+**Net.** `Net/pj-net.png` define el pelo castaño ondulado, el buzo morado con franjas blancas y la raqueta fucsia con cordaje blanco. El retrato del selector está en `assets/characters/net_portrait.webp` (`characters/passPortrait.ts`, `SOON_PORTRAITS`).
+
+**Net Jugador.** `Net/jugador/` contiene 10 movimientos, ocho golpes, cinco reacciones, tres extras y los primeros tres clips de la ULTI. Para generarlos se usó el reposo de Net de espaldas como referencia de diseño y la hoja de Isa Jugador correspondiente para cámara, poses y efectos. Las hojas son de 1536 × 1024 con ocho cuadros en 4 × 2, salvo `net-ulti-2` y `net-ulti-3`, de 1024 × 1536 con nueve cuadros en 3 × 3. Ambos saques tienen el destello de contacto en el cuadro 5. La ULTI se prepara sin efectos hasta el cuadro 4; el contacto se dibuja en el 6. Pendientes `net-ulti-4` (reposo sin raqueta) y `net-ulti-5` (carrera sin raqueta), ambos verticales en 3 × 3, y `net-ulti-6` (recogida), horizontal en 4 × 2, con la raqueta en la mano desde el cuadro 4. Al recortar las tiras, revisar las estiradas y los efectos que quedan cerca del borde de una celda.
+
+**Net Rival.** `Net/rival/hd/` contiene las 32 hojas fuente con prefijo `net-rival-`: 10 movimientos, ocho golpes, cinco reacciones, tres extras y seis clips de la ULTI. Las horizontales miden 1536 × 1024 con ocho cuadros en 4 × 2. `net-rival-ulti-2` a `-6` miden 1024 × 1536 con nueve cuadros en 3 × 3. Para generarlas se usó el reposo frontal de Net como referencia de diseño y la hoja correspondiente de Isa Rival como referencia cuadro a cuadro de cámara, poses, dirección, expresión y efectos. Mantener fondo verde croma, cordaje blanco y la silueta completa dentro de cada celda. Las estiradas incluyen la levantada en los cuadros 6–8. El destello del saque normal está en el cuadro 6 y el del saque con efecto en el 5. La ULTI espera sin efectos en el cuadro 5 y el destello principal está en el 7. En la recogida, la raqueta aparece en el suelo desde el cuadro 3 y está en la mano en el 5. Falta recortar las tiras, verificar sus anclas y cuadros clave e integrar el pack frontal en cancha.
 
 **Isa (25-11-2026).** Hay 32 hojas fuente por vista, en `Isa/jugador/` y `Isa/rival/hd/`, con croma verde `#00FF00`. Cada vista incluye 10 movimientos, ocho golpes, cinco reacciones, tres extras y seis clips de la ULTI. Se usó a Mai como referencia de poses, expresiones y efectos. Para `isa-rival-movimientos-8.png` (caminata) se usó a NXO rival. La raqueta fucsia conserva el cordaje blanco. Las hojas horizontales miden 1536 × 1024 y tienen ocho cuadros. Las verticales de la ULTI miden 1024 × 1536 y tienen nueve cuadros (Jugador 2–5, Rival 2–6).
 

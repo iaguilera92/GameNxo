@@ -93,7 +93,10 @@ export class Joystick {
     s.tweens.add({ targets: this.knob, ...to, duration: 300, yoyo: true, hold: 300, ease: 'Quad.easeInOut', onComplete: () => this.pointerId === null && this.knob.setPosition(this.home.x, this.home.y) });
   }
 
-  /** (25-11-2026, usuario) tutorial nivel 2: joystick BLOQUEADO (gris con candado); tocarlo hace temblar el candado */
+  /**
+   * (25-11-2026, usuario) tutorial nivel 2: joystick BLOQUEADO en GRIS con candado, como los botones bloqueados (ESPECIAL /
+   * SAQUE DIRECTO); tocarlo hace temblar el candado
+   */
   private locked = false;
   private lockIcon?: Phaser.GameObjects.Container;
   setLocked(on: boolean) {
@@ -104,12 +107,12 @@ export class Joystick {
       if (!this.lockIcon) {
         const c = this.scene.add.container(0, 0).setScrollFactor(0).setDepth(5620);
         const g = this.scene.add.graphics();
-        g.fillStyle(0x000000, 0.5).fillCircle(0, 0, this.radius + 14);
-        g.lineStyle(6, 0xff4f5e, 0.95).strokeCircle(0, 0, this.radius + 6);
-        // candado
-        g.lineStyle(8, 0xffffff, 1).beginPath().arc(0, -10, 18, Math.PI, 0, false).strokePath();
-        g.fillStyle(0xffffff, 1).fillRoundedRect(-28, -10, 56, 44, 8);
-        g.fillStyle(0xc42536, 1).fillCircle(0, 8, 7).fillRect(-3, 8, 6, 14);
+        g.fillStyle(0x4b5262, 0.86).fillCircle(0, 0, this.radius + 14);
+        g.lineStyle(5, 0x8a93a6, 0.9).strokeCircle(0, 0, this.radius + 14);
+        // candado (gris claro, con la cerradura del gris del fondo)
+        g.lineStyle(8, 0xc8d2ea, 1).beginPath().arc(0, -10, 18, Math.PI, 0, false).strokePath();
+        g.fillStyle(0xc8d2ea, 1).fillRoundedRect(-28, -10, 56, 44, 8);
+        g.fillStyle(0x4b5262, 1).fillCircle(0, 8, 7).fillRect(-3, 8, 6, 14);
         c.add(g);
         this.lockIcon = c;
       }

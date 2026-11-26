@@ -356,6 +356,8 @@ const PACKS: Record<SheetId, Pack> = {
   },
 };
 const PACK_LIST = Object.values(PACKS) as Pack[];
+/** (25-11-2026, usuario) retoque de tamaño de TODO un personaje (por la clave de su pack): ISA de frente (rival) se veía algo más chica */
+const PACK_SIZE: Record<string, number> = { isaf: 1.14 }; // (25-11-2026, usuario) 1,08 → 1,14: un poco más
 /** frame (0 = el primero) en que se CONGELA la celebración de victoria de cada personaje de espaldas (la mano / raqueta arriba) */
 const VICTORY_HOLD: Record<string, number> = { nxo: 3 };
 /**
@@ -710,7 +712,7 @@ export class NxoActor {
     this.sprite.setOrigin(o.x, o.y);
     // retoque por animaciÃ³n (p. ej. smash potenciado dibujado mÃ¡s chico: `scale` en su JSON)
     const k = key === this.sk('smash-power') ? (this.P.special.animations['smash-power'].scale ?? 1) : (SCALE_OF.get(key) ?? 1);
-    this.sprite.setScale((CHAR_UNITS_H / g.standHeight) * k);
+    this.sprite.setScale((CHAR_UNITS_H / g.standHeight) * k * (PACK_SIZE[this.P.key] ?? 1));
   }
   /** reproduce un clip ajustando el ancla (las hojas tienen celdas distintas) */
   private playClip(key: string, startFrame = 0) {
@@ -925,6 +927,12 @@ export class NxoActor {
     }
     this.refresh();
     if (changed && this.state === 'hold') this.enterHold(); // ya estaba en guardia: pasa de la pose de espera a la de carga (o al reves)
+  }
+
+  /** (25-11-2026, usuario) tutorial: congela la pose actual (sin el temblor de la carga ni avanzar la animación) */
+  freezePose() {
+    this.stopShake();
+    if (this.sprite.anims.isPlaying) this.sprite.anims.pause();
   }
 
   /** La pelota viene hacia el jugador y estÃ¡ cerca: ponerse en guardia con la raqueta atrÃ¡s. */

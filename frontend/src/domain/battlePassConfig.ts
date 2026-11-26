@@ -10,6 +10,7 @@ import type { SkinId } from '../characters/skins';
 import { type CharColorId, charColorItem } from './charColors';
 import { newBattlePass } from './battlePassState';
 import { gameClock } from './timeSource';
+import { UNLOCK_LEVEL } from './unlocks';
 
 export type BpReward =
   | { kind: 'cash'; amount: number }
@@ -151,6 +152,7 @@ export function bpSeasonInfo(now = gameClock.now()) {
 /** Suma EXP al pase (la llama operations.addXp). Pura: modifica el clon que recibe. Con el Pase terminado no suma. */
 export function bpAddXpInPlace(n: PlayerState, amount: number) {
   if (bpSeasonInfo().over) return;
+  if (n.level < UNLOCK_LEVEL.pass) return; // (25-11-2026, usuario) aún no está disponible: la EXP va solo al nivel de la cuenta
   if (n.bp.season !== BP_SEASON.id) n.bp = newBattlePass(BP_SEASON.id);
   n.bp.xp = Math.min(bpMaxXp(), n.bp.xp + Math.max(0, Math.floor(amount)));
 }

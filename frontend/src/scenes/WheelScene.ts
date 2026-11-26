@@ -10,6 +10,9 @@ import { boostWheel, claimWheel, claimWheelAdBonus, spinWheel, wheelSpin } from 
 import { wheelClaim, wheelStart, wheelTick, wheelWin } from '../fx/wheelSound';
 import { canShowRewardedAds, showRewarded } from '../ads/ads';
 import { arcadeButton } from '../ui/modeButtons';
+import { tapHint } from '../ui/guideFocus';
+import { clockTimer } from '../ui/TutorialDialog';
+import { GUIDE_FIRST_WHEEL } from '../domain/tutorial';
 
 /**
  * Pantalla de RULETA DIARIA (overlay sobre el menú).
@@ -309,7 +312,7 @@ export class WheelScene extends Phaser.Scene {
       .setShadow(0, 6, '#0a1638', 0, true, true);
     // (18-11-2026, usuario) el "1 / 4 · ¡GANASTE UN GIRO!" un poco más abajo (antes y + 46)
     const sub = this.add
-      .text(W / 2, y + 60, this.test ? 'PRUEBA · LOS PREMIOS SÍ SE ENTREGAN' : `${this.index + 1} / ${WHEEL.perDay}  ·  ¡GANASTE UN GIRO!`, { fontFamily: FONT, fontSize: '22px', color: '#cfe0ff', stroke: '#0a1638', strokeThickness: 5 })
+      .text(W / 2, y + 60, this.test ? 'PRUEBA · LOS PREMIOS SÍ SE ENTREGAN' : `${this.bonus ? '' : `${this.index + 1} / ${WHEEL.perDay}  ·  `}¡GANASTE UN GIRO!`, { fontFamily: FONT, fontSize: '22px', color: '#cfe0ff', stroke: '#0a1638', strokeThickness: 5 })
       .setOrigin(0.5)
       .setLetterSpacing(1);
     t.setScale(0.4).setAlpha(0);
@@ -561,7 +564,7 @@ export class WheelScene extends Phaser.Scene {
       }
     }
     if (sub?.active) {
-      sub.setText(tier === 'normal' ? `${this.index + 1} / ${WHEEL.perDay}  ·  ¡GANASTE UN GIRO!` : `${this.index + 1} / ${WHEEL.perDay}  ·  +${WHEEL.tiers.bonusPct[tier]}% EN LOS PREMIOS`);
+      sub.setText(tier === 'normal' ? `${this.bonus ? '' : `${this.index + 1} / ${WHEEL.perDay}  ·  `}¡GANASTE UN GIRO!` : `${this.bonus ? '' : `${this.index + 1} / ${WHEEL.perDay}  ·  `}+${WHEEL.tiers.bonusPct[tier]}% EN LOS PREMIOS`);
       if (tier !== 'normal') sub.setColor(TIER_LOOK[tier].text);
       if (animate) {
         this.tweens.killTweensOf(sub);
@@ -815,6 +818,8 @@ export class WheelScene extends Phaser.Scene {
     // si el anuncio falla, avisa y el premio queda igual.
     // Completar el anuncio entrega otra vez el mismo premio (domain/dailyWheel.claimAdBonus).
     const savedSpin = wheelSpin(this.index, this.bonus);
+    /** (25-11-2026, usuario) PRIMERA ruleta (nivel 1, tras ganar el 1.er partido): se explica el x2, como en el PREMIO DIARIO */
+    let explainX2: ((done: () => void) => void) | null = null;
     if (!textOnly && savedSpin?.claimed && !savedSpin.adBonusClaimed && canShowRewardedAds()) {
       const bx = cx;
       const by = label.y + (note ? 118 : 92);
@@ -868,13 +873,27 @@ export class WheelScene extends Phaser.Scene {
       this.tweens.add({ targets: x2, alpha: 1, scale: 1, delay: t0 + 1000, duration: 320, ease: 'Back.easeOut' });
       // invita a pulsarlo: late suave (el rebote al pulsar es del contenido interior: no choca con este latido)
       this.tweens.add({ targets: x2, scale: 1.06, delay: t0 + 1400, duration: 520, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
+      if (savedSpin.matchId === GUIDE_FIRST_WHEEL && !claimed) { // (solo al cobrarla, no si se vuelve a ver)
+        // la mano en el x2, el aviso y un reloj de 1,5 s; luego se puede continuar
+        explainX2 = (done) => {
+          const hand = tapHint(this, bx, by, 102);
+          const t = this.add.text(cx, by + 78, 'PUEDES DUPLICAR TU PREMIO CON x2\nCUANDO LO NECESITES', { fontFamily: FONT, fontSize: '26px', color: '#ffd23f', stroke: '#0a1638', strokeThickness: 7, align: 'center' }).setOrigin(0.5, 0).setDepth(102);
+          if (t.width > W - 40) t.setScale((W - 40) / t.width);
+          const clock = clockTimer(this, cx, t.y + t.displayHeight + 46, 1500).setDepth(102);
+          this.time.delayedCall(1500, () => {
+            [hand, t, clock].forEach((o) => o.destroy());
+            done();
+          });
+        };
+      }
     }
     // 5) tocar para continuar (cualquier parte)
     const cont = this.add.text(cx, H * 0.9, 'TOCA PARA CONTINUAR', { fontFamily: FONT, fontSize: '30px', color: '#ffffff', stroke: '#0a1638', strokeThickness: 7 }).setOrigin(0.5).setAlpha(0).setLetterSpacing(2);
-    this.time.delayedCall(t0 + 1100, () => {
+    const release = () => {
       this.canContinue = true;
       this.tweens.add({ targets: cont, alpha: 1, duration: 300, onComplete: () => this.tweens.add({ targets: cont, alpha: 0.4, duration: 650, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' }) });
-    });
+    };
+    this.time.delayedCall(t0 + 1100, () => (explainX2 ? explainX2(release) : release()));
   }
 
   /** (21-11-2026) Apunta lo entregado (monedas / EXP) para que el MENÚ lo muestre llegando a sus cards (registry menu.wheelGain). */

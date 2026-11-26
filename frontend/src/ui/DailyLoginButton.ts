@@ -8,6 +8,8 @@ import { drawCashIcon } from '../scenes/BattlePassScene';
 import { LOGIN, type LoginReward } from '../domain/dailyLogin';
 import { claimLogin, claimLoginRewardAdBonus, loginStatus } from '../logic/Ranked';
 import { canShowRewardedAds, showInterstitial, showRewarded } from '../ads/ads';
+import { tapHint } from './guideFocus';
+import { clockTimer } from './TutorialDialog';
 
 const NAVY = 0x0b1733;
 const NEON = 0x3a7bff;
@@ -17,7 +19,11 @@ const GOLD = 0xffc42e;
  * Botón del PREMIO DIARIO (bajo TIENDA, misma forma, mitad de ancho). NUNCA se abre solo: con un premio por
  * reclamar se marca en dorado (borde, brillo y punto que late); al tocarlo abre el panel de la racha.
  */
-export function dailyLoginButton(scene: Phaser.Scene, x: number, y: number, onToast: (m: string) => void, w = 76, h = 76) {
+/**
+ * `guide` (25-11-2026, usuario, tutorial del nivel 3): al tocarlo, si `active`, el panel guía a RECLAMAR y, cobrado el premio y cerrado,
+ * llama a `done` (el menú pasa a JUGAR).
+ */
+export function dailyLoginButton(scene: Phaser.Scene, x: number, y: number, onToast: (m: string) => void, w = 76, h = 76, guide?: () => { active: boolean; done: () => void }) {
   const c = scene.add.container(x, y).setDepth(50);
   const draw = () => {
     c.removeAll(true);
@@ -51,13 +57,14 @@ export function dailyLoginButton(scene: Phaser.Scene, x: number, y: number, onTo
   c.setSize(w, h).setInteractive({ useHandCursor: true });
   c.on('pointerup', () => {
     scene.tweens.add({ targets: c, scale: { from: 0.88, to: 1 }, duration: 220, ease: 'Back.easeOut' });
-    openDailyLogin(scene, () => draw(), onToast);
+    const g = guide?.();
+    openDailyLogin(scene, () => draw(), onToast, g?.active ? { onGuideDone: g.done } : undefined);
   });
   return c;
 }
 
 /** Panel diario: los siete días de la semana en curso (lunes a domingo), con su fecha y su premio. */
-export function openDailyLogin(scene: Phaser.Scene, onChange: () => void, onToast: (m: string) => void) {
+export function openDailyLogin(scene: Phaser.Scene, onChange: () => void, onToast: (m: string) => void, guide?: { onGuideDone: () => void }) {
   const W = scene.scale.width;
   const H = scene.scale.height;
   const objs: Phaser.GameObjects.GameObject[] = [];
@@ -191,6 +198,9 @@ export function openDailyLogin(scene: Phaser.Scene, onChange: () => void, onToas
         doClaim?.();
       });
       p.add(hit);
+    } else {
+      // (25-11-2026, usuario) días que AÚN NO llegan: apagados (no parecen tocables; solo el de hoy se cobra)
+      p.add(scene.add.rectangle(cx, cy, cw + 6, chh + 6, 0x06102a, 0.55));
     }
   });
   // las animaciones de las tarjetas se paran al cerrar
@@ -228,7 +238,10 @@ export function openDailyLogin(scene: Phaser.Scene, onChange: () => void, onToas
 
   const by = ph / 2 - 67;
   if (st.claimed) {
-    p.add(arcadeButton(scene, 0, by, 310, 72, 'VUELVE MAÑANA', close, { palette: 'blue' }));
+    p.add(arcadeButton(scene, 0, by, 310, 72, 'VUELVE MAÑANA', () => {
+      close();
+      guide?.onGuideDone(); // (tutorial) ya estaba cobrado hoy: sigue la guía
+    }, { palette: 'blue' }));
   } else {
     let claimBtn!: Phaser.GameObjects.Container;
     let claimed = false;
@@ -239,9 +252,12 @@ export function openDailyLogin(scene: Phaser.Scene, onChange: () => void, onToas
         onChange();
         if (!res.given) return;
         claimBtn.destroy();
+        guideHand?.destroy();
+        guideText?.destroy();
         objs.push(showDailyRewardReveal(scene, res.day, res.given, () => {
           void showInterstitial('daily_reward');
           close();
+          guide?.onGuideDone(); // (tutorial del nivel 3) cobrado: el menú guía a JUGAR
         }, async (animateDouble) => {
           const watched = await showRewarded('daily_reward_bonus');
           // Sin anuncio: el aviso sale dentro de la pantalla del premio (showDailyRewardReveal).
@@ -250,9 +266,18 @@ export function openDailyLogin(scene: Phaser.Scene, onChange: () => void, onToas
           if (!bonus.given) return false;
           animateDouble();
           return true;
-        }));
+        }, false, !!guide));
       };
     claimBtn = arcadeButton(scene, 0, by, 330, 78, 'RECLAMAR', () => doClaim?.(), { palette: 'yellow' });
+    // (25-11-2026, usuario) tutorial del nivel 3: la mano en RECLAMAR y "COBRA TU PREMIO" sobre el botón
+    let guideHand: Phaser.GameObjects.Container | undefined;
+    let guideText: Phaser.GameObjects.Text | undefined;
+    if (guide) {
+      guideHand = tapHint(scene, W / 2, H / 2 + by, 8100);
+      // debajo del panel (encima del botón chocaba con el texto de la semana)
+      guideText = scene.add.text(W / 2, Math.min(H - 30, H / 2 + ph / 2 + 44), 'COBRA TU PREMIO', { fontFamily: FONT, fontSize: '30px', color: '#ffd23f', stroke: '#0a1638', strokeThickness: 7 }).setOrigin(0.5).setDepth(8100);
+      objs.push(guideHand, guideText);
+    }
     claimBtn.on('pointerdown', (_p: Phaser.Input.Pointer, _x: number, _y: number, event: Phaser.Types.Input.EventData) => event.stopPropagation());
     claimBtn.on('pointerup', (_p: Phaser.Input.Pointer, _x: number, _y: number, event: Phaser.Types.Input.EventData) => event.stopPropagation());
     p.add(claimBtn);
@@ -275,6 +300,8 @@ function showDailyRewardReveal(
   onContinue: () => void,
   onDouble: (animateDouble: () => void) => Promise<boolean>,
   testMode = false,
+  /** (25-11-2026, usuario) tutorial del nivel 3: tras el premio, explica el x2 (mano en el botón y reloj de 1,5 s) */
+  explainX2 = false,
 ) {
   const W = scene.scale.width;
   const H = scene.scale.height;
@@ -422,6 +449,7 @@ function showDailyRewardReveal(
   root.add(prompt);
   scene.time.delayedCall(1450, () => {
     if (!root.active) return;
+    if (explainX2 && bonusBtn.visible) return explainDouble();
     canContinue = true;
     scene.tweens.add({ targets: prompt, alpha: 1, duration: 280, onComplete: () => scene.tweens.add({ targets: prompt, alpha: 0.45, duration: 650, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' }) });
   });
@@ -475,6 +503,20 @@ function showDailyRewardReveal(
   root.add(bonusBtn);
   // Sin anuncios (web / sin AdMob) no se ofrece el x2; la vista TEST lo muestra siempre.
   if (!testMode && !canShowRewardedAds()) bonusBtn.setVisible(false).disableInteractive();
+  /** tutorial: "puedes duplicar tu premio con x2" con la mano en el botón y un reloj de 1,5 s; luego se suelta (se puede seguir) */
+  function explainDouble() {
+    const hand = tapHint(scene, bonusBtn.x, bonusBtn.y, 8102);
+    const t = scene.add.text(W / 2, H * 0.68, 'PUEDES DUPLICAR TU PREMIO CON x2\nCUANDO LO NECESITES', { fontFamily: FONT, fontSize: '26px', color: '#ffd23f', stroke: '#0a1638', strokeThickness: 7, align: 'center' }).setOrigin(0.5).setScrollFactor(0).setDepth(8102);
+    if (t.width > W - 40) t.setScale((W - 40) / t.width);
+    const clock = clockTimer(scene, W / 2, H * 0.68 + 70, 1500).setScrollFactor(0).setDepth(8102);
+    root.once(Phaser.GameObjects.Events.DESTROY, () => [hand, t, clock].forEach((o) => o.destroy()));
+    scene.time.delayedCall(1500, () => {
+      [hand, t, clock].forEach((o) => o.destroy());
+      if (!root.active) return;
+      canContinue = true;
+      scene.tweens.add({ targets: prompt, alpha: 1, duration: 280, onComplete: () => scene.tweens.add({ targets: prompt, alpha: 0.45, duration: 650, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' }) });
+    });
+  }
   root.setAlpha(0);
   scene.tweens.add({ targets: root, alpha: 1, duration: 260 });
   return root;

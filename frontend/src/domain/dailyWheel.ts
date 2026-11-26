@@ -162,6 +162,25 @@ export function bonusSpinIndex(s: PlayerState, id: string): number {
   return s.wheel.bonusSpins.findIndex((sp) => sp.matchId === id);
 }
 
+/**
+ * (25-11-2026, usuario) RULETA DEL TUTORIAL: una por NIVEL subido (giro bonus con id `tutorial-level:N`; el del primer partido, GUIDE_FIRST_WHEEL),
+ * fuera del tope diario (con las ruletas diarias, tras varias partidas en el día no salía ninguna). Índice de la que falta abrir sola, o -1.
+ */
+export function isTutorialSpinId(id: string) {
+  return id === GUIDE_FIRST_WHEEL || id.startsWith('tutorial-level:');
+}
+export function nextTutorialBonus(s: PlayerState): number {
+  return s.wheel.bonusSpins.findIndex((sp) => isTutorialSpinId(sp.matchId) && !sp.presented && !sp.claimed);
+}
+/** Marca un giro bonus como ya presentado (se abre solo una vez). */
+export function markBonusPresented(s: PlayerState, index: number): WheelResult {
+  const n = clonePlayer(s);
+  const sp = n.wheel.bonusSpins[index];
+  if (!sp) return fail('no_spin');
+  sp.presented = true;
+  return { ok: true, state: n };
+}
+
 /** Marca una ruleta como ya presentada (la apertura automática ocurre una sola vez). */
 export function markPresented(s: PlayerState, index: number, now: number): WheelResult {
   const n = clonePlayer(syncCycle(s, now));

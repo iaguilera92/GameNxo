@@ -177,17 +177,20 @@ export class CustomizeScene extends Phaser.Scene {
   private guideOverlay?: Phaser.GameObjects.Container;
   private guideDefensiveRect?: { x: number; y: number; w: number; h: number };
 
+  /** (25-11-2026, usuario) la guía de la tarjeta: DEFENSIVO (nivel 2) o ESPECIAL (nivel 4, recién desbloqueado) */
+  private guideCard: 'defensive' | 'special' = 'defensive';
   private focusDefensiveGuide(equipped: boolean) {
     this.guideOverlay?.destroy();
     const target = equipped ? { x: 54, y: 64, w: 78, h: 78 } : this.guideDefensiveRect;
-    if (target) this.guideOverlay = guideFocus(this, target, equipped ? 'VUELVE AL MENÚ' : 'TOCA DEFENSIVO', { textDy: equipped ? 34 : 0 });
+    const tap = this.guideCard === 'special' ? '¡ESPECIAL DESBLOQUEADO!\nTOCA ESPECIAL' : 'TOCA DEFENSIVO';
+    if (target) this.guideOverlay = guideFocus(this, target, equipped ? 'VUELVE AL MENÚ' : tap, { textDy: equipped ? 34 : 0 });
   }
 
   /** (25-11-2026, usuario) tutorial: al equipar, la tarjeta DEFENSIVO se ve brillar sobre el opaco; luego VUELVE AL MENÚ */
   private equipDefensiveGuide() {
     this.guideOverlay?.destroy();
     const t = this.guideDefensiveRect;
-    const r = this.cardRects.defensive;
+    const r = this.cardRects[this.guideCard];
     if (!t || !r) return this.focusDefensiveGuide(true);
     this.guideOverlay = guideFocus(this, t, '', { hand: false });
     this.time.delayedCall(200, () => this.playEquipFx(r, 8150));
@@ -309,8 +312,12 @@ export class CustomizeScene extends Phaser.Scene {
     const row2 = y + L.titleToCard;
     p.abilities.forEach((id, i) => this.abilityCard(W, row2, L.ability, i as 0 | 1, ABILITIES[id]));
     const state = getPlayer();
-    if (!isDevMode() && guidedStep(state.level, state.tutorial) === 'defensive') {
-      const col = gridCol(W, p.abilities[0] === 'dash' ? 0 : 1);
+    const gStep = isDevMode() ? null : guidedStep(state.level, state.tutorial);
+    if (gStep === 'defensive' || gStep === 'special') {
+      // (25-11-2026, usuario) nivel 4: lo mismo con el ESPECIAL (smash)
+      this.guideCard = gStep;
+      const want = gStep === 'defensive' ? 'dash' : 'smash';
+      const col = gridCol(W, p.abilities[0] === want ? 0 : 1);
       this.guideDefensiveRect = { x: col.x + col.w / 2, y: row2 + L.ability / 2, w: col.w, h: L.ability };
       this.focusDefensiveGuide(false);
     }
@@ -1429,13 +1436,19 @@ ${unlockLabel(key)}`, { fontFamily: FONT, fontSize: '16px', color: '#ffd23f', st
   private openSmashDialog(a: AbilityDef) {
     const p = getPlayer();
     const cur = smashPowerOf(p.equipped.smash);
-    const slots: PowerSlot[] = SMASH_POWERS.map((d) => ({
+    // (25-11-2026, usuario) nivel 4 (tutorial): como el DEFENSIVO del nivel 2: solo tu poder, ver la demostración y EQUIPAR
+    const guided = !isDevMode() && guidedStep(p.level, p.tutorial) === 'special';
+    if (guided) {
+      this.guideOverlay?.destroy();
+      this.guideOverlay = undefined;
+    }
+    const slots: PowerSlot[] = SMASH_POWERS.filter((d) => !guided || d.id === cur).map((d) => ({
       id: d.id,
       demoName: d.name,
       ...byDefault(d.id === 'default', d.name, d.desc),
       owned: smashOwned(p.owned, d.id),
       rarity: itemRarity(`smash:${d.id}`),
-      equipped: d.id === cur,
+      equipped: !guided && d.id === cur,
       preview: (ix, iy, size) => this.abilityIcon(a, ix, iy, size, d.id),
       onEquip: () => setSmash(d.id),
     }));
@@ -1445,12 +1458,21 @@ ${unlockLabel(key)}`, { fontFamily: FONT, fontSize: '16px', color: '#ffd23f', st
       slots,
       // televisión grande; deslizando se ve el ESPECIAL en acción contra la máquina de pelotas (fx/powerDemo.ts, modo special)
       bigTv: true,
+      requireDemoBeforeEquip: guided,
       demo: { create: (parent, outer, inner, id) => createSpecialDemo(this, parent, outer, inner, getProfile().skin, 'smash', id ?? cur) },
       onShop: () => {
         this.cameras.main.fadeOut(180, 0, 0, 0);
         this.cameras.main.once('camerafadeoutcomplete', () => this.scene.start('Shop'));
       },
       onClose: ({ changed }) => {
+        if (guided) {
+          if (changed) {
+            commit((s) => markTutorialSeen(s, GUIDE.special));
+            commit((s) => markTutorialSeen(s, 'l04-especial'));
+            this.equipDefensiveGuide();
+          } else this.focusDefensiveGuide(false);
+          return;
+        }
         if (changed) this.restartEquipped('special'); // al instante: la pantalla ya muestra lo que se equipó
       },
     });

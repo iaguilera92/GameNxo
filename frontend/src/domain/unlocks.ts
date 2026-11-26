@@ -16,12 +16,15 @@
  */
 export const UNLOCK_LEVEL = {
   defensive: 2,
+  /** (25-11-2026, usuario) el PASE DE BATALLA: antes no recibe EXP ni la anima el menú */
+  pass: 10,
   special: 4,
   ulti: 6,
-  styles: 8,
-  trail: 10,
-  charge: 12,
-  zone: 15,
+  // (25-11-2026, usuario) CARGANDO GOLPE pasa al 8 (antes 12), ZONA al 10 (antes 15) y ESTILOS al 15 (antes 8)
+  styles: 15,
+  trail: 12, // (25-11-2026, usuario) antes 10
+  charge: 8,
+  zone: 10,
   spin: 15,
 } as const;
 

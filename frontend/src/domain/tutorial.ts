@@ -126,19 +126,24 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
   },
   {
     id: 'l14-pase',
-    level: 14,
+    level: UNLOCK_LEVEL.pass,
     title: 'PASE DE BATALLA',
     pages: ['El PASE da premios por jugar: gratis y premium. Toda la EXP que ganas lo llena.'],
   },
   {
     id: 'l15-zona',
     level: UNLOCK_LEVEL.zone,
-    title: 'ZONA Y SAQUE CON EFECTO',
-    unlock: 'ZONA y SAQUE CON EFECTO',
-    pages: [
-      'La ZONA te hace más fuerte durante un rato del partido. Mejora sus atributos con Rayos en PERSONAJE.',
-      'Al sacar, el botón violeta saca con efecto: la pelota curva.',
-    ],
+    // (25-11-2026, usuario) la ZONA y el saque con efecto ya no van en el mismo nivel: cada uno su aviso (el id de este no cambia)
+    title: 'ZONA',
+    unlock: 'ZONA',
+    pages: ['La ZONA te hace más fuerte durante un rato del partido. Mejora sus atributos con Rayos en PERSONAJE.'],
+  },
+  {
+    id: 'l15-saque-efecto',
+    level: UNLOCK_LEVEL.spin,
+    title: 'SAQUE CON EFECTO',
+    unlock: 'SAQUE CON EFECTO',
+    pages: ['Al sacar, el botón violeta saca con efecto: la pelota curva.'],
   },
   {
     id: 'l16-ranked',
@@ -177,8 +182,8 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
  * (ítem `color:gris`); AZUL = estela de pelota. Los da `grantTutorialGifts` (domain/operations.ts).
  */
 export const TUTORIAL_GIFTS: { level: number; item: string }[] = [
-  { level: 8, item: 'color:gris' },
-  { level: 10, item: 'style:blue' },
+  { level: UNLOCK_LEVEL.styles, item: 'color:gris' }, // con ESTILOS
+  { level: UNLOCK_LEVEL.trail, item: 'style:blue' }, // con EFECTO PELOTA
 ];
 
 export const GUIDE = {
@@ -188,6 +193,8 @@ export const GUIDE = {
   profile: 'guide-profile',
   spin: 'guide-spin',
   l3: 'guide-l3', // (25-11-2026, usuario) partido guiado del nivel 3: cortita, remate, ESPECIAL del rival
+  daily: 'guide-daily', // (25-11-2026, usuario) nivel 3, menú: abrir el PREMIO DIARIO y cobrarlo (antes del partido del nivel 3)
+  special: 'guide-special', // (25-11-2026, usuario) nivel 4, tras los premios: PERSONAJE › ESPECIAL desbloqueado (como el DEFENSIVO del nivel 2)
 } as const;
 export type GuidedMatch = 'first' | 'spin' | 'l3';
 export const GUIDE_FIRST_WHEEL = 'guide-first-wheel';
@@ -197,7 +204,9 @@ export function guidedStep(level: number, seen: readonly string[] = []) {
   if (!seen.includes(GUIDE.defensive)) return 'defensive';
   if (!seen.includes(GUIDE.profile)) return 'profile';
   if (!seen.includes(GUIDE.spin)) return 'spin';
-  return level === 3 && !seen.includes(GUIDE.l3) ? 'l3' : null;
+  if (level >= 3 && !seen.includes(GUIDE.daily)) return 'daily';
+  if (level === 3 && !seen.includes(GUIDE.l3)) return 'l3';
+  return level >= UNLOCK_LEVEL.special && !seen.includes(GUIDE.special) ? 'special' : null;
 }
 
 /**
@@ -208,7 +217,8 @@ export function tutorialSeenBefore(level: number): string[] {
   const seen = TUTORIAL_STEPS.filter((s) => s.level < level).map((s) => s.id);
   if (level >= 2) seen.push(GUIDE.welcome, GUIDE.firstMatch);
   if (level >= 3) seen.push(GUIDE.defensive, GUIDE.profile, GUIDE.spin);
-  if (level >= 4) seen.push(GUIDE.l3);
+  if (level >= 4) seen.push(GUIDE.daily, GUIDE.l3);
+  if (level >= 5) seen.push(GUIDE.special);
   return seen;
 }
 
@@ -222,5 +232,6 @@ export function isTutorialId(v: unknown): v is string {
 /** Primer paso con nivel <= `level` que aún no se vio (en orden de nivel); null = nada pendiente. */
 export function pendingTutorial(level: number, seen: readonly string[] | undefined): TutorialStep | null {
   const done = new Set(seen ?? []);
-  return TUTORIAL_STEPS.find((s) => s.level <= level && !done.has(s.id)) ?? null;
+  // ordenados por nivel: los pasos con desbloqueo siguen a unlocks.ts y pueden quedar fuera del orden de la lista
+  return [...TUTORIAL_STEPS].sort((a, b) => a.level - b.level).find((s) => s.level <= level && !done.has(s.id)) ?? null;
 }

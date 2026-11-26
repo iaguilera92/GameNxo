@@ -19,6 +19,8 @@ el perfil y una segunda partida con saque con efecto en el primer punto. En el s
 
 ## Tabla de trabajo
 
+> **(25-11-2026, usuario) Niveles cambiados:** CARGANDO GOLPE en el **8** (antes 12), ZONA y PASE DE BATALLA en el **10** (antes 15 y sin nivel), ESTILOS en el **15** (antes 8; el regalo del color GRIS va con ellos) y SAQUE CON EFECTO sigue en el 15. Misiones: las de carga pasan al 8, el 12 queda libre y el 15 ya no pide la ZONA. Fuente: `domain/unlocks.ts`. Las filas de la tabla todavía describen el orden anterior en lo que no sea desbloqueo.
+
 **Implementado** identifica el recorrido guiado de los niveles 1 y 2. Del 3 al 20, la acción es una **propuesta** basada en los avisos actuales. Los desbloqueos de la última columna ya existen.
 
 | Nivel | Qué hará el jugador | Estado de la práctica | Desbloqueo o recompensa |

@@ -94,6 +94,23 @@ export function battlePassSpinIndex(season: string) {
   return wheel.bonusSpinIndex(getPlayer() as never, `battle-pass:${season}`);
 }
 
+/** (25-11-2026, usuario) ruleta del TUTORIAL (una por nivel, fuera del tope diario). Índice del giro bonus (o -1). */
+export function grantTutorialSpin(id: string) {
+  const res = commit((s) => {
+    const current = wheel.syncCycle(s as never, now());
+    const granted = wheel.grantBonusSpin(current as never, id);
+    return { ok: true as const, state: granted.state, index: granted.index };
+  });
+  return res.ok ? res.index : -1;
+}
+/** ruleta del tutorial ganada que aún no se abrió sola (índice de giro bonus, o -1) */
+export function tutorialWheelToPresent() {
+  return wheel.nextTutorialBonus(getPlayer() as never);
+}
+export function markTutorialWheelPresented(index: number) {
+  commit((s) => wheel.markBonusPresented(s, index));
+}
+
 export function msToWheelReset() {
   return wheel.msToNextReset(now());
 }

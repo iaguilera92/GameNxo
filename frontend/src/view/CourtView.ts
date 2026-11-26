@@ -83,7 +83,7 @@ export const AMBIENTES: Ambiente[] = [
   // (23-11-2026, usuario) imagen v2 de ChatGPT: a la derecha, reja y camino del parque en vez de gradas; muro y bordes del piso donde estaban (mismos valores)
   { key: 'ambiente-3', file: 'ambiente-3.webp', w: 1536, h: 1536, scaleH: 1024, courtDY: 52, zoom: 0.7, wallBottomY: 392, wallTopY: 317, fenceTopY: 251, surface: 'hard', sky: 0x143d7e, edges: { top: 0x6854c1, bottom: 0x0a49ab } },
   // Nieve: el pie del muro ancla la imagen respecto a la cancha; la colisión de la valla queda 20 px sobre el travesaño.
-  { key: 'ambiente-4', file: 'ambiente-4.webp', w: 1536, h: 1536, scaleH: 1024, courtDY: 52, zoom: 0.7, fixedScale: true, wallBottomY: 403, wallTopY: 356, fenceTopY: 271, surface: 'hard', sky: 0x2a80e8 },
+  { key: 'ambiente-4', file: 'ambiente-4.webp', w: 1536, h: 1536, scaleH: 1024, courtDY: 52, zoom: 0.7, fixedScale: true, wallBottomY: 403, wallTopY: 356, fenceTopY: 271, surface: 'hard', sky: 0x2a80e8, footer: 0xe2ebf4 }, // (26-11-2026, usuario) footer BLANCO nieve (antes el azul compartido: no combinaba)
   // (19-11-2026, usuario) PARQUE con varias canchas: SOLO para el 2v2. Imagen con un PASEO de lado a lado detrás del muro (los paseantes
   // cruzan toda la pantalla). Muro del fondo medido sobre la imagen (borde de arriba en y 313, pie en y 397); no tiene valla encima:
   // fenceTopY = el alto de las vallas verdes del fondo (~236). Piso verde de la imagen y cancha azul (hard)

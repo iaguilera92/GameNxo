@@ -8,6 +8,7 @@ import { startTutorialAt, writeDevMode } from '../domain/devMode';
 import { MAX_LEVEL } from '../config';
 import { RIVAL_OPTIONS, type RivalSetting, type ShakeLevel, getSettings, setSettings } from '../logic/Settings';
 import { adsPrivacyAvailable, openAdsPrivacy } from '../ads/ads';
+import { openBugReport } from './BugReportDialog';
 
 /**
  * Diálogo AJUSTES (mismo estilo que RANGOS): sonido, vibración y temblor de pantalla.
@@ -45,7 +46,7 @@ export function showSettings(scene: Phaser.Scene, o: { depth?: number; onClose?:
   // PRIVACIDAD DE ANUNCIOS: solo donde aplica el aviso de consentimiento (UE); en Chile no aparece
   const privacy = adsPrivacyAvailable();
   const dev = isDevMode(); // (24-11-2026) con el modo desarrollo: fila PROBAR TUTORIAL LVL
-  const rows = 7 + (privacy ? 1 : 0) + (dev ? 1 : 0);
+  const rows = 8 + (privacy ? 1 : 0) + (dev ? 1 : 0); // (26-11-2026, usuario) + REPORTAR BUG (última fila, antes de CERRAR)
   const rowH = rows > 7 ? 100 : 108;
   const ph = headH + rowH * rows + footH;
   const panel = scene.add.container(W / 2, H / 2).setScrollFactor(0).setDepth(depth + 1);
@@ -164,6 +165,9 @@ export function showSettings(scene: Phaser.Scene, o: { depth?: number; onClose?:
     panel.add(pillButton(scene, x + pw - 34, rowY(next), 'ELEGIR', () => void openAdsPrivacy()));
   }
 
+  // (26-11-2026, usuario) REPORTAR BUG: última fila, antes de CERRAR
+  label(rows - 2, 'REPORTAR BUG', 'Ayúdanos a mejorar tu juego', bugIcon); // (26-11-2026, usuario) antes de INICIAR SESIÓN
+  panel.add(pillButton(scene, x + pw - 34, rowY(rows - 2), 'ESCRIBIR', () => openBugReport(scene)));
   const signInY = rowY(rows - 1);
   const signInLeft = x + 30;
   const signInWidth = pw - 70;
@@ -365,6 +369,15 @@ function tutorialIcon(g: Phaser.GameObjects.Graphics) {
   g.lineStyle(2.5, 0xffd23f, 1).lineBetween(12, -2, 12, 9);
   g.fillStyle(0xffd23f, 1).fillCircle(12, 11, 3);
 }
+function bugIcon(g: Phaser.GameObjects.Graphics) {
+  // bichito: cuerpo, cabeza, patas y antenas
+  g.fillStyle(0xffffff, 1).fillEllipse(0, 3, 16, 20).fillCircle(0, -9, 5);
+  g.lineStyle(2.5, 0xffffff, 1);
+  for (const yy of [-2, 4, 10]) g.lineBetween(-8, yy, -14, yy - 3).lineBetween(8, yy, 14, yy - 3);
+  g.lineBetween(-2, -13, -6, -18).lineBetween(2, -13, 6, -18);
+  g.lineStyle(2, 0x0a1638, 1).lineBetween(0, -5, 0, 12);
+}
+
 function shieldIcon(g: Phaser.GameObjects.Graphics) {
   g.fillStyle(0xffffff, 1);
   g.beginPath().moveTo(0, -15).lineTo(13, -9).lineTo(11, 5).lineTo(0, 15).lineTo(-11, 5).lineTo(-13, -9).closePath().fillPath();

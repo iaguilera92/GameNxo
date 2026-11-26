@@ -75,18 +75,23 @@ function tapHand(scene: Phaser.Scene, root: Phaser.GameObjects.Container, x: num
 }
 
 /** Mantiene visible y accesible solo el siguiente control del tutorial. */
-export function guideFocus(scene: Phaser.Scene, target: { x: number; y: number; w: number; h: number }, message: string, opts: { textDy?: number; hand?: boolean; centerText?: boolean } = {}) {
+export function guideFocus(scene: Phaser.Scene, target: { x: number; y: number; w: number; h: number }, message: string, opts: { textDy?: number; hand?: boolean; centerText?: boolean; textUp?: number; dim?: number; fadeMs?: number } = {}) {
   const { width, height } = scene.scale;
   const left = Math.max(0, target.x - target.w / 2 - 6);
   const right = Math.min(width, target.x + target.w / 2 + 6);
   const top = Math.max(0, target.y - target.h / 2 - 6);
   const bottom = Math.min(height, target.y + target.h / 2 + 6);
   const root = scene.add.container(0, 0).setDepth(8100).setScrollFactor(0);
+  // (26-11-2026, usuario) aparición suave (opcional)
+  if (opts.fadeMs) {
+    root.setAlpha(0);
+    scene.tweens.add({ targets: root, alpha: 1, duration: opts.fadeMs, ease: 'Sine.easeOut' });
+  }
   for (const [x, y, w, h] of [[0, 0, width, top], [0, bottom, width, height - bottom], [0, top, left, bottom - top], [right, top, width - right, bottom - top]]) {
-    if (w > 0 && h > 0) root.add(scene.add.rectangle(x, y, w, h, 0x03091a, 0.72).setOrigin(0).setInteractive());
+    if (w > 0 && h > 0) root.add(scene.add.rectangle(x, y, w, h, 0x03091a, opts.dim ?? 0.72).setOrigin(0).setInteractive());
   }
   root.add(scene.add.graphics().lineStyle(4, 0xffd23f).strokeRoundedRect(left, top, right - left, bottom - top, 16));
-  const textY = top > 95 ? top - 46 : bottom + 46 + (opts.textDy ?? 0);
+  const textY = top > 95 ? top - 46 - (opts.textUp ?? 0) : bottom + 46 + (opts.textDy ?? 0);
   // el texto, centrado sobre el control que hay que tocar (sin salirse de la pantalla)
   const label = scene.add.text(target.x, textY, message, {
     fontFamily: FONT, fontSize: '32px', color: '#fff3bb', stroke: '#071332', strokeThickness: 7,

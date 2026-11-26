@@ -6,7 +6,7 @@ import { EMOTES, type EmoteKind } from '../domain/emotes';
 /**
  * EMOTES del partido (estilo Brawl Stars): un botón de charla abre 3 caritas; al elegir una sale un globo con
  * la carita sobre la cabeza del jugador. Después hay una espera de 10 s (el botón se apaga con la cuenta atrás).
- * Los rostros usan los stickers de Nxo. El botón y el panel son de interfaz (scrollFactor 0); el globo vive en
+ * Los rostros usan los stickers del personaje, con los de NXO como respaldo. El botón y el panel son de interfaz (scrollFactor 0); el globo vive en
  * el mundo y sigue la cabeza del jugador.
  */
 export const EMOTE_COOLDOWN_MS = 10000;
@@ -45,8 +45,8 @@ const isAnim = (k: EmoteKind) => !!EMOTE_ANIM[k];
 /** Crea (una vez) las animaciones de los emotes animados. */
 export function ensureEmoteAnims(scene: Phaser.Scene) {
   for (const [kind, a] of Object.entries(EMOTE_ANIM)) {
-    // la hoja de NXO y la de MAI (misma distribución de frames)
-    for (const key of [EMOTE_TEXTURE[kind as EmoteKind], MAI_EMOTE_TEXTURE[kind as EmoteKind]]) {
+    for (const art of EMOTE_ART) {
+      const key = art[kind as EmoteKind];
       if (!a || !key || !scene.textures.exists(key)) continue;
       if (!scene.anims.exists(`${key}-intro`)) scene.anims.create({ key: `${key}-intro`, frames: scene.anims.generateFrameNumbers(key, { frames: a.intro }), frameRate: a.fps });
       if (!scene.anims.exists(`${key}-loop`)) scene.anims.create({ key: `${key}-loop`, frames: scene.anims.generateFrameNumbers(key, { frames: a.loop }), frameRate: a.fps, repeat: -1 });
@@ -67,25 +67,57 @@ export const MAI_EMOTE_TEXTURE: Partial<Record<EmoteKind, string>> = {
   treasure: 'emote-mai-legendario-tesoro',
 };
 
-/** Textura del emote para un personaje (Mai: la suya si existe; si no, la de NXO). */
+const MAT_EMOTE_TEXTURE: Record<EmoteKind, string> = {
+  happy: 'emote-mat-risa',
+  cool: 'emote-mat-pensando',
+  wow: 'emote-mat-enojado',
+  cry: 'emote-mat-llorando',
+  shades: 'emote-mat-legendario-lentes',
+  treasure: 'emote-mat-legendario-tesoro',
+};
+
+const ISA_EMOTE_TEXTURE: Record<EmoteKind, string> = {
+  happy: 'emote-isa-risa',
+  cool: 'emote-isa-pensando',
+  wow: 'emote-isa-enojada',
+  cry: 'emote-isa-llorando',
+  shades: 'emote-isa-legendario-lentes',
+  treasure: 'emote-isa-legendario-tesoro',
+};
+
+const JUN_EMOTE_TEXTURE: Record<EmoteKind, string> = {
+  happy: 'emote-jun-risa',
+  cool: 'emote-jun-pensando',
+  wow: 'emote-jun-enojado',
+  cry: 'emote-jun-llorando',
+  shades: 'emote-jun-legendario-lentes',
+  treasure: 'emote-jun-legendario-tesoro',
+};
+
+const CHARACTER_EMOTES: Record<string, Partial<Record<EmoteKind, string>>> = {
+  mai: MAI_EMOTE_TEXTURE,
+  mat: MAT_EMOTE_TEXTURE,
+  isa: ISA_EMOTE_TEXTURE,
+  jun: JUN_EMOTE_TEXTURE,
+};
+const EMOTE_ART = [EMOTE_TEXTURE, ...Object.values(CHARACTER_EMOTES)];
+
+/** Textura del emote para un personaje, con respaldo de NXO. */
 export function emoteTexture(scene: Phaser.Scene, kind: EmoteKind, skin = 'nxo'): string {
-  const mai = skin.startsWith('mai') ? MAI_EMOTE_TEXTURE[kind] : undefined;
-  return mai && scene.textures.exists(mai) ? mai : EMOTE_TEXTURE[kind];
+  const id = skin.startsWith('mai') ? 'mai' : skin.replace(/-front$/, '');
+  const key = CHARACTER_EMOTES[id]?.[kind];
+  return key && scene.textures.exists(key) ? key : EMOTE_TEXTURE[kind];
 }
 
 /** Encola las miniaturas de los emotes que falten (partido, Pase de Batalla). */
 export function queueEmoteArt(load: Phaser.Loader.LoaderPlugin) {
-  for (const [kind, key] of Object.entries(EMOTE_TEXTURE)) {
-    if (load.scene.textures.exists(key)) continue;
-    const a = EMOTE_ANIM[kind as EmoteKind];
-    if (a) load.spritesheet(key, `assets/emotes/${key}.webp`, { frameWidth: a.cell, frameHeight: a.cell });
-    else load.image(key, `assets/emotes/${key}.webp`); // (25-11-2026) miniaturas en WebP
-  }
-  for (const [kind, key] of Object.entries(MAI_EMOTE_TEXTURE)) {
-    if (!key || load.scene.textures.exists(key)) continue;
-    const a = EMOTE_ANIM[kind as EmoteKind];
-    if (a) load.spritesheet(key, `assets/emotes/${key}.webp`, { frameWidth: a.cell, frameHeight: a.cell });
-    else load.image(key, `assets/emotes/${key}.webp`); // (25-11-2026) miniaturas en WebP
+  for (const art of EMOTE_ART) {
+    for (const [kind, key] of Object.entries(art)) {
+      if (!key || load.scene.textures.exists(key)) continue;
+      const a = EMOTE_ANIM[kind as EmoteKind];
+      if (a) load.spritesheet(key, `assets/emotes/${key}.webp`, { frameWidth: a.cell, frameHeight: a.cell });
+      else load.image(key, `assets/emotes/${key}.webp`);
+    }
   }
 }
 
@@ -119,7 +151,7 @@ export class Emotes {
   private static readonly COLS = 4;
   private static readonly CELL = 88;
   private static readonly FACE = 68;
-  /** personaje del jugador y del rival: el globo lleva la cara de cada uno (Mai / NXO); el panel, la del jugador */
+  /** El globo lleva la cara del jugador o del rival. El panel muestra la del jugador. */
   mySkin = 'nxo';
   rivalSkin = 'nxo';
 
@@ -300,7 +332,7 @@ export class Emotes {
     }
     // ANIMADO: la entrada una vez y luego la risa en bucle
     ensureEmoteAnims(this.scene);
-    const key = emoteTexture(this.scene, kind, skin); // la hoja del personaje (MAI: la suya si existe)
+    const key = emoteTexture(this.scene, kind, skin);
     const spr = this.scene.add.sprite(0, -H / 2, key, 0).setDisplaySize(108, 108);
     c.add([g, spr]);
     if (this.scene.anims.exists(`${key}-intro`)) {

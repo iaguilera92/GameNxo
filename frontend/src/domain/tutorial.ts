@@ -192,11 +192,18 @@ export const GUIDE = {
   defensive: 'guide-defensive',
   profile: 'guide-profile',
   spin: 'guide-spin',
-  l3: 'guide-l3', // (25-11-2026, usuario) partido guiado del nivel 3: cortita, remate, ESPECIAL del rival
+  l3: 'guide-l3',
+  pass: 'guide-pass', // (26-11-2026, usuario) nivel 5: el PASE (cobrar lo juntado)
+  shop: 'guide-shop', // (26-11-2026, usuario) nivel 5: la TIENDA (regalo y un defensivo)
+  /** (26-11-2026) explicación del PERFIL (nivel 2): faltaba aquí y migrate la borraba al recargar (salía otra vez) */
+  profileInfo: 'perfil-info',
+  shopGift: 'guide-shop-gift', // (26-11-2026, usuario) el regalo de la guía de la tienda (aunque ya se recogiera el del día)
+  friends: 'guide-friends',
+  l5: 'guide-l5', // (26-11-2026, usuario) partido guiado del nivel 5: DROP SHOT 0 y SMASH con el círculo // (26-11-2026, usuario) nivel 5: ya puedes jugar con tus AMIGOS // (25-11-2026, usuario) partido guiado del nivel 3: cortita, remate, ESPECIAL del rival
   daily: 'guide-daily', // (25-11-2026, usuario) nivel 3, menú: abrir el PREMIO DIARIO y cobrarlo (antes del partido del nivel 3)
   special: 'guide-special', // (25-11-2026, usuario) nivel 4, tras los premios: PERSONAJE › ESPECIAL desbloqueado (como el DEFENSIVO del nivel 2)
 } as const;
-export type GuidedMatch = 'first' | 'spin' | 'l3';
+export type GuidedMatch = 'first' | 'spin' | 'l3' | 'l4' | 'l5';
 export const GUIDE_FIRST_WHEEL = 'guide-first-wheel';
 export function guidedStep(level: number, seen: readonly string[] = []) {
   if (level === 1 && !seen.includes(GUIDE.firstMatch)) return 'play';
@@ -206,7 +213,14 @@ export function guidedStep(level: number, seen: readonly string[] = []) {
   if (!seen.includes(GUIDE.spin)) return 'spin';
   if (level >= 3 && !seen.includes(GUIDE.daily)) return 'daily';
   if (level === 3 && !seen.includes(GUIDE.l3)) return 'l3';
-  return level >= UNLOCK_LEVEL.special && !seen.includes(GUIDE.special) ? 'special' : null;
+  if (level >= UNLOCK_LEVEL.special && !seen.includes(GUIDE.special)) return 'special';
+  // (26-11-2026, usuario) nivel 4, ya equipado el ESPECIAL: el menú sigue oscuro y guía a JUGAR (hasta subir de nivel)
+  if (level === UNLOCK_LEVEL.special) return 'l4';
+  // (26-11-2026, usuario) nivel 5: primero el PASE (cobrar los premios) y luego la TIENDA
+  if (level >= UNLOCK_LEVEL.pass && !seen.includes(GUIDE.pass)) return 'pass';
+  if (level >= UNLOCK_LEVEL.pass && !seen.includes(GUIDE.shop)) return 'shop';
+  if (level >= UNLOCK_LEVEL.pass && !seen.includes(GUIDE.friends)) return 'friends';
+  return null;
 }
 
 /**
@@ -219,6 +233,7 @@ export function tutorialSeenBefore(level: number): string[] {
   if (level >= 3) seen.push(GUIDE.defensive, GUIDE.profile, GUIDE.spin);
   if (level >= 4) seen.push(GUIDE.daily, GUIDE.l3);
   if (level >= 5) seen.push(GUIDE.special);
+  if (level >= 6) seen.push(GUIDE.pass, GUIDE.shop, GUIDE.friends);
   return seen;
 }
 

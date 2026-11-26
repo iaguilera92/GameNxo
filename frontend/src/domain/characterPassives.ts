@@ -35,7 +35,7 @@ const KINDS: Record<PassiveId, Omit<PassiveDef, 'skin' | 'detail'> & { what: str
   precision: { id: 'precision', name: 'PRECISIÓN', short: 'Tus golpes y tu saque se desvían menos.', what: 'Reduce el desvío de tus golpes (a los lados y en profundidad) y de tu saque.', color: 0xff8fc4, css: '#ffc2dd' },
   strength: { id: 'strength', name: 'FUERZA', short: 'Tus golpes salen más fuertes y rápidos.', what: 'Aumenta la velocidad de tus golpes (no los globos ni las dejadas).', color: 0xff8a4a, css: '#ffb98f' },
   spin: { id: 'spin', name: 'EFECTO', short: 'Tu saque y tu golpe tienen más efecto.', what: 'Aumenta la curva de tu saque con efecto y de tus golpes.', color: 0x5be37a, css: '#9ff0b4' },
-  resistance: { id: 'resistance', name: 'RESISTENCIA', short: 'Tu DEFENSIVO se recarga antes.', what: 'Reduce la espera para volver a usar tu DEFENSIVO.', color: 0xffd23f, css: '#ffe58a' },
+  resistance: { id: 'resistance', name: 'RESISTENCIA', short: 'Tu DEFENSIVO se recarga antes y te aturden menos tiempo.', what: 'Tu DEFENSIVO se recarga antes y los aturdimientos te duran menos.', color: 0xffd23f, css: '#ffe58a' },
 };
 
 const def = (skin: string, name: string, id: PassiveId): PassiveDef => {

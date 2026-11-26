@@ -35,7 +35,8 @@ export type TutorialMissionId =
   | 'tChargedLob'
   | 'tDrop0'
   | 'tSpinServe'
-  | 'tZone';
+  | 'tZone'
+  | 't05Smash';
 
 /** regla del usuario: como mucho 4 misiones por partido */
 export const TUTORIAL_MISSIONS_MAX = 4;
@@ -56,7 +57,7 @@ export const TUTORIAL_MISSION_DEFS: Record<TutorialMissionId, { title: string; c
   tUlti: { title: 'Lanza la ULTI', coins: 10 },
   tRacket: { title: 'Rival sin raqueta', coins: 15 },
   tRemate: { title: 'Remata un globo', coins: 15 },
-  tSpecial: { title: 'Usa el ESPECIAL', coins: 10 },
+  tSpecial: { title: 'Usar especial', coins: 10 }, // (26-11-2026, usuario)
   tDef: { title: 'Usa el DEFENSIVO', coins: 10 },
   tDive: { title: 'Haz una estirada', coins: 15 },
   tTeamPoint: { title: 'Punto de tu compañero', coins: 10 },
@@ -67,6 +68,7 @@ export const TUTORIAL_MISSION_DEFS: Record<TutorialMissionId, { title: string; c
   tDrop0: { title: 'DROP SHOT 0', coins: 15 },
   tSpinServe: { title: 'Saca con efecto', coins: 10 },
   tZone: { title: 'Entra en ZONA', coins: 15 },
+  t05Smash: { title: 'SMASH cargado', coins: 15 }, // (26-11-2026, usuario) nivel 5: smash en el círculo
 };
 
 /** Misiones del partido del tutorial de cada nivel (orden de las cards). 16 a 19: las normales (partidos completos). */
@@ -74,8 +76,8 @@ const BY_LEVEL: Record<number, string[]> = {
   1: ['guideJoystick', 'guideJoystickUpDown', 'guideDirectServe', 'tWin'], // primer partido guiado
   2: ['t02Def', 't02Lob', 'tWin'], // DEFENSIVO y globo (25-11-2026, usuario: sin Devuélvela, repetía el DEFENSIVO)
   3: ['t03Drop', 'tRemate', 'tWin'], // (25-11-2026, usuario) cortita, remate en la red (el ESPECIAL del rival no es misión)
-  4: ['t04Arm', 't04Stun', 'tWin'], // ESPECIAL
-  5: ['tGood', 'tPerfect', 'tStreak2', 'tWin'], // PERFECT TIMING
+  4: ['tSpecial', 'tCharge', 'tChargedLob', 'tWin'], // (26-11-2026, usuario) ESPECIAL, CARGANDO y GLOBO cargado (partido guiado)
+  5: ['tDrop0', 't05Smash', 'tWin'], // (26-11-2026, usuario) DROP SHOT 0 y SMASH con el círculo (partido guiado)
   6: ['tUlti', 'tRacket', 'tWin'], // ULTI
   7: ['tRemate', 'tSpecial', 'tWin'], // globo del rival y remate
   8: ['tCharge', 'tChargedLob', 'tDrop0'], // CARGANDO GOLPE (25-11-2026: antes en el 12)

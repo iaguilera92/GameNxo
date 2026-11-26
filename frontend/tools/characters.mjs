@@ -75,6 +75,10 @@ export const CHARACTERS = {
   'jun-front': { view: 'front', dir: 'Jun/rival', prefix: 'pj-jun-rival' },
   isa: { view: 'back', dir: 'Isa', prefix: 'pj-isa' },
   'isa-front': { view: 'front', dir: 'Isa/rival', prefix: 'pj-isa-rival' },
+  net: { view: 'back', dir: 'Net', prefix: 'pj-net' },
+  'net-front': { view: 'front', dir: 'Net/rival', prefix: 'pj-net-rival' },
+  zac: { view: 'back', dir: 'Zac', prefix: 'pj-zac' },
+  'zac-front': { view: 'front', dir: 'Zac/rival', prefix: 'pj-zac-rival' },
   mat: {
     view: 'back',
     dir: 'Mat',

@@ -1,7 +1,7 @@
 // Hoja ANIMADA genérica de 8 frames (2 filas x 4 sobre verde croma, 1536x1024) → celdas cuadradas en 4 x 2 (18-11-2026).
-//   node tools/build-anim-sheet.mjs <fuente.png> <salida.webp> [celda=192]
+//   node tools/build-anim-sheet.mjs <fuente.png> <salida.webp> [celda=192] [--alpha]
 // Usos: EMOTE LEGENDARIO animado (personajes/Nxo/emojis/animados/ → assets/emotes/emote-nxo-legendario-*.webp; ui/Emotes.ts).
-// - Verde -> alfa (con despill), igual que tools/build-dragon-ball.mjs.
+// - Verde -> alfa por defecto. --alpha conserva el alfa de la fuente, incluido el verde del personaje.
 // - Todos los frames comparten el MISMO recorte (unión de lo ocupado en su casilla): el dibujo no salta entre frames.
 // - El lado mayor del recorte cabe en la celda (con margen).
 import { dirname, join } from 'node:path';
@@ -16,22 +16,26 @@ if (!SRC || !OUT) throw new Error('uso: node tools/build-anim-sheet.mjs <fuente.
 const COLS = 4;
 const ROWS = 2;
 const NF = COLS * ROWS;
-const CELL = Number(process.argv[4] || 192);
+const args = process.argv.slice(4);
+const CELL = Number(args.find((arg) => arg !== '--alpha') ?? 192);
 const PAD = 4;
 const A = 30; // alfa mínimo que cuenta para el recorte (ignora el halo casi transparente)
 
 const img = decode(SRC);
 const { w, h } = img;
-const px = Buffer.alloc(w * h * 4);
-for (let i = 0; i < px.length; i += 4) {
-  const r = img.px[i], g = img.px[i + 1], b = img.px[i + 2];
-  const m = Math.max(r, b);
-  const d = g - m;
-  const a = d > 70 ? 0 : d < 25 ? 255 : Math.round((255 * (70 - d)) / 45);
-  px[i] = r;
-  px[i + 1] = a < 255 ? Math.min(g, m) : g;
-  px[i + 2] = b;
-  px[i + 3] = a;
+const keepAlpha = args.includes('--alpha');
+const px = keepAlpha ? img.px : Buffer.alloc(w * h * 4);
+if (!keepAlpha) {
+  for (let i = 0; i < px.length; i += 4) {
+    const r = img.px[i], g = img.px[i + 1], b = img.px[i + 2];
+    const m = Math.max(r, b);
+    const d = g - m;
+    const a = d > 70 ? 0 : d < 25 ? 255 : Math.round((255 * (70 - d)) / 45);
+    px[i] = r;
+    px[i + 1] = a < 255 ? Math.min(g, m) : g;
+    px[i + 2] = b;
+    px[i + 3] = a;
+  }
 }
 const cw = w / COLS;
 const ch = h / ROWS;

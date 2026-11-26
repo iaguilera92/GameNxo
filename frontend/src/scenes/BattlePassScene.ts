@@ -7,6 +7,10 @@ import { fitText } from '../ui/fitText';
 import { commit, getPlayer, onPlayerChange } from '../domain/playerStore';
 import { bpSeasonInfo } from '../domain/battlePassConfig';
 import { totalPlayed } from '../logic/Stats';
+import { isDevMode } from '../domain/devMode';
+import { GUIDE, guidedStep } from '../domain/tutorial';
+import { markTutorialSeen } from '../domain/operations';
+import { guideFocus } from '../ui/guideFocus';
 import { BP_SEASON, BP_TIERS, type BpReward, type BpTrack, bpBonusSpinIndex, bpBuyPremium, bpCanClaim, bpClaim, bpClaimBonus, bpClaimWelcome, bpLevel, syncSeason } from '../domain/battlePass';
 import type { PlayerState } from '../domain/player';
 import { type ChargeFxId, chargeFxDef } from '../domain/chargeFx';
@@ -17,7 +21,7 @@ import { passiveOf } from '../domain/characterPassives';
 import { openPassiveDialog } from '../ui/passiveInfo';
 import { CHAR_COLOR_LIST, COLOR_SKINS, charColorItem } from '../domain/charColors';
 import { CHEST } from '../domain/chest';
-import { CHEST_TEX, chestImage, drawChestIcon } from '../ui/wheelArt';
+import { CHEST_TEX, WHEEL_FRAME, chestImage, drawChestIcon, drawWheelFace } from '../ui/wheelArt';
 import { passPortrait, queuePassPortraits } from '../characters/passPortrait';
 import { applyCharColor } from '../fx/CharColorFx';
 
@@ -86,6 +90,7 @@ export class BattlePassScene extends Phaser.Scene {
   preload() {
     releaseSceneTexturesOnExit(this); // (25-11-2026) sus imágenes propias se liberan al salir (ui/sceneTextures.ts)
     if (!this.textures.exists('menu-bg')) this.load.image('menu-bg', 'assets/menu-bg.webp');
+    if (!this.textures.exists(WHEEL_FRAME.key)) this.load.image(WHEEL_FRAME.key, 'assets/ruleta-frame.webp'); // (26-11-2026) la ruleta del menú
     if (!this.textures.exists('battle-pass-title')) this.load.image('battle-pass-title', 'assets/titulo-pase-batalla.webp');
     if (!this.textures.exists('battle-pass-insignia')) this.load.image('battle-pass-insignia', 'assets/insignia-pase-batalla.webp');
     // retrato de Mai: ya lo carga BootScene (characters/portrait.ts); solo se descarga si falta (1,3 MB)
@@ -135,6 +140,9 @@ export class BattlePassScene extends Phaser.Scene {
     this.addBottomButton();
     // al abrir: la lista empieza en tu nivel actual
     this.listOffset = Phaser.Math.Clamp(this.rowTop(Math.max(0, this.st.level - 1)), 0, -this.scrollMin);
+    // (26-11-2026, usuario) nivel 5, guía del PASE: arriba (los premios juntados) y aviso COBRA TUS PREMIOS
+    this.passGuide = !isDevMode() && guidedStep(getPlayer().level, getPlayer().tutorial) === 'pass';
+    if (this.passGuide) this.listOffset = 0;
     this.ensureRows();
     this.refreshBottomControl();
 
@@ -142,11 +150,37 @@ export class BattlePassScene extends Phaser.Scene {
       this.refreshState();
       this.buildTop();
       this.rebuildRows();
+      this.tickPassGuide();
     });
+    this.tickPassGuide();
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       off();
       this.clearRows();
     });
+  }
+
+  /** (26-11-2026, usuario) guía del nivel 5: cobrar los premios GRATIS juntados y volver al menú */
+  private passGuide = false;
+  private passGuideText?: Phaser.GameObjects.Text;
+  private freeToClaim() {
+    const s = syncSeason(getPlayer() as PlayerState);
+    const lvl = bpLevel(s.bp.xp).level;
+    let n = !s.bp.welcomeFreeClaimed && (totalPlayed() > 0 || s.bp.xp > 0) ? 1 : 0;
+    for (let t = 1; t <= lvl; t++) if (!s.bp.free.includes(t)) n++;
+    return n;
+  }
+  private tickPassGuide() {
+    if (!this.passGuide || !this.sys.isActive()) return;
+    if (this.freeToClaim() > 0) {
+      this.passGuideText ??= this.add.text(this.scale.width / 2, this.scale.height - 150, 'TOCA ¡RECLAMAR! EN CADA PREMIO', { fontFamily: FONT, fontSize: '28px', color: '#ffd23f', stroke: '#0a1638', strokeThickness: 7, align: 'center', wordWrap: { width: this.scale.width - 40 } }).setOrigin(0.5).setDepth(8000);
+      return;
+    }
+    // todo cobrado: VUELVE AL MENÚ (la guía sigue con la TIENDA)
+    this.passGuide = false;
+    this.passGuideText?.destroy();
+    this.passGuideText = undefined;
+    commit((s) => markTutorialSeen(s, GUIDE.pass));
+    guideFocus(this, { x: 54, y: 64, w: 78, h: 78 }, 'VUELVE AL MENÚ', { textDy: 34 });
   }
 
   /** Estado del pase y límites del desplazamiento (una vez por cambio). */
@@ -608,47 +642,32 @@ export class BattlePassScene extends Phaser.Scene {
         },
       });
     }
+    // (26-11-2026, usuario) la RULETA del menú (disco + marco con su indicador), en vez de la dibujada
     const wheel = this.add.graphics({ x: wx, y: 0 });
-    const colors = [GOLD, 0xff6d4a, 0x5fd0ff, 0x9b72ff, 0x68d966, 0xff80b8, 0xffe14d, 0x3fe0a0];
-    const n = colors.length;
-    wheel.fillStyle(0x0a1638, 1).fillCircle(0, 0, radius + 7);
-    wheel.fillStyle(GOLD, 1).fillCircle(0, 0, radius + 4);
-    for (let i = 0; i < n; i++) {
-      const a0 = (i / n) * Math.PI * 2 - Math.PI / 2;
-      const a1 = ((i + 1) / n) * Math.PI * 2 - Math.PI / 2;
-      const points = [{ x: 0, y: 0 }];
-      for (let j = 0; j <= 6; j++) {
-        const a = a0 + ((a1 - a0) * j) / 6;
-        points.push({ x: Math.cos(a) * radius, y: Math.sin(a) * radius });
-      }
-      wheel.fillStyle(colors[i], 1).fillPoints(points, true);
-    }
-    wheel.fillStyle(0xffffff, 0.18).fillEllipse(0, -radius * 0.4, radius * 1.4, radius * 0.7);
-    for (let i = 0; i < n; i++) {
-      const a = (i / n) * Math.PI * 2 - Math.PI / 2;
-      wheel.fillStyle(0xffffff, 1).fillCircle(Math.cos(a) * (radius + 2), Math.sin(a) * (radius + 2), 2.6); // focos del borde
-    }
-    wheel.fillStyle(0x0a1638, 1).fillCircle(0, 0, radius * 0.2);
-    wheel.fillStyle(GOLD, 1).fillCircle(0, 0, radius * 0.15);
+    drawWheelFace(wheel, radius * 0.82, false);
     card.add(wheel);
     if (ready) this.loop({ targets: wheel, angle: 360, duration: 6000, repeat: -1 });
-    // flecha fija arriba de la ruleta
-    const ptr = this.add.graphics({ x: wx, y: -radius - 2 });
-    ptr.fillStyle(0x0a1638, 1).fillTriangle(-11, -10, 11, -10, 0, 12);
-    ptr.fillStyle(0xffffff, 1).fillTriangle(-8, -8, 8, -8, 0, 8);
-    card.add(ptr);
+    if (this.textures.exists(WHEEL_FRAME.key)) {
+      const d = (WHEEL_FRAME.size * radius * 0.82) / WHEEL_FRAME.disc;
+      card.add(this.add.image(wx, 0, WHEEL_FRAME.key).setDisplaySize(d, d));
+    }
 
     const tx = wx + radius + 30;
-    const title = this.add.text(tx, -h * 0.17, pending ? '¡RULETA DISPONIBLE!' : 'BONUS FINAL', {
-      fontFamily: FONT, fontSize: '34px', color: ready ? '#ffd23f' : '#ffffff', stroke: '#1a0a33', strokeThickness: 6,
-    }).setOrigin(0, 0.5);
-    const sub = pending ? 'Toca para girar' : s.bp.bonusClaimed ? 'BONUS RECLAMADO' : '1 GIRO DE RULETA · COMPARTIDO';
-    const subT = this.add.text(tx + 2, h * 0.06, sub, { fontFamily: FONT, fontSize: '17px', color: '#e2d6ff' }).setOrigin(0, 0.5).setLetterSpacing(1);
-    card.add([title, subT]);
+    // (26-11-2026, usuario) disponible: solo ¡RULETA DISPONIBLE!, más al centro (sin "Toca para girar" ni botón GIRAR); la card late
     const maxTW = w / 2 - 20 - tx;
+    const title = this.add.text(pending ? tx + maxTW / 2 : tx, pending ? 0 : -h * 0.17, pending ? '¡RULETA DISPONIBLE!' : 'BONUS FINAL', {
+      fontFamily: FONT, fontSize: '34px', color: ready ? '#ffd23f' : '#ffffff', stroke: '#1a0a33', strokeThickness: 6,
+    }).setOrigin(pending ? 0.5 : 0, 0.5);
+    card.add(title);
     if (title.width > maxTW) title.setScale(maxTW / title.width);
-    if (subT.width > maxTW) subT.setScale(maxTW / subT.width);
-    if (ready) {
+    if (!pending) {
+      const sub = s.bp.bonusClaimed ? 'BONUS RECLAMADO' : '1 GIRO DE RULETA · COMPARTIDO';
+      const subT = this.add.text(tx + 2, h * 0.06, sub, { fontFamily: FONT, fontSize: '17px', color: '#e2d6ff' }).setOrigin(0, 0.5).setLetterSpacing(1);
+      card.add(subT);
+      if (subT.width > maxTW) subT.setScale(maxTW / subT.width);
+    }
+    if (pending) this.loop({ targets: card, scale: { from: 1, to: 1.03 }, duration: 700, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
+    if (ready && !pending) {
       // botón ¡GIRAR! que late
       const bw = 170;
       const btn = this.add.container(tx + bw / 2, h * 0.3);

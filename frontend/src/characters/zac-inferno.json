@@ -1,0 +1,107 @@
+{
+  "source": "Zac/jugador/zac-ulti-1..6.png",
+  "view": "back",
+  "cell": {
+    "w": 204,
+    "h": 207
+  },
+  "origin": {
+    "x": 0.5,
+    "y": 0.98068
+  },
+  "standHeight": 190,
+  "cols": 3,
+  "hold": 3,
+  "preStrike": 4,
+  "strikeFrom": 4,
+  "impact": 5,
+  "racketFree": 2,
+  "pickupGrab": 3,
+  "animations": {
+    "inferno-swing": {
+      "file": "inferno-swing.webp",
+      "frames": 8,
+      "fps": 15,
+      "loop": false,
+      "impact": 5,
+      "cell": {
+        "w": 204,
+        "h": 207
+      },
+      "origin": {
+        "x": 0.5,
+        "y": 0.98068
+      }
+    },
+    "ulti-hit": {
+      "file": "ulti-hit.webp",
+      "frames": 9,
+      "fps": 14,
+      "loop": false,
+      "cell": {
+        "w": 184,
+        "h": 225
+      },
+      "origin": {
+        "x": 0.5,
+        "y": 0.98222
+      }
+    },
+    "ulti-stun": {
+      "file": "ulti-stun.webp",
+      "frames": 9,
+      "fps": 12,
+      "loop": true,
+      "cell": {
+        "w": 134,
+        "h": 223
+      },
+      "origin": {
+        "x": 0.5,
+        "y": 0.98206
+      }
+    },
+    "idle-nr": {
+      "file": "idle-nr.webp",
+      "frames": 9,
+      "fps": 8,
+      "loop": true,
+      "cell": {
+        "w": 126,
+        "h": 201
+      },
+      "origin": {
+        "x": 0.5,
+        "y": 0.9801
+      }
+    },
+    "run-nr": {
+      "file": "run-nr.webp",
+      "frames": 9,
+      "fps": 14,
+      "loop": true,
+      "cell": {
+        "w": 136,
+        "h": 199
+      },
+      "origin": {
+        "x": 0.5,
+        "y": 0.9799
+      }
+    },
+    "pickup": {
+      "file": "pickup.webp",
+      "frames": 8,
+      "fps": 14,
+      "loop": false,
+      "cell": {
+        "w": 168,
+        "h": 197
+      },
+      "origin": {
+        "x": 0.5,
+        "y": 0.9797
+      }
+    }
+  }
+}

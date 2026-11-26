@@ -494,7 +494,7 @@ export class MatchEndScene extends Phaser.Scene {
       // el MENÚ, al volver, muestra "+N EXP" y llena las barras de nivel y del pase (después de la ruleta, si se abre)
       this.registry.set('menu.xpGain', gained);
       if (!d.surrendered && d.guide && d.win) {
-        commit((s) => markTutorialSeen(s, d.guide === 'first' ? GUIDE.firstMatch : d.guide === 'l3' ? GUIDE.l3 : GUIDE.spin));
+        commit((s) => markTutorialSeen(s, d.guide === 'first' ? GUIDE.firstMatch : d.guide === 'l3' ? GUIDE.l3 : d.guide === 'l5' ? GUIDE.l5 : GUIDE.spin));
       }
     }
     // 2v2 (21-11-2026, usuario): no se ganan monedas de 1v1, solo las MONEDAS 2v2
@@ -605,9 +605,8 @@ export class MatchEndScene extends Phaser.Scene {
         ease: 'Cubic.easeOut',
         onUpdate: () => e.value.setText(`+${Math.round(cnt.v)}`),
         onComplete: () => {
-          if (xp.levelsUp <= 0) return;
-          e.sub.setText(`¡NIVEL ${xp.after.level}!`).setColor('#ffd23f');
-          this.levelUp(W / 2, top - 26, xp.after.level);
+          // (26-11-2026, usuario) sin "¡SUBISTE A NIVEL N!" ni "¡NIVEL N!" aquí: la subida de nivel se ve en el menú principal
+          void xp;
         },
       });
     });

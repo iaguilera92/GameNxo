@@ -52,6 +52,26 @@ import junFrontSpecial from '../characters/jun-front-special.json';
 import junFrontMove from '../characters/jun-front-move.json';
 import junFrontExtra from '../characters/jun-front-extra.json';
 import junFrontInferno from '../characters/jun-front-inferno.json';
+import netHits from '../characters/net-hits.json';
+import netSpecial from '../characters/net-special.json';
+import netMove from '../characters/net-move.json';
+import netExtra from '../characters/net-extra.json';
+import netInferno from '../characters/net-inferno.json';
+import netFrontHits from '../characters/net-front-hits.json';
+import netFrontSpecial from '../characters/net-front-special.json';
+import netFrontMove from '../characters/net-front-move.json';
+import netFrontExtra from '../characters/net-front-extra.json';
+import netFrontInferno from '../characters/net-front-inferno.json';
+import zacHits from '../characters/zac-hits.json';
+import zacSpecial from '../characters/zac-special.json';
+import zacMove from '../characters/zac-move.json';
+import zacExtra from '../characters/zac-extra.json';
+import zacInferno from '../characters/zac-inferno.json';
+import zacFrontHits from '../characters/zac-front-hits.json';
+import zacFrontSpecial from '../characters/zac-front-special.json';
+import zacFrontMove from '../characters/zac-front-move.json';
+import zacFrontExtra from '../characters/zac-front-extra.json';
+import zacFrontInferno from '../characters/zac-front-inferno.json';
 import { runAnimRate } from '../logic/PlayerMotion';
 
 /**
@@ -74,7 +94,7 @@ const DIVE_CUT = 5;
 /** cuadro (índice) de la recuperación desde el que se sigue: de rodillas con la mano en el suelo (sin el de tumbado) */
 const RECOVER_FROM = 1;
 /** clips de estirada que ya terminan de pie (se ven enteros, sin recover-*): ver NxoActor.diveSelfRecover */
-const DIVE_SELF_RECOVER = new Set(['nxo', 'mai', 'maif', 'nxof', 'mat', 'matf', 'isa', 'isaf', 'jun', 'junf']);
+const DIVE_SELF_RECOVER = new Set(['nxo', 'mai', 'maif', 'nxof', 'mat', 'matf', 'isa', 'isaf', 'jun', 'junf', 'net', 'netf', 'zac', 'zacf']);
 
 /** Raqueta suelta (sale volando al recibir el INFERNO): imagen generada por cÃ³digo. */
 const LOOSE_RACKET_PALETTES = {
@@ -82,6 +102,8 @@ const LOOSE_RACKET_PALETTES = {
   mat: { neck: 0x4b9915, outline: 0x20541c, rim: 0x83d323 },
   isa: { neck: 0xd80d7c, outline: 0x5b1239, rim: 0xff3ca1 },
   jun: { neck: 0xd35b0e, outline: 0x562309, rim: 0xff841b },
+  net: { neck: 0xc91278, outline: 0x551132, rim: 0xff45b5 },
+  zac: { neck: 0xe7ad14, outline: 0x65400e, rim: 0xffd438 },
 };
 
 /**
@@ -354,6 +376,26 @@ const PACKS: Record<SheetId, Pack> = {
     move: junFrontMove, extra: junFrontExtra, bounce: null, ownToss: false,
     inf: junFrontInferno, infDir: 'jun-front-inferno',
   },
+  net: {
+    dir: 'net-v2', key: 'net', hits: netHits, special: netSpecial,
+    move: netMove, extra: netExtra, bounce: null, ownToss: false,
+    inf: netInferno, infDir: 'net-inferno',
+  },
+  'net-front': {
+    dir: 'net-front-v2', key: 'netf', hits: netFrontHits, special: netFrontSpecial,
+    move: netFrontMove, extra: netFrontExtra, bounce: null, ownToss: false,
+    inf: netFrontInferno, infDir: 'net-front-inferno',
+  },
+  zac: {
+    dir: 'zac-v2', key: 'zac', hits: zacHits, special: zacSpecial,
+    move: zacMove, extra: zacExtra, bounce: null, ownToss: false,
+    inf: zacInferno, infDir: 'zac-inferno',
+  },
+  'zac-front': {
+    dir: 'zac-front-v2', key: 'zacf', hits: zacFrontHits, special: zacFrontSpecial,
+    move: zacFrontMove, extra: zacFrontExtra, bounce: null, ownToss: false,
+    inf: zacFrontInferno, infDir: 'zac-front-inferno',
+  },
 };
 const PACK_LIST = Object.values(PACKS) as Pack[];
 /** (25-11-2026, usuario) retoque de tamaño de TODO un personaje (por la clave de su pack): ISA de frente (rival) se veía algo más chica */
@@ -444,7 +486,9 @@ export function releaseCharacterSprites(scene: Phaser.Scene, keep: SheetId[]) {
 
 /** Raqueta suelta con la paleta del personaje, cordaje claro y mango negro. */
 export function ensureLooseRacket(scene: Phaser.Scene, skin?: string): string {
-  const paletteId = skin === 'mat' || skin === 'isa' || skin === 'jun' ? skin : 'nxo';
+  const paletteId = skin && Object.prototype.hasOwnProperty.call(LOOSE_RACKET_PALETTES, skin)
+    ? skin as keyof typeof LOOSE_RACKET_PALETTES
+    : 'nxo';
   const key = `${paletteId}-loose-racket`;
   if (scene.textures.exists(key)) return key;
   const colors = LOOSE_RACKET_PALETTES[paletteId];
@@ -636,7 +680,7 @@ export class NxoActor {
     this.playClip(ultiKey('ulti-hit', this.P.key), 2);
     return true;
   }
-  /** recogiendo la raqueta (clip pickup): aviso al tomarla (frame pickupGrab) */
+  /** Recogiendo la raqueta: aviso cuando el clip empieza a dibujarla (frame pickupGrab). */
   private onGrab?: () => void;
   /** existe el clip de la ULTI completa `a` en este pack */
   private ur(a: UltiAnim) {
@@ -1304,7 +1348,7 @@ export class NxoActor {
   }
 
   /**
-   * Recoge la raqueta del suelo (clip pickup, una vez): en el frame `pickupGrab` la mano la toma (`onGrab`), al terminar
+   * Recoge la raqueta del suelo (clip pickup, una vez): en el frame `pickupGrab` el sprite sustituye a la del suelo (`onGrab`), al terminar
    * vuelve a tener raqueta y pasa al reposo normal. Devuelve la duración en ms, o 0 sin clip (quita el modo sin raqueta).
    */
   pickupRacket(onGrab?: () => void): number {
@@ -1831,7 +1875,7 @@ export class NxoActor {
       }
       return;
     }
-    // recogiendo la raqueta: en el frame en que la mano la toma, la del suelo desaparece (la dibuja el clip)
+    // Quita la raqueta del suelo cuando empieza a dibujarla el clip de recogida.
     if (this.state === 'pickup') {
       if (this.onGrab && frame >= (this.P.inf.pickupGrab ?? 3)) {
         const cb = this.onGrab;

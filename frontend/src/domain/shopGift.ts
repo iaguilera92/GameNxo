@@ -14,15 +14,16 @@ export const SHOP_GIFT = {
    * mitad y mitad entre las dos monedas, con las cantidades de siempre (5, a veces 10 y menos veces 15).
    */
   options: [
-    { kind: 'coins', amount: 5, weight: 30 },
-    { kind: 'coins', amount: 10, weight: 15 },
-    { kind: 'coins', amount: 15, weight: 5 },
+    // (26-11-2026, usuario) poco: como mucho 25 monedas (1v1) o 10 monedas 2V2
+    { kind: 'coins', amount: 10, weight: 30 },
+    { kind: 'coins', amount: 15, weight: 15 },
+    { kind: 'coins', amount: 25, weight: 5 },
     { kind: 'coins2v2', amount: 5, weight: 30 },
-    { kind: 'coins2v2', amount: 10, weight: 15 },
-    { kind: 'coins2v2', amount: 15, weight: 5 },
+    { kind: 'coins2v2', amount: 8, weight: 15 },
+    { kind: 'coins2v2', amount: 10, weight: 5 },
   ] as { kind: GiftKind; amount: number; weight: number }[],
 };
-export type GiftKind = 'coins' | 'coins2v2';
+export type GiftKind = 'coins' | 'coins2v2' | 'cash';
 
 export interface GiftStatus {
   /** se puede recoger ahora */
@@ -37,8 +38,10 @@ export function giftStatus(s: Readonly<PlayerState>, now: number): GiftStatus {
 }
 
 /** Recoge el regalo del día. `rng` en [0, 1). */
-export function claimGift(s: PlayerState, now: number, rng: () => number = Math.random): { ok: true; state: PlayerState; amount: number; kind: GiftKind } | { ok: false; error: 'already' } {
-  if (!giftStatus(s, now).available) return { ok: false, error: 'already' };
+export function claimGift(s: PlayerState, now: number, rng: () => number = Math.random, cash = 0, force = false): { ok: true; state: PlayerState; amount: number; kind: GiftKind } | { ok: false; error: 'already' } {
+  // (26-11-2026, usuario) tutorial (guía de la tienda del nivel 5): el regalo es DINERO fijo (aunque ya se recogiera el del día)
+  if (cash > 0) return { ok: true, state: { ...s, gems: s.gems + cash, giftDay: cycleIdAt(now) }, amount: cash, kind: 'cash' };
+  if (!force && !giftStatus(s, now).available) return { ok: false, error: 'already' }; // force: el de la guía del nivel 5
   const pick = pickWeighted(SHOP_GIFT.options, rng);
   let base: PlayerState = s;
   if (pick.kind === 'coins2v2') base = addCoins2v2(s, pick.amount);

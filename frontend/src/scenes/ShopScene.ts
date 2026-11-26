@@ -1,4 +1,10 @@
 import { isDevMode } from '../domain/devMode';
+import { GUIDE, guidedStep } from '../domain/tutorial';
+import { markTutorialSeen } from '../domain/operations';
+import { setDefensive } from '../logic/Profile';
+import { sfx } from '../fx/sfx';
+import { guideFocus, tapHint } from '../ui/guideFocus';
+import { drawFadingRays } from '../ui/fadeRays';
 import { releaseSceneTexturesOnExit } from '../ui/sceneTextures';
 import { installTapSound } from '../fx/uiSound';
 import Phaser from 'phaser';
@@ -6,7 +12,7 @@ import { FONT, restartOnResize, textStyle } from '../ui/theme';
 import { UI, stadiumBg } from '../ui/ui';
 import { arcadeButton } from '../ui/modeButtons';
 import { commit, getPlayer, onPlayerChange } from '../domain/playerStore';
-import { REROLL_PRICE, canReroll, offersChangeIn, purchaseOffered, rerollShop, rerolledThisWeek, shopOffers } from '../domain/shopRotation';
+import { REROLL_PRICE, ROTATION, rotationWindow, canReroll, offersChangeIn, purchaseOffered, rerollShop, rerolledThisWeek, shopOffers } from '../domain/shopRotation';
 import { type SmashPower, smashOwned, smashPowerDef } from '../domain/smashPowers';
 import { BUTTON_ART, queueButtonArt } from '../ui/buttonArt';
 import { elementTexture } from '../ui/AbilityButton';
@@ -20,7 +26,7 @@ import { drawCashIcon } from './BattlePassScene';
 import { type ItemId, type ItemKind, type StyleId, owns } from '../domain/player';
 import { drawRarityFrame } from '../ui/rarity';
 import { bakeGraphics, dropBaked } from '../ui/bakeGraphics';
-import { CASH_PACKS, LEGENDARY_EMOTE_CLP, SHOP_ITEMS, clpLabel, type CashPack, type ItemRarity, type ShopItem } from '../domain/shopCatalog';
+import { CASH_PACKS, LEGENDARY_EMOTE_CLP, RARITY_LABEL, SHOP_ITEMS, TUTORIAL_DEFENSIVES, clpLabel, shopItem, type CashPack, type ItemRarity, type ShopItem } from '../domain/shopCatalog';
 import { openShopPreview } from '../ui/ShopPreviewDialog';
 import { createZoneDemo } from '../fx/zoneDemo';
 import { ZONE_SKINS, type ZoneSkinId, zoneSkinOwned } from '../domain/zoneSkins';
@@ -56,7 +62,11 @@ const GOLD = 0xffc42e;
 /** alto de la cabecera fija (volver, saldos): el contenido se desplaza por debajo */
 const HEADER_H = 106; // (21-11-2026, usuario) antes 112: el contenido sube y queda mas junto al titulo
 /** prefijo de las texturas de fondos pintados una vez (tarjetas, botones): se quitan al salir de la Tienda */
+/** tipos de premio que puede mostrar la presentacion del regalo (giftReveal) */
+type GiftKindView = 'coins' | 'coins2v2' | 'cash';
 const SHOP_BAKE = 'shop-bake-';
+/** (26-11-2026) lo comprado y en qué ventana de rotación (sigue a la vista como COMPRADO hasta que cambia) */
+const SHOP_KEEP_KEY = 'shop.keep';
 /** (17-11-2026) artículos LEGENDARIOS que SÍ tienen botón VER en la Tienda (los demás legendarios, no) */
 const LEGEND_VIEWABLE: ReadonlySet<string> = new Set(['inferno:energy', 'inferno:hurricane', 'smash:dragon']); // (18-11-2026) DRAGÓN también se ve
 /** Fondo de las tarjetas de PODERES ULTI: morado degradado con brillo, sin borde. */
@@ -175,6 +185,7 @@ export class ShopScene extends Phaser.Scene {
     this.cameras.main.fadeIn(200, 0, 0, 0);
     stadiumBg(this, 0.55);
     this.modal = [];
+    this.shopGuide = !isDevMode() && guidedStep(getPlayer().level, getPlayer().tutorial) === 'shop'; // (26-11-2026) antes de construir (el REGALO de la guia)
     ensureBallAnims(this);
 
     // ---------------------------------------------------------------- cabecera
@@ -210,6 +221,7 @@ export class ShopScene extends Phaser.Scene {
         this.tweens.add({ targets: from, v: target, duration: 1500, ease: 'Cubic.easeInOut', onUpdate: () => this.setScroll(from.v) });
       });
     }
+    if (this.shopGuide) this.time.delayedCall(450, () => this.shopGuideStep());
     const off = onPlayerChange(() => this.refreshCash());
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       off();
@@ -287,7 +299,7 @@ export class ShopScene extends Phaser.Scene {
     // ---------------------------------------------------------------- cargando golpe (aro al cargar)
     this.sectionTitle(W, y, 'CARGANDO GOLPE', INFO.charge, { kind: 'charge', now });
     y += titleGap;
-    const charges = shopOffers('charge', now, getPlayer());
+    const charges = shopOffers('charge', now, this.offerView());
     const cc = cols3(charges.length);
     charges.forEach((it, i) => {
       this.chargeCard(cc.x(i), y, cc.w, ch, it);
@@ -298,7 +310,7 @@ export class ShopScene extends Phaser.Scene {
     // ---------------------------------------------------------------- poderes de la ULTI (antes INFERNO)
     this.sectionTitle(W, y, 'PODERES ULTI', INFO.ulti, { kind: 'inferno', now });
     y += titleGap;
-    const powers = shopOffers('inferno', now, getPlayer());
+    const powers = shopOffers('inferno', now, this.offerView());
     const pc = cols3(powers.length);
     powers.forEach((it, i) => {
       this.powerCard(pc.x(i), y, pc.w, ch, it);
@@ -310,7 +322,7 @@ export class ShopScene extends Phaser.Scene {
     this.sectionTitle(W, y, 'PODERES ESPECIALES', INFO.special, { kind: 'smash', now });
     y += titleGap;
     // 3 a la vez (el FUEGO es gratis y no entra en la rotación: se elige en PERSONALIZAR)
-    const smashItems = shopOffers('smash', now, getPlayer());
+    const smashItems = shopOffers('smash', now, this.offerView());
     const sc = cols3(smashItems.length);
     const smashH = 270;
     smashItems.forEach((it, i) => {
@@ -320,9 +332,11 @@ export class ShopScene extends Phaser.Scene {
     y += smashH + 52;
     this.sectionTitle(W, y, 'PODERES DEFENSIVOS', INFO.defensive, { kind: 'defensive', now });
     y += titleGap;
-    const defs = shopOffers('defensive', now, getPlayer());
+    const defs = shopOffers('defensive', now, this.offerView());
     const dc = cols3(defs.length);
     const dh = 270;
+    this.defRect = { x: dc.x(0), y, w: dc.w, h: dh };
+    this.defXs = defs.map((_, i) => dc.x(i));
     defs.forEach((it, i) => {
       this.defensiveCard(dc.x(i), y, dc.w, dh, it);
       this.reg(y, dh);
@@ -356,7 +370,7 @@ export class ShopScene extends Phaser.Scene {
     // (21-11-2026, usuario) 2 cards que cambian cada SEMANA (domingo), con su contador (domain/shopRotation.ts)
     this.sectionTitle(W, y, 'ZONA', INFO.zone, { kind: 'zone', now });
     y += titleGap;
-    const zoneItems = shopOffers('zone', now, getPlayer());
+    const zoneItems = shopOffers('zone', now, this.offerView());
     // (21-11-2026, usuario) las 2 cards ocupan TODO el ancho (el mismo que 3 cards de DEFENSIVO), no 2 tercios centrados
     const zn = Math.max(1, zoneItems.length);
     const zw = (W - 60 - gap * (zn - 1)) / zn;
@@ -399,7 +413,7 @@ export class ShopScene extends Phaser.Scene {
 
   /** Qué muestra ahora cada categoría que rota (para saber si hay que reconstruir la Tienda al cambiar). */
   private rotationSignature(now: number) {
-    return (['skin', 'charge', 'inferno', 'smash', 'defensive', 'zone'] as ItemKind[]).map((k) => shopOffers(k, now, getPlayer()).map((i) => i.id).join(',')).join('|');
+    return (['skin', 'charge', 'inferno', 'smash', 'defensive', 'zone'] as ItemKind[]).map((k) => shopOffers(k, now, this.offerView()).map((i) => i.id).join(',')).join('|');
   }
 
   /** ancho de la píldora del contador de ofertas (a la derecha del título de las categorías que rotan) */
@@ -502,6 +516,7 @@ export class ShopScene extends Phaser.Scene {
 
   /** Desplaza el contenido a `v` (acotado). */
   private setScroll(v: number) {
+    if (this.scrollLock) return; // (26-11-2026) guía de la tienda: pantalla fija en los defensivos
     this.scrollY = Phaser.Math.Clamp(v, 0, this.maxScroll);
     this.body.y = -this.scrollY;
     this.cullCards();
@@ -514,7 +529,7 @@ export class ShopScene extends Phaser.Scene {
    * RECOGER que late. Ya recogido: cuenta atrás hasta el próximo (reinicio 23:59 hora de Chile).
    */
   private giftCard(x: number, y: number, w: number, h: number) {
-    const st = shopGiftStatus();
+    const st = { ...shopGiftStatus(), available: this.giftAvailable() };
     const c = this.add.container(0, 0);
     this.body.add(c);
     // (21-11-2026, usuario) fondo VERDE con degradado completo, sin bordes; el premio es sorpresa (no se dice cuántas monedas)
@@ -587,42 +602,82 @@ export class ShopScene extends Phaser.Scene {
 
   /** Recoge el regalo: monedas que saltan, "+N MONEDAS" y la tarjeta pasa a la cuenta atrás. */
   private claimGift() {
-    const res = claimShopGift();
+    const guideGift = this.guideGiftPending();
+    const res = claimShopGift(0, guideGift); // (26-11-2026, usuario) el de la guía también es monedas (1v1 o 2V2), no dinero
     if (!res.ok) return;
+    if (guideGift) commit((s) => markTutorialSeen(s, GUIDE.shopGift));
     const { amount, kind } = res;
-    const W = this.scale.width;
-    const H = this.scale.height;
     const two = kind === 'coins2v2';
-    const t = this.add.text(W / 2, H * 0.45, '+' + amount + (two ? ' MONEDAS 2V2' : ' MONEDAS'), textStyle(44, two ? '#d2b0ff' : '#ffd23f')).setOrigin(0.5).setDepth(9000).setScale(0.4);
-    this.tweens.add({ targets: t, scale: 1, duration: 320, ease: 'Back.easeOut' });
-    this.tweens.add({ targets: t, alpha: 0, y: t.y - 40, delay: 1100, duration: 300, onComplete: () => t.destroy() });
-    // las monedas salen del premio y se van al monedero (arriba a la derecha); el MEN? las hace llegar a su contador (menu.wheelGain)
-    const mk = two ? coin2v2Image : coinIcon;
-    const tx = W - 70;
-    const ty = 56;
-    for (let i = 0; i < 14; i++) {
-      const sx = W / 2 + Phaser.Math.Between(-60, 60);
-      const sy = H * 0.45 + 40 + Phaser.Math.Between(-20, 20);
-      const g = mk(this, sx, sy, 12).setDepth(8999).setVisible(false);
-      const arc = Phaser.Math.Between(40, 110);
-      const k = { v: 0 };
-      this.tweens.add({
-        targets: k,
-        v: 1,
-        delay: 500 + i * 70,
-        duration: 750,
-        ease: 'Sine.easeInOut',
-        onStart: () => g.setVisible(true),
-        onUpdate: () => g.setPosition(sx + (tx - sx) * k.v, sy + (ty - sy) * k.v - Math.sin(k.v * Math.PI) * arc),
-        onComplete: () => g.destroy(),
-      });
-    }
+    const cash = kind === 'cash'; // (26-11-2026, usuario) el regalo de la guía del nivel 5: DINERO
     const cur = (this.registry.get('menu.wheelGain') as { coins: number; xp: number; coins2v2?: number } | undefined) ?? { coins: 0, xp: 0 };
-    this.registry.set('menu.wheelGain', { coins: cur.coins + (two ? 0 : amount), xp: cur.xp, coins2v2: (cur.coins2v2 ?? 0) + (two ? amount : 0) });
-    this.celebrate();
+    if (!cash) this.registry.set('menu.wheelGain', { coins: cur.coins + (two ? 0 : amount), xp: cur.xp, coins2v2: (cur.coins2v2 ?? 0) + (two ? amount : 0) });
+    if (this.shopGuide) this.shopGuideClear(); // se va el opaco del regalo
     this.build();
     this.freeArrow?.destroy();
     this.makeFreeArrow();
+    this.giftReveal(kind, amount, () => {
+      if (this.shopGuide) this.time.delayedCall(250, () => this.shopGuideStep());
+    });
+  }
+
+  /**
+   * (26-11-2026, usuario) PRESENTACIÓN del regalo (como el premio de la ruleta, más chica): todo oscuro, rayos que giran, el premio con
+   * su imagen que entra con rebote, "+N" que cuenta y el nombre; TOCA PARA CONTINUAR.
+   */
+  private giftReveal(kind: GiftKindView, amount: number, onDone: () => void) {
+    const W = this.scale.width;
+    const H = this.scale.height;
+    const cy = H * 0.44;
+    const col = kind === 'cash' ? 0x8dffad : kind === 'coins2v2' ? 0xd2b0ff : 0xffd23f;
+    const css = kind === 'cash' ? '#8dffad' : kind === 'coins2v2' ? '#d2b0ff' : '#ffd23f';
+    const root = this.add.container(0, 0).setDepth(9400);
+    const dark = this.add.rectangle(0, 0, W, H, 0x02060f, 0.88).setOrigin(0).setInteractive();
+    root.add(dark);
+    // rayos de luz que giran detrás del premio
+    const rays = this.add.graphics({ x: W / 2, y: cy }).setBlendMode(Phaser.BlendModes.ADD);
+    drawFadingRays(rays, 12, 280, col, 0.28, 0.12);
+    rays.fillStyle(col, 0.22).fillCircle(0, 0, 90);
+    root.add(rays);
+    this.tweens.add({ targets: rays, angle: 360, duration: 9000, repeat: -1 });
+    root.add(this.add.text(W / 2, cy - 190, 'REGALO DIARIO', textStyle(40, '#ffffff')).setOrigin(0.5));
+    // el premio con su imagen
+    let icon: Phaser.GameObjects.Image;
+    if (kind === 'cash' && this.textures.exists('cash-pack')) {
+      icon = this.add.image(W / 2, cy, 'cash-pack');
+      icon.setScale(150 / Math.max(icon.width, icon.height));
+    } else icon = (kind === 'coins2v2' ? coin2v2Image : coinIcon)(this, W / 2, cy, 62) as Phaser.GameObjects.Image;
+    root.add(icon);
+    const sx = icon.scaleX;
+    const sy = icon.scaleY;
+    icon.setScale(sx * 0.2, sy * 0.2);
+    this.tweens.add({ targets: icon, scaleX: sx, scaleY: sy, duration: 520, ease: 'Back.easeOut' });
+    this.tweens.add({ targets: icon, y: cy - 8, duration: 900, yoyo: true, repeat: -1, ease: 'Sine.easeInOut', delay: 520 });
+    const amt = this.add.text(W / 2, cy + 120, '+0', textStyle(56, css)).setOrigin(0.5).setAlpha(0);
+    const name = this.add.text(W / 2, cy + 172, kind === 'cash' ? 'DINERO' : kind === 'coins2v2' ? 'MONEDAS 2V2' : 'MONEDAS', textStyle(26, '#ffffff')).setOrigin(0.5).setAlpha(0);
+    root.add([amt, name]);
+    this.tweens.add({ targets: [amt, name], alpha: 1, delay: 300, duration: 250 });
+    const n = { v: 0 };
+    this.tweens.add({ targets: n, v: amount, delay: 350, duration: 700, ease: 'Cubic.easeOut', onUpdate: () => amt.setText('+' + Math.round(n.v)) });
+    // destellos
+    for (let i = 0; i < 18; i++) {
+      const a = (i / 18) * Math.PI * 2;
+      const st = this.add.star(W / 2, cy, 5, 5, 12, Phaser.Utils.Array.GetRandom([col, 0xffffff, GOLD])).setBlendMode(Phaser.BlendModes.ADD);
+      root.add(st);
+      this.tweens.add({ targets: st, x: W / 2 + Math.cos(a) * 200, y: cy + Math.sin(a) * 160, angle: 300, alpha: 0, scale: 0.4, duration: 800, ease: 'Cubic.easeOut' });
+    }
+    this.cameras.main.flash(160, 255, 240, 180);
+    sfx(this, 'equipar');
+    const prompt = this.add.text(W / 2, H * 0.86, 'TOCA PARA CONTINUAR', textStyle(26, '#ffffff')).setOrigin(0.5).setAlpha(0);
+    root.add(prompt);
+    root.setAlpha(0);
+    this.tweens.add({ targets: root, alpha: 1, duration: 220 });
+    this.time.delayedCall(900, () => {
+      if (!root.active) return;
+      this.tweens.add({ targets: prompt, alpha: { from: 0.4, to: 1 }, duration: 600, yoyo: true, repeat: -1 });
+      dark.once('pointerup', () => {
+        this.tweens.add({ targets: root, alpha: 0, duration: 200, onComplete: () => { root.destroy(); onDone(); } });
+      });
+    });
   }
 
   /** Flecha GRATIS (fija, abajo a la derecha): baja deslizando hasta el REGALO GRATIS del final. */
@@ -639,7 +694,7 @@ export class ShopScene extends Phaser.Scene {
     c.add(g);
     c.add(this.add.text(-14, -4, 'GRATIS', { fontFamily: FONT, fontSize: '22px', color: '#ffffff', stroke: '#0a3a18', strokeThickness: 5 }).setOrigin(0.5));
     // punto rojo: hay regalo por recoger
-    if (shopGiftStatus().available) c.add(this.add.circle(64, -28, 9, 0xff4f5e).setStrokeStyle(3, 0xffffff));
+    if (this.giftAvailable()) c.add(this.add.circle(64, -28, 9, 0xff4f5e).setStrokeStyle(3, 0xffffff));
     c.setSize(150, 66).setInteractive({ useHandCursor: true });
     this.tweens.add({ targets: c, y: c.y - 8, duration: 520, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
     c.on('pointerdown', () => {
@@ -1231,9 +1286,14 @@ export class ShopScene extends Phaser.Scene {
     drawDefensiveIcon(ic, id, 36);
     c.add(ic);
     c.add(this.add.text(sx, y + 128, def.name, { fontFamily: FONT, fontSize: '24px', color: def.css }).setOrigin(0.5));
-    c.add(this.add.text(sx, y + 154, has ? 'COMPRADO' : shopBlurb('defensive', id, def.desc), { fontFamily: FONT, fontSize: '13px', color: has ? '#9fe8a0' : '#9fb4e0', align: 'center', wordWrap: { width: w - 16 } }).setOrigin(0.5, 0));
+    c.add(this.add.text(sx, y + 154, shopBlurb('defensive', id, def.desc), { fontFamily: FONT, fontSize: '13px', color: '#9fb4e0', align: 'center', wordWrap: { width: w - 16 } }).setOrigin(0.5, 0));
     const by = y + h - 64;
     const bw = w - 24;
+    if (has) {
+      // (26-11-2026, usuario) ya es tuyo: sin botón; solo COMPRADO con borde verde pastel
+      c.add(this.boughtTag(sx, by, bw));
+      return;
+    }
     // (16-11-2026) el botón de abajo es VER (EN ACCIÓN): dentro se compra o se usa. Lo legendario: botones de siempre
     // (21-11-2026) lo que ya es tuyo también se VE (dentro se usa): sin botón USAR en la tarjeta
     const canView = has || it.rarity !== 'legendaria';
@@ -1383,6 +1443,15 @@ export class ShopScene extends Phaser.Scene {
 
   // ================================================================ ver en acción
   /** Botón VER (abajo de la tarjeta, en el sitio de USAR / precio): abre la pantalla EN ACCIÓN. */
+  /** (26-11-2026, usuario) etiqueta COMPRADO (en vez del botón): borde verde pastel, a juego con los botones */
+  private boughtTag(x: number, y: number, w: number) {
+    const c = this.add.container(x, y);
+    const g = this.add.graphics();
+    g.fillStyle(0x0a1638, 0.9).fillRoundedRect(-w / 2, -24, w, 48, 24);
+    g.lineStyle(3, 0xa8f0c0, 1).strokeRoundedRect(-w / 2, -24, w, 48, 24);
+    c.add([g, this.add.text(0, 0, 'COMPRADO', { fontFamily: FONT, fontSize: '20px', color: '#bff5cf' }).setOrigin(0.5).setLetterSpacing(1)]);
+    return c;
+  }
   private viewButton(x: number, y: number, w: number, onClick: () => void, _owned = false) {
     // (21-11-2026) sin el triángulo de "play": solo el texto VER
     // (22-11-2026, usuario) TODOS dicen COMPRAR (también en lo que ya tienes: dentro se usa). owned queda por si se vuelve a distinguir
@@ -1451,6 +1520,7 @@ export class ShopScene extends Phaser.Scene {
       clp: it?.clp ?? 0,
       onBuyCash: () => it && (p.owned ? this.toast('Modo desarrollo: ya lo tienes (solo se muestra el precio)') : this.confirmBuy(it)),
       onBuyReal: () => this.toast(it && s.level < it.minLevel ? `Necesitas nivel ${it.minLevel}` : 'El pago con dinero real (CLP) llega pronto'),
+      guideCash: this.shopGuide && kind === 'defensive', // (26-11-2026, usuario) tutorial: la mano en COMPRAR con dinero virtual
     });
     // (17-11-2026) mientras la demostración está abierta, la Tienda de atrás no se dibuja: la demostración usa los efectos del partido
     // (pelota, humo, sombras, cinemática) y, con ~40 tarjetas debajo, el móvil se pegaba. El velo oscuro apenas la dejaba ver.
@@ -1551,11 +1621,12 @@ export class ShopScene extends Phaser.Scene {
       this.modal.forEach((o) => o.destroy());
       this.modal = [];
     };
-    const shade = this.add.rectangle(0, 0, W, H, 0x02060f, 0.72).setOrigin(0).setDepth(8000).setInteractive();
+    const d0 = this.shopGuide ? 8200 : 8000; // (26-11-2026) en la guía, por encima de su opaco y la mano
+    const shade = this.add.rectangle(0, 0, W, H, 0x02060f, 0.72).setOrigin(0).setDepth(d0).setInteractive();
     shade.on('pointerdown', close);
     const pw = Math.min(560, W - 60);
     const ph = 330;
-    const panel = this.add.container(W / 2, H / 2).setDepth(8001);
+    const panel = this.add.container(W / 2, H / 2).setDepth(d0 + 1);
     panel.add(this.add.rectangle(0, 0, pw, ph, 0x000000, 0.001).setInteractive());
     panel.add(this.card(-pw / 2, -ph / 2, pw, ph, { line: GOLD, glow: 0.3, r: 24 }));
     panel.add(this.add.text(0, -ph / 2 + 50, '¿COMPRAR?', { fontFamily: FONT, fontSize: '38px', color: '#ffffff', stroke: '#0a1638', strokeThickness: 6 }).setOrigin(0.5).setLetterSpacing(2));
@@ -1577,14 +1648,201 @@ export class ShopScene extends Phaser.Scene {
     this.modal = [shade, panel];
   }
 
+  /** (26-11-2026, usuario) lo comprado en la ventana actual sigue a la vista (COMPRADO); en la siguiente ya no sale */
+  private offerView() {
+    const now = Date.now();
+    let map: Record<string, number> = {};
+    try {
+      map = JSON.parse(localStorage.getItem(SHOP_KEEP_KEY) ?? '{}') as Record<string, number>;
+    } catch {
+      map = {};
+    }
+    const keep = Object.keys(map).filter((id) => {
+      const rot = ROTATION[id.split(':')[0] as ItemKind];
+      return rot && rotationWindow(now, rot.hours).id === map[id];
+    }) as ItemId[];
+    return { ...getPlayer(), keep };
+  }
+  private rememberBuy(id: ItemId) {
+    const rot = ROTATION[id.split(':')[0] as ItemKind];
+    if (!rot) return;
+    try {
+      const map = JSON.parse(localStorage.getItem(SHOP_KEEP_KEY) ?? '{}') as Record<string, number>;
+      map[id] = rotationWindow(Date.now(), rot.hours).id;
+      localStorage.setItem(SHOP_KEEP_KEY, JSON.stringify(map));
+    } catch {
+      /* sin almacenamiento: lo comprado se cambia al reconstruir */
+    }
+  }
+
   private buy(id: ItemId) {
     const res = commit((s) => purchaseOffered(s, id));
     if (!res.ok) {
       if (res.error === 'not_in_shop') this.build(); // la selección cambió mientras tanto: se dibuja la nueva
       return this.toast(ERRORS[res.error] ?? 'No se pudo comprar');
     }
+    this.rememberBuy(id);
     this.celebrate();
     this.build();
+    if (this.shopGuide && id.startsWith('defensive:')) {
+      // (26-11-2026, usuario) compraste tu defensivo: lo EQUIPAS (obligado) y vuelves al menú (allí, AMIGOS)
+      this.shopGuide = false;
+      this.scrollLock = false;
+      this.shopGuideClear();
+      this.time.delayedCall(1100, () => this.equipBoughtDialog(id));
+    }
+  }
+
+  // ---------------------------------------------------------------- GUÍA DE LA TIENDA (nivel 5; 26-11-2026, usuario)
+  private shopGuide = false;
+  /** (26-11-2026) la guía fija la pantalla en los DEFENSIVOS */
+  private scrollLock = false;
+  /** (26-11-2026, usuario) la guía de la tienda lleva al REGALO aunque el del día ya se hubiera recogido (una vez) */
+  private guideGiftPending() {
+    return this.shopGuide && !getPlayer().tutorial?.includes(GUIDE.shopGift);
+  }
+  private giftAvailable() {
+    return this.guideGiftPending() || shopGiftStatus().available;
+  }
+  private defRect = { x: 0, y: 0, w: 0, h: 0 };
+  /** x de cada card de DEFENSIVO (la mano pasa por las 3) */
+  private defXs: number[] = [];
+  private handCycle?: Phaser.Time.TimerEvent;
+  private shopGuideObjs: Phaser.GameObjects.GameObject[] = [];
+  private shopGuideClear() {
+    this.handCycle?.remove();
+    this.handCycle = undefined;
+    this.shopGuideObjs.forEach((o) => o.destroy());
+    this.shopGuideObjs = [];
+  }
+  /** (26-11-2026, usuario) diálogo tras comprar en la guía: EQUIPAR (obligado; CERRAR apagado). Equipado: VUELVE AL MENÚ */
+  private equipBoughtDialog(id: ItemId) {
+    if (!this.sys.isActive()) return;
+    // (26-11-2026, usuario) diseño nuevo: ¡ES TUYO!, el ICONO del defensivo con brillo, su nombre y qué hace; EQUIPAR a todo lo ancho
+    // y abajo CERRAR (apagado: en la guía hay que equiparlo)
+    const W = this.scale.width;
+    const H = this.scale.height;
+    const it = shopItem(id);
+    const dp = id.slice('defensive:'.length) as DefensivePower;
+    const def = defensivePowerDef(dp);
+    const root = this.add.container(0, 0).setDepth(9500);
+    root.add(this.add.rectangle(0, 0, W, H, 0x02060f, 0.85).setOrigin(0).setInteractive());
+    const pw = Math.min(560, W - 50);
+    const ph = 660; // (26-11-2026, usuario) más alto: EQUIPAR más abajo, lejos del descriptor
+    const cx = W / 2;
+    const top = H / 2 - ph / 2;
+    root.add(this.card(cx - pw / 2, top, pw, ph, { line: def.color, glow: 0.35, rarity: it?.rarity, r: 26 }));
+    root.add(this.add.text(cx, top + 50, '¡DEFENSIVO COMPRADO!', { fontFamily: FONT, fontSize: '38px', color: '#ffd23f', stroke: '#0a1638', strokeThickness: 8 }).setOrigin(0.5).setLetterSpacing(2));
+    // icono grande con rayos de luz detrás
+    const iy = top + 190;
+    const rays = this.add.graphics({ x: cx, y: iy }).setBlendMode(Phaser.BlendModes.ADD);
+    drawFadingRays(rays, 10, 170, def.color, 0.3); // (26-11-2026, usuario) se difuminan al alejarse
+    root.add(rays);
+    this.tweens.add({ targets: rays, angle: 360, duration: 9000, repeat: -1 });
+    const ic = this.add.graphics({ x: cx, y: iy });
+    drawDisc(ic, 62, def.color, 0x1b3a6b);
+    drawDefensiveIcon(ic, dp, 62);
+    root.add(ic);
+    ic.setScale(0.3);
+    this.tweens.add({ targets: ic, scale: 1, duration: 480, ease: 'Back.easeOut' });
+    root.add(this.add.text(cx, top + 300, def.name.toUpperCase(), { fontFamily: FONT, fontSize: '38px', color: def.css, stroke: '#0a1638', strokeThickness: 7 }).setOrigin(0.5));
+    // (26-11-2026, usuario) bajo el nombre, la RAREZA (ESPECIAL…) en vez de DEFENSIVO
+    // (26-11-2026, usuario) la rareza en su color: ESPECIAL = el del borde (el del poder); ÉPICA = morado con brillo; LEGENDARIA = dorado con brillo
+    const rar = it?.rarity ?? 'especial';
+    const rcol = rar === 'legendaria' ? '#ffd23f' : rar === 'epica' ? '#c46bff' : def.css;
+    const rt = this.add.text(cx, top + 340, (RARITY_LABEL[rar] ?? 'ESPECIAL').toUpperCase(), { fontFamily: FONT, fontSize: '20px', color: rcol, stroke: '#0a1638', strokeThickness: 4 }).setOrigin(0.5).setLetterSpacing(3);
+    root.add(rt);
+    if (rar === 'legendaria' || rar === 'epica') {
+      const shine = this.add.text(cx, top + 340, rt.text, { fontFamily: FONT, fontSize: '20px', color: rar === 'legendaria' ? '#fff4b8' : '#ecd2ff' }).setOrigin(0.5).setLetterSpacing(3).setBlendMode(Phaser.BlendModes.ADD).setAlpha(0);
+      root.add(shine);
+      this.tweens.add({ targets: shine, alpha: { from: 0, to: 0.85 }, duration: 700, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
+      for (let k = 0; k < 3; k++) {
+        const st = this.add.star(cx + (k - 1) * rt.width * 0.45, top + 330 + (k % 2) * 16, 4, 2, 7, 0xffffff).setBlendMode(Phaser.BlendModes.ADD).setScale(0);
+        root.add(st);
+        this.tweens.add({ targets: st, scale: { from: 0, to: 1.1 }, alpha: { from: 1, to: 0 }, angle: 90, delay: k * 350, duration: 650, repeat: -1, repeatDelay: 500 });
+      }
+    }
+    root.add(this.add.text(cx, top + 372, def.desc, { fontFamily: FONT, fontSize: '19px', color: '#dbe5ff', align: 'center', wordWrap: { width: pw - 70 } }).setOrigin(0.5, 0));
+    const bw = pw - 60;
+    const eqY = top + ph - 132;
+    const eq = arcadeButton(this, cx, eqY, bw, 76, 'EQUIPAR', () => {
+      setDefensive(dp);
+      commit((s) => markTutorialSeen(s, GUIDE.shop));
+      hand.destroy();
+      sfx(this, 'equipar');
+      this.tweens.add({ targets: root, alpha: 0, duration: 200, onComplete: () => root.destroy() });
+      this.time.delayedCall(260, () => {
+        if (this.sys.isActive()) this.shopGuideObjs.push(guideFocus(this, { x: 54, y: 64, w: 78, h: 78 }, 'VUELVE AL MENÚ', { textDy: 34 }));
+      });
+    }, { palette: 'yellow', noShadow: true }); // (26-11-2026, usuario) sin la sombra 3D
+    root.add(eq);
+    root.add(arcadeButton(this, cx, top + ph - 52, bw, 56, 'CERRAR', () => undefined, { palette: 'grey', disabled: true }));
+    const hand = tapHint(this, cx + bw / 2 - 40, eqY + 6, 9600);
+    root.setAlpha(0);
+    this.tweens.add({ targets: root, alpha: 1, duration: 200 });
+  }
+
+  /** baja (animado) hasta `contentY` arriba de la pantalla y luego `then` */
+  private shopGuideScroll(contentY: number, then: () => void) {
+    const target = Phaser.Math.Clamp(contentY, 0, this.maxScroll);
+    const from = { v: this.scrollY };
+    this.tweens.add({ targets: from, v: target, duration: 900, ease: 'Cubic.easeInOut', onUpdate: () => this.setScroll(from.v), onComplete: then });
+  }
+  /** 1) el REGALO (dinero); 2) un DEFENSIVO (Destello, Sombra o Patinaje) */
+  private shopGuideStep() {
+    if (!this.shopGuide || !this.sys.isActive()) return;
+    this.shopGuideClear();
+    const W = this.scale.width;
+    const H = this.scale.height;
+    if (this.giftAvailable()) {
+      const cardTop = this.giftY + 30 + 34;
+      this.shopGuideScroll(cardTop - H * 0.4, () => {
+        if (!this.shopGuide) return;
+        const cy = cardTop + 95 - this.scrollY;
+        // (26-11-2026, usuario) toda la tienda OPACA menos la card del regalo, con REGALO DIARIO y la mano
+        this.shopGuideObjs.push(guideFocus(this, { x: W / 2, y: cy, w: W - 60, h: 190 }, 'REGALO DIARIO', { textUp: 30, dim: 0.88, fadeMs: 600 })); // (26-11-2026, usuario) más arriba (no choca con REGALO GRATIS) y más opaco
+      });
+      return;
+    }
+    // (26-11-2026, usuario) ya compraste uno (p. ej. se cerró el juego antes de equiparlo): directo a EQUIPARLO, sin volver a comprar
+    const bought = TUTORIAL_DEFENSIVES.find((id) => owns(getPlayer(), id));
+    if (bought) {
+      this.shopGuide = false;
+      this.equipBoughtDialog(bought);
+      return;
+    }
+    // (26-11-2026, usuario) los 3 DEFENSIVOS: pantalla FIJA (sin scroll), opaco salvo las 3 cards; mano en COMPRAR; elige el que quiera
+    const r = this.defRect;
+    this.shopGuideScroll(r.y - H * 0.3, () => {
+      if (!this.shopGuide) return;
+      this.scrollLock = true;
+      const top = r.y - this.scrollY;
+      this.shopGuideObjs.push(guideFocus(this, { x: W / 2, y: top + r.h / 2, w: W - 30, h: r.h + 10 }, 'COMPRA UN DEFENSIVO', { hand: false, dim: 0.88, fadeMs: 600 }));
+      // (26-11-2026, usuario) bajo las cards: ACTUALMENTE TIENES: y el dinero con el fardo
+      const ty0 = top + r.h + 80; // (26-11-2026, usuario) más abajo y más grande
+      const lbl = this.add.text(W / 2, ty0, 'ACTUALMENTE TIENES:', { fontFamily: FONT, fontSize: '34px', color: '#ffffff', stroke: '#0a1638', strokeThickness: 7 }).setOrigin(0.5).setDepth(8150);
+      const amt = this.add.text(0, ty0 + 58, getPlayer().gems.toLocaleString('es-CL'), { fontFamily: FONT, fontSize: '48px', color: '#8dffad', stroke: '#0a1638', strokeThickness: 8 }).setOrigin(0, 0.5).setDepth(8150);
+      const ic = this.textures.exists('cash-pack') ? this.add.image(0, ty0 + 58, 'cash-pack').setDepth(8150) : null;
+      if (ic) ic.setScale(54 / Math.max(ic.width, ic.height));
+      const iw = ic ? 60 : 0;
+      const x0 = W / 2 - (amt.width + iw) / 2;
+      amt.setX(x0);
+      ic?.setPosition(x0 + amt.width + 10 + 27, ty0 + 58);
+      this.shopGuideObjs.push(lbl, amt, ...(ic ? [ic] : []));
+      // (26-11-2026, usuario) la mano toca 2 veces el COMPRAR de una card y pasa a la siguiente (las 3)
+      let k = 0;
+      let hand: Phaser.GameObjects.Container | undefined;
+      const next = () => {
+        hand?.destroy();
+        if (!this.shopGuide) return;
+        const xs = this.defXs.length ? this.defXs : [r.x];
+        hand = tapHint(this, xs[k % xs.length] + r.w / 2, top + r.h - 34, 8150);
+        this.shopGuideObjs.push(hand);
+        k++;
+      };
+      next();
+      this.handCycle = this.time.addEvent({ delay: 900, loop: true, callback: next }); // (26-11-2026, usuario) una pulsación por botón
+    });
   }
 
   private celebrate() {

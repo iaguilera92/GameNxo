@@ -22,6 +22,10 @@ export interface VersusSide {
   look: CharacterLook;
   /** skin para usar su retrato estático si existe (solo el jugador) */
   portraitSkin?: SkinId;
+  /** (26-11-2026, usuario) sin la píldora del NIVEL (el rival bot en el tutorial) */
+  hideLevel?: boolean;
+  /** (26-11-2026, usuario) RACHA actual (solo el jugador): fuego con el número, junto al nivel */
+  streak?: number;
   /** victorias totales: se muestran bajo la placa con un trofeo. 0 o sin dato = no se muestra nada */
   wins?: number;
   /** ESTILO DE COLOR del personaje (solo el jugador; fx/CharColorFx.ts) */
@@ -246,11 +250,42 @@ export function showVersus(scene: Phaser.Scene, player: VersusSide, rival: Versu
     if (name.width > pw - 40 * sc) name.setScale((pw - 40 * sc) / name.width);
     c.add(name);
     // nivel
-    const lv = scene.add.graphics();
-    lv.fillStyle(pal.deep, 1).fillRoundedRect(-62 * sc, 22 * sc, 124 * sc, 32 * sc, 16 * sc);
-    lv.lineStyle(2, pal.main, 1).strokeRoundedRect(-62 * sc, 22 * sc, 124 * sc, 32 * sc, 16 * sc);
-    c.add(lv);
-    c.add(scene.add.text(0, 38 * sc, `NIVEL ${side.level}`, { fontFamily: FONT, fontSize: `${Math.round(20 * sc)}px`, color: pal.text }).setOrigin(0.5).setLetterSpacing(1));
+    if (!side.hideLevel) {
+      const lv = scene.add.graphics();
+      lv.fillStyle(pal.deep, 1).fillRoundedRect(-62 * sc, 22 * sc, 124 * sc, 32 * sc, 16 * sc);
+      lv.lineStyle(2, pal.main, 1).strokeRoundedRect(-62 * sc, 22 * sc, 124 * sc, 32 * sc, 16 * sc);
+      c.add(lv);
+      c.add(scene.add.text(0, 38 * sc, `NIVEL ${side.level}`, { fontFamily: FONT, fontSize: `${Math.round(20 * sc)}px`, color: pal.text }).setOrigin(0.5).setLetterSpacing(1));
+    }
+    if (side.streak && side.streak > 0 && !slot) { // (26-11-2026, usuario) sin racha (0): no sale
+      // (26-11-2026, usuario) RACHA actual: fuego con el contador dentro, en la fila del nivel
+      const fx0 = 62 * sc + 30 * sc;
+      const fy = 34 * sc;
+      const f = scene.add.graphics({ x: fx0, y: fy });
+      const k = sc;
+      const flame = (col: number, s2: number) => f.fillStyle(col, 1).fillPoints([
+        { x: 0, y: -30 * k * s2 }, { x: 10 * k * s2, y: -14 * k * s2 }, { x: 18 * k * s2, y: -2 * k * s2 }, { x: 17 * k * s2, y: 10 * k * s2 },
+        { x: 9 * k * s2, y: 18 * k * s2 }, { x: 0, y: 20 * k * s2 }, { x: -9 * k * s2, y: 18 * k * s2 }, { x: -17 * k * s2, y: 10 * k * s2 },
+        { x: -18 * k * s2, y: -2 * k * s2 }, { x: -12 * k * s2, y: -12 * k * s2 }, { x: -6 * k * s2, y: -6 * k * s2 },
+      ], true);
+      flame(0x7a1a00, 1.12);
+      flame(0xff5a1f, 1);
+      flame(0xffb12e, 0.72);
+      c.add(f);
+      const st = scene.add.text(fx0, fy + 6 * sc, `${side.streak}`, { fontFamily: FONT, fontSize: `${Math.round(19 * sc)}px`, color: '#ffffff', stroke: '#5a1200', strokeThickness: Math.max(2, Math.round(4 * sc)) }).setOrigin(0.5);
+      c.add(st);
+      scene.tweens.add({ targets: f, scaleX: { from: 1, to: 1.06 }, scaleY: { from: 1, to: 1.1 }, duration: 420, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
+      // (26-11-2026, usuario) chispas de fuego que suben desde la llama
+      const spark = () => {
+        if (!c.active) return;
+        const col = Phaser.Utils.Array.GetRandom([0xffd23f, 0xff8a2a, 0xff5a1f, 0xfff1b8]) as number;
+        const p = scene.add.circle(fx0 + Phaser.Math.Between(-10, 10) * sc, fy - 6 * sc, Phaser.Math.FloatBetween(2, 4.5) * sc, col).setBlendMode(Phaser.BlendModes.ADD);
+        c.add(p);
+        scene.tweens.add({ targets: p, y: p.y - Phaser.Math.Between(26, 52) * sc, x: p.x + Phaser.Math.Between(-12, 12) * sc, alpha: 0, scale: 0.3, duration: Phaser.Math.Between(500, 900), ease: 'Sine.easeOut', onComplete: () => p.destroy() });
+      };
+      const ev = scene.time.addEvent({ delay: 90, loop: true, callback: spark });
+      c.once(Phaser.GameObjects.Events.DESTROY, () => ev.remove());
+    }
     scene.tweens.add({ targets: c, x, delay: 260, duration: 460, ease: 'Back.easeOut' });
     if (side.wins && side.wins > 0 && !slot) winsBadge(scene, c, ph, side.wins); // (cards chicas del 2v2: sin insignia)
   };

@@ -5,11 +5,15 @@ import { roundedPoly } from './shapes';
 import { arcadeButton } from './modeButtons';
 import { coinIcon, drawGiftIcon } from './wheelArt';
 import { drawCashIcon } from '../scenes/BattlePassScene';
-import { LOGIN, type LoginReward } from '../domain/dailyLogin';
+import { LOGIN, TUTORIAL_LOGIN_REWARD, type LoginReward } from '../domain/dailyLogin';
 import { claimLogin, claimLoginRewardAdBonus, loginStatus } from '../logic/Ranked';
 import { canShowRewardedAds, showInterstitial, showRewarded } from '../ads/ads';
 import { tapHint } from './guideFocus';
 import { clockTimer } from './TutorialDialog';
+import { coin2v2Icon } from './PlayEntry2v2';
+import { isDevMode } from '../domain/devMode';
+import { getPlayer } from '../domain/playerStore';
+import { MAX_LEVEL } from '../config';
 
 const NAVY = 0x0b1733;
 const NEON = 0x3a7bff;
@@ -69,14 +73,14 @@ export function openDailyLogin(scene: Phaser.Scene, onChange: () => void, onToas
   const H = scene.scale.height;
   const objs: Phaser.GameObjects.GameObject[] = [];
   const close = () => objs.forEach((o) => o.destroy());
-  const shade = scene.add.rectangle(0, 0, W, H, 0x02060f, 0.8).setOrigin(0).setDepth(8000).setInteractive();
+  const shade = scene.add.rectangle(0, 0, W, H, 0x02060f, 0.8).setOrigin(0).setDepth(8150).setInteractive();
   shade.on('pointerup', close);
   objs.push(shade);
 
   const st = loginStatus();
   const pw = Math.min(660, W - 28);
   const ph = Math.min(660, H - 48);
-  const p = scene.add.container(W / 2, H / 2).setDepth(8001);
+  const p = scene.add.container(W / 2, H / 2).setDepth(8151);
   objs.push(p);
   p.add(scene.add.rectangle(0, 0, pw, ph, 0, 0.001).setInteractive());
   const g = scene.add.graphics();
@@ -116,7 +120,8 @@ export function openDailyLogin(scene: Phaser.Scene, onChange: () => void, onToas
   // Los 7 días de la semana en curso (lunes a domingo) en dos filas (4 + 3), al estilo Brawl Stars: cabecera con el día y
   // su fecha, el premio grande al centro y el estado (HOY, reclamado, perdido o por venir). El domingo es el premio mayor.
   const n = LOGIN.rewards.length;
-  const showTestDay = import.meta.env.DEV; // 8.ª tarjeta de prueba, solo en desarrollo
+  // 8.ª tarjeta de prueba, solo en desarrollo. (26-11-2026, usuario) nunca en el tutorial (nivel < 20 sin modo desarrollo)
+  const showTestDay = import.meta.env.DEV && (isDevMode() || getPlayer().level >= MAX_LEVEL);
   const WD = ['LUN', 'MAR', 'MIÉ', 'JUE', 'VIE', 'SÁB', 'DOM'];
   const loops: Phaser.Tweens.Tween[] = [];
   const cw = (pw - 52 - 3 * 12) / 4;
@@ -124,7 +129,9 @@ export function openDailyLogin(scene: Phaser.Scene, onChange: () => void, onToas
   const rowY = (row: number) => -ph / 2 + 160 + chh / 2 + row * (chh + 16);
   // reclamar el premio de HOY: lo usan el botón RECLAMAR y la tarjeta de hoy (tocar el premio también lo reclama)
   let doClaim: (() => void) | null = null;
-  LOGIN.rewards.forEach((r, i) => {
+  LOGIN.rewards.forEach((r0, i) => {
+    // (26-11-2026, usuario) guía del nivel 3: el premio de HOY es siempre 500 monedas + 5 de dinero
+    const r = guide && i === st.week.index && !st.claimed ? TUTORIAL_LOGIN_REWARD : r0;
     const row = i < 4 ? 0 : 1;
     const col = row ? i - 4 : i;
     const cols = row ? (showTestDay ? 4 : 3) : 4;
@@ -161,17 +168,25 @@ export function openDailyLogin(scene: Phaser.Scene, onChange: () => void, onToas
 
     // premio: moneda grande + cantidad; con dinero, una segunda línea con los billetes
     // (17-11-2026, usuario) la imagen de la moneda ocupa más: moneda un poco más arriba y la cantidad más abajo, sin chocar
-    const iy = r.cash ? cy - 16 : cy - 3;
-    const coin = coinIcon(scene, cx, iy, 24); // (17-11-2026) moneda: imagen moneda-1.webp
+    // (26-11-2026, usuario) el PRINCIPAL: dinero (fardo) si lo hay; si no, monedas; si no, monedas 2V2. Debajo, el secundario
+    const parts = rewardParts(r);
+    const main = parts[0];
+    const sec = parts[1];
+    const iy = sec ? cy - (main.kind === 'cash' ? 18 : 13) : cy - 3; // (26-11-2026, usuario) monedas más abajo: no chocan con el título // (26-11-2026, usuario) con 2 premios: todo más arriba, no chocan
+    const coin = rewardIcon(scene, main.kind, cx, iy, 24) as Phaser.GameObjects.Image;
     p.add(coin);
-    const amt = scene.add.text(cx, cy + (r.cash ? 33 : 45), r.coins.toLocaleString('es-CL'), { fontFamily: FONT, fontSize: '28px', color: '#ffffff', stroke: '#0a1638', strokeThickness: 6 }).setOrigin(0.5);
+    const amt = scene.add.text(cx, cy + (sec ? 25 : 45), main.value.toLocaleString('es-CL'), { fontFamily: FONT, fontSize: sec ? '24px' : '28px', color: main.kind === 'cash' ? '#b6ffc8' : main.kind === 'coins2v2' ? '#e2c4ff' : '#ffffff', stroke: '#0a1638', strokeThickness: 6 }).setOrigin(0.5);
     if (amt.width > cw - 14) amt.setScale((cw - 14) / amt.width);
     p.add(amt);
-    if (r.cash) {
-      const ci = scene.add.graphics({ x: cx - 16, y: cy + 56 });
-      drawCashIcon(ci, 0.62);
-      p.add(ci);
-      p.add(scene.add.text(cx + 2, cy + 56, `+${r.cash}`, { fontFamily: FONT, fontSize: '20px', color: '#b6ffc8', stroke: '#0a3a18', strokeThickness: 4 }).setOrigin(0, 0.5));
+    if (sec) {
+      // (26-11-2026, usuario) icono + cantidad CENTRADOS en la tarjeta (antes pegados a la derecha)
+      const st = scene.add.text(0, cy + 57, `+${sec.value.toLocaleString('es-CL')}`, { fontFamily: FONT, fontSize: '20px', color: sec.kind === 'cash' ? '#b6ffc8' : sec.kind === 'coins2v2' ? '#e2c4ff' : '#ffe45c', stroke: '#0a1638', strokeThickness: 4 }).setOrigin(0, 0.5);
+      const sr = sec.kind === 'coins' ? 15 : 11; // (26-11-2026, usuario) las monedas de secundario, más grandes
+      const iw = sec.kind === 'coins' ? 33 : 22, gapI = 4;
+      const x0 = cx - (iw + gapI + st.width) / 2;
+      st.setX(x0 + iw + gapI);
+      p.add(rewardIcon(scene, sec.kind, x0 + iw / 2, cy + 57, sr));
+      p.add(st);
     }
 
     if (done) {
@@ -248,7 +263,7 @@ export function openDailyLogin(scene: Phaser.Scene, onChange: () => void, onToas
     doClaim = () => {
         if (claimed) return; // una sola vez (botón o tarjeta)
         claimed = true;
-        const res = claimLogin();
+        const res = claimLogin(guide ? TUTORIAL_LOGIN_REWARD : undefined);
         onChange();
         if (!res.given) return;
         claimBtn.destroy();
@@ -262,7 +277,7 @@ export function openDailyLogin(scene: Phaser.Scene, onChange: () => void, onToas
           const watched = await showRewarded('daily_reward_bonus');
           // Sin anuncio: el aviso sale dentro de la pantalla del premio (showDailyRewardReveal).
           if (!watched) return false;
-          const bonus = claimLoginRewardAdBonus();
+          const bonus = claimLoginRewardAdBonus(guide ? TUTORIAL_LOGIN_REWARD : undefined);
           if (!bonus.given) return false;
           animateDouble();
           return true;
@@ -273,9 +288,9 @@ export function openDailyLogin(scene: Phaser.Scene, onChange: () => void, onToas
     let guideHand: Phaser.GameObjects.Container | undefined;
     let guideText: Phaser.GameObjects.Text | undefined;
     if (guide) {
-      guideHand = tapHint(scene, W / 2, H / 2 + by, 8100);
+      guideHand = tapHint(scene, W / 2, H / 2 + by, 8160);
       // debajo del panel (encima del botón chocaba con el texto de la semana)
-      guideText = scene.add.text(W / 2, Math.min(H - 30, H / 2 + ph / 2 + 44), 'COBRA TU PREMIO', { fontFamily: FONT, fontSize: '30px', color: '#ffd23f', stroke: '#0a1638', strokeThickness: 7 }).setOrigin(0.5).setDepth(8100);
+      guideText = scene.add.text(W / 2, Math.min(H - 30, H / 2 + ph / 2 + 44), 'COBRA TU PREMIO', { fontFamily: FONT, fontSize: '30px', color: '#ffd23f', stroke: '#0a1638', strokeThickness: 7 }).setOrigin(0.5).setDepth(8160);
       objs.push(guideHand, guideText);
     }
     claimBtn.on('pointerdown', (_p: Phaser.Input.Pointer, _x: number, _y: number, event: Phaser.Types.Input.EventData) => event.stopPropagation());
@@ -292,6 +307,35 @@ export function openDailyLogin(scene: Phaser.Scene, onChange: () => void, onToas
   scene.tweens.add({ targets: p, scale: 1, alpha: 1, duration: 280, ease: 'Back.easeOut' });
 }
 
+type RewardKind = 'coins' | 'cash' | 'coins2v2';
+/** (26-11-2026, usuario) partes del premio en orden: el DINERO es siempre el principal; luego monedas y monedas 2V2 */
+function rewardParts(r: LoginReward): { kind: RewardKind; value: number }[] {
+  const all: { kind: RewardKind; value: number }[] = [
+    { kind: 'cash', value: r.cash },
+    { kind: 'coins', value: r.coins },
+    { kind: 'coins2v2', value: r.coins2v2 ?? 0 },
+  ];
+  const out = all.filter((x) => x.value > 0);
+  return out.length ? out : [{ kind: 'coins', value: 0 }];
+}
+/** icono de cada premio: fardo de dinero, moneda o moneda 2V2 */
+function rewardIcon(scene: Phaser.Scene, kind: RewardKind, x: number, y: number, r: number): Phaser.GameObjects.GameObject {
+  if (kind === 'coins') {
+    // (26-11-2026, usuario) la imagen de MONEDAS (monedas.webp), no la de una moneda; un poco más chica (no choca con el día)
+    if (!scene.textures.exists('daily-coins-art')) return coinIcon(scene, x, y, r);
+    const im = scene.add.image(x, y, 'daily-coins-art');
+    return im.setScale((r * 2.2) / Math.max(im.width, im.height));
+  }
+  if (kind === 'coins2v2') return coin2v2Icon(scene, x, y, r);
+  if (scene.textures.exists('cash-pack')) {
+    const im = scene.add.image(x, y, 'cash-pack');
+    return im.setScale((r * 2.1) / Math.max(im.width, im.height)); // (26-11-2026, usuario) más chico: no choca con el día
+  }
+  const g = scene.add.graphics({ x, y });
+  drawCashIcon(g, r / 18);
+  return g;
+}
+
 /** Presentación de premio diario con el mismo destello, rebote, conteo y explosión de la ruleta. */
 function showDailyRewardReveal(
   scene: Phaser.Scene,
@@ -305,7 +349,8 @@ function showDailyRewardReveal(
 ) {
   const W = scene.scale.width;
   const H = scene.scale.height;
-  const root = scene.add.container(0, 0).setScrollFactor(0).setDepth(8100);
+  // (26-11-2026, usuario) 8200: por encima de AJUSTES (que en la guía del menú sube a 8101)
+  const root = scene.add.container(0, 0).setScrollFactor(0).setDepth(8200);
   // Fondo de pantalla completa, igual al de resultado de la ruleta: oculta el Diario y da foco al premio.
   const bgKey = `daily-reward-bg-${W}x${H}`;
   if (!scene.textures.exists(bgKey)) {
@@ -363,15 +408,16 @@ function showDailyRewardReveal(
   root.add(subtitle);
 
   // Cada premio se presenta en su propia tarjeta, siguiendo la referencia visual.
-  const hasCash = reward.cash > 0;
+  const parts = rewardParts(reward);
+  const two = parts.length > 1;
   const gap = 14;
-  const cardW = hasCash ? Math.min(250, (W - 40 - gap) / 2) : Math.min(280, W - 48);
+  const cardW = two ? Math.min(250, (W - 40 - gap) / 2) : Math.min(280, W - 48);
   const cardH = Math.min(330, H * 0.32);
   const cardY = H * 0.51;
-  const centers = hasCash
+  const centers = two
     ? [W / 2 - (cardW + gap) / 2, W / 2 + (cardW + gap) / 2]
     : [W / 2];
-  const makeRewardCard = (x: number, kind: 'coins' | 'cash', value: number, delay: number) => {
+  const makeRewardCard = (x: number, kind: RewardKind, value: number, delay: number) => {
     const top = cardY - cardH / 2;
     const g = scene.add.graphics();
     g.fillStyle(0x061b4c, 0.98).fillRoundedRect(x - cardW / 2, top, cardW, cardH, 27);
@@ -398,6 +444,11 @@ function showDailyRewardReveal(
       art = scene.add.image(x, artY, 'daily-cash-art').setDisplaySize(cardW * 0.82, cardH * 0.43);
     } else if (kind === 'coins') {
       art = coinIcon(scene, x, artY, Math.min(43, cardW * 0.21)); // (17-11-2026) moneda: imagen moneda-1.webp
+    } else if (kind === 'coins2v2') {
+      art = coin2v2Icon(scene, x, artY, Math.min(43, cardW * 0.21)) as Phaser.GameObjects.Image; // (26-11-2026) moneda 2V2
+    } else if (scene.textures.exists('cash-pack')) {
+      art = scene.add.image(x, artY, 'cash-pack'); // (26-11-2026, usuario) fardo de dinero
+      art.setScale(Math.min(cardW * 0.6 / art.width, cardH * 0.4 / art.height));
     } else {
       const cg = scene.add.graphics({ x, y: artY });
       drawCashIcon(cg, Math.min(1, cardW / 220));
@@ -415,17 +466,14 @@ function showDailyRewardReveal(
     plate.lineStyle(3, 0xffed74, 1).strokeRoundedRect(x - cardW * 0.44 + 3, plateY - 29, cardW * 0.88 - 6, 50, 16);
     root.add(plate);
     const amount = scene.add.text(x, plateY - 2, '+0', { fontFamily: FONT, fontSize: `${Math.round(Math.min(48, cardW * 0.22))}px`, color: '#ffffff', stroke: '#09275b', strokeThickness: 7 }).setOrigin(0.5).setAlpha(0);
-    const label = scene.add.text(x, top + cardH * 0.875, kind === 'coins' ? 'MONEDAS' : 'DINERO', { fontFamily: FONT, fontSize: `${Math.round(Math.min(20, cardW * 0.09))}px`, color: '#ffffff', stroke: '#061431', strokeThickness: 4 }).setOrigin(0.5).setLetterSpacing(1).setAlpha(0);
+    const label = scene.add.text(x, top + cardH * 0.875, kind === 'coins' ? 'MONEDAS' : kind === 'coins2v2' ? 'MONEDAS 2V2' : 'DINERO', { fontFamily: FONT, fontSize: `${Math.round(Math.min(20, cardW * 0.09))}px`, color: '#ffffff', stroke: '#061431', strokeThickness: 4 }).setOrigin(0.5).setLetterSpacing(1).setAlpha(0);
     root.add([amount, label]);
     scene.tweens.add({ targets: [plate, amount, label], alpha: 1, delay: delay + 250, duration: 260 });
     const state = { value: 0 };
     scene.tweens.add({ targets: state, value, delay: delay + 280, duration: 820, ease: 'Cubic.easeOut', onUpdate: () => amount.setText(`+${Math.round(state.value).toLocaleString('es-CL')}`) });
     return amount;
   };
-  const coinX = centers[0];
-  const cashX = hasCash ? centers[1] : W / 2;
-  const coinsValue = makeRewardCard(coinX, 'coins', reward.coins, 120);
-  const cashValue = hasCash ? makeRewardCard(cashX, 'cash', reward.cash, 240) : undefined;
+  const values = parts.map((pt, i) => ({ pt, text: makeRewardCard(centers[i] ?? W / 2, pt.kind, pt.value, 120 + i * 120) }));
   const count = (text: Phaser.GameObjects.Text, from: number, to: number, delay = 0) => {
     const state = { value: from };
     text.setText(`+${from.toLocaleString('es-CL')}`);
@@ -463,8 +511,7 @@ function showDailyRewardReveal(
     bonusBtn.disableInteractive();
     try {
       const earned = await onDouble(() => {
-        count(coinsValue, reward.coins, reward.coins * 2);
-        if (cashValue) count(cashValue, reward.cash, reward.cash * 2, 120);
+        values.forEach((v, i) => count(v.text, v.pt.value, v.pt.value * 2, i * 120));
         const status = scene.add.text(W / 2, H * 0.68, testMode ? 'VISTA TEST · x2 SIMULADO' : '¡RECOMPENSA x2!', { fontFamily: FONT, fontSize: '22px', color: '#8dffad', stroke: '#061431', strokeThickness: 5 }).setOrigin(0.5).setScale(0.6).setAlpha(0);
         root.add(status);
         scene.tweens.add({ targets: status, alpha: 1, scale: 1, duration: 360, ease: 'Back.easeOut' });
@@ -505,13 +552,17 @@ function showDailyRewardReveal(
   if (!testMode && !canShowRewardedAds()) bonusBtn.setVisible(false).disableInteractive();
   /** tutorial: "puedes duplicar tu premio con x2" con la mano en el botón y un reloj de 1,5 s; luego se suelta (se puede seguir) */
   function explainDouble() {
-    const hand = tapHint(scene, bonusBtn.x, bonusBtn.y, 8102);
-    const t = scene.add.text(W / 2, H * 0.68, 'PUEDES DUPLICAR TU PREMIO CON x2\nCUANDO LO NECESITES', { fontFamily: FONT, fontSize: '26px', color: '#ffd23f', stroke: '#0a1638', strokeThickness: 7, align: 'center' }).setOrigin(0.5).setScrollFactor(0).setDepth(8102);
+    // (26-11-2026, usuario) toda la pantalla del premio OPACA; solo se ve el x2 (y la explicación)
+    const dim = scene.add.rectangle(0, 0, W, H, 0x02060f, 0.78).setOrigin(0).setInteractive();
+    root.add(dim);
+    root.bringToTop(bonusBtn);
+    const hand = tapHint(scene, bonusBtn.x, bonusBtn.y, 8202);
+    const t = scene.add.text(W / 2, H * 0.68, 'OPCIONAL: ¡DUPLICA TU RECOMPENSA!', { fontFamily: FONT, fontSize: '28px', color: '#ffd23f', stroke: '#0a1638', strokeThickness: 7, align: 'center' }).setOrigin(0.5).setScrollFactor(0).setDepth(8202);
     if (t.width > W - 40) t.setScale((W - 40) / t.width);
-    const clock = clockTimer(scene, W / 2, H * 0.68 + 70, 1500).setScrollFactor(0).setDepth(8102);
+    const clock = clockTimer(scene, W / 2, H * 0.68 + 70, 1500).setScrollFactor(0).setDepth(8202);
     root.once(Phaser.GameObjects.Events.DESTROY, () => [hand, t, clock].forEach((o) => o.destroy()));
     scene.time.delayedCall(1500, () => {
-      [hand, t, clock].forEach((o) => o.destroy());
+      [hand, t, clock, dim].forEach((o) => o.destroy());
       if (!root.active) return;
       canContinue = true;
       scene.tweens.add({ targets: prompt, alpha: 1, duration: 280, onComplete: () => scene.tweens.add({ targets: prompt, alpha: 0.45, duration: 650, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' }) });

@@ -5,10 +5,11 @@ import { join } from 'node:path';
 /**
  * public/personajes contiene las hojas FUENTE de los sprites (las que procesan tools/build-moves.mjs y build-ulti.mjs) y copias
  * de seguridad: ~50 MB que el juego no usa y que acabarían dentro del APK. Los respaldos nuevos van a _temp/respaldo_oficial/ (raíz del repo, fuera de public/). El juego solo lee de
- * personajes/ el retrato WebP de Nxo y las franjas de la mirada (INFERNO de Nxo y Mai); el resto se quita de dist.
+ * personajes/ el retrato WebP de Nxo y las franjas de mirada para INFERNO y Duelo Red. El resto se quita de dist.
  * (Los emojis de personajes/Nxo/emojis/ son fuentes de tools/build-emote-thumbs.mjs: el juego usa assets/emotes/.)
  */
-const KEEP_IN_PERSONAJES = ['Nxo/pj-nxo.webp', 'Nxo/pj-nxo-mirada.webp', 'Mai/pj-mai-mirada.webp'];
+const GAZE_CHARACTERS = ['Nxo', 'Mai', 'Mat', 'Isa', 'Jun', 'Net', 'Zac', 'Rin', 'Flo'];
+const KEEP_IN_PERSONAJES = ['Nxo/pj-nxo.webp', ...GAZE_CHARACTERS.map((name) => `${name}/pj-${name.toLowerCase()}-mirada.webp`)];
 function trimSourceArt(): Plugin {
   let outDir = 'dist';
   return {

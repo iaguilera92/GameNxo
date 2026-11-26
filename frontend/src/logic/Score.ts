@@ -25,12 +25,15 @@ export class Score {
    * 0 = como siempre (el jugador saca el primer juego).
    */
   serverOffset = 0;
+  /** (26-11-2026, usuario) puntos guiados del tutorial (con sacador fijo): el 2-2 empieza después de ellos */
+  freeFrom = 0;
 
   /** Saca el jugador en juegos pares y el bot en impares (con serverOffset 1, al revés). */
   get server(): Side {
     if (this.fixedServer !== null) return this.fixedServer;
     // (25-11-2026, usuario) por los puntos que CUENTAN (los guiados del tutorial no): 1 el jugador, 2 el bot, 2 el jugador...
-    if (this.shortMatch) return ((this.serverOffset + Math.floor((this.points[0] + this.points[1] + 1) / 2)) % 2) as Side;
+    // (26-11-2026, usuario) siempre igual: 2 saques tú, 2 el rival, 2 tú… (desde el primer punto libre, tras los guiados del tutorial)
+    if (this.shortMatch) return ((this.serverOffset + Math.floor(Math.max(0, this.points[0] + this.points[1] - this.freeFrom) / 2)) % 2) as Side;
     return ((this.gameIndex + this.serverOffset) % 2) as Side;
   }
 

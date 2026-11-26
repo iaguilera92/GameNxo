@@ -14,7 +14,19 @@ let current: Phaser.GameObjects.Container | null = null;
  * Mirada de cada personaje. `eyeFy` = altura (fracción del alto de la imagen) que queda en el centro de la franja;
  * `eyes` = pupilas (fracción del ancho / alto de la imagen), de donde salen los rayos.
  */
-type GazeArt = { key: string; file: string; eyeFy: number; eyes: { fx: number; fy: number }[] };
+type EyePoint = { fx: number; fy: number };
+type GazeArt = { key: string; file: string; eyeFy: number; eyes: EyePoint[] };
+
+function rosterGaze(name: string, near: EyePoint, far: EyePoint): GazeArt {
+  const id = name.toLowerCase();
+  return {
+    key: `${id}-gaze`,
+    file: `personajes/${name}/pj-${id}-mirada.webp`,
+    eyeFy: (near.fy + far.fy) / 2,
+    eyes: [near, far],
+  };
+}
+
 export const GAZE_ARTS: Record<string, GazeArt> = {
   nxo: {
     key: 'nxo-gaze',
@@ -35,6 +47,13 @@ export const GAZE_ARTS: Record<string, GazeArt> = {
       { fx: 0.662, fy: 0.745 },
     ],
   },
+  mat: rosterGaze('Mat', { fx: 0.515, fy: 0.539 }, { fx: 0.654, fy: 0.678 }),
+  isa: rosterGaze('Isa', { fx: 0.489, fy: 0.533 }, { fx: 0.661, fy: 0.717 }),
+  jun: rosterGaze('Jun', { fx: 0.494, fy: 0.511 }, { fx: 0.657, fy: 0.667 }),
+  net: rosterGaze('Net', { fx: 0.520, fy: 0.544 }, { fx: 0.676, fy: 0.717 }),
+  zac: rosterGaze('Zac', { fx: 0.526, fy: 0.550 }, { fx: 0.685, fy: 0.706 }),
+  rin: rosterGaze('Rin', { fx: 0.567, fy: 0.572 }, { fx: 0.693, fy: 0.722 }),
+  flo: rosterGaze('Flo', { fx: 0.498, fy: 0.511 }, { fx: 0.672, fy: 0.706 }),
 };
 
 /** Carga la mirada del personaje que juega (los que no tienen, nada). */

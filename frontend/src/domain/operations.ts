@@ -7,7 +7,7 @@ import { MAX_LEVEL, xpToNext } from '../config';
 import type { AbilityId } from '../logic/Abilities';
 import type { SkinId } from '../characters/skins';
 import { type ItemId, type PlayerState, type StyleId, clonePlayer, itemId, owns } from './player';
-import { shopItem } from './shopCatalog';
+import { priceFor, shopItem } from './shopCatalog';
 import { TUTORIAL_GIFTS } from './tutorial';
 import { bpAddXpInPlace } from './battlePassConfig';
 import { ZONE_STAT_MAX, type ZoneStatKey, zoneStatsOf } from './zoneProgress';
@@ -185,10 +185,11 @@ export function purchase(s: PlayerState, id: ItemId): OpResult {
   if (item.realMoneyOnly) return fail('real_money_only'); // solo con dinero real (CLP, aún sin pasarela de pago)
   if (s.level < item.minLevel) return fail('level_too_low');
   // la Tienda cobra DINERO: las monedas son la moneda competitiva (Ranked)
-  if (!Number.isInteger(item.price) || item.price < 0) return fail('invalid_amount');
-  if (s.gems < item.price) return fail('not_enough_cash');
+  const price = priceFor(item, s.level); // (26-11-2026, usuario) precio del tutorial
+  if (!Number.isInteger(price) || price < 0) return fail('invalid_amount');
+  if (s.gems < price) return fail('not_enough_cash');
   const n = clonePlayer(s);
-  n.gems -= item.price;
+  n.gems -= price;
   n.owned.push(id);
   return { ok: true, state: n };
 }

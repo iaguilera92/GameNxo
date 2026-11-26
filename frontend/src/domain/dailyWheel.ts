@@ -172,6 +172,10 @@ export function isTutorialSpinId(id: string) {
 export function nextTutorialBonus(s: PlayerState): number {
   return s.wheel.bonusSpins.findIndex((sp) => isTutorialSpinId(sp.matchId) && !sp.presented && !sp.claimed);
 }
+/** (26-11-2026, usuario) ruleta del tutorial aún SIN COBRAR (presentada o no): -1 si no hay */
+export function unclaimedTutorialBonus(s: PlayerState): number {
+  return s.wheel.bonusSpins.findIndex((sp) => isTutorialSpinId(sp.matchId) && !sp.claimed);
+}
 /** Marca un giro bonus como ya presentado (se abre solo una vez). */
 export function markBonusPresented(s: PlayerState, index: number): WheelResult {
   const n = clonePlayer(s);
@@ -239,9 +243,13 @@ export function spin(s: PlayerState, index: number, now: number, rng: Rng = secu
     return { ok: true, state: n, slot, reward: sp.reward, tier: sp.tier ?? 'normal', repeated: true };
   }
   // forceSlot: solo la RULETA TEST (desarrollo) elige el sector para probar cada premio
-  const slot = (sp.matchId === GUIDE_FIRST_WHEEL ? slotById('c100') : forceSlot && slotById(forceSlot)) || pickWeighted(WHEEL.slots, rng);
+  // (26-11-2026, usuario) RULETAS DEL TUTORIAL hasta el nivel 5: monedas y dinero alternados (para llegar al 5 con ~20 de dinero y comprar
+  // un defensivo): 1.er partido 100 monedas, nivel 2 = 5 de dinero, nivel 3 = 150 monedas, nivel 4 = 5 de dinero
+  const TUT_SLOT: Record<string, string> = { [GUIDE_FIRST_WHEEL]: 'c100', 'tutorial-level:2': 'd5', 'tutorial-level:3': 'c150', 'tutorial-level:4': 'd5' };
+  const fixedId = sp.matchId ? TUT_SLOT[sp.matchId] : undefined;
+  const slot = (fixedId ? slotById(fixedId) : forceSlot && slotById(forceSlot)) || pickWeighted(WHEEL.slots, rng);
   const base = resolvePrize(slot, n, rng);
-  const tier = rollTier('normal', rng);
+  const tier = fixedId ? 'normal' : rollTier('normal', rng);
   const reward = scaleReward(base, tier);
   sp.slot = slot.id;
   sp.base = base;

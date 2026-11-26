@@ -12,17 +12,20 @@ import { type LoginState, type PlayerState, clonePlayer } from './player';
 
 export type { LoginState } from './player';
 
-export type LoginReward = { coins: number; cash: number };
+/** (26-11-2026, usuario) `coins2v2`: monedas de la liga 2V2 (algunos días) */
+export type LoginReward = { coins: number; cash: number; coins2v2?: number };
 
 export const LOGIN = {
   /** premio de cada día de la semana (lunes … domingo) */
   rewards: [
+    // (26-11-2026, usuario) DINERO 2 días (jueves y domingo: es el premio principal); MONEDAS 2V2 3 días (martes y viernes como
+    // principal; el sábado como secundario, junto a las monedas)
     { coins: 250, cash: 0 },
-    { coins: 300, cash: 0 },
+    { coins: 0, cash: 0, coins2v2: 30 },
     { coins: 400, cash: 0 },
     { coins: 500, cash: 5 },
-    { coins: 600, cash: 0 },
-    { coins: 800, cash: 0 },
+    { coins: 0, cash: 0, coins2v2: 60 },
+    { coins: 800, cash: 0, coins2v2: 30 },
     // domingo: vale más que los otros 6 días juntos (2.850), para volver el último día de la semana (docs/ECONOMIA.md)
     { coins: 3_500, cash: 10 },
   ] as LoginReward[],
@@ -59,25 +62,32 @@ export function loginStatus(s: PlayerState, now: number) {
   return { day: wk.index + 1, claimed, reward: LOGIN.rewards[wk.index], week: wk, claimedDays };
 }
 
-export function claimLogin(s: PlayerState, now: number): { ok: true; state: PlayerState; given: LoginReward | null; day: number } {
-  const st = loginStatus(s, now);
+/** (26-11-2026, usuario) el PRIMER premio diario (guía del nivel 3) es siempre este, sea el día que sea: 500 monedas + 5 de dinero */
+export const TUTORIAL_LOGIN_REWARD: LoginReward = { coins: 500, cash: 5 };
+
+export function claimLogin(s: PlayerState, now: number, override?: LoginReward): { ok: true; state: PlayerState; given: LoginReward | null; day: number } {
+  const st0 = loginStatus(s, now);
+  const st = override ? { ...st0, reward: override } : st0;
   if (st.claimed) return { ok: true, state: s, given: null, day: st.day };
   const n = clonePlayer(s);
   n.coins += st.reward.coins;
   n.gems += st.reward.cash;
+  if (st.reward.coins2v2) n.coins2v2 = (n.coins2v2 ?? 0) + st.reward.coins2v2;
   const days = [...st.claimedDays, st.week.index];
   n.login = { ...n.login, last: st.week.today, week: st.week.week, days, streak: days.length };
   return { ok: true, state: n, given: st.reward, day: st.day };
 }
 
 /** Duplica el premio diario tras completar un anuncio; solo una vez por día y después del reclamo base. */
-export function claimLoginAdBonus(s: PlayerState, now: number): { state: PlayerState; given: LoginReward | null } {
+export function claimLoginAdBonus(s: PlayerState, now: number, override?: LoginReward): { state: PlayerState; given: LoginReward | null } {
   const today = cycleIdAt(now);
-  const st = loginStatus(s, now);
+  const st0 = loginStatus(s, now);
+  const st = override ? { ...st0, reward: override } : st0;
   if (!st.claimed || s.login.adBonusDay === today) return { state: s, given: null };
   const n = clonePlayer(s);
   n.coins += st.reward.coins;
   n.gems += st.reward.cash;
+  if (st.reward.coins2v2) n.coins2v2 = (n.coins2v2 ?? 0) + st.reward.coins2v2;
   n.login.adBonusDay = today;
   return { state: n, given: st.reward };
 }

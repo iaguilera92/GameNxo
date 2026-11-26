@@ -15,7 +15,7 @@ import { arcadeButton, modeBand, modeShape } from '../ui/modeButtons';
 import { chestStatus } from '../domain/chest';
 import { gameClock } from '../domain/timeSource';
 import { isDevMode } from '../domain/devMode';
-import { maybeShowTutorial } from '../ui/TutorialDialog';
+import { clockTimer, maybeShowTutorial } from '../ui/TutorialDialog';
 import { GUIDE, guidedStep } from '../domain/tutorial';
 import { grantTutorialGifts, markTutorialSeen } from '../domain/operations';
 import { guideFocus } from '../ui/guideFocus';
@@ -51,7 +51,7 @@ import { sfx } from '../fx/sfx';
 import { masteryLevel, masteryProgress, passiveOf } from '../domain/characterPassives';
 import { drawPassiveIcon } from '../ui/passiveInfo';
 import { startIntroMusic } from '../fx/introMusic';
-import { grantTestSpin, markTutorialWheelPresented, markWheelPresented, syncWheels, tutorialWheelToPresent, wheelToPresent } from '../logic/Wheels';
+import { grantTestSpin, markTutorialWheelPresented, markWheelPresented, syncWheels, tutorialWheelToPresent, unclaimedTutorialWheel, wheelToPresent } from '../logic/Wheels';
 
 /** (25-11-2026, usuario) nivel desde el que se ve el botón DIARIO (premio por iniciar sesión) */
 const DAILY_LOGIN_LEVEL = 3;
@@ -94,6 +94,11 @@ const BG_ZOOM = 1.12;
  * de la imagen (sin el margen transparente); `split` = límites entre las 3 pestañas (0..1).
  * Si la imagen no existe se dibuja la barra vectorial de antes.
  */
+/** (26-11-2026, usuario) cards del menú que aún no se muestran en el tutorial: GLOBAL (nivel por definir; 15 mientras) y la LIGA (junto al PASE) */
+const GLOBAL_CARD_LEVEL = 15;
+/** (26-11-2026, usuario) TIENDA y AMIGOS en el menú desde este nivel */
+const SHOP_LEVEL = 5;
+const LEAGUE_CARD_LEVEL = 15;
 /** MODO RIESGO x2: pulsación más corta que esto = toque (abre la explicación); mantener RISK_HOLD_MS = activarlo */
 const RISK_TAP_MS = 280;
 // (20-11-2026, usuario) el anillo se llena en 2 s, lo mismo que suena modo-riesgo.mp3 (antes 3 s en total)
@@ -121,8 +126,34 @@ const NAV = {
 
 export class MenuScene extends Phaser.Scene {
   private guideOverlay?: Phaser.GameObjects.Container;
-  private guideRects?: { defensive: { x: number; y: number; w: number; h: number }; profile?: { x: number; y: number; w: number; h: number }; daily?: { x: number; y: number; w: number; h: number } };
+  private guideRects?: Partial<Record<'defensive' | 'profile' | 'daily' | 'pass' | 'shop' | 'friends', { x: number; y: number; w: number; h: number }>>;
 
+  /** (26-11-2026, usuario) ¿ya se abre la TIENDA? (nivel 5; antes, aviso) */
+  /** (26-11-2026, usuario) la card del PASE se ve desde que ganas el primer partido (en el nivel 5 se explica con su guía) */
+  private passVisible() {
+    const p = getPlayer();
+    return isDevMode() || p.level >= UNLOCK_LEVEL.pass || p.level > 1 || !!p.tutorial?.includes(GUIDE.firstMatch);
+  }
+  /** (26-11-2026, usuario) aviso al soltar al jugador de la guía: oscuro, ¡LISTOS PARA CONTINUAR! y el reloj de 2 s */
+  private readyToGo() {
+    const W = this.scale.width;
+    const H = this.scale.height;
+    const root = this.add.container(0, 0).setDepth(9300);
+    const dim = this.add.rectangle(0, 0, W, H, 0x02060f, 0.78).setOrigin(0).setInteractive().setAlpha(0);
+    const t = this.add.text(W / 2, H * 0.42, '¡LISTOS PARA\nCONTINUAR!', { ...textStyle(64, '#ffd23f'), stroke: '#2a1600', strokeThickness: 10, align: 'center' }).setOrigin(0.5).setScale(0.3).setAlpha(0);
+    const clock = clockTimer(this, W / 2, H * 0.42 + 140, 2000).setAlpha(0);
+    root.add([dim, t, clock]);
+    this.tweens.add({ targets: [dim, clock], alpha: 1, duration: 300 });
+    this.tweens.add({ targets: t, scale: 1, alpha: 1, duration: 420, ease: 'Back.easeOut' });
+    this.time.delayedCall(2000, () => this.tweens.add({ targets: root, alpha: 0, duration: 350, onComplete: () => root.destroy() }));
+  }
+  private shopOpen() {
+    if (isDevMode() || getPlayer().level >= SHOP_LEVEL) return true;
+    this.toast(`La TIENDA se abre en el nivel ${SHOP_LEVEL}`);
+    return false;
+  }
+  /** (26-11-2026) se está abriendo una ruleta del tutorial pendiente (la guía espera) */
+  private pendingWheelOpening = false;
   private refreshGuide() {
     this.guideOverlay?.destroy();
     this.guideOverlay = undefined;
@@ -131,11 +162,36 @@ export class MenuScene extends Phaser.Scene {
     const p = getPlayer();
     const step = guidedStep(p.level, p.tutorial);
     if (!step) return;
-    const target = step === 'defensive' || step === 'special' ? this.guideRects.defensive : step === 'profile' ? this.guideRects.profile : step === 'daily' ? this.guideRects.daily : this.modeRects[0];
+    // (26-11-2026, usuario) antes de la TIENDA (nivel 5): si queda una ruleta del tutorial sin cobrar, se abre para cobrarla primero
+    if ((step === 'pass' || step === 'shop') && !this.pendingWheelOpening) {
+      const iw = unclaimedTutorialWheel();
+      if (iw >= 0) {
+        this.pendingWheelOpening = true;
+        markTutorialWheelPresented(iw);
+        this.time.delayedCall(400, () => {
+          openWheel(this, iw, { bonus: true });
+          whenWheelReady(this, (w) => w.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.time.delayedCall(300, () => {
+            this.pendingWheelOpening = false;
+            if (this.sys.isActive()) this.refreshGuide();
+          })));
+        });
+        return;
+      }
+    }
+    const target = step === 'defensive' || step === 'special' ? this.guideRects.defensive : step === 'profile' ? this.guideRects.profile : step === 'daily' ? this.guideRects.daily : step === 'pass' ? this.guideRects.pass : step === 'shop' ? this.guideRects.shop : step === 'friends' ? this.guideRects.friends : this.modeRects[0];
     if (!target) return;
-    const labels = { play: 'TOCA PARA JUGAR', defensive: 'ABRIR PERSONALIZAR PERSONAJE', profile: 'TOCA TU PERFIL', spin: 'TOCA PARA JUGAR', daily: 'ABRE TU PREMIO DIARIO', l3: 'TOCA PARA JUGAR', special: '¡ESPECIAL DESBLOQUEADO!\nABRIR PERSONALIZAR PERSONAJE' }; // (24-11-2026) nivel 2: solo DEFENSIVO
+    const labels = { play: 'TOCA PARA JUGAR', defensive: 'ABRIR PERSONALIZAR PERSONAJE', profile: 'TOCA TU PERFIL', spin: 'TOCA PARA CONTINUAR', daily: 'ABRE TU PREMIO DIARIO', l3: 'TOCA PARA CONTINUAR', special: '¡ESPECIAL DESBLOQUEADO!', l4: 'TOCA PARA CONTINUAR', pass: 'COBRA TUS PREMIOS DEL PASE', shop: 'ABRE LA TIENDA', friends: 'YA PUEDES JUGAR CON TUS AMIGOS' } /* (26-11-2026, usuario) TOCA PARA JUGAR solo en el nivel 1 */; // (24-11-2026) nivel 2: solo DEFENSIVO
     const focus = step === 'play' ? { ...target, h: target.h + 24 } : target;
-    this.guideOverlay = guideFocus(this, focus, labels[step], { centerText: step === 'defensive' || step === 'special' }); // (25-11-2026, usuario) centrado: no choca con el personaje ni la mano
+    this.guideOverlay = guideFocus(this, focus, labels[step], { centerText: step === 'defensive' || step === 'special' || step === 'daily' || step === 'shop' || step === 'friends' }); // (25-11-2026, usuario) centrado: no choca con el personaje ni la mano
+    // (26-11-2026, usuario) AMIGOS aún no está listo: solo se avisa (3 s) y la guía sigue
+    if (step === 'friends') {
+      this.time.delayedCall(3000, () => {
+        if (!this.sys.isActive() || guidedStep(getPlayer().level, getPlayer().tutorial) !== 'friends') return;
+        commit((s) => markTutorialSeen(s, GUIDE.friends));
+        this.refreshGuide();
+        this.readyToGo(); // (26-11-2026, usuario) fin del tutorial más guiado: ¡LISTOS PARA CONTINUAR! (2 s con el reloj) y se suelta
+      });
+    }
     // (25-11-2026, usuario) AJUSTES sigue disponible durante la guía (ahí irá INICIAR SESIÓN): por encima del oscurecido, sin mano ni animación
     this.gearBtn?.setDepth(8101);
   }
@@ -403,9 +459,10 @@ export class MenuScene extends Phaser.Scene {
     const SIDE_STEP = 152;
     const SIDE_LIFT = 22;
     const sideY = Math.max(PASS_BOTTOM + 10 + 68, Math.min(H * 0.4, feetY - 300, dailyMaxY - 84 / 2 - 30 - 136 / 2 - SIDE_STEP) - SIDE_LIFT);
-    this.guideRects = { defensive: { x: 128, y: sideY, w: 214, h: 136 }, profile: this.guideRects?.profile, daily: this.guideRects?.daily };
+    this.guideRects = { ...this.guideRects, defensive: { x: 128, y: sideY, w: 214, h: 136 }, shop: { x: 128, y: sideY + SIDE_STEP, w: 214, h: 136 } };
     this.sideButton(128, sideY, 'PERSONAJE', 'user', false, () => go('Customize'));
-    this.sideButton(128, sideY + SIDE_STEP, 'TIENDA', 'shop', false, () => go('Shop'));
+    // (26-11-2026, usuario) la TIENDA aparece en el nivel 5
+    if (isDevMode() || p.level >= SHOP_LEVEL) this.sideButton(128, sideY + SIDE_STEP, 'TIENDA', 'shop', false, () => go('Shop'));
     // premio diario: bajo TIENDA, mitad de su ancho (214/2); se marca en dorado pero NUNCA se abre solo
     // (sin pisar el panel de ruletas en pantallas bajas)
     const dailyH = 84;
@@ -438,11 +495,12 @@ export class MenuScene extends Phaser.Scene {
         });
         if (this.guideRects) this.guideRects.daily = { x: dx, y: dailyY, w: dailyW, h: dailyH };
       }
-      globalRankingButton(this, 128 - 214 / 2 + dailyW / 2, dailyY + globalRow, dailyW, dailyH);
+      if (isDevMode() || p.level >= GLOBAL_CARD_LEVEL) globalRankingButton(this, 128 - 214 / 2 + dailyW / 2, dailyY + globalRow, dailyW, dailyH); // (26-11-2026, usuario) oculta hasta ese nivel
     }
     // (24-11-2026, usuario) AMIGOS desde el nivel 2 (antes 5): para probar con amigos pronto (allí todo va en Default)
-    if (isDevMode() || p.level >= 2) {
+    if (isDevMode() || p.level >= SHOP_LEVEL) { // (26-11-2026, usuario) AMIGOS en el nivel 5 (antes 2)
       friendsButton(this, 128 - 214 / 2 + dailyW + dailyGap + dailyW / 2, dailyY, (m) => this.toast(m), dailyW, dailyH);
+      this.guideRects = { ...this.guideRects, friends: { x: 128 - 214 / 2 + dailyW + dailyGap + dailyW / 2, y: dailyY, w: dailyW, h: dailyH } };
     }
 
     // --- JUGAR
@@ -452,7 +510,7 @@ export class MenuScene extends Phaser.Scene {
       const p = getPlayer();
       if (!isDevMode() && p.level <= 15) {
         const step = guidedStep(p.level, p.tutorial);
-        this.scene.start('Matchmaking', { skipSearch: true, from: 'Menu', guide: step === 'play' ? 'first' : step === 'spin' ? 'spin' : step === 'l3' ? 'l3' : undefined });
+        this.scene.start('Matchmaking', { skipSearch: true, from: 'Menu', guide: step === 'play' ? 'first' : step === 'spin' ? 'spin' : step === 'l3' ? 'l3' : step === 'l4' ? 'l4' : p.level === 5 && !p.tutorial?.includes(GUIDE.l5) ? 'l5' : undefined }); // (26-11-2026) nivel 5 guiado
         return;
       }
       // (24-11-2026, usuario) niveles 16 a 19: partido COMPLETO amistoso contra el bot (sin apuesta: las ligas se abren en el nivel 20)
@@ -1069,7 +1127,7 @@ export class MenuScene extends Phaser.Scene {
     const src = { x: W / 2, y: H * 0.46 };
     // (21-11-2026) en NIVEL MÁXIMO la cuenta ya no gana EXP: solo la recibe el pase
     // (25-11-2026, usuario) el PASE recibe la EXP solo desde su nivel (UNLOCK_LEVEL.pass); antes, solo el nivel de la cuenta
-    const cards = this.xpAt.filter((c) => (c.kind === 'pass' ? getPlayer().level >= UNLOCK_LEVEL.pass : getPlayer().level < MAX_LEVEL));
+    const cards = this.xpAt.filter((c) => (c.kind === 'pass' ? this.passVisible() : getPlayer().level < MAX_LEVEL)); // (26-11-2026) el PASE recibe la EXP desde el 1.er partido ganado
     const gain = this.xpGain;
     const share = (w: number) => (w < XP_WAVES - 1 ? Math.floor(gain / XP_WAVES) : gain - Math.floor(gain / XP_WAVES) * (XP_WAVES - 1));
     // (14-11-2026) el sonido suena UNA VEZ POR OLEADA (3 veces), cuando cada oleada sale hacia las cards (ver el bucle)
@@ -1267,7 +1325,7 @@ export class MenuScene extends Phaser.Scene {
       this.xpGain = xp;
       this.xpAnims = [];
       if (getPlayer().level < MAX_LEVEL && this.profileRefresh) this.xpAnims.push(this.profileRefresh);
-      if (this.passRefresh && getPlayer().level >= UNLOCK_LEVEL.pass) this.xpAnims.push(this.passRefresh);
+      if (this.passRefresh && this.passVisible()) this.xpAnims.push(this.passRefresh);
       this.time.delayedCall(wait, () => this.playXpGain());
     }
   }
@@ -1994,10 +2052,13 @@ export class MenuScene extends Phaser.Scene {
     this.profileCard(24, y, Math.min(440, countersLeft - 24 - 14), p);
     // justo bajo el perfil y con su mismo ancho
     const passY = y + PROFILE_H + 12;
-    this.passWidget(24, passY, Math.min(380, Math.min(440, countersLeft - 24 - 14)));
+    // (26-11-2026, usuario) el PASE se muestra en el nivel 5 (suma EXP desde el primer partido)
+    const passW = Math.min(380, Math.min(440, countersLeft - 24 - 14));
+    if (this.passVisible()) this.passWidget(24, passY, passW);
+    this.guideRects = { ...this.guideRects, pass: { x: 24 + passW / 2, y: passY + PASS_H / 2, w: passW, h: PASS_H } };
     // MONEDAS DE LA LIGA (neto de la semana): en la fila del PASE, a la derecha, del borde de los contadores al del botón de ajustes
     // (21-11-2026; antes eran la 1.ª fila de la columna de contadores)
-    if (isDevMode() || p.level > 1 || getPlayer().tutorial?.includes(GUIDE.firstMatch)) {
+    if (isDevMode() || p.level >= LEAGUE_CARD_LEVEL) { // (26-11-2026, usuario) la card de la LIGA, invisible hasta ese nivel
       this.leagueCoins(countersLeft, gx + gs / 2, passY, PASS_H);
     }
     // columna de 2 filas en el alto de la card del perfil: monedas de la cuenta · dinero virtual. A su derecha, ajustes.
@@ -2011,7 +2072,7 @@ export class MenuScene extends Phaser.Scene {
     });
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => offCash());
     cash.setSize(COUNTER_W, COUNTER_H).setInteractive(new Phaser.Geom.Rectangle(0, 0, COUNTER_W, COUNTER_H), Phaser.Geom.Rectangle.Contains);
-    cash.on('pointerup', () => this.scene.start('Shop'));
+    cash.on('pointerup', () => this.shopOpen() && this.scene.start('Shop')); // (26-11-2026) la TIENDA, desde el nivel 5
     this.gearBtn = this.gearButton(gx, gy, gs, () => showSettings(this));
   }
 
@@ -2089,7 +2150,7 @@ export class MenuScene extends Phaser.Scene {
     }
     // "NIV" y el nivel sobre el escudo (el de la imagen o el de la insignia)
     c.add(this.add.text(bx0, art ? ay(A.nivY) : h / 2 - 5, 'NIV', { fontFamily: FONT, fontSize: '9px', color: '#3a2200', stroke: '#fff0a8', strokeThickness: 2 }).setOrigin(0.5));
-    const lvNum = this.add.text(bx0, art ? ay(A.numY) : h / 2 + 9, String(level), { fontFamily: FONT, fontSize: '21px', color: '#3a2200', stroke: '#fff0a8', strokeThickness: 3 }).setOrigin(0.5);
+    const lvNum = this.add.text(bx0, art ? ay(A.numY) : h / 2 + 9, String(Math.max(1, level)), { /* (26-11-2026, usuario) desde el inicio se ve NIVEL 1 */ fontFamily: FONT, fontSize: '21px', color: '#3a2200', stroke: '#fff0a8', strokeThickness: 3 }).setOrigin(0.5);
     c.add(lvNum);
     if (!art) {
       // chevron que empuja hacia la derecha (la imagen ya trae el suyo)
@@ -2122,7 +2183,7 @@ export class MenuScene extends Phaser.Scene {
         this.tweens.add({ targets: lvNum, scale: { from: 1.8, to: 1 }, duration: 480, ease: 'Back.easeOut' });
       }
       shownBpLevel = b.level;
-      lvNum.setText(String(b.level));
+      lvNum.setText(String(Math.max(1, b.level)));
       sub.setText(dn ? 'COMPLETADO' : `NIVEL ${b.level + 1} DE ${BP_TIERS}`);
       bar.clear();
       const r2 = rh / 2;
@@ -2256,7 +2317,7 @@ export class MenuScene extends Phaser.Scene {
         if (this.sys.isActive()) this.refreshGuide();
       });
     });
-    this.guideRects = { defensive: this.guideRects?.defensive ?? { x: 128, y: 0, w: 214, h: 136 }, profile: { x: x + cw / 2, y: y + ch / 2, w: cw, h: ch }, daily: this.guideRects?.daily };
+    this.guideRects = { ...this.guideRects, profile: { x: x + cw / 2, y: y + ch / 2, w: cw, h: ch } };
     card.add(cardHit);
 
     // insignia de rango a la izquierda (en lugar del avatar)
@@ -2458,6 +2519,7 @@ export class MenuScene extends Phaser.Scene {
       nrm?.setVisible(!m2);
       (c.getData('coin2v2') as Phaser.GameObjects.Components.Visible | undefined)?.setVisible(m2);
       (c.getData('coin2Text') as Phaser.GameObjects.Text | undefined)?.setVisible(m2);
+      (c.getData('paintInfo') as ((p: boolean) => void) | undefined)?.(m2);
       this.tweens.killTweensOf(shown);
       txt.setText(fmt(m2 ? Math.max(0, Math.floor(getPlayer().coins2v2 ?? 0) - this.hold2v2) : shown.v)).setColor(m2 ? '#e6d2ff' : '#ffe28a');
       fitText(txt, COUNTER_TEXT_W);
@@ -2683,13 +2745,15 @@ export class MenuScene extends Phaser.Scene {
     // (i): qué es, para qué sirve y cómo conseguirla (antes, un "+" sin función)
     const info = this.add.container(w - h / 2 + 2, h / 2).setScale(Math.max(0.8, k));
     const ig = this.add.graphics();
-    ig.fillStyle(0x0a1638, 1).fillCircle(0, 0, 14);
-    ig.fillStyle(accent, 1).fillCircle(0, 0, 12);
+    // (26-11-2026, usuario) con las MONEDAS 2V2 a la vista, la (i) en MORADO (su color)
+    const paintInfo = (purple: boolean) => ig.clear().fillStyle(0x0a1638, 1).fillCircle(0, 0, 14).fillStyle(purple ? 0xb06bff : accent, 1).fillCircle(0, 0, 12);
+    paintInfo(false);
+    c.setData('paintInfo', paintInfo);
     // dinero: "+" (lleva a comprar más a la Tienda); monedas: "i" (ventana de cómo conseguirlas y para qué sirven)
     info.add([ig, this.add.text(0, kind === 'cash' ? 0 : 1, kind === 'cash' ? '+' : 'i', { fontFamily: FONT, fontSize: kind === 'cash' ? '24px' : '18px', color: kind === 'cash' ? '#ffffff' : '#0a1638' }).setOrigin(0.5)]);
     info.setSize(40, 42).setInteractive({ useHandCursor: true }); // zona táctil generosa aunque el contador sea bajo
     // el + del DINERO lleva a la Tienda y esta baja sola hasta la sección DINERO; la (i) de las monedas abre su información
-    info.on('pointerup', () => (kind === 'cash' ? this.scene.start('Shop', { scrollTo: 'cash' }) : this.currencyInfo(kind === 'coin' && this.leagueMode === '2v2' ? 'coin2v2' : kind)));
+    info.on('pointerup', () => (kind === 'cash' ? this.shopOpen() && this.scene.start('Shop', { scrollTo: 'cash' }) : this.currencyInfo(kind === 'coin' && this.leagueMode === '2v2' ? 'coin2v2' : kind)));
     c.add(info);
     return c;
   }

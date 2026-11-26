@@ -34,7 +34,7 @@ export interface WheelSceneData {
 /** Toques máximos y, por número de toques, vueltas completas y duración (ms) del giro. Solo visual. */
 const MAX_TAPS = WHEEL.tiers.maxTaps;
 /** (17-11-2026, usuario) pausa de toques tras subir la ruleta de nivel (dorada / épica), para que se vea la evolución (1 s -> 0,8 s) */
-const TIER_LOCK_MS = 800;
+const TIER_LOCK_MS = 400; // (26-11-2026, usuario) 0,8 s -> 0,4 s: el jugador sigue apretando y se sentía pegado
 /** (17-11-2026, usuario) color del fondo en cada nivel de la ruleta: velo encima del fondo azul (null = sin velo) */
 const TIER_BG: Record<WheelTier, { color: number; alpha: number } | null> = {
   normal: null,
@@ -76,6 +76,8 @@ export class WheelScene extends Phaser.Scene {
   /** objetos que sobreviven al paso de la ruleta al premio (fondo, rayos, destellos, zona táctil) */
   private keep = new Set<Phaser.GameObjects.GameObject>();
   private hint?: Phaser.GameObjects.Text;
+  /** (26-11-2026) mano de la primera ruleta del tutorial */
+  private firstHand?: Phaser.GameObjects.Container;
   private pips: Phaser.GameObjects.Arc[] = [];
   private bulbs: Phaser.GameObjects.Arc[] = [];
   private closeBtn!: Phaser.GameObjects.Container;
@@ -119,6 +121,7 @@ export class WheelScene extends Phaser.Scene {
     this.pips = [];
     this.keep = new Set();
     this.hint = undefined;
+    this.firstHand = undefined;
     this.frameGlow = undefined;
     this.frameImg = undefined;
     this.pointer = undefined;
@@ -448,6 +451,14 @@ export class WheelScene extends Phaser.Scene {
       .setLineSpacing(2)
       .setAlpha(0);
     this.hint = h;
+    // (26-11-2026, usuario) primera ruleta del tutorial: la mano de clic a la DERECHA del texto, pulsando hasta los 4 toques
+    const sp0 = wheelSpin(this.index, this.bonus);
+    if (sp0?.matchId === GUIDE_FIRST_WHEEL && !sp0.claimed) {
+      this.time.delayedCall(700, () => {
+        if (!this.sys.isActive() || this.taps >= MAX_TAPS) return;
+        this.firstHand = tapHint(this, W / 2 + h.width / 2 + 34, y + 10, 200);
+      });
+    }
     this.tweens.add({ targets: h, alpha: 1, delay: 600, duration: 300, onComplete: () => this.tweens.add({ targets: h, alpha: 0.55, scale: 1.06, duration: 620, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' }) });
     for (let i = 0; i < MAX_TAPS; i++) {
       const pip = this.add.circle(W / 2 + (i - (MAX_TAPS - 1) / 2) * 52, y + 96, 15, GOLD, 0).setStrokeStyle(4, GOLD, 0.9).setAlpha(0);
@@ -502,6 +513,10 @@ export class WheelScene extends Phaser.Scene {
       }
     }
     this.taps++;
+    if (this.taps >= MAX_TAPS) {
+      this.firstHand?.destroy();
+      this.firstHand = undefined;
+    }
     this.tapFx(p);
     this.spinTo();
   }
@@ -876,12 +891,19 @@ export class WheelScene extends Phaser.Scene {
       if (savedSpin.matchId === GUIDE_FIRST_WHEEL && !claimed) { // (solo al cobrarla, no si se vuelve a ver)
         // la mano en el x2, el aviso y un reloj de 1,5 s; luego se puede continuar
         explainX2 = (done) => {
-          const hand = tapHint(this, bx, by, 102);
-          const t = this.add.text(cx, by + 78, 'PUEDES DUPLICAR TU PREMIO CON x2\nCUANDO LO NECESITES', { fontFamily: FONT, fontSize: '26px', color: '#ffd23f', stroke: '#0a1638', strokeThickness: 7, align: 'center' }).setOrigin(0.5, 0).setDepth(102);
+          // (26-11-2026, usuario) todo OPACO menos el x2 (2 s); el aviso un poco más abajo del botón
+          const H0 = this.scale.height;
+          const dim = this.add.rectangle(0, 0, W, H0, 0x02060f, 0.82).setOrigin(0).setDepth(101).setScrollFactor(0).setInteractive().setAlpha(0);
+          this.tweens.add({ targets: dim, alpha: 1, duration: 300 });
+          x2.setDepth(102);
+          const hand = tapHint(this, bx, by, 103);
+          const t = this.add.text(cx, by + 92, 'OPCIONAL: ¡DUPLICA TU RECOMPENSA!', { fontFamily: FONT, fontSize: '28px', color: '#ffd23f', stroke: '#0a1638', strokeThickness: 7, align: 'center' }).setOrigin(0.5, 0).setDepth(103);
           if (t.width > W - 40) t.setScale((W - 40) / t.width);
-          const clock = clockTimer(this, cx, t.y + t.displayHeight + 46, 1500).setDepth(102);
-          this.time.delayedCall(1500, () => {
+          const clock = clockTimer(this, cx, t.y + t.displayHeight + 46, 2000).setDepth(103);
+          this.time.delayedCall(2000, () => {
             [hand, t, clock].forEach((o) => o.destroy());
+            this.tweens.add({ targets: dim, alpha: 0, duration: 250, onComplete: () => dim.destroy() });
+            if (x2.active) x2.setDepth(100);
             done();
           });
         };

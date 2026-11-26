@@ -596,7 +596,7 @@ export class EnergyDemo {
         shockFx(h.st, p.sx, p.sy, p.s * FH.k);
         contactFlash(h.st, p.sx, p.sy, p.s * FH.k);
         windShotFx(h.st, p.sx, p.sy, p.s * FH.k, (to.sx - p.sx) / len, (to.sy - p.sy) / len);
-        h.snd(FH.sound, 1);
+        h.snd(FH.sound, FH.volume);
         this.rumble(FH.shakeMs, 12); // (sin flash completo, como en el partido: tapaba el golpe)
         // (18-11-2026, usuario) 0,3 s después del golpe se va corriendo a la T de su campo: desde ahí salta a por el globo
         h.scene.time.delayedCall(H_T.toT * 1000, () => {

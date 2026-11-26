@@ -1,0 +1,121 @@
+{
+  "source": "Net/jugador/net-{movimientos,golpes,reacciones,extras}-*.png",
+  "view": "back",
+  "cell": {
+    "w": 126,
+    "h": 197
+  },
+  "origin": {
+    "x": 0.5,
+    "y": 0.9797
+  },
+  "standHeight": 190,
+  "hold": 1,
+  "serveWait": 2,
+  "smashStart": 2,
+  "serveRacket": {
+    "normal": {
+      "dx": 28,
+      "z": 162
+    },
+    "spin": {
+      "dx": 27,
+      "z": 169
+    }
+  },
+  "holdForehand": 1,
+  "holdPower": 3,
+  "holdPowerForehand": 3,
+  "animations": {
+    "forehand": {
+      "file": "forehand.webp",
+      "frames": 8,
+      "fps": 15,
+      "loop": false,
+      "impact": 5,
+      "cell": {
+        "w": 190,
+        "h": 197
+      },
+      "origin": {
+        "x": 0.5,
+        "y": 0.9797
+      }
+    },
+    "backhand": {
+      "file": "backhand.webp",
+      "frames": 8,
+      "fps": 15,
+      "loop": false,
+      "impact": 5,
+      "cell": {
+        "w": 164,
+        "h": 197
+      },
+      "origin": {
+        "x": 0.5,
+        "y": 0.9797
+      }
+    },
+    "forehand-power": {
+      "file": "forehand-power.webp",
+      "frames": 8,
+      "fps": 15,
+      "loop": false,
+      "impact": 5,
+      "cell": {
+        "w": 198,
+        "h": 199
+      },
+      "origin": {
+        "x": 0.5,
+        "y": 0.9799
+      }
+    },
+    "backhand-power": {
+      "file": "backhand-power.webp",
+      "frames": 8,
+      "fps": 15,
+      "loop": false,
+      "impact": 5,
+      "cell": {
+        "w": 196,
+        "h": 198
+      },
+      "origin": {
+        "x": 0.5,
+        "y": 0.9798
+      }
+    },
+    "serve": {
+      "file": "serve.webp",
+      "frames": 8,
+      "fps": 12,
+      "loop": false,
+      "impact": 4,
+      "cell": {
+        "w": 192,
+        "h": 237
+      },
+      "origin": {
+        "x": 0.5,
+        "y": 0.98312
+      }
+    },
+    "smash": {
+      "file": "smash.webp",
+      "frames": 8,
+      "fps": 14,
+      "loop": false,
+      "impact": 4,
+      "cell": {
+        "w": 168,
+        "h": 234
+      },
+      "origin": {
+        "x": 0.5,
+        "y": 0.98291
+      }
+    }
+  }
+}

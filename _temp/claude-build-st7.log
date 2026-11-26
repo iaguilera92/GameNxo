@@ -1,0 +1,10 @@
+
+> gamenxo-tennis@1.0.0 build
+> tsc --noEmit && vite build
+
+src/domain/league2v2.ts(98,15): error TS2322: Type '"zac" | PlayableSkinId' is not assignable to type 'PlayableSkinId'.
+  Type '"zac"' is not assignable to type 'PlayableSkinId'.
+src/domain/ranked.ts(97,15): error TS2322: Type '"zac" | PlayableSkinId' is not assignable to type 'PlayableSkinId'.
+  Type '"zac"' is not assignable to type 'PlayableSkinId'.
+src/objects/NxoActor.ts(479,36): error TS2550: Property 'hasOwn' does not exist on type 'ObjectConstructor'. Do you need to change your target library? Try changing the 'lib' compiler option to 'es2022' or later.
+exit 0 

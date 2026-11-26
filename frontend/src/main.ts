@@ -40,6 +40,27 @@ const game = new Phaser.Game({
 
 // Ajustes del jugador (sonido, vibración, temblor de pantalla) aplicados a todo el juego
 installSettings(game);
+// (26-11-2026, usuario) al MINIMIZAR la app (o cambiar de pestaña): silencio total y el juego en pausa; al volver, como estaba
+{
+  let muted = false;
+  const ctx = () => (game.sound as Phaser.Sound.WebAudioSoundManager).context as AudioContext | undefined;
+  const hide = () => {
+    if (muted) return;
+    muted = true;
+    game.sound.pauseAll();
+    void ctx()?.suspend?.().catch(() => undefined);
+  };
+  const show = () => {
+    if (!muted) return;
+    muted = false;
+    void ctx()?.resume?.().catch(() => undefined);
+    game.sound.resumeAll();
+  };
+  game.events.on(Phaser.Core.Events.HIDDEN, hide);
+  game.events.on(Phaser.Core.Events.VISIBLE, show);
+  document.addEventListener('visibilitychange', () => (document.hidden ? hide() : show()));
+  window.addEventListener('pagehide', hide);
+}
 // cambio de pantalla siempre con fundido a negro
 installBlackTransitions();
 // Anuncios (AdMob) solo en la app nativa y con VITE_ADS_ENABLED=true; no bloquea el arranque

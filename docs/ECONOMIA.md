@@ -218,10 +218,11 @@ se pierde.
 
 | Lun | Mar | Mié | Jue | Vie | Sáb | **Dom** |
 |---|---|---|---|---|---|---|
-| 250 | 300 | 400 | 500 + 5 | 600 | 800 | **3.500 + 10** |
+| 250 | 30 (2V2) | 400 | **5 dinero** + 500 | 60 (2V2) | 800 + 30 (2V2) | **10 dinero + 3.500** |
 
-Semana completa: 6.350 monedas + 15 de dinero. El domingo vale más que los otros 6 días juntos (2.850): da razón para
-volver el último día. Anuncio x2: una vez por día.
+(26-11-2026, usuario) Con dinero, el dinero es el premio PRINCIPAL de la tarjeta (fardo). Monedas 2V2 en 3 días (sábado como
+secundario). Semana completa: 5.450 monedas + 15 de dinero + 120 monedas 2V2. El domingo vale más que los otros 6 días juntos:
+da razón para volver el último día. Anuncio x2: una vez por día.
 
 ## 10. Anuncios (`frontend/src/ads/ads.ts`)
 

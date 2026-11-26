@@ -8,13 +8,17 @@ import isaBack from './isa-sprites.json';
 import isaFront from './isa-front-sprites.json';
 import junBack from './jun-sprites.json';
 import junFront from './jun-front-sprites.json';
+import netBack from './net-sprites.json';
+import netFront from './net-front-sprites.json';
+import zacBack from './zac-sprites.json';
+import zacFront from './zac-front-sprites.json';
 
 /**
  * Hojas de animación de cada personaje y vista (config de celda, ancla y fotogramas clave; las genera tools/build-moves.mjs <id>).
  * Cada una vive en public/assets/characters/<id>-sprites/ y tiene su JSON de celda, ancla y fotogramas clave.
  * Para añadir una hoja: generarla con la herramienta, importar su JSON aquí y registrarla en SHEETS.
  */
-export type SheetId = 'nxo' | 'nxo-front' | 'mai' | 'mai-front' | 'mat' | 'mat-front' | 'isa' | 'isa-front' | 'jun' | 'jun-front';
+export type SheetId = 'nxo' | 'nxo-front' | 'mai' | 'mai-front' | 'mat' | 'mat-front' | 'isa' | 'isa-front' | 'jun' | 'jun-front' | 'net' | 'net-front' | 'zac' | 'zac-front';
 type SheetAnim = { file: string; frames: number; fps: number; loop: boolean; impact?: number; scale?: number; cell?: { w: number; h: number }; origin?: { x: number; y: number } };
 /** (14-11-2026) cada animación puede traer su propia celda y ancla (sprites en alta, tools/build-hd.mjs) */
 export type SheetCfg = Omit<typeof nxoBack, 'animations'> & { animations: Record<keyof (typeof nxoBack)['animations'], SheetAnim> };
@@ -30,5 +34,9 @@ export const SHEETS: Record<SheetId, SheetCfg> = {
   'isa-front': isaFront,
   jun: junBack,
   'jun-front': junFront,
+  net: netBack,
+  'net-front': netFront,
+  zac: zacBack,
+  'zac-front': zacFront,
 };
 export const SHEET_IDS = Object.keys(SHEETS) as SheetId[];

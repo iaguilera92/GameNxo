@@ -130,19 +130,19 @@ export async function activateRiskMode(): Promise<{ ok: true } | { ok: false; er
 
 export const loginStatus = () => login.loginStatus(getPlayer() as never, now());
 /** REGALO GRATIS de la Tienda (domain/shopGift.ts). */
-export function claimShopGift() {
-  return commit((s) => shopGift.claimGift(s, now()));
+export function claimShopGift(cash = 0, force = false) {
+  return commit((s) => shopGift.claimGift(s, now(), Math.random, cash, force));
 }
 export function shopGiftStatus() {
   return shopGift.giftStatus(getPlayer(), now());
 }
 
-export function claimLogin() {
-  return commit((s) => login.claimLogin(s, now()));
+export function claimLogin(override?: login.LoginReward) {
+  return commit((s) => login.claimLogin(s, now(), override));
 }
-export function claimLoginRewardAdBonus() {
+export function claimLoginRewardAdBonus(override?: login.LoginReward) {
   return commit((s) => {
-    const res = login.claimLoginAdBonus(s, now());
+    const res = login.claimLoginAdBonus(s, now(), override);
     return { ok: true as const, state: res.state, given: res.given };
   });
 }

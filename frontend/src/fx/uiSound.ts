@@ -7,7 +7,7 @@ import Phaser from 'phaser';
  * Para cambiar uno por un archivo de verdad: dejar public/mp3/ui-<tipo>.mp3 (p. ej. ui-play.mp3) y añadir el tipo a
  * UI_SOUND_FILES. Se carga en BootScene (queueUiSounds) y, si existe, suena el archivo en vez del sintetizado.
  */
-export type UiSound = 'tap' | 'play' | 'back' | 'duel-hit' | 'duel-tick' | 'duel-win' | 'risk-on';
+export type UiSound = 'tap' | 'play' | 'back' | 'duel-hit' | 'duel-tick' | 'duel-win' | 'risk-on' | 'card';
 
 /** tipos que tienen archivo en public/mp3/ui-<tipo>.mp3 (vacío = todos sintetizados) */
 export const UI_SOUND_FILES: UiSound[] = [];
@@ -69,7 +69,11 @@ export function uiSound(scene: Phaser.Scene, kind: UiSound) {
   if (!ctx) return;
   const t = ctx.currentTime;
   const out = ctx.destination;
-  if (kind === 'tap') {
+  if (kind === 'card') {
+    // (26-11-2026, usuario) card que entra deslizando (ELIGE TU PERSONAJE): golpe de aire corto y un toque suave
+    noise(ctx, out, t, 0.12, 0.08, 900, 2600);
+    tone(ctx, out, 660, t + 0.05, 0.07, 'triangle', 0.06, 880);
+  } else if (kind === 'tap') {
     // clic corto y redondo (botones del menú)
     tone(ctx, out, 900, t, 0.06, 'triangle', 0.12, 620);
     tone(ctx, out, 1800, t, 0.03, 'sine', 0.04);

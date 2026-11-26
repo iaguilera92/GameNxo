@@ -7,6 +7,7 @@ import { RARITY_STYLE } from './rarity';
 import { drawCashIcon } from '../scenes/BattlePassScene';
 import type { DemoRect, PowerDemo } from './PowerDialog';
 import { bakeGraphics } from './bakeGraphics';
+import { tapHint } from './guideFocus';
 
 /**
  * VER EN ACCIÓN desde la TIENDA (16-11-2026, pedido del usuario): la misma pantalla "EN ACCIÓN" del selector de PERSONALIZAR (tu personaje contra la
@@ -34,6 +35,8 @@ export interface ShopPreviewOpts {
   clp: number;
   onBuyCash: () => void;
   onBuyReal: () => void;
+  /** (26-11-2026, usuario) guía de la tienda (tutorial): la mano de clic en COMPRAR con dinero virtual */
+  guideCash?: boolean;
 }
 
 export function openShopPreview(scene: Phaser.Scene, o: ShopPreviewOpts) {
@@ -185,6 +188,8 @@ export function openShopPreview(scene: Phaser.Scene, o: ShopPreviewOpts) {
         o.onBuyCash();
       });
       panel.add(c);
+      // (dentro del diálogo: la Tienda de atrás se oculta mientras se ve la demostración)
+      if (o.guideCash) root.add(tapHint(scene, px + 28 + bw - 22, by + 8, 8600)); // (26-11-2026, usuario) a la DERECHA del botón: no tapa el precio
     }
     // (21-11-2026, usuario) DINERO REAL: boceto de TICKET verde de esquinas cortadas, con la talonera oscura del "$" a la izquierda (otra forma que la píldora)
     const rx = two ? px + 28 + bw + gap + bw / 2 : px + pw / 2;

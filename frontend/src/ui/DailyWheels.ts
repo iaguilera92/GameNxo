@@ -6,7 +6,9 @@ import { GOLD, NAVY, drawWheelFace } from './wheelArt';
 import { WHEEL } from '../domain/wheelConfig';
 import type { WheelStatus } from '../domain/dailyWheel';
 import { msToWheelReset, wheelStatuses } from '../logic/Wheels';
-import { onPlayerChange } from '../domain/playerStore';
+import { getPlayer, onPlayerChange } from '../domain/playerStore';
+import { isDevMode } from '../domain/devMode';
+import { MAX_LEVEL } from '../config';
 
 /**
  * Fila de 4 ruletas pequeñas del menú (encima de JUGAR).
@@ -49,7 +51,7 @@ export class DailyWheels extends Phaser.GameObjects.Container {
     this.setDepth(50);
     this.panel();
     this.refresh();
-    if (import.meta.env.DEV && opts.onTest) this.testWheel();
+    if (this.showTest()) this.testWheel();
     const off = onPlayerChange(() => this.refresh());
     const tick = scene.time.addEvent({ delay: 1000, loop: true, callback: () => this.tickTimer() });
     this.once('destroy', () => {
@@ -127,9 +129,14 @@ export class DailyWheels extends Phaser.GameObjects.Container {
     this.tickTimer();
   }
 
+  /** RULETA TEST: solo en desarrollo y (26-11-2026, usuario) nunca en el tutorial (nivel < 20 sin modo desarrollo) */
+  private showTest() {
+    return import.meta.env.DEV && !!this.opts.onTest && (isDevMode() || getPlayer().level >= MAX_LEVEL);
+  }
+
   /** separación entre ruletas (en desarrollo cabe además la RULETA TEST) */
   private step() {
-    const n = WHEEL.perDay + (import.meta.env.DEV && this.opts.onTest ? 1 : 0);
+    const n = WHEEL.perDay + (this.showTest() ? 1 : 0);
     return Math.min(96, (this.pw - 210) / n);
   }
 

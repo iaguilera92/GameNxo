@@ -1,9 +1,10 @@
 import Phaser from 'phaser';
 import { FONT } from './theme';
 import { modeBand, modeShape } from './modeButtons';
-import { CHEST_TEX, GOLD, NAVY, chestImage, drawChestIcon } from './wheelArt';
+import { CHEST_TEX, GOLD, NAVY, chestImage, coinIcon, drawChestIcon } from './wheelArt';
 import { CHEST, chestStatus, formatChestClock, formatChestTime, openChest, type ChestReward } from '../domain/chest';
 import { commit, getPlayer } from '../domain/playerStore';
+import { drawFadingRays } from './fadeRays';
 import { gameClock } from '../domain/timeSource';
 import { arcadeButton } from './modeButtons';
 import { canShowRewardedAds, showRewarded } from '../ads/ads';
@@ -177,20 +178,63 @@ function showChestReward(scene: Phaser.Scene, got: { reward: ChestReward; level:
   const W = scene.scale.width;
   const H = scene.scale.height;
   const col = CHEST.colors[got.level as 0 | 1 | 2];
-  const root = scene.add.container(0, 0).setDepth(9000);
-  const dim = scene.add.rectangle(0, 0, W, H, 0x000000, 0.7).setOrigin(0).setInteractive();
-  const glow = scene.add.circle(W / 2, H * 0.4, 120, col, 0.35).setBlendMode(Phaser.BlendModes.ADD);
-  // (17-11-2026) el cofre en imagen de su nivel (en un contenedor: las animaciones de escala siguen igual)
-  const icon = scene.add.container(W / 2, H * 0.4, [chestImage(scene, 0, 0, 200, got.level)]);
-  const name = scene.add.text(W / 2, H * 0.4 - 150, `¡${CHEST.names[got.level as 0 | 1 | 2]}!`, { fontFamily: FONT, fontSize: '52px', color: '#ffe680', stroke: '#0a1638', strokeThickness: 10 }).setOrigin(0.5);
+  const root = scene.add.container(0, 0).setDepth(9500).setScrollFactor(0);
+  const dim = scene.add.rectangle(0, 0, W, H, 0x02060f, 0.88).setOrigin(0).setInteractive();
+  root.add(dim);
+  // (26-11-2026, usuario) presentación como premio de ruleta: rayos, el cofre y cada premio con su IMAGEN y su cantidad
+  const cy = H * 0.34;
+  const rays = scene.add.graphics({ x: W / 2, y: cy }).setBlendMode(Phaser.BlendModes.ADD);
+  drawFadingRays(rays, 12, 300, col, 0.28, 0.12); // (26-11-2026, usuario) se difuminan al alejarse
+  rays.fillStyle(col, 0.25).fillCircle(0, 0, 100);
+  root.add(rays);
+  scene.tweens.add({ targets: rays, angle: 360, duration: 9000, repeat: -1 });
+  const name = scene.add.text(W / 2, cy - 160, `¡${CHEST.names[got.level as 0 | 1 | 2]}!`, { fontFamily: FONT, fontSize: '50px', color: '#ffe680', stroke: '#0a1638', strokeThickness: 10 }).setOrigin(0.5);
+  const icon = scene.add.container(W / 2, cy, [chestImage(scene, 0, 0, 190, got.level)]);
+  root.add([name, icon]);
+  for (const o of [name, icon]) o.setScale(0.3).setAlpha(0);
+  scene.tweens.add({ targets: [name, icon], scale: 1, alpha: 1, duration: 420, ease: 'Back.easeOut' });
+  // premios: dinero (fardo), monedas y EXP, en fila
   const r = got.reward;
-  const lines = [`+${r.coins.toLocaleString('es-CL')} MONEDAS`, `+${r.xp} EXP`, `+${r.cash} DINERO`, ...(r.item ? [`¡${r.item.name.toUpperCase()}!`] : [])];
-  const list = scene.add.text(W / 2, H * 0.4 + 130, lines.join('\n'), { fontFamily: FONT, fontSize: '36px', color: '#ffffff', stroke: '#0a1638', strokeThickness: 8, align: 'center', lineSpacing: 10 }).setOrigin(0.5, 0);
-  const hint = scene.add.text(W / 2, H * 0.88, 'Toca para continuar', { fontFamily: FONT, fontSize: '24px', color: '#cfe0ff', stroke: '#0a1638', strokeThickness: 5 }).setOrigin(0.5);
-  root.add([dim, glow, icon, name, list, hint]);
-  for (const o of [glow, icon, name, list]) o.setScale(0.3).setAlpha(0);
-  scene.tweens.add({ targets: [glow, icon, name, list], scale: 1, alpha: 1, duration: 420, ease: 'Back.easeOut' });
-  scene.tweens.add({ targets: glow, scale: 1.25, duration: 900, yoyo: true, repeat: -1, ease: 'Sine.easeInOut', delay: 420 });
+  const items: { key: 'cash' | 'coins' | 'xp'; value: number; label: string; css: string }[] = [];
+  if (r.cash > 0) items.push({ key: 'cash', value: r.cash, label: 'DINERO', css: '#8dffad' });
+  if (r.coins > 0) items.push({ key: 'coins', value: r.coins, label: 'MONEDAS', css: '#ffd23f' });
+  if (r.xp > 0) items.push({ key: 'xp', value: r.xp, label: 'EXP', css: '#7ff0ff' });
+  const cardW = Math.min(190, (W - 40) / Math.max(1, items.length) - 12);
+  const rowY = cy + 210;
+  items.forEach((it, i) => {
+    const x = W / 2 + (i - (items.length - 1) / 2) * (cardW + 12);
+    const c = scene.add.container(x, rowY);
+    const g = scene.add.graphics();
+    g.fillStyle(0x061b4c, 0.98).fillRoundedRect(-cardW / 2, -80, cardW, 160, 22);
+    g.lineStyle(3, col, 1).strokeRoundedRect(-cardW / 2, -80, cardW, 160, 22);
+    c.add(g);
+    let art: Phaser.GameObjects.GameObject;
+    if (it.key === 'cash' && scene.textures.exists('cash-pack')) {
+      const im = scene.add.image(0, -24, 'cash-pack');
+      art = im.setScale(70 / Math.max(im.width, im.height));
+    } else if (it.key === 'coins' && scene.textures.exists('daily-coins-art')) {
+      const im = scene.add.image(0, -24, 'daily-coins-art');
+      art = im.setScale(76 / Math.max(im.width, im.height));
+    } else if (it.key === 'coins') art = coinIcon(scene, 0, -24, 30);
+    else art = scene.add.text(0, -24, 'EXP', { fontFamily: FONT, fontSize: '40px', color: it.css, stroke: '#0a1638', strokeThickness: 8 }).setOrigin(0.5);
+    const amt = scene.add.text(0, 36, '+0', { fontFamily: FONT, fontSize: '32px', color: it.css, stroke: '#0a1638', strokeThickness: 7 }).setOrigin(0.5);
+    const lab = scene.add.text(0, 64, it.label, { fontFamily: FONT, fontSize: '15px', color: '#ffffff' }).setOrigin(0.5).setLetterSpacing(1);
+    c.add([art, amt, lab]);
+    root.add(c);
+    c.setScale(0.3).setAlpha(0);
+    scene.tweens.add({ targets: c, scale: 1, alpha: 1, delay: 350 + i * 160, duration: 380, ease: 'Back.easeOut' });
+    const n = { v: 0 };
+    scene.tweens.add({ targets: n, v: it.value, delay: 450 + i * 160, duration: 700, ease: 'Cubic.easeOut', onUpdate: () => amt.setText('+' + Math.round(n.v).toLocaleString('es-CL')) });
+  });
+  if (r.item) root.add(scene.add.text(W / 2, rowY + 110, `¡${r.item.name.toUpperCase()}!`, { fontFamily: FONT, fontSize: '30px', color: '#ffe680', stroke: '#0a1638', strokeThickness: 7 }).setOrigin(0.5));
+  const hint = scene.add.text(W / 2, H * 0.9, 'TOCA PARA CONTINUAR', { fontFamily: FONT, fontSize: '26px', color: '#ffffff', stroke: '#0a1638', strokeThickness: 6 }).setOrigin(0.5).setAlpha(0);
+  root.add(hint);
   scene.cameras.main.flash(200, 255, 230, 160);
-  dim.once('pointerup', () => root.destroy());
+  root.setAlpha(0);
+  scene.tweens.add({ targets: root, alpha: 1, duration: 200 });
+  scene.time.delayedCall(900, () => {
+    if (!root.active) return;
+    scene.tweens.add({ targets: hint, alpha: { from: 0.4, to: 1 }, duration: 600, yoyo: true, repeat: -1 });
+    dim.once('pointerup', () => scene.tweens.add({ targets: root, alpha: 0, duration: 200, onComplete: () => root.destroy() }));
+  });
 }

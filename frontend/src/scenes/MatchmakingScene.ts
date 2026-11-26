@@ -174,10 +174,11 @@ export class MatchmakingScene extends Phaser.Scene {
     const tutorial = !isDevMode() && p.level < MAX_LEVEL;
     showVersusScreen(
       this,
-      { name: this.doubles ? `${p.name} + ${this.allyName}` : p.name, level: p.level, look: playerLook(p.skin), portraitSkin: p.skin as SkinId, wins: tutorial ? undefined : totalWins(), color: p.color, frame: equippedFrame(getPlayer() as PlayerState) }, // tu color y tu MARCO; el rival, el suyo de siempre
+      { name: this.doubles ? `${p.name} + ${this.allyName}` : p.name, level: p.level, look: playerLook(p.skin), portraitSkin: p.skin as SkinId, wins: tutorial ? undefined : totalWins(), streak: (getPlayer() as PlayerState).ranked.total.streak, color: p.color, frame: equippedFrame(getPlayer() as PlayerState) }, // tu color y tu MARCO; el rival, el suyo de siempre
       {
         name: botName,
         level: rivalLevel,
+        hideLevel: tutorial, // (26-11-2026, usuario) en el tutorial no se muestra el nivel del bot
         look: lookForSkin(this.rival1Skin(), 'front', p.skin),
         portraitSkin: this.rival1Skin(),
         // el rival simulado también lleva victorias (proporcionales a su nivel), como un jugador real

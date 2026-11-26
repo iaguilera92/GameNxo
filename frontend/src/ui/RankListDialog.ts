@@ -3,6 +3,7 @@ import { FONT } from './theme';
 import { RankBadge, preloadRankBadges } from './RankBadge';
 import { arcadeButton } from './modeButtons';
 import { RANKS, RANK_UNLOCK_LEVEL, type RankId, isRankUnlocked } from '../domain/ranks';
+import { RANKED } from '../domain/rankedConfig';
 
 /**
  * Diálogo RANGOS: los 6 rangos competitivos en orden (insignia + nombre), con el rango actual
@@ -48,7 +49,7 @@ export function showRankList(scene: Phaser.Scene, o: RankListOpts) {
   const gap = 16;
   const cw = (pw - 48 - gap) / cols;
   const ch = 196;
-  const headH = unlocked ? 104 : 150;
+  const headH = unlocked && o.level >= RANKED.unlockLevel ? 104 : 150; // (26-11-2026) con el aviso, mas alto
   const footH = 120;
   const ph = headH + rows * ch + (rows - 1) * gap + footH;
   const cy = H / 2;
@@ -71,9 +72,9 @@ export function showRankList(scene: Phaser.Scene, o: RankListOpts) {
   panel.add(
     scene.add.text(0, y + 46, 'RANGOS', { fontFamily: FONT, fontSize: '44px', color: '#ffffff', stroke: '#0a1638', strokeThickness: 6 }).setOrigin(0.5).setLetterSpacing(4),
   );
-  if (!unlocked) {
-    // aviso de desbloqueo (píldora con candado)
-    const msg = `SE DESBLOQUEA EN NIVEL ${RANK_UNLOCK_LEVEL}`;
+  if (!unlocked || o.level < RANKED.unlockLevel) {
+    // aviso de desbloqueo (píldora con candado). (26-11-2026, usuario) antes del nivel 20: las LIGAS se juegan desde ese nivel
+    const msg = !unlocked ? `SE DESBLOQUEA EN NIVEL ${RANK_UNLOCK_LEVEL}` : `NIVEL ${RANKED.unlockLevel} PARA JUGAR LIGAS`;
     const t = scene.add.text(14, y + 112, msg, { fontFamily: FONT, fontSize: '20px', color: '#ffd76a' }).setOrigin(0.5).setLetterSpacing(1);
     const pwid = t.width + 76;
     const pill = scene.add.graphics();

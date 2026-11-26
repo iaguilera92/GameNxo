@@ -14,6 +14,7 @@ import { bestLeague2v2 } from '../domain/league2v2';
 import { commit, getPlayer, onPlayerChange } from '../domain/playerStore';
 import { totalPlayed, totalWins } from '../logic/Stats';
 import { markTutorialSeen } from '../domain/operations';
+import { GUIDE, guidedStep } from '../domain/tutorial';
 import { clockTimer } from './TutorialDialog';
 import { tapHint } from './guideFocus';
 
@@ -65,6 +66,7 @@ function accountData() {
     best: bestLeague(s),
     coins: s.coins,
     bestStreak: s.ranked.total.bestStreak,
+    streak: s.ranked.total.streak, // (26-11-2026, usuario) racha actual
     frame: equippedFrame(s),
     frame2v2: equippedFrame2v2(s),
     best2v2: bestLeague2v2(s),
@@ -176,6 +178,19 @@ export function openProfileDialog(scene: Phaser.Scene, onToast: (m: string) => v
       sg.fillStyle(accent, 1).fillRoundedRect(x + 6, y + 12, 5, rh - 24, 2.5); // franja de color a la izquierda
       sg.lineStyle(2, 0x2a4a8a, 1).strokeRoundedRect(x, y, cw2, rh, 14);
       body.add(sg);
+      if (st.label === 'MEJOR RACHA') {
+        // (26-11-2026, usuario) la celda dividida en dos: MEJOR RACHA | RACHA ACTUAL
+        const half = (cw2 - 22) / 2;
+        sg.lineStyle(2, 0x2a4a8a, 1).lineBetween(x + 22 + half, y + 10, x + 22 + half, y + rh - 10);
+        [['MEJOR RACHA', `${d.bestStreak}`, '#ffffff'], ['RACHA ACTUAL', `${d.streak}`, '#ff9a4a']].forEach(([lb, val, colr], k) => {
+          const hx = x + 22 + k * (half + 8);
+          const l = scene.add.text(hx, y + 22, lb, { fontFamily: FONT, fontSize: '13px', color: '#9fb4e0' }).setOrigin(0, 0.5).setLetterSpacing(1);
+          fitText(l, half - 12);
+          const vv = scene.add.text(hx, y + 50, val, { fontFamily: FONT, fontSize: '27px', color: colr, stroke: '#0a1638', strokeThickness: 4 }).setOrigin(0, 0.5);
+          body.add([l, vv]);
+        });
+        return;
+      }
       body.add(scene.add.text(x + 22, y + 22, st.label, { fontFamily: FONT, fontSize: '13px', color: '#9fb4e0' }).setOrigin(0, 0.5).setLetterSpacing(1));
       const v = scene.add.text(x + 22, y + 50, st.value, { fontFamily: FONT, fontSize: '27px', color: st.color ?? '#ffffff', stroke: '#0a1638', strokeThickness: 4 }).setOrigin(0, 0.5);
       fitText(v, cw2 - 56);
@@ -335,7 +350,8 @@ export function openProfileDialog(scene: Phaser.Scene, onToast: (m: string) => v
   paint();
   root.setAlpha(0);
   scene.tweens.add({ targets: root, alpha: 1, duration: 180 });
-  if (!getPlayer().tutorial?.includes(PROFILE_INFO)) {
+  // (26-11-2026, usuario) una sola vez, en la guía del perfil del nivel 2
+  if (!getPlayer().tutorial?.includes(PROFILE_INFO) && guidedStep(getPlayer().level, getPlayer().tutorial) === 'profile') {
     // (25-11-2026, usuario) al cerrarse el resumen, la mano señala CERRAR
     profileInfo(scene, root, () => {
       if (!root.active) return;
@@ -347,7 +363,7 @@ export function openProfileDialog(scene: Phaser.Scene, onToast: (m: string) => v
   return root;
 }
 
-const PROFILE_INFO = 'perfil-info';
+const PROFILE_INFO = GUIDE.profileInfo;
 const PROFILE_INFO_MS = 3000;
 
 /** (25-11-2026, usuario) la primera vez que se abre el perfil: explicación breve (se cierra al tocar) */

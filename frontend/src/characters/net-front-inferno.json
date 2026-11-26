@@ -1,0 +1,107 @@
+{
+  "source": "Net/rival/hd/net-rival-ulti-1..6.png",
+  "view": "front",
+  "cell": {
+    "w": 178,
+    "h": 179
+  },
+  "origin": {
+    "x": 0.5,
+    "y": 0.97765
+  },
+  "standHeight": 150,
+  "cols": 3,
+  "hold": 4,
+  "preStrike": 5,
+  "strikeFrom": 5,
+  "impact": 6,
+  "racketFree": 2,
+  "pickupGrab": 2,
+  "animations": {
+    "inferno-swing": {
+      "file": "inferno-swing.webp",
+      "frames": 8,
+      "fps": 15,
+      "loop": false,
+      "impact": 6,
+      "cell": {
+        "w": 178,
+        "h": 179
+      },
+      "origin": {
+        "x": 0.5,
+        "y": 0.97765
+      }
+    },
+    "ulti-hit": {
+      "file": "ulti-hit.webp",
+      "frames": 9,
+      "fps": 14,
+      "loop": false,
+      "cell": {
+        "w": 126,
+        "h": 166
+      },
+      "origin": {
+        "x": 0.5,
+        "y": 0.9759
+      }
+    },
+    "ulti-stun": {
+      "file": "ulti-stun.webp",
+      "frames": 9,
+      "fps": 12,
+      "loop": true,
+      "cell": {
+        "w": 126,
+        "h": 176
+      },
+      "origin": {
+        "x": 0.5,
+        "y": 0.97727
+      }
+    },
+    "idle-nr": {
+      "file": "idle-nr.webp",
+      "frames": 9,
+      "fps": 8,
+      "loop": true,
+      "cell": {
+        "w": 106,
+        "h": 158
+      },
+      "origin": {
+        "x": 0.5,
+        "y": 0.97468
+      }
+    },
+    "run-nr": {
+      "file": "run-nr.webp",
+      "frames": 9,
+      "fps": 14,
+      "loop": true,
+      "cell": {
+        "w": 100,
+        "h": 161
+      },
+      "origin": {
+        "x": 0.5,
+        "y": 0.97516
+      }
+    },
+    "pickup": {
+      "file": "pickup.webp",
+      "frames": 9,
+      "fps": 14,
+      "loop": false,
+      "cell": {
+        "w": 120,
+        "h": 163
+      },
+      "origin": {
+        "x": 0.5,
+        "y": 0.97546
+      }
+    }
+  }
+}

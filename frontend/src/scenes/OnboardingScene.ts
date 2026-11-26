@@ -8,6 +8,10 @@ import { CATALOG } from '../characters/catalog';
 import { addPortrait } from '../characters/portrait';
 import { passHeroSkin, rosterPortrait } from '../characters/passPortrait';
 import { passiveOf } from '../domain/characterPassives';
+import { startIntroMusic } from '../fx/introMusic';
+import { sfx } from '../fx/sfx';
+import { uiSound } from '../fx/uiSound';
+import { drawPassiveIcon } from '../ui/passiveInfo';
 import type { SkinId } from '../characters/skins';
 
 const NAVY = 0x0b1a3d;
@@ -86,6 +90,7 @@ export class OnboardingScene extends Phaser.Scene {
   create() {
     const W = this.scale.width;
     const H = this.scale.height;
+    startIntroMusic(this); // (26-11-2026, usuario) la música del menú desde ¿CÓMO TE LLAMAS? (sigue al llegar al menú)
     if (this.textures.exists('menu-bg')) {
       const bg = this.add.image(W / 2, H, 'menu-bg').setOrigin(0.5, 1);
       bg.setScale(Math.max(W / bg.width, H / bg.height));
@@ -309,7 +314,7 @@ export class OnboardingScene extends Phaser.Scene {
         // (25-11-2026, usuario) las cards entran de a una desde la derecha (todas en menos de 1,5 s)
         const cc = this.add.container(W, 0).setAlpha(0);
         c.add(cc);
-        this.tweens.add({ targets: cc, x: 0, alpha: 1, delay: 80 + (ri * row.length + i) * 105, duration: 300, ease: 'Cubic.easeOut' });
+        this.tweens.add({ targets: cc, x: 0, alpha: 1, delay: 80 + (ri * row.length + i) * 105, duration: 300, ease: 'Cubic.easeOut', onStart: () => uiSound(this, 'card') }); // (26-11-2026, usuario) con sonido
         const g = this.add.graphics();
         cc.add(g);
         const badge = this.add.graphics();
@@ -543,15 +548,15 @@ export class OnboardingScene extends Phaser.Scene {
    * de la cabeza a los hombros. Sin datos: el centro y el tercio de arriba de la caja visible.
    */
   private faceOf(id: string): { key: string; w: number; h: number; cx: number; top: number; fh: number } | null {
-    const FACE: Record<string, { cx: number; top: number; fh: number }> = { nxo: { cx: 450, top: 18, fh: 600 }, mai: { cx: 440, top: 10, fh: 600 } };
+    const FACE: Record<string, { cx: number; top: number; fh: number }> = { nxo: { cx: 450, top: 18, fh: 690 }, mai: { cx: 440, top: 10, fh: 690 } }; // (26-11-2026, usuario) Mai un poco mas pequena (fh 600 -> 690)
     const key = id === 'nxo' ? 'portrait-nxo' : id === 'mai' ? 'portrait-mai' : rosterPortrait(id)?.key;
     if (!key || !this.textures.exists(key)) return null;
     const src = this.textures.get(key).getSourceImage() as { width: number; height: number };
     const p = rosterPortrait(id);
     // (25-11-2026, usuario) Mat: la cara un poco más a la derecha para que se vea la oreja (la raqueta puede cortarse)
     // (25-11-2026, usuario) Jun: también a la derecha (se ve la oreja) y un poco más pequeño (FH: más alto de cara = dibujo más chico)
-    const SHIFT: Record<string, number> = { mat: 0.1, isa: 0.16, jun: 0.1 };
-    const FH: Record<string, number> = { jun: 1.15, isa: 1.15 };
+    const SHIFT: Record<string, number> = { mat: 0.1, isa: 0.16, jun: 0.1, net: 0.12, zac: 0.09 };
+    const FH: Record<string, number> = { jun: 1.15, isa: 1.15, mat: 1.15 }; // (26-11-2026, usuario) Mat también un poco más pequeño
     const f = FACE[id] ?? (p ? { cx: (p.box.x0 + p.box.x1) / 2 - (p.box.x1 - p.box.x0) * (SHIFT[id] ?? 0), top: p.box.y0, fh: (p.box.y1 - p.box.y0) * 0.42 * (FH[id] ?? 1) } : { cx: src.width / 2, top: 0, fh: src.height * 0.42 });
     return { key, w: src.width, h: src.height, ...f };
   }
@@ -565,16 +570,43 @@ export class OnboardingScene extends Phaser.Scene {
     return this.add.image(x, feetY, p.key).setOrigin((x0 + x1) / 2 / p.w, y1 / p.h).setScale(h / (y1 - y0));
   }
 
+  /** (26-11-2026, usuario) en el diálogo de confirmar: el personaje a la IZQUIERDA y su PASIVA a la derecha */
+  private pickArt(skin: string, x: number, feetY: number, h: number, w: number) {
+    const c = this.add.container(0, 0);
+    const pas = passiveOf(skin);
+    const px = pas ? x - w * 0.2 : x;
+    const por = this.portrait(skin, px, feetY, h);
+    if (por) c.add(por);
+    if (!pas) return c;
+    const rx = x + w * 0.2;
+    const cy = feetY - h / 2;
+    const ic = this.add.graphics({ x: rx, y: cy - 60 });
+    ic.fillStyle(0x07152f, 1).fillCircle(0, 0, 32).lineStyle(3, pas.color, 1).strokeCircle(0, 0, 32);
+    drawPassiveIcon(ic, pas.id, 18, pas.color);
+    const tag = this.add.text(rx, cy - 12, 'PASIVA', { fontFamily: FONT, fontSize: '15px', color: '#9fb4e0' }).setOrigin(0.5).setLetterSpacing(2);
+    const nm = this.add.text(rx, cy + 16, pas.name, { fontFamily: FONT, fontSize: '28px', color: pas.css, stroke: '#061431', strokeThickness: 5 }).setOrigin(0.5);
+    const ds = this.add.text(rx, cy + 46, pas.short, { fontFamily: FONT, fontSize: '17px', color: '#dbe5ff', align: 'center', wordWrap: { width: w * 0.4 } }).setOrigin(0.5, 0);
+    c.add([ic, tag, nm, ds]);
+    return c;
+  }
+
   private confirmPick(skin: string) {
     const r = ROSTER.flat().find((x) => x.id === skin);
     this.dialog.forEach((o) => o.destroy());
     this.dialog = showConfirm(this, {
       title: `¿ELEGIR A ${(r?.name ?? skin).toUpperCase()}?`,
-      message: 'No hay vuelta atrás: será tu personaje.',
-      detail: 'Los demás se desbloquean en la Tienda',
-      confirmLabel: 'ELEGIR',
+      // (26-11-2026, usuario) texto nuevo, el personaje sobre los botones y CONFIRMO (con el sonido de equipar)
+      message: '¡Este será tu personaje para empezar! Los demás los podrás ir desbloqueando en la Tienda.',
+      confirmLabel: 'CONFIRMO',
       cancelLabel: 'VOLVER',
-      onConfirm: () => this.finish(skin),
+      artH: 290,
+      highlight: 'Tienda', // (26-11-2026, usuario) en amarillo
+      badge: 'ball', // (26-11-2026, usuario) pelota de tenis girando (no la bandera)
+      art: (x, feetY, h, w) => this.pickArt(skin, x, feetY, h, w),
+      onConfirm: () => {
+        sfx(this, 'equipar');
+        this.finish(skin);
+      },
       onCancel: () => {
         this.dialog.forEach((o) => o.destroy());
         this.dialog = [];

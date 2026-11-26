@@ -17,7 +17,7 @@
 export const UNLOCK_LEVEL = {
   defensive: 2,
   /** (25-11-2026, usuario) el PASE DE BATALLA: antes no recibe EXP ni la anima el menú */
-  pass: 10,
+  pass: 5, // (26-11-2026, usuario) se muestra en el nivel 5 (suma EXP desde el primer partido)
   special: 4,
   ulti: 6,
   // (25-11-2026, usuario) CARGANDO GOLPE pasa al 8 (antes 12), ZONA al 10 (antes 15) y ESTILOS al 15 (antes 8)

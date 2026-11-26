@@ -23,6 +23,8 @@ export const PASS_PORTRAITS: Record<string, PassPortrait> = {
 
 export const MAT_PORTRAIT: PassPortrait = { key: 'portrait-mat', file: 'assets/characters/mat_portrait.webp', w: 1024, h: 1536, box: { x0: 129, y0: 65, x1: 972, y1: 1475 } };
 export const ISA_PORTRAIT: PassPortrait = { key: 'portrait-isa', file: 'assets/characters/isa_portrait.webp', w: 1122, h: 1402, box: { x0: 131, y0: 10, x1: 1040, y1: 1382 } };
+export const NET_PORTRAIT: PassPortrait = { key: 'portrait-net', file: 'assets/characters/net_portrait.webp', w: 1024, h: 1536, box: { x0: 79, y0: 89, x1: 1002, y1: 1515 } };
+export const ZAC_PORTRAIT: PassPortrait = { key: 'portrait-zac', file: 'assets/characters/zac_portrait.webp', w: 1024, h: 1536, box: { x0: 79, y0: 8, x1: 976, y1: 1511 } };
 
 /**
  * Personajes que aún NO son jugables y tampoco son premio del Pase: solo se ven (bloqueados) en CAMBIAR PERSONAJE. Sus retratos de
@@ -31,15 +33,15 @@ export const ISA_PORTRAIT: PassPortrait = { key: 'portrait-isa', file: 'assets/c
  */
 export const SOON_PORTRAITS: Record<string, PassPortrait> = {
   flo: { key: 'portrait-flo', file: 'assets/characters/flo_portrait.webp', w: 1122, h: 1402, box: { x0: 185, y0: 6, x1: 1004, y1: 1388 } },
-  zac: { key: 'portrait-zac', file: 'assets/characters/zac_portrait.webp', w: 1024, h: 1536, box: { x0: 79, y0: 8, x1: 976, y1: 1511 } },
-  net: { key: 'portrait-net', file: 'assets/characters/net_portrait.webp', w: 1024, h: 1536, box: { x0: 79, y0: 89, x1: 1002, y1: 1515 } },
   rin: { key: 'portrait-rin', file: 'assets/characters/rin_portrait.webp', w: 1122, h: 1402, box: { x0: 77, y0: 0, x1: 1043, y1: 1388 } },
 };
 
-/** retrato de un personaje del Pase o aún no jugable (undefined = no tiene) */
+/** Retrato alternativo para los selectores (undefined = no tiene). */
 export function rosterPortrait(skin: string): PassPortrait | undefined {
   if (skin === 'mat') return MAT_PORTRAIT;
   if (skin === 'isa') return ISA_PORTRAIT;
+  if (skin === 'net') return NET_PORTRAIT;
+  if (skin === 'zac') return ZAC_PORTRAIT;
   return PASS_PORTRAITS[skin] ?? SOON_PORTRAITS[skin];
 }
 

@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import type { SkinId } from './skins';
-import { ISA_PORTRAIT, JUN_PORTRAIT, MAT_PORTRAIT } from './passPortrait';
+import { ISA_PORTRAIT, JUN_PORTRAIT, MAT_PORTRAIT, NET_PORTRAIT, ZAC_PORTRAIT } from './passPortrait';
 
 /**
  * Retratos estáticos de los personajes (menú, PERSONAJE y VS). Si una skin no tiene retrato,
@@ -20,6 +20,8 @@ const PORTRAITS: Partial<Record<SkinId, PortraitDef>> = {
   mat: MAT_PORTRAIT,
   isa: ISA_PORTRAIT,
   jun: JUN_PORTRAIT,
+  net: NET_PORTRAIT,
+  zac: ZAC_PORTRAIT,
   nxo: {
     key: 'portrait-nxo',
     file: 'personajes/Nxo/pj-nxo.webp',

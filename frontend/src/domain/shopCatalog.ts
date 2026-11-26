@@ -42,10 +42,10 @@ export interface ShopItem {
 export const CHARACTER_PRICE = { clp: 6990, price: 1000 } as const;
 const BASE_ITEMS: ShopItem[] = [
   { id: 'skin:flo', kind: 'skin', name: 'Flo', ...CHARACTER_PRICE, minLevel: 1, available: true }, // en propiedad hasta que sea jugable
-  { id: 'skin:zac', kind: 'skin', name: 'Zac', ...CHARACTER_PRICE, minLevel: 1, available: true }, // en propiedad hasta que sea jugable
+  { id: 'skin:zac', kind: 'skin', name: 'Zac', ...CHARACTER_PRICE, minLevel: 1, available: true },
   // personajes (rareza sin clasificar: preguntar al usuario)
   { id: 'skin:mai', kind: 'skin', name: 'Mai', ...CHARACTER_PRICE, minLevel: 1, available: false }, // retirada de Nuevos personajes; queda como personaje inicial para las cuentas web existentes
-  { id: 'skin:net', kind: 'skin', name: 'Net', ...CHARACTER_PRICE, minLevel: 1, available: true }, // (21-11-2026) aún no jugable: solo queda en propiedad
+  { id: 'skin:net', kind: 'skin', name: 'Net', ...CHARACTER_PRICE, minLevel: 1, available: true },
   { id: 'skin:mat', kind: 'skin', name: 'Mat', ...CHARACTER_PRICE, minLevel: 1, available: true },
   { id: 'skin:isa', kind: 'skin', name: 'Isa', ...CHARACTER_PRICE, minLevel: 1, available: true },
   { id: 'skin:rin', kind: 'skin', name: 'Rin', ...CHARACTER_PRICE, minLevel: 1, available: true }, // nuevo personaje de la Tienda; se guarda en propiedad hasta que sea jugable
@@ -209,6 +209,14 @@ export const CASH_PACKS: CashPack[] = [
 /** "$1.490 CLP" */
 export const clpLabel = (clp: number) => `$${clp.toLocaleString('es-CL')} CLP`;
 
+/** (26-11-2026, usuario) DEFENSIVOS del tutorial: los únicos en la tienda hasta TUTORIAL_SHOP_UNTIL y a TUTORIAL_PRICE hasta el nivel 19 */
+export const TUTORIAL_DEFENSIVES: ItemId[] = ['defensive:blink', 'defensive:shadow', 'defensive:skate'];
+export const TUTORIAL_PRICE = 20;
+export const TUTORIAL_SHOP_UNTIL = 5;
+/** precio que paga el jugador de nivel `level` (los 3 defensivos del tutorial, más baratos mientras dura) */
+export function priceFor(item: ShopItem, level: number): number {
+  return level < 20 && TUTORIAL_DEFENSIVES.includes(item.id) ? Math.min(item.price, TUTORIAL_PRICE) : item.price;
+}
 export function shopItem(id: ItemId): ShopItem | undefined {
   return SHOP_ITEMS.find((i) => i.id === id);
 }

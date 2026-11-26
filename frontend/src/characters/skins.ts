@@ -15,7 +15,7 @@ import { CHARACTER_SKINS } from '../config';
  * de `racketArm`, que siguen moviéndose con los mismos tweens. Solo se escala de forma uniforme.
  */
 
-export type SkinId = 'player' | 'rival' | 'nxo' | 'mai' | 'mat' | 'isa' | 'jun';
+export type SkinId = 'player' | 'rival' | 'nxo' | 'mai' | 'mat' | 'isa' | 'jun' | 'net' | 'zac';
 /** Skins del sistema anterior de cuerpo y brazo. */
 export const SKIN_IDS: SkinId[] = ['player', 'rival', 'nxo', 'mai'];
 export type SkinView = 'front' | 'back';

@@ -17,7 +17,7 @@ import { cycleIdAt, msToNextReset } from './dailyWheel';
 import { type OpResult, purchase } from './operations';
 import { type ItemId, type ItemKind, type PlayerState, clonePlayer } from './player';
 import { weekIdAt } from './ranked';
-import { SHOP_ITEMS, type ShopItem, shopItem } from './shopCatalog';
+import { SHOP_ITEMS, type ShopItem, TUTORIAL_DEFENSIVES, TUTORIAL_SHOP_UNTIL, priceFor, shopItem } from './shopCatalog';
 
 /** cuántos se ven a la vez en una categoría con rotación */
 export const ROTATION_SHOW = 3;
@@ -88,6 +88,15 @@ function rotationOrder(kind: ItemKind, items: ShopItem[]): ShopItem[] {
 
 /** Ofertas visibles ahora. Una oferta fija ocupa uno de los espacios de la categoría. */
 export function shopOffers(kind: ItemKind, now: number, s?: RerollView): ShopItem[] {
+  // (26-11-2026, usuario) tutorial: hasta el nivel 5 los DEFENSIVOS son solo Destello, Sombra y Patinaje; hasta el 19, a su precio de tutorial
+  const lv = s?.level;
+  const priced = (list: ShopItem[]) => (lv === undefined ? list : list.map((it) => ({ ...it, price: priceFor(it, lv) })));
+  if (kind === 'defensive' && lv !== undefined && lv <= TUTORIAL_SHOP_UNTIL) {
+    return priced(TUTORIAL_DEFENSIVES.map((id) => shopItem(id)).filter((it): it is ShopItem => !!it));
+  }
+  return priced(shopOffersRaw(kind, now, s));
+}
+function shopOffersRaw(kind: ItemKind, now: number, s?: RerollView): ShopItem[] {
   const rot = ROTATION[kind];
   const items = pool(kind);
   const show = rot?.show ?? ROTATION_SHOW;
@@ -102,6 +111,23 @@ export function shopOffers(kind: ItemKind, now: number, s?: RerollView): ShopIte
   // (21-11-2026, usuario) con el CAMBIO pagado de esta semana se salta a la siguiente ventana: salen otros ítems
   const start = ((w.id + rerollShift(s, kind, now)) * slots) % order.length;
   const offers = Array.from({ length: slots }, (_, i) => order[(start + i) % order.length]);
+  // (26-11-2026, usuario) lo que ya tienes (salvo lo comprado en esta ventana) se cambia por el siguiente que no tengas
+  const owned = s?.owned;
+  if (owned?.length) {
+    const used = new Set(offers.map((o) => o.id));
+    let j = start + slots;
+    offers.forEach((o, k) => {
+      if (!owned.includes(o.id) || s?.keep?.includes(o.id)) return;
+      for (let t = 0; t < order.length; t++) {
+        const c = order[(j + t) % order.length];
+        if (used.has(c.id) || owned.includes(c.id)) continue;
+        offers[k] = c;
+        used.add(c.id);
+        j += t + 1;
+        return;
+      }
+    });
+  }
   return byRarity(fixed ? [fixed, ...offers] : offers);
 }
 
@@ -134,7 +160,8 @@ export function purchaseOffered(s: PlayerState, id: ItemId, now: number = Date.n
  */
 export const REROLL_PRICE = 100;
 /** lo que mira la rotación del estado del jugador (basta con esto) */
-export type RerollView = { shopReroll?: { week: string; kinds: ItemKind[] } };
+/** (26-11-2026, usuario) `owned` / `keep`: lo que ya tienes deja de salir en las ventanas siguientes (lo comprado en ESTA ventana, `keep`, sigue como COMPRADO) */
+export type RerollView = { shopReroll?: { week: string; kinds: ItemKind[] }; level?: number; owned?: readonly ItemId[]; keep?: readonly ItemId[] };
 /** ¿Ya se cambió esta categoría esta semana? */
 export function rerolledThisWeek(s: RerollView | undefined, kind: ItemKind, now: number): boolean {
   return !!s?.shopReroll && s.shopReroll.week === weekIdAt(now) && s.shopReroll.kinds.includes(kind);

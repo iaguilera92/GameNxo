@@ -10,7 +10,6 @@ import type { SkinId } from '../characters/skins';
 import { type CharColorId, charColorItem } from './charColors';
 import { newBattlePass } from './battlePassState';
 import { gameClock } from './timeSource';
-import { UNLOCK_LEVEL } from './unlocks';
 
 export type BpReward =
   | { kind: 'cash'; amount: number }
@@ -94,13 +93,13 @@ export const BP_SEASON = {
    * Fuera del Pase: efectos Verde y Rojo (siguen en la Tienda) y los colores Verde, Morado y Sombra.
    */
   tiers: [
-    { free: $(1), prem: $(2) }, // 1
+    { free: $(1), prem: $(2) }, // 1 (26-11-2026: el dinero del tutorial sale ahora de las ruletas)
     { free: it('emote:happy', 'Risa'), prem: $(2) }, // 2
     { free: $(1), prem: it('style:gold', 'Oro') }, // 3
     { free: $(1), prem: $(2) }, // 4
     { free: it('style:pink', 'Rosado'), prem: $(2) }, // 5
     { free: coins2v2(50), prem: $(2) }, // 6
-    { free: $(1), prem: chest }, // 7
+    { free: $(1), prem: chest }, // 7 (26-11-2026: pase 5 + ruletas 10 + diario 5 + regalo 1 = ~21 de dinero al nivel 5)
     { free: it('emote:cool', 'Pensando'), prem: $(2) }, // 8
     { free: coins(500), prem: $(2) }, // 9
     { free: $(1), prem: $(2) }, // 10
@@ -152,7 +151,7 @@ export function bpSeasonInfo(now = gameClock.now()) {
 /** Suma EXP al pase (la llama operations.addXp). Pura: modifica el clon que recibe. Con el Pase terminado no suma. */
 export function bpAddXpInPlace(n: PlayerState, amount: number) {
   if (bpSeasonInfo().over) return;
-  if (n.level < UNLOCK_LEVEL.pass) return; // (25-11-2026, usuario) aún no está disponible: la EXP va solo al nivel de la cuenta
+  // (26-11-2026, usuario) la EXP cuenta desde el primer partido (el pase se MUESTRA en el nivel UNLOCK_LEVEL.pass con lo juntado)
   if (n.bp.season !== BP_SEASON.id) n.bp = newBattlePass(BP_SEASON.id);
   n.bp.xp = Math.min(bpMaxXp(), n.bp.xp + Math.max(0, Math.floor(amount)));
 }

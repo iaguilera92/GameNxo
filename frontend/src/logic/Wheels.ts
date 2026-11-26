@@ -107,6 +107,9 @@ export function grantTutorialSpin(id: string) {
 export function tutorialWheelToPresent() {
   return wheel.nextTutorialBonus(getPlayer() as never);
 }
+export function unclaimedTutorialWheel() {
+  return wheel.unclaimedTutorialBonus(getPlayer() as never);
+}
 export function markTutorialWheelPresented(index: number) {
   commit((s) => wheel.markBonusPresented(s, index));
 }

@@ -182,7 +182,7 @@ export class CustomizeScene extends Phaser.Scene {
   private focusDefensiveGuide(equipped: boolean) {
     this.guideOverlay?.destroy();
     const target = equipped ? { x: 54, y: 64, w: 78, h: 78 } : this.guideDefensiveRect;
-    const tap = this.guideCard === 'special' ? '¡ESPECIAL DESBLOQUEADO!\nTOCA ESPECIAL' : 'TOCA DEFENSIVO';
+    const tap = this.guideCard === 'special' ? 'TOCA PARA EQUIPAR' : 'TOCA DEFENSIVO'; // (26-11-2026, usuario) sin repetir ESPECIAL DESBLOQUEADO (ya sale en el menú)
     if (target) this.guideOverlay = guideFocus(this, target, equipped ? 'VUELVE AL MENÚ' : tap, { textDy: equipped ? 34 : 0 });
   }
 
@@ -626,7 +626,7 @@ ${unlockLabel(key)}`, { fontFamily: FONT, fontSize: '16px', color: '#ffd23f', st
       bar.fillStyle(pr.max ? 0xffc42e : def.color, 1).fillRoundedRect(cx0, bary - bh / 2, fw, bh, bh / 2);
       bar.fillStyle(0xffffff, 0.4).fillRoundedRect(cx0 + 4, bary - bh / 2 + 3, Math.max(0, fw - 8), 5, 2.5);
     }
-    const label = locked ? `SE ACTIVA EN EL NIVEL ${MASTERY.unlockLevel} DE TU CUENTA` : pr.max ? 'NIVEL MÁXIMO' : `${pr.into} / ${pr.need}  MAESTRÍAS`;
+    const label = locked ? `SE DESBLOQUEA EN EL NIVEL ${MASTERY.unlockLevel}` /* (26-11-2026, usuario) */ : pr.max ? 'NIVEL MÁXIMO' : `${pr.into} / ${pr.need}  MAESTRÍAS`;
     const lab = this.add.text(cx0 + cw / 2, bary, label, { fontFamily: FONT, fontSize: '14px', color: locked ? '#b9c6e6' : '#ffffff', stroke: '#061431', strokeThickness: 3 }).setOrigin(0.5);
     if (lab.width > cw - 16) lab.setScale((cw - 16) / lab.width);
     if (locked) {
@@ -850,9 +850,9 @@ ${unlockLabel(key)}`, { fontFamily: FONT, fontSize: '16px', color: '#ffd23f', st
       { id: 'nxo', name: 'Nxo', playable: true },
       { id: 'jun', name: 'Jun', playable: true, badge: 'DEL PASE' },
       { id: 'mat', name: 'Mat', playable: true },
-      { id: 'zac', name: 'Zac', playable: false, badge: 'PRONTO' },
+      { id: 'zac', name: 'Zac', playable: true },
       { id: 'mai', name: 'Mai', playable: true, badge: 'DEL PASE' },
-      { id: 'net', name: 'Net', playable: false, badge: 'PRONTO' },
+      { id: 'net', name: 'Net', playable: true },
       { id: 'isa', name: 'Isa', playable: true },
       { id: 'rin', name: 'Rin', playable: false, badge: 'PRONTO' },
       { id: 'flo', name: 'Flo', playable: false, badge: 'PRONTO' },
@@ -865,7 +865,7 @@ ${unlockLabel(key)}`, { fontFamily: FONT, fontSize: '16px', color: '#ffd23f', st
         desc: pas ? `PASIVA · ${pas.name}\n${pas.short}${c.playable ? '' : '\nAún no se puede jugar.'}` : c.playable ? 'Personaje jugable.' : 'Personaje nuevo. Aún no se puede jugar.',
         badge: c.badge,
         showLocked: true,
-        lockedNote: c.id === 'isa' ? 'Consíguela en la Tienda.' : c.id === 'jun' ? 'Desbloquéalo en el nivel 30 del Pase de Batalla.' : undefined,
+        lockedNote: c.id === 'zac' ? 'Consíguelo en la Tienda.' : c.id === 'isa' || c.id === 'net' ? 'Consíguela en la Tienda.' : c.id === 'jun' ? 'Desbloquéalo en el nivel 30 del Pase de Batalla.' : undefined,
         owned: c.playable && owned.includes(`skin:${c.id}` as never),
         equipped: c.id === skin,
         preview: (x, y, size) => portrait(c.id, x, y, size * 1.15 * 1.2),

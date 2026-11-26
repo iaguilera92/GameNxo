@@ -1,7 +1,7 @@
 // Miniaturas de los EMOTES (las caritas del partido, que también son premios del Pase de Batalla).
-//   node tools/build-emote-thumbs.mjs
-// Fuentes: public/personajes/Nxo/emojis/nxo-<nombre>.png y (18-11-2026) public/personajes/Mai/emotes/mai-<nombre>.png (~1300 px, ~1,1 MB)
-// Salida:  public/assets/emotes/emote-<pj>-<nombre>.webp (25-11-2026: WebP con tools/convert-image.mjs; antes .png): emote-nxo-… (NXO) y emote-mai-… (MAI), cuadradas de SIZE px con el dibujo centrado.
+//   node tools/build-emote-thumbs.mjs [personaje]
+// Fuentes PNG con alfa en public/personajes/<Personaje>/emojis/ (emotes/ para Mai).
+// Salida: public/assets/emotes/emote-<pj>-<nombre>.webp, cuadrada con el dibujo centrado.
 // El juego las muestra a 54-58 px: con 160 sobra nitidez y cada una pesa decenas de KB en vez de más de 1 MB.
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
@@ -12,17 +12,22 @@ import { decode, save } from './png-lite.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const SOURCES = [
-  { dir: join(ROOT, 'public', 'personajes', 'Nxo', 'emojis'), re: /^nxo-.+\.png$/, out: (f) => f.replace(/^nxo-/, 'emote-nxo-') },
-  { dir: join(ROOT, 'public', 'personajes', 'Mai', 'emotes'), re: /^mai-.+\.png$/, out: (f) => f.replace(/^mai-/, 'emote-mai-') },
+  { id: 'nxo', dir: join(ROOT, 'public', 'personajes', 'Nxo', 'emojis'), filePattern: /^nxo-.+\.png$/ },
+  { id: 'mai', dir: join(ROOT, 'public', 'personajes', 'Mai', 'emotes'), filePattern: /^mai-.+\.png$/ },
+  { id: 'mat', dir: join(ROOT, 'public', 'personajes', 'Mat', 'emojis'), filePattern: /^mat-.+\.png$/ },
+  { id: 'isa', dir: join(ROOT, 'public', 'personajes', 'Isa', 'emojis'), filePattern: /^isa-.+\.png$/ },
+  { id: 'jun', dir: join(ROOT, 'public', 'personajes', 'Jun', 'emojis'), filePattern: /^jun-.+\.png$/ },
 ];
+const wanted = process.argv[2];
+if (wanted && !SOURCES.some(({ id }) => id === wanted)) throw new Error(`Personaje sin fuentes registradas: ${wanted}`);
 const OUT_DIR = join(ROOT, 'public', 'assets', 'emotes');
 const SIZE = 160;
 const PAD = 4;
 
 mkdirSync(OUT_DIR, { recursive: true });
 const TMP = mkdtempSync(join(tmpdir(), 'emote-thumbs-'));
-for (const { dir: SRC_DIR, re, out: outName } of SOURCES)
-for (const f of (existsSync(SRC_DIR) ? readdirSync(SRC_DIR) : []).filter((n) => re.test(n))) {
+for (const { dir: SRC_DIR, filePattern } of SOURCES.filter(({ id }) => !wanted || id === wanted))
+for (const f of (existsSync(SRC_DIR) ? readdirSync(SRC_DIR) : []).filter((n) => filePattern.test(n))) {
   const { w, h, px } = decode(join(SRC_DIR, f));
   // caja del dibujo (alfa > 8)
   let x0 = w, y0 = h, x1 = -1, y1 = -1;
@@ -58,7 +63,7 @@ for (const f of (existsSync(SRC_DIR) ? readdirSync(SRC_DIR) : []).filter((n) => 
       out[di] = Math.round(r / a); out[di + 1] = Math.round(g / a); out[di + 2] = Math.round(b / a);
       out[di + 3] = Math.min(255, Math.round((a / n) * 255));
     }
-  const name = outName(f).replace(/\.png$/, '.webp');
+  const name = `emote-${f.replace(/\.png$/, '.webp')}`;
   const tmpPng = join(TMP, name.replace(/\.webp$/, '.png'));
   save(tmpPng, SIZE, SIZE, out);
   const r = spawnSync(process.execPath, [join(ROOT, 'tools', 'convert-image.mjs'), tmpPng, join(OUT_DIR, name), '0.9'], { stdio: 'inherit' });

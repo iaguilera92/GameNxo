@@ -166,11 +166,37 @@ frontend/public/personajes/
     └── rival/hd/                       32 hojas fuente HD de frente (net-rival-*.png)
 ```
 
-**Net.** `Net/pj-net.png` define el pelo castaño ondulado, el buzo morado con franjas blancas y la raqueta fucsia con cordaje blanco. El retrato del selector está en `assets/characters/net_portrait.webp` (`characters/passPortrait.ts`, `SOON_PORTRAITS`).
+**Net.** `Net/pj-net.png` define el pelo castaño ondulado, el buzo morado con franjas blancas y la raqueta fucsia con cordaje blanco. El retrato del selector está en `assets/characters/net_portrait.webp` (`characters/passPortrait.ts`, `NET_PORTRAIT`).
 
-**Net Jugador.** `Net/jugador/` contiene 10 movimientos, ocho golpes, cinco reacciones, tres extras y los primeros tres clips de la ULTI. Para generarlos se usó el reposo de Net de espaldas como referencia de diseño y la hoja de Isa Jugador correspondiente para cámara, poses y efectos. Las hojas son de 1536 × 1024 con ocho cuadros en 4 × 2, salvo `net-ulti-2` y `net-ulti-3`, de 1024 × 1536 con nueve cuadros en 3 × 3. Ambos saques tienen el destello de contacto en el cuadro 5. La ULTI se prepara sin efectos hasta el cuadro 4; el contacto se dibuja en el 6. Pendientes `net-ulti-4` (reposo sin raqueta) y `net-ulti-5` (carrera sin raqueta), ambos verticales en 3 × 3, y `net-ulti-6` (recogida), horizontal en 4 × 2, con la raqueta en la mano desde el cuadro 4. Al recortar las tiras, revisar las estiradas y los efectos que quedan cerca del borde de una celda.
+**Net Jugador.** `Net/jugador/` contiene 10 movimientos, ocho golpes, cinco reacciones, tres extras y seis clips de la ULTI. Las hojas horizontales son de 1536 × 1024 con ocho cuadros en 4 × 2. `net-ulti-2` a `-5` son verticales de 1024 × 1536 con nueve cuadros en 3 × 3. Ambos saques tienen el destello de contacto en el cuadro 5. La ULTI se prepara hasta el cuadro 4 y el destello de impacto aparece en el 6. Al recibirla, NET suelta la raqueta en el cuadro 3. En `net-ulti-6` (recogida), la raqueta entra en la mano en el cuadro 4.
 
-**Net Rival.** `Net/rival/hd/` contiene las 32 hojas fuente con prefijo `net-rival-`: 10 movimientos, ocho golpes, cinco reacciones, tres extras y seis clips de la ULTI. Las horizontales miden 1536 × 1024 con ocho cuadros en 4 × 2. `net-rival-ulti-2` a `-6` miden 1024 × 1536 con nueve cuadros en 3 × 3. Para generarlas se usó el reposo frontal de Net como referencia de diseño y la hoja correspondiente de Isa Rival como referencia cuadro a cuadro de cámara, poses, dirección, expresión y efectos. Mantener fondo verde croma, cordaje blanco y la silueta completa dentro de cada celda. Las estiradas incluyen la levantada en los cuadros 6–8. El destello del saque normal está en el cuadro 6 y el del saque con efecto en el 5. La ULTI espera sin efectos en el cuadro 5 y el destello principal está en el 7. En la recogida, la raqueta aparece en el suelo desde el cuadro 3 y está en la mano en el 5. Falta recortar las tiras, verificar sus anclas y cuadros clave e integrar el pack frontal en cancha.
+Para `net-ulti-4` (reposo sin raqueta), `net-ulti-5` (carrera sin raqueta) y `net-ulti-6` (recogida) se usó ImageGen con la guardia de NET de espaldas como referencia de diseño y las tres hojas de Isa Jugador para la secuencia de poses. Se pidió cámara trasera fija, buzo magenta con franjas blancas, zapatos morados y blancos, pelo castaño ondulado, croma verde y cada silueta dentro de su celda. La recogida conserva las manos vacías en los cuadros 1–3 y la raqueta fucsia en la mano derecha del cuadro 4 al 8.
+
+`node tools/build-hd.mjs net` genera las 26 tiras de cancha y `node tools/build-hd.mjs net --ulti` las seis de la ULTI. Se puede equipar desde **Personalizar → Cambiar personaje** si NET está en propiedad. Las compras anteriores de `skin:net` valen para equiparla.
+
+**Net Rival.** `Net/rival/hd/` contiene las 32 hojas fuente con prefijo `net-rival-`: 10 movimientos, ocho golpes, cinco reacciones, tres extras y seis clips de la ULTI. Las horizontales miden 1536 × 1024 con ocho cuadros en 4 × 2. `net-rival-ulti-2` a `-6` miden 1024 × 1536 con nueve cuadros en 3 × 3. Para generarlas se usó el reposo frontal de Net como referencia de diseño y la hoja correspondiente de Isa Rival como referencia cuadro a cuadro de cámara, poses, dirección, expresión y efectos. Mantener fondo verde croma, cordaje blanco y la silueta completa dentro de cada celda. Las estiradas incluyen la levantada en los cuadros 6–8. El destello del saque normal está en el cuadro 6 y el del saque con efecto en el 5. La ULTI espera sin efectos en el cuadro 5 y el destello principal está en el 7. En la recogida, la raqueta aparece en el suelo desde el cuadro 3 y está en la mano en el 5.
+
+`node tools/build-hd.mjs net-front` genera las 26 tiras de cancha y `node tools/build-hd.mjs net-front --ulti` las seis de la ULTI. NET lanza la pelota desde la mano libre, a la derecha de la pantalla en ambos saques. Los centros del cordaje son `normal {dx: -3, z: 152}` en el cuadro 6 y `spin {dx: 15, z: 154}` en el cuadro 5. Al recibir la ULTI, la raqueta sale en el cuadro 3 de la reacción y en la recogida se retira la raqueta externa desde el cuadro 3, cuando ya aparece dibujada en el suelo. NET entra como rival en 1v1 fuera del tutorial y en 2v2 contra bots.
+
+**Zac Rival.** `Zac/rival/hd/` contiene las diez hojas `zac-rival-movimientos-1..10.png` y las ocho hojas `zac-rival-golpes-1..8.png`. Se generaron con ImageGen usando primero `Zac/pj-zac.png` y luego la guardia aprobada para el diseño de Zac. Las hojas de Jun Rival guiaron el encuadre y los cambios de pose. Todas usan croma verde y ocho cuadros en 4 × 2 a 1536 × 1024. La raqueta amarilla con cordaje blanco va en la mano derecha, a la izquierda de la pantalla en la guardia. Las estiradas terminan de pie en el cuadro 8.
+
+En los golpes de Zac, el destello está en el cuadro 6 para la derecha, el revés, sus versiones potentes y el saque con efecto. Está en el cuadro 5 para el saque normal y ambos remates. Los golpes potentes dejan limpio el cuadro 4 de carga, y el saque con efecto y ambos remates dejan limpio el cuadro 3 de preparación.
+
+Las cinco hojas `zac-rival-reacciones-1..5.png` cubren aturdimiento, punto ganado, punto perdido, incredulidad y celebración de rodillas. Las tres hojas `zac-rival-extras-1..3.png` cubren caminata de entrada, pelotazo de la ULTI y volea. Se generaron con ImageGen usando la guardia de Zac y las poses de Jun Rival. Las ocho hojas conservan el formato 4 × 2 con croma verde. El pelotazo destella en el cuadro 2 y Zac queda sin raqueta desde el 3, para que el juego dibuje la que sale volando. En la volea, el destello aparece en el cuadro 4 y los tres cuadros de preparación quedan limpios.
+
+Las seis hojas `zac-rival-ulti-1..6.png` completan las fuentes frontales. Se generaron con ImageGen a partir de la guardia de Zac y las poses de Jun Rival. La primera es horizontal de 1536 × 1024 con ocho cuadros en 4 × 2. Las otras cinco son verticales de 1024 × 1536 con nueve cuadros en 3 × 3. El golpe de la ULTI deja limpio el cuadro 3 de espera, enciende la estela en el 4 y destella en el 6. El pelotazo destella en el cuadro 2 y Zac queda sin raqueta desde el 3. El aturdimiento, el reposo y la carrera se dibujan sin raqueta. En la recogida aparece en el suelo en el cuadro 3 y Zac la agarra en el 4.
+
+`node tools/build-hd.mjs zac-front` genera las 26 tiras de cancha y `node tools/build-hd.mjs zac-front --ulti` las seis de la ULTI. Zac entra en la rotación de rivales, incluida la de hombres en los niveles impares del tutorial. Su raqueta suelta es amarilla y sale en el cuadro 3 del pelotazo (`racketFree: 2`). En el cuadro 3 de la recogida (`pickupGrab: 2`) el juego quita inmediatamente la raqueta del suelo, justo cuando el sprite empieza a dibujarla.
+
+**Zac Jugador.** Las diez hojas `Zac/jugador/zac-movimientos-1..10.png` cubren guardia, carrera, frenada, victoria, giro con frenada, dash, derrota, caminata y ambas estiradas. Todas tienen ocho cuadros en 4 × 2 a 1536 × 1024, con croma verde. ImageGen tomó el diseño de Zac Rival y las poses de Jun Jugador. La guardia muestra los rizos cobrizos, el nudo de la cinta a la derecha de la pantalla y la raqueta amarilla con cordaje blanco en la mano derecha. Esa guardia fija el diseño para el resto de las hojas de espaldas. La estirada izquierda cruza la raqueta por delante del cuerpo, de revés. Las dos estiradas recuperan la guardia en el cuadro 8.
+
+Las ocho hojas `zac-golpes-1..8.png` se hicieron con ImageGen a partir de la guardia de Zac Jugador y las poses de Jun Jugador. Mantienen los ocho cuadros en 4 × 2 y el croma verde. El destello cae en el cuadro 6 en derecha, revés, sus versiones potentes y el remate potente, y en el 5 en ambos saques y el remate normal. El cuadro 4 de carga de los golpes potentes y el cuadro 3 de preparación de los saques y remates quedan sin destello. El saque con efecto usa una estela azul durante el golpe y el juego dibuja la pelota de ambos saques.
+
+Las cinco hojas `zac-reacciones-1..5.png` cubren aturdimiento con raqueta, punto ganado, punto perdido, incredulidad y celebración de rodillas. Las tres hojas `zac-extras-1..3.png` cubren caminata de entrada, pelotazo de la ULTI y volea. Se hicieron con ImageGen usando la guardia de Zac Jugador y las poses de Jun Jugador, a 1536 × 1024 con ocho cuadros en 4 × 2 y croma verde. El pelotazo destella en el cuadro 2 con la raqueta todavía en la mano. Desde el cuadro 3 Zac queda desarmado para que el juego dibuje la raqueta suelta. La volea destella en el cuadro 5, tras cuatro cuadros de preparación y avance del brazo sin efectos.
+
+Las seis hojas `zac-ulti-1..6.png` completan las fuentes de espaldas. Se hicieron con ImageGen usando la guardia de Zac Jugador y las poses de Jun Jugador. El golpe y la recogida llevan ocho cuadros en 4 × 2 a 1536 × 1024. Las otras cuatro hojas llevan nueve cuadros en 3 × 3 a 1024 × 1536. El golpe espera en el cuadro 4, se prepara en el 5 y destella en el 6 (`hold: 3`, `preStrike: 4`, `strikeFrom: 4`, `impact: 5`). Al recibir la ULTI, el pelotazo destella en el cuadro 2 y la raqueta sale desde el 3 (`racketFree: 2`). El aturdimiento, la guardia y la carrera se dibujan sin raqueta. En la recogida, el sprite muestra la raqueta en el suelo en el cuadro 4 y Zac la levanta en el 5. Al integrar, quitar la raqueta del suelo en el cuadro 4 (`pickupGrab: 3`) para evitar que se vea doble.
+
+`node tools/build-hd.mjs zac` genera las 26 tiras de cancha y `node tools/build-hd.mjs zac --ulti` las seis de la ULTI. Zac se puede elegir al crear el perfil y equipar desde CAMBIAR PERSONAJE cuando se tiene en propiedad. Los dos saques usan el cuadro 5 de contacto. El cordaje se midió en `normal {dx: 24, z: 148}` y `spin {dx: 25, z: 153}`. El cambio de raqueta en la recogida está configurado en el cuadro 4.
 
 **Isa (25-11-2026).** Hay 32 hojas fuente por vista, en `Isa/jugador/` y `Isa/rival/hd/`, con croma verde `#00FF00`. Cada vista incluye 10 movimientos, ocho golpes, cinco reacciones, tres extras y seis clips de la ULTI. Se usó a Mai como referencia de poses, expresiones y efectos. Para `isa-rival-movimientos-8.png` (caminata) se usó a NXO rival. La raqueta fucsia conserva el cordaje blanco. Las hojas horizontales miden 1536 × 1024 y tienen ocho cuadros. Las verticales de la ULTI miden 1024 × 1536 y tienen nueve cuadros (Jugador 2–5, Rival 2–6).
 
@@ -218,10 +244,14 @@ Reglas:
   (`public/assets/characters/<carpeta>/`) y escriben los JSON (`src/characters/`). Tiras y JSON son
   archivos generados: no se editan a mano, se regeneran.
 - `npm run build` quita de `dist/` (y del APK) todo `personajes/` salvo lo que lista `KEEP_IN_PERSONAJES` en
-  `frontend/vite.config.ts` (hoy: `Nxo/pj-nxo.webp`, `Nxo/pj-nxo-mirada.webp`, `Mai/pj-mai-mirada.webp`). Si el
-  juego tiene que leer otro archivo de aquí, hay que añadirlo a esa lista.
-- Los emojis de `Nxo/emojis/` son fuentes: `node tools/build-emote-thumbs.mjs` genera las miniaturas de 160 px que usa
-  el juego (`public/assets/emotes/`). No van al APK (12-11-2026).
+  `frontend/vite.config.ts` (el retrato de Nxo y las miradas del roster). Para sumar una mirada nueva, añade su
+  carpeta a `GAZE_CHARACTERS`.
+- Las fuentes de los emojis viven en `Nxo/emojis/`, `Mai/emotes/`, `Mat/emojis/`, `Isa/emojis/` y `Jun/emojis/`.
+  `node tools/build-emote-thumbs.mjs` genera las miniaturas de 160 px en `public/assets/emotes/`. Los argumentos
+  `mat`, `isa` y `jun` permiten regenerar solo las del personaje indicado. Los tres tienen cuatro expresiones (risa, pensando,
+  enojo y llanto) y dos legendarios (Lentes y Tesoro) hechos con ImageGen a partir de las poses de NXO y del retrato
+  de cada personaje. Los legendarios se recortan con
+  `node tools/build-anim-sheet.mjs <fuente.png> <salida.webp> --alpha` para conservar la transparencia y los colores.
 - Para cambiar una hoja: mover la anterior a `_temp/respaldo_oficial/<Personaje>/` con un sufijo (`pj-nxo-rival-2-antes-new.png`),
   dejar la nueva con el nombre exacto que lee la herramienta (sin `-new`) y regenerar (sección 3).
 - Patrón de nombres (igual para todos los personajes): `pj-<id>-1..4.png` (movimientos), `pj-<id>-ulti.png` (ULTI), `pj-<id>-mirada.webp` y, en
@@ -488,9 +518,13 @@ En el juego (`NxoActor`): `impactStun('inferno')` reproduce `ulti-hit` y encaden
 animación. Los packs sin estos clips (ninguno hoy) siguen con `inferno-hit` / `stunned` y sus clips con
 raqueta. En red, el rival muestra lo mismo cuando llega la acción `racket` (perdida o recogida).
 
-La mirada (`pj-<id>-mirada.webp`) es una franja ancha con los ojos del personaje que cruza la pantalla al empezar
-el INFERNO. `GAZE_ARTS` en `src/fx/infernoGaze.ts` guarda la altura de la franja (`eyeFy`) y la posición de las
-pupilas (`eyes`), de donde salen los rayos: si cambia la imagen, hay que volver a medirlas.
+La mirada (`pj-<id>-mirada.webp`) es una franja WebP transparente de 2172 × 724. Cruza la pantalla al empezar el
+INFERNO y se usa en el Duelo Red, donde la del rival se espeja. `GAZE_ARTS` en `src/fx/infernoGaze.ts` guarda el
+centro vertical de la franja (`eyeFy`) y la posición de las pupilas (`eyes`), de donde salen los rayos. Si cambia
+la imagen, hay que volver a medirlas.
+
+Las miradas de Mat, Isa, Jun, Net, Zac, Rin y Flo se hicieron con ImageGen usando `pj-nxo-mirada.webp` para el
+encuadre y el retrato de cada personaje para sus rasgos. Cada una se guarda en `public/personajes/<Personaje>/`.
 
 ## 6. Diferencias por personaje y vista
 

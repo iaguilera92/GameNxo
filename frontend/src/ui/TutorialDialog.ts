@@ -118,23 +118,24 @@ export function openTutorialDialog(scene: Phaser.Scene, step: TutorialStep, onDo
 
 /** (25-11-2026, usuario) reloj de la tienda (blanco y rojo) cuya parte roja se vacía en `ms`: el diálogo se cierra solo al terminar */
 export function clockTimer(scene: Phaser.Scene, x: number, y: number, ms: number) {
+  // (26-11-2026, usuario) el MISMO reloj del nivel 1 en todo el juego: disco oscuro, aro claro, arco amarillo que se llena y manecillas
   const c = scene.add.container(x, y);
   const g = scene.add.graphics();
   c.add(g);
-  const R = 18;
-  const st = { t: 0 };
+  const r = 30;
+  const st = { k: 0 };
   const draw = () => {
     g.clear();
-    g.fillStyle(0xffffff, 1).fillCircle(0, 0, R + 4);
-    g.fillStyle(0x7a1020, 1).fillCircle(0, 0, R);
-    const a0 = -Math.PI / 2 + st.t * Math.PI * 2;
-    if (st.t < 1) g.fillStyle(0xc4192e, 1).slice(0, 0, R, a0, Math.PI * 1.5, false).fillPath();
-    g.lineStyle(3, 0xffffff, 1).lineBetween(0, 0, Math.cos(a0) * (R - 4), Math.sin(a0) * (R - 4));
-    g.fillStyle(0xffffff, 1).fillCircle(0, 0, 3);
+    g.fillStyle(0x0a1638, 0.85).fillCircle(0, 0, r + 6);
+    g.lineStyle(4, 0xffffff, 0.35).strokeCircle(0, 0, r);
+    g.lineStyle(7, 0xffd23f, 1).beginPath().arc(0, 0, r, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * st.k, false).strokePath();
+    const a = -Math.PI / 2 + Math.PI * 2 * st.k;
+    g.lineStyle(4, 0xffffff, 1).lineBetween(0, 0, Math.cos(a) * (r - 11), Math.sin(a) * (r - 11));
+    g.lineStyle(4, 0xffffff, 1).lineBetween(0, 0, 0, -(r - 16));
+    g.fillStyle(0xffffff, 1).fillCircle(0, 0, 4);
   };
   draw();
-  scene.tweens.add({ targets: st, t: 1, duration: ms, onUpdate: draw });
-  scene.tweens.add({ targets: c, scale: { from: 1, to: 1.12 }, duration: 500, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
+  scene.tweens.add({ targets: st, k: 1, duration: ms, onUpdate: draw });
   return c;
 }
 

@@ -530,7 +530,7 @@ const ELEMENT_FILTER: Record<Exclude<SmashPower, 'fire'>, string> = {
  * null si no se puede (sin canvas / sin filtros): quien llama deja el arte como está.
  */
 export function elementTexture(scene: Phaser.Scene, key: string, el: SmashPower): string | null {
-  if (el === 'fire') return key;
+  if (el === 'fire' || el === 'default') return key; // (26-11-2026, usuario) DEFAULT en ROJO (el plateado parecía bloqueado)
   const out = `${key}-${el}`;
   if (scene.textures.exists(out)) return out;
   const srcImg = scene.textures.get(key)?.getSourceImage() as HTMLImageElement | HTMLCanvasElement | undefined;

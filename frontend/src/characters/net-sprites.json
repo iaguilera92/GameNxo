@@ -1,0 +1,142 @@
+{
+  "source": "Net/jugador/net-{movimientos,golpes,reacciones,extras}-*.png",
+  "view": "back",
+  "cell": {
+    "w": 126,
+    "h": 197
+  },
+  "origin": {
+    "x": 0.5,
+    "y": 0.9797
+  },
+  "standHeight": 190,
+  "hold": 1,
+  "serveWait": 2,
+  "smashStart": 2,
+  "animations": {
+    "idle": {
+      "file": "idle.webp",
+      "frames": 8,
+      "fps": 8,
+      "loop": true,
+      "scale": 0.9,
+      "cell": {
+        "w": 126,
+        "h": 197
+      },
+      "origin": {
+        "x": 0.5,
+        "y": 0.9797
+      }
+    },
+    "run": {
+      "file": "run.webp",
+      "frames": 8,
+      "fps": 14,
+      "loop": true,
+      "scale": 1,
+      "cell": {
+        "w": 150,
+        "h": 200
+      },
+      "origin": {
+        "x": 0.5,
+        "y": 0.98
+      }
+    },
+    "runstop": {
+      "file": "runstop.webp",
+      "frames": 8,
+      "fps": 14,
+      "loop": false,
+      "scale": 1,
+      "cell": {
+        "w": 166,
+        "h": 191
+      },
+      "origin": {
+        "x": 0.5,
+        "y": 0.97906
+      }
+    },
+    "forehand": {
+      "file": "forehand.webp",
+      "frames": 8,
+      "fps": 15,
+      "loop": false,
+      "impact": 5,
+      "scale": 1,
+      "cell": {
+        "w": 190,
+        "h": 197
+      },
+      "origin": {
+        "x": 0.5,
+        "y": 0.9797
+      }
+    },
+    "backhand": {
+      "file": "backhand.webp",
+      "frames": 8,
+      "fps": 15,
+      "loop": false,
+      "impact": 5,
+      "scale": 1,
+      "cell": {
+        "w": 164,
+        "h": 197
+      },
+      "origin": {
+        "x": 0.5,
+        "y": 0.9797
+      }
+    },
+    "serve": {
+      "file": "serve.webp",
+      "frames": 8,
+      "fps": 12,
+      "loop": false,
+      "impact": 4,
+      "scale": 1,
+      "cell": {
+        "w": 192,
+        "h": 237
+      },
+      "origin": {
+        "x": 0.5,
+        "y": 0.98312
+      }
+    },
+    "smash": {
+      "file": "smash.webp",
+      "frames": 8,
+      "fps": 14,
+      "loop": false,
+      "impact": 4,
+      "scale": 1,
+      "cell": {
+        "w": 168,
+        "h": 234
+      },
+      "origin": {
+        "x": 0.5,
+        "y": 0.98291
+      }
+    },
+    "victory": {
+      "file": "victory.webp",
+      "frames": 8,
+      "fps": 10,
+      "loop": false,
+      "scale": 1,
+      "cell": {
+        "w": 146,
+        "h": 220
+      },
+      "origin": {
+        "x": 0.5,
+        "y": 0.98182
+      }
+    }
+  }
+}

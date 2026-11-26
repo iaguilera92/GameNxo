@@ -214,7 +214,7 @@ export const HURRICANE = {
   // (19-11-2026, usuario) "no se ve el primer golpe": la pelota vuela como BOLA DE ENERGÍA del huracán, algo MÁS GRANDE que la del smash final
   // (`ball` × la esfera de la ULTI; el smash usa 1,25) y al llegar al rival / máquina explota con un impacto (`impactK`, sacudida `impactShake`)
   // (20-11-2026, usuario) bola del 1.er golpe un poco más chica (ball 1,6 -> 1,35) y con los rayos girando AL REVÉS que en el smash final (hurricaneSpin)
-  firstHit: { k: 2.6, shakeMs: 340, shake: 0.024, blast: 2.2, sound: 'inferno-hit', ball: 1.35, impactK: 1.8, impactShakeMs: 320, impactShake: 0.03 },
+  firstHit: { k: 2.6, shakeMs: 340, shake: 0.024, blast: 2.2, sound: 'inferno-hit', volume: 0.5 /* (26-11-2026, usuario) más suave */, ball: 1.35, impactK: 1.8, impactShakeMs: 320, impactShake: 0.03 },
   /**
    * (21-11-2026, usuario) tras el SMASH final el que la lanza se queda en el aire con la pose del golpe (frame 7 del clip smash-power = indice 6: raqueta a
    * la izquierda) hasta que cae al suelo; entonces sigue con sus sprites de siempre.

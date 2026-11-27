@@ -8,8 +8,7 @@
  */
 import type { RankId } from './ranks';
 import { cycleIdAt, pickWeighted } from './dailyWheel';
-import { SHOP_GIFT } from './shopGift';
-import { addCoins } from './operations';
+import { addCoins, addXp } from './operations';
 import { addCoins2v2 } from './coins2v2';
 import type { PlayerState } from './player';
 
@@ -88,9 +87,24 @@ export function friendsErrorText(e: string): string {
 export interface FriendGift {
   id: string;
   fromName: string;
-  kind: 'coins' | 'coins2v2';
+  /** (27-11-2026) también EXP y DINERO */
+  kind: FriendGiftKind;
   amount: number;
 }
+export type FriendGiftKind = 'coins' | 'coins2v2' | 'xp' | 'cash';
+/** mismas opciones que el servidor (backend friendsStore GIFT_OPTIONS): para el botón TEST y los ejemplos */
+export const FRIEND_GIFT_OPTIONS: { kind: FriendGiftKind; amount: number; weight: number }[] = [
+  { kind: 'coins', amount: 10, weight: 30 },
+  { kind: 'coins', amount: 15, weight: 15 },
+  { kind: 'coins', amount: 25, weight: 5 },
+  { kind: 'coins2v2', amount: 5, weight: 30 },
+  { kind: 'coins2v2', amount: 8, weight: 15 },
+  { kind: 'coins2v2', amount: 10, weight: 5 },
+  { kind: 'xp', amount: 20, weight: 20 },
+  { kind: 'xp', amount: 40, weight: 8 },
+  { kind: 'cash', amount: 1, weight: 6 },
+  { kind: 'cash', amount: 2, weight: 2 },
+];
 
 /** ¿ya le enviaste regalo hoy a este amigo? */
 export function giftSentToday(snap: FriendsSnapshot, friendId: string, now: number): boolean {
@@ -99,15 +113,21 @@ export function giftSentToday(snap: FriendsSnapshot, friendId: string, now: numb
 
 /** suma al jugador lo que traía un regalo abierto */
 export function applyFriendGift(s: PlayerState, g: FriendGift): { ok: true; state: PlayerState } | { ok: false; error: string } {
-  if (g.kind === 'coins2v2') return { ok: true, state: addCoins2v2(s, g.amount) };
+  const amt = Math.max(0, Math.min(1000, Math.floor(g.amount) || 0));
+  if (g.kind === 'coins2v2') return { ok: true, state: addCoins2v2(s, amt) };
+  if (g.kind === 'cash') return { ok: true, state: { ...s, gems: s.gems + amt } };
+  if (g.kind === 'xp') {
+    const r = addXp(s, amt);
+    return r.ok ? { ok: true, state: r.state } : { ok: false, error: 'xp' };
+  }
   const r = addCoins(s, g.amount);
   return r.ok ? { ok: true, state: r.state } : { ok: false, error: 'coins' };
 }
 
 /** contenido sorpresa de un regalo (`rng` en [0, 1)) */
 export function rollFriendGift(rng: () => number = Math.random): Pick<FriendGift, 'kind' | 'amount'> {
-  const p = pickWeighted(SHOP_GIFT.options.filter((o) => o.kind !== 'cash'), rng);
-  return { kind: p.kind === 'coins2v2' ? 'coins2v2' : 'coins', amount: p.amount };
+  const p = pickWeighted(FRIEND_GIFT_OPTIONS, rng);
+  return { kind: p.kind, amount: p.amount };
 }
 
 /**

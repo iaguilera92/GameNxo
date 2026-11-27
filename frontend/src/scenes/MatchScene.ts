@@ -1624,6 +1624,12 @@ export class MatchScene extends Phaser.Scene {
   private tornadoImg?: TornadoSprite;
   /** (18-11-2026) los botones de habilidades están apagados por el aturdimiento del jugador */
   private stunLockOn = false;
+  /**
+   * (27-11-2026, usuario) bloqueo EN VIVO de los botones: con el punto terminado (o sin poder llegar a la pelota que viene) el ESPECIAL y el
+   * DEFENSIVO se ven apagados y no se pueden apretar (antes se gastaban o salía "¡Muy tarde!"). Se calcula cada 100 ms (liveAbilityTick).
+   */
+  private liveLock = { dash: false, spec: false };
+  private liveLockAt = 0;
   private windSphere!: WindSphereFx;
   /** la penumbra del peloteo se está yendo (tras el impacto) */
   private legendFade = false;
@@ -3133,8 +3139,7 @@ export class MatchScene extends Phaser.Scene {
     const normal = this.dashPlan(DASH_WARP.out + DASH_WARP.delay + DASH_WARP.in + 0.02);
     const plan = normal ?? this.dashPlan(DASH_WARP.fastOut + DASH_WARP.fastIn + 0.02);
     if (!plan) {
-      const h = this.headPos(this.player);
-      this.popText(h.x, h.y, '¡Muy tarde!', '#cfe0ff', 24);
+      // (27-11-2026, usuario) sin aviso \"¡Muy tarde!\": el botón ya se ve apagado cuando no se llega (liveAbilityLock)
       return false;
     }
     const fast = !normal;
@@ -3192,8 +3197,7 @@ export class MatchScene extends Phaser.Scene {
     const pl = this.player;
     const plan = this.dashPlan(SHADOW.runMin + 0.08);
     if (!plan) {
-      const h = this.headPos(pl);
-      this.popText(h.x, h.y, '¡Muy tarde!', '#cfe0ff', 24);
+      // (27-11-2026, usuario) sin aviso \"¡Muy tarde!\": el botón ya se ve apagado cuando no se llega (liveAbilityLock)
       return false;
     }
     const tx = clamp(plan.x - 18, P_X[0], P_X[1]);
@@ -3268,8 +3272,7 @@ export class MatchScene extends Phaser.Scene {
     const pl = this.player;
     const plan = this.dashPlan(JUMP.airMin + 0.06);
     if (!plan) {
-      const h = this.headPos(pl);
-      this.popText(h.x, h.y, '¡Muy tarde!', '#cfe0ff', 24);
+      // (27-11-2026, usuario) sin aviso \"¡Muy tarde!\": el botón ya se ve apagado cuando no se llega (liveAbilityLock)
       return false;
     }
     const tx = clamp(plan.x - 18, P_X[0], P_X[1]);
@@ -3380,8 +3383,7 @@ export class MatchScene extends Phaser.Scene {
     const pl = this.player;
     const plan = this.dashPlan(FLIP.airMin + FLIP.lead);
     if (!plan) {
-      const h = this.headPos(pl);
-      this.popText(h.x, h.y, '¡Muy tarde!', '#cfe0ff', 24);
+      // (27-11-2026, usuario) sin aviso \"¡Muy tarde!\": el botón ya se ve apagado cuando no se llega (liveAbilityLock)
       return false;
     }
     const tx = clamp(plan.x - 18, P_X[0], P_X[1]);
@@ -3454,8 +3456,7 @@ export class MatchScene extends Phaser.Scene {
     const pl = this.player;
     const plan = this.dashPlan(SKATE.minT + SKATE.lead);
     if (!plan) {
-      const h = this.headPos(pl);
-      this.popText(h.x, h.y, '¡Muy tarde!', '#cfe0ff', 24);
+      // (27-11-2026, usuario) sin aviso \"¡Muy tarde!\": el botón ya se ve apagado cuando no se llega (liveAbilityLock)
       return false;
     }
     const tx = clamp(plan.x - 18, P_X[0], P_X[1]);
@@ -3521,8 +3522,7 @@ export class MatchScene extends Phaser.Scene {
     const normal = this.dashPlan(BLINK.out + BLINK.in + BLINK.swingLead + 0.02);
     const plan = normal ?? this.dashPlan(BLINK.fastOut + BLINK.fastIn + 0.1);
     if (!plan) {
-      const h = this.headPos(pl);
-      this.popText(h.x, h.y, '¡Muy tarde!', '#cfe0ff', 24);
+      // (27-11-2026, usuario) sin aviso \"¡Muy tarde!\": el botón ya se ve apagado cuando no se llega (liveAbilityLock)
       return false;
     }
     const fast = !normal;
@@ -3589,8 +3589,7 @@ export class MatchScene extends Phaser.Scene {
     const normal = this.dashPlan(LIGHTNING.chg + LIGHTNING.out + LIGHTNING.in + LIGHTNING.swingLead + 0.02);
     const plan = normal ?? this.dashPlan(LIGHTNING.fastChg + LIGHTNING.fastOut + LIGHTNING.fastIn + 0.1);
     if (!plan) {
-      const h = this.headPos(pl);
-      this.popText(h.x, h.y, '¡Muy tarde!', '#cfe0ff', 24);
+      // (27-11-2026, usuario) sin aviso \"¡Muy tarde!\": el botón ya se ve apagado cuando no se llega (liveAbilityLock)
       return false;
     }
     const fast = !normal;
@@ -3655,8 +3654,7 @@ export class MatchScene extends Phaser.Scene {
     const pl = this.player;
     const plan = this.dashPlan(SLOWMO.minT);
     if (!plan) {
-      const h = this.headPos(pl);
-      this.popText(h.x, h.y, '¡Muy tarde!', '#cfe0ff', 24);
+      // (27-11-2026, usuario) sin aviso \"¡Muy tarde!\": el botón ya se ve apagado cuando no se llega (liveAbilityLock)
       return false;
     }
     const side = plan.y > pl.y ? 1 : -1; // lado de la pantalla hacia el que se estira
@@ -3956,8 +3954,7 @@ export class MatchScene extends Phaser.Scene {
     const smp = sampleTrajectory(this.ball.s, this.bounces, stepBall, NET_X, HIT_MAX_Z, box);
     const plan = smp ? planSprint(smp, { x: pl.x, y: pl.y }, PLAYER_SPEED, bounds) : null;
     if (!plan) {
-      const h = this.headPos(pl);
-      this.popText(h.x, h.y, '¡Muy tarde!', '#cfe0ff', 24);
+      // (27-11-2026, usuario) sin aviso \"¡Muy tarde!\": el botón ya se ve apagado cuando no se llega (liveAbilityLock)
       return false;
     }
     this.stopCharge();
@@ -4085,7 +4082,7 @@ export class MatchScene extends Phaser.Scene {
   private activateSmash(): boolean {
     if (this.g4Point() !== null) return this.g4Point() === 0 && this.g4St === 'wait' ? this.g4Special() : false; // (26-11-2026, usuario) nivel 4 guiado
     if (this.g5Point() !== null) return this.g5Point() === 3 && this.g5St === 'spwait' ? this.g5Special() : false;
-    if (this.paused || this.cineLock || this.duel || this.phase === 'over' || this.phase === 'intro' || this.smashArmed || !this.unlocked('special')) return false;
+    if (this.paused || this.cineLock || this.duel || this.phase === 'over' || this.phase === 'intro' || this.phase === 'pointover' || this.smashArmed || !this.unlocked('special')) return false; // (27-11-2026) ni con el punto terminado
     if (this.player.racket) return this.noRacketHint();
     if (this.serveLock) return this.serveLockHint();
     // REMATE en el aire contra un rival SIN RAQUETA (ULTI recibida): el ESPECIAL cancela el salto. Baja enseguida y el
@@ -7817,6 +7814,28 @@ export class MatchScene extends Phaser.Scene {
    * Botones DEFENSIVO / ESPECIAL apagados mientras dura el saque y su resto (serveLock) o si aún no se desbloquean por
    * nivel. Solo cambia algo cuando el estado cambia. Durante el saque propio los botones ni se ven (setServeUi).
    */
+  /** (27-11-2026) ver liveLock: punto terminado o pelota inalcanzable → DEFENSIVO / ESPECIAL apagados */
+  private liveAbilityTick() {
+    const now = this.time.now;
+    if (now - this.liveLockAt < 100) return;
+    this.liveLockAt = now;
+    let dash = false;
+    let spec = false;
+    // los partidos guiados del tutorial llevan sus propios bloqueos (pausas con la pelota quieta): no se tocan
+    if (!this.guide && !this.spKind()) {
+      const dead = this.phase === 'pointover' || this.phase === 'over';
+      // la pelota viene a tu campo y ya no hay punto de golpeo posible (ni con el DEFENSIVO): el punto está perdido
+      const lost = this.phase === 'rally' && this.lastHitter === 'bot' && !this.serving && !this.dashPlan(0.05);
+      // el DEFENSIVO solo sirve si hay dónde llegar (sin pelota que venga hacia ti tampoco)
+      dash = dead || (this.phase === 'rally' && !this.serving && !this.dashPlan(0.05));
+      spec = dead || lost;
+    }
+    if (dash !== this.liveLock.dash || spec !== this.liveLock.spec) {
+      this.liveLock = { dash, spec };
+      this.syncAbilityLock();
+    }
+  }
+
   private syncAbilityLock() {
     if (this.serveUiOn()) return;
     // sin raqueta tampoco hay habilidades; ni durante el DUELO RED (hasta que sale el globo)
@@ -7833,10 +7852,10 @@ export class MatchScene extends Phaser.Scene {
       const on = force || (!lock && !extraLock && this.unlocked(key));
       if (btn.enabled !== on) btn.setEnabled(on);
     };
-    want(this.dashBtn, 'defensive', this.g4Point() !== null || this.g5Point() !== null || this.g6Point() === 1 || this.g6Point() === 2 || (this.guide === 'l5' && !!this.remateCine)); // (26-11-2026, usuario) nivel 5 guiado: DEFENSIVO apagado (ESPECIAL y SMASH)
+    want(this.dashBtn, 'defensive', this.liveLock.dash || this.g4Point() !== null || this.g5Point() !== null || this.g6Point() === 1 || this.g6Point() === 2 || (this.guide === 'l5' && !!this.remateCine)); // (26-11-2026, usuario) nivel 5 guiado: DEFENSIVO apagado (ESPECIAL y SMASH)
     // en modo ULTI el botón del ESPECIAL usa el desbloqueo de la ULTI; y (21-11-2026, usuario) sin ULTI contra ULTI: si el rival lanzó la suya
     // primero, la tuya queda apagada hasta que el que recibe su golpe recupere la raqueta
-    want(this.smashBtn, this.smashBtn.inferno ? 'ulti' : 'special', (this.smashBtn.inferno && this.ultiBlocked('player')) || this.g7Point() !== null, g4Spec);
+    want(this.smashBtn, this.smashBtn.inferno ? 'ulti' : 'special', this.liveLock.spec || (this.smashBtn.inferno && this.ultiBlocked('player')) || this.g7Point() !== null, g4Spec);
   }
 
   /** ¿La habilidad está desbloqueada para tu nivel? (domain/unlocks.ts; en modo desarrollo el perfil es nivel 20) */
@@ -11839,7 +11858,14 @@ export class MatchScene extends Phaser.Scene {
       if (this.inReach(this.player, s)) {
         this.spSt = 'hold';
         this.spHoldAt = this.time.now;
-        this.spPin = { x: this.player.x, y: this.player.y };
+        // (27-11-2026, usuario) GLOBO / CORTITA: al llegar con los pies apenas al borde, te acomoda (140 ms) con la pelota justo delante, del
+        // lado de la raqueta (como el ESPECIAL guiado), y ahí quedas quieto; antes te quedabas donde la tocabas
+        if (lobDrop) {
+          this.spPin = null;
+          this.guideSnapToBall((p) => {
+            if (this.spSt === 'hold') this.spPin = p;
+          });
+        } else this.spPin = { x: this.player.x, y: this.player.y };
         this.player.ch.setCharging(true); // pose de CARGA (antes del impacto); se congela sin temblar (abajo)
         // (25-11-2026, usuario) reloj de 1,5 s mostrando el joystick ARRIBA (cortita: ABAJO); recién después se puede golpear
         this.spClock?.destroy();
@@ -12669,6 +12695,7 @@ export class MatchScene extends Phaser.Scene {
       this.stunLockOn = pl.stun > 0;
       this.syncAbilityLock();
     }
+    this.liveAbilityTick();
     if (this.remateRecover > 0) this.remateRecover -= dt;
     const raw = this.inputVector();
     const v = frozen ? new Phaser.Math.Vector2() : positioning ? new Phaser.Math.Vector2(raw.x, 0) : raw;

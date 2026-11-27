@@ -121,6 +121,14 @@ export function canShowRewardedAds() {
   return Boolean(activeProvider() && (simOn() || adUnit('rewarded')));
 }
 
+/**
+ * (27-11-2026, usuario) ¿La app TIENE anuncios con premio (aunque el SDK aún no esté listo o no haya red en este instante)? Para mostrar el x2
+ * de la ruleta siempre: si al tocarlo el anuncio no está, se avisa y se puede reintentar (antes el botón a veces ni salía).
+ */
+export function rewardedAdsConfigured() {
+  return simOn() || (settings.enabled && !!adUnit('rewarded'));
+}
+
 function withTimeout<T>(promise: Promise<T>): Promise<T> {
   return Promise.race([
     promise,

@@ -35,12 +35,17 @@ export const GIFT_OPTIONS = [
   { kind: 'coins2v2', amount: 5, weight: 30 },
   { kind: 'coins2v2', amount: 8, weight: 15 },
   { kind: 'coins2v2', amount: 10, weight: 5 },
+  // (27-11-2026, usuario) también EXP y, rara vez, DINERO
+  { kind: 'xp', amount: 20, weight: 20 },
+  { kind: 'xp', amount: 40, weight: 8 },
+  { kind: 'cash', amount: 1, weight: 6 },
+  { kind: 'cash', amount: 2, weight: 2 },
 ] as const;
 const LEAGUES = ['bronze', 'silver', 'gold', 'platinum', 'diamond', 'challenger'] as const;
 const NAME_RE = /^[A-Za-z0-9ÁÉÍÓÚÜÑáéíóúüñ _-]{3,12}$/;
 
 export type League = (typeof LEAGUES)[number];
-export type GiftKind = 'coins' | 'coins2v2';
+export type GiftKind = 'coins' | 'coins2v2' | 'xp' | 'cash';
 interface Gift {
   id: string;
   from: string; // pid de quien lo envió

@@ -8,7 +8,7 @@ import { CHEST } from '../domain/chest';
 import { getPlayer } from '../domain/playerStore';
 import { boostWheel, claimWheel, claimWheelAdBonus, spinWheel, wheelSpin } from '../logic/Wheels';
 import { wheelClaim, wheelStart, wheelTick, wheelWin } from '../fx/wheelSound';
-import { canShowRewardedAds, showRewarded } from '../ads/ads';
+import { rewardedAdsConfigured, showRewarded } from '../ads/ads';
 import { arcadeButton } from '../ui/modeButtons';
 import { tapHint } from '../ui/guideFocus';
 import { clockTimer } from '../ui/TutorialDialog';
@@ -828,14 +828,15 @@ export class WheelScene extends Phaser.Scene {
       this.tweens.add({ targets: nt, alpha: 1, delay: t0 + 800, duration: 300 });
     }
 
-    // x2 con anuncio: SOLO monedas o EXP (un cosmético no se duplica), mientras el giro no haya usado su bonus.
+    // x2 con anuncio: monedas, monedas 2V2, EXP y DINERO (cofre y cosméticos no se duplican), mientras el giro no haya usado su bonus.
+    // (27-11-2026, usuario) sale SIEMPRE que la app tenga anuncios, aunque el anuncio aún no esté cargado (al tocarlo, si no está, avisa).
     // Igual que el x2 del PREMIO DIARIO: solo aparece si hay anuncios (app con AdMob, o dev.adsSim en localhost);
     // si el anuncio falla, avisa y el premio queda igual.
     // Completar el anuncio entrega otra vez el mismo premio (domain/dailyWheel.claimAdBonus).
     const savedSpin = wheelSpin(this.index, this.bonus);
     /** (25-11-2026, usuario) PRIMERA ruleta (nivel 1, tras ganar el 1.er partido): se explica el x2, como en el PREMIO DIARIO */
     let explainX2: ((done: () => void) => void) | null = null;
-    if (!textOnly && savedSpin?.claimed && !savedSpin.adBonusClaimed && canShowRewardedAds()) {
+    if (!textOnly && savedSpin?.claimed && !savedSpin.adBonusClaimed && rewardedAdsConfigured()) {
       const bx = cx;
       const by = label.y + (note ? 118 : 92);
       let busy = false;

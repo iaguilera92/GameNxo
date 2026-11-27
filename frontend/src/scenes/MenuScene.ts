@@ -515,9 +515,11 @@ export class MenuScene extends Phaser.Scene {
       friendsButton(this, 128 - 214 / 2 + dailyW + dailyGap + dailyW / 2, dailyY, (m) => this.toast(m), dailyW, dailyH);
       this.guideRects = { ...this.guideRects, friends: { x: 128 - 214 / 2 + dailyW + dailyGap + dailyW / 2, y: dailyY, w: dailyW, h: dailyH } };
       // (27-11-2026, usuario) REGALO DE UN AMIGO: card verde a la derecha, bajo la fila del PASE (solo si te llegó alguno)
-      friendGiftButton(this, W - 22 - 102 / 2, 58 + PROFILE_H + 12 + PASS_H + 14 + 84 / 2, () => {
-        this.coinRefresh?.();
-        this.coin2v2Refresh?.();
+      // (27-11-2026, usuario) al cerrar la lista de regalos, cada premio vuela a su card (como el premio de la ruleta: monedas, 2V2 y EXP)
+      friendGiftButton(this, W - 22 - 102 / 2, 58 + PROFILE_H + 12 + PASS_H + 14 + 84 / 2, (t) => {
+        const cur = (this.registry.get('menu.wheelGain') as { coins: number; xp: number; coins2v2?: number } | undefined) ?? { coins: 0, xp: 0 };
+        this.registry.set('menu.wheelGain', { coins: cur.coins + t.coins, xp: cur.xp + t.xp, coins2v2: (cur.coins2v2 ?? 0) + t.coins2v2 });
+        this.wheelClosed();
       }, (m) => this.toast(m));
       // (27-11-2026, usuario) DUELO entre amigos: los retos que te llegan salen en el medio de la pantalla
       duelWatch(this, friendsRepository(), (m) => this.toast(m));

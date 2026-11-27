@@ -583,8 +583,9 @@ export class BotBrain {
     // a veces sale mal: los golpes arriesgados y el mal contacto lo hacen más probable
     // (24-11-2026) `forceOut`: partido del tutorial que se gana siempre (domain/tutorialMatch.ts botForcedOutChance)
     if (Math.random() < this.forceOut || Math.random() < ai.outChance * STRAT.risk[intent] * (STRAT.outBase + STRAT.outBadContact * (1 - q))) {
-      if (intent === 'drop') tx = NET_X + rand(10, 45); // dejada corta: se queda en su campo
-      else if (Math.random() < 0.5) tx = COURT.left - rand(15, 55);
+      const r = Math.random();
+      if (intent === 'drop' || r < 0.33) tx = NET_X + rand(10, 45); // (26-11-2026) a la RED: se queda en su campo
+      else if (r < 0.66) tx = COURT.left - rand(15, 55);
       else ty = Math.random() < 0.5 ? this.cTop - rand(15, 45) : this.cBot + rand(15, 45);
     }
     return { tx, ty, speed, kind, margin, intent, quality: q, ...(dropZero ? { dropZero } : {}) };

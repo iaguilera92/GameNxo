@@ -246,9 +246,9 @@ Reglas:
 - `npm run build` quita de `dist/` (y del APK) todo `personajes/` salvo lo que lista `KEEP_IN_PERSONAJES` en
   `frontend/vite.config.ts` (el retrato de Nxo y las miradas del roster). Para sumar una mirada nueva, añade su
   carpeta a `GAZE_CHARACTERS`.
-- Las fuentes de los emojis viven en `Nxo/emojis/`, `Mai/emotes/`, `Mat/emojis/`, `Isa/emojis/` y `Jun/emojis/`.
+- Las fuentes de los emojis viven en `<Personaje>/emojis/` (en `Mai/emotes/` para Mai).
   `node tools/build-emote-thumbs.mjs` genera las miniaturas de 160 px en `public/assets/emotes/`. Los argumentos
-  `mat`, `isa` y `jun` permiten regenerar solo las del personaje indicado. Los tres tienen cuatro expresiones (risa, pensando,
+  `mat`, `isa`, `jun`, `net`, `zac` y `rin` permiten regenerar solo las del personaje indicado. Esos personajes tienen cuatro expresiones (risa, pensando,
   enojo y llanto) y dos legendarios (Lentes y Tesoro) hechos con ImageGen a partir de las poses de NXO y del retrato
   de cada personaje. Los legendarios se recortan con
   `node tools/build-anim-sheet.mjs <fuente.png> <salida.webp> --alpha` para conservar la transparencia y los colores.

@@ -94,11 +94,41 @@ const JUN_EMOTE_TEXTURE: Record<EmoteKind, string> = {
   treasure: 'emote-jun-legendario-tesoro',
 };
 
+const NET_EMOTE_TEXTURE: Record<EmoteKind, string> = {
+  happy: 'emote-net-risa',
+  cool: 'emote-net-pensando',
+  wow: 'emote-net-enojada',
+  cry: 'emote-net-llorando',
+  shades: 'emote-net-legendario-lentes',
+  treasure: 'emote-net-legendario-tesoro',
+};
+
+const ZAC_EMOTE_TEXTURE: Record<EmoteKind, string> = {
+  happy: 'emote-zac-risa',
+  cool: 'emote-zac-pensando',
+  wow: 'emote-zac-enojado',
+  cry: 'emote-zac-llorando',
+  shades: 'emote-zac-legendario-lentes',
+  treasure: 'emote-zac-legendario-tesoro',
+};
+
+const RIN_EMOTE_TEXTURE: Record<EmoteKind, string> = {
+  happy: 'emote-rin-risa',
+  cool: 'emote-rin-pensando',
+  wow: 'emote-rin-enojada',
+  cry: 'emote-rin-llorando',
+  shades: 'emote-rin-legendario-lentes',
+  treasure: 'emote-rin-legendario-tesoro',
+};
+
 const CHARACTER_EMOTES: Record<string, Partial<Record<EmoteKind, string>>> = {
   mai: MAI_EMOTE_TEXTURE,
   mat: MAT_EMOTE_TEXTURE,
   isa: ISA_EMOTE_TEXTURE,
   jun: JUN_EMOTE_TEXTURE,
+  net: NET_EMOTE_TEXTURE,
+  zac: ZAC_EMOTE_TEXTURE,
+  rin: RIN_EMOTE_TEXTURE,
 };
 const EMOTE_ART = [EMOTE_TEXTURE, ...Object.values(CHARACTER_EMOTES)];
 

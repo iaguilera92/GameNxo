@@ -43,6 +43,7 @@ export const SFX_FILES: Record<string, string> = {
   equipar: 'mp3/equipar.m4a',
   'recolectar-monedas': 'mp3/recolectar-monedas.m4a',
   'recolectar-exp': 'mp3/recolectar-exp.m4a',
+  'exp-simple': 'mp3/exp-simple.mp3', // (26-11-2026, usuario) EXP en el menú al volver de ganar (MenuScene.playXpGain)
   'power-up': 'mp3/power-up.m4a',
   'modo-riesgo': 'mp3/modo-riesgo.m4a', // (20-11-2026) carga del MODO RIESGO x2 mientras se mantiene (MenuScene.holdPress, se corta a los 2 s)
   'tornado-1': 'mp3/tornado-1.m4a',

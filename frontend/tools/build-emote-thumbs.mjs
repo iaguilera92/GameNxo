@@ -17,6 +17,9 @@ const SOURCES = [
   { id: 'mat', dir: join(ROOT, 'public', 'personajes', 'Mat', 'emojis'), filePattern: /^mat-.+\.png$/ },
   { id: 'isa', dir: join(ROOT, 'public', 'personajes', 'Isa', 'emojis'), filePattern: /^isa-.+\.png$/ },
   { id: 'jun', dir: join(ROOT, 'public', 'personajes', 'Jun', 'emojis'), filePattern: /^jun-.+\.png$/ },
+  { id: 'net', dir: join(ROOT, 'public', 'personajes', 'Net', 'emojis'), filePattern: /^net-.+\.png$/ },
+  { id: 'zac', dir: join(ROOT, 'public', 'personajes', 'Zac', 'emojis'), filePattern: /^zac-.+\.png$/ },
+  { id: 'rin', dir: join(ROOT, 'public', 'personajes', 'Rin', 'emojis'), filePattern: /^rin-.+\.png$/ },
 ];
 const wanted = process.argv[2];
 if (wanted && !SOURCES.some(({ id }) => id === wanted)) throw new Error(`Personaje sin fuentes registradas: ${wanted}`);

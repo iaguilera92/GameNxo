@@ -50,6 +50,11 @@ export class LobMarker {
     this.g = scene.add.graphics().setDepth(0.9);
   }
 
+  /** (26-11-2026, usuario) tutorial: el círculo por encima del oscurecido (true) o en el suelo de la cancha (false) */
+  setOnTop(on: boolean) {
+    this.g.setDepth(on ? 5605 : 0.9);
+  }
+
   /** Dibuja el círculo. `inside`: el receptor está dentro; `ready`: además puede armar el potenciado. */
   render(dt: number, st: LobState, inside: boolean, ready: boolean) {
     this.t += dt;

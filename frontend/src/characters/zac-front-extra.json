@@ -9,7 +9,7 @@
     "x": 0.5,
     "y": 0.97531
   },
-  "standHeight": 150,
+  "standHeight": 125,
   "animations": {
     "dash": {
       "file": "dash.webp",

@@ -135,7 +135,8 @@ export function clockTimer(scene: Phaser.Scene, x: number, y: number, ms: number
     g.fillStyle(0xffffff, 1).fillCircle(0, 0, 4);
   };
   draw();
-  scene.tweens.add({ targets: st, k: 1, duration: ms, onUpdate: draw });
+  // (26-11-2026, usuario) al terminar, el reloj se va solo (desvanece)
+  scene.tweens.add({ targets: st, k: 1, duration: ms, onUpdate: draw, onComplete: () => { if (c.active) scene.tweens.add({ targets: c, alpha: 0, duration: 150, onComplete: () => c.destroy() }); } });
   return c;
 }
 

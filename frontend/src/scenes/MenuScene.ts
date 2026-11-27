@@ -1155,7 +1155,7 @@ export class MenuScene extends Phaser.Scene {
     const total = this.add.text(src.x, src.y, `+${gain}`, { fontFamily: FONT, fontSize: '96px', color: '#7ff0ff', stroke: '#0a1638', strokeThickness: 12 }).setOrigin(0.5).setDepth(201).setScale(0.3);
     this.tweens.add({ targets: label, alpha: 1, duration: 250 });
     this.tweens.add({ targets: total, scale: 1, duration: 420, ease: 'Back.easeOut' });
-    sfx(this, 'recolectar-exp'); // 1.er sonido: aparece el total
+    sfx(this, 'exp-simple'); // 1.er sonido: aparece el total
     // anillos que salen del total al aparecer
     for (let k = 0; k < 2; k++) {
       const ring = this.add.circle(src.x, src.y, 60, 0x7ff0ff, 0).setStrokeStyle(6, 0x7ff0ff, 0.9).setDepth(200).setBlendMode(Phaser.BlendModes.ADD);
@@ -1174,7 +1174,7 @@ export class MenuScene extends Phaser.Scene {
         // 3.ª oleada: la MAESTRÍA va al personaje
         this.time.delayedCall(t0, () => {
           if (!this.sys.isActive()) return;
-          sfx(this, 'recolectar-exp');
+          sfx(this, 'exp-simple');
           this.masteryWave(mastery, src, total, label, glow, () => {
             arrivals++;
             if (arrivals === arrivalsTotal) this.time.delayedCall(250, () => finish());
@@ -1187,7 +1187,7 @@ export class MenuScene extends Phaser.Scene {
       this.time.delayedCall(t0, () => {
         if (!this.sys.isActive()) return;
         // sonido: 1.ª oleada siempre; la 2.ª solo sin maestría (con maestría, el 3.º sonido es el de la maestría)
-        if (w === 0 || !mastery) sfx(this, 'recolectar-exp');
+        if (w === 0 || !mastery) sfx(this, 'exp-simple');
         remaining = Math.max(0, remaining - part);
         if (remaining > 0) {
           total.setText(`+${remaining}`);
@@ -1474,7 +1474,7 @@ export class MenuScene extends Phaser.Scene {
     }
     total.setScale(ts * 0.3);
     this.tweens.add({ targets: total, scale: ts, duration: 260, ease: 'Back.easeOut' });
-    sfx(this, 'recolectar-monedas');
+    if (amount >= 100) sfx(this, 'recolectar-monedas'); // (26-11-2026, usuario) suena a MUCHAS monedas: con menos de 100, sin sonido
     const dx = rect.x + rect.w * 0.3;
     const dy = rect.y + rect.h / 2;
     let arrived = 0;
@@ -1620,7 +1620,7 @@ export class MenuScene extends Phaser.Scene {
     }
     this.tweens.add({ targets: label, alpha: 1, duration: 250 });
     this.tweens.add({ targets: total, scale: fs, duration: 420, ease: 'Back.easeOut' });
-    sfx(this, 'recolectar-monedas');
+    if (amount >= 100) sfx(this, 'recolectar-monedas'); // (26-11-2026, usuario) suena a MUCHAS monedas: con menos de 100, sin sonido
     const dx = rect.x + rect.w * 0.3;
     const dy = rect.y + rect.h / 2;
     const N = 10;

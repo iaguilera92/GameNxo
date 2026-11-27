@@ -390,6 +390,10 @@ export class Ball {
   }
   /** golpe cargado al máximo en vuelo: pelota brillante con rayos y SIN estela (hasta el siguiente golpe) */
   private max = false;
+  /** (26-11-2026) lleva el brillo del cargado al máximo */
+  get isMax() {
+    return this.max;
+  }
   private maxGlow: Phaser.GameObjects.Arc;
   private maxHalo: Phaser.GameObjects.Arc;
   private maxShine: Phaser.GameObjects.Arc;

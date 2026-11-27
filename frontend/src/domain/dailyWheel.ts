@@ -166,6 +166,8 @@ export function bonusSpinIndex(s: PlayerState, id: string): number {
  * (25-11-2026, usuario) RULETA DEL TUTORIAL: una por NIVEL subido (giro bonus con id `tutorial-level:N`; el del primer partido, GUIDE_FIRST_WHEEL),
  * fuera del tope diario (con las ruletas diarias, tras varias partidas en el día no salía ninguna). Índice de la que falta abrir sola, o -1.
  */
+/** (26-11-2026, usuario) ruleta del tutorial que evoluciona a DORADA sí o sí (la del partido del nivel 3) */
+export const GOLD_TUTORIAL_WHEEL = 'tutorial-level:3';
 export function isTutorialSpinId(id: string) {
   return id === GUIDE_FIRST_WHEEL || id.startsWith('tutorial-level:');
 }
@@ -273,7 +275,9 @@ export function boost(s: PlayerState, index: number, now: number, rng: Rng = sec
   const taps = sp.taps ?? WHEEL.tiers.maxTaps;
   if (sp.claimed || !sp.base || taps >= WHEEL.tiers.maxTaps) return { ok: true, state: n, reward: sp.reward, tier, upgraded: false };
   sp.taps = taps + 1;
-  const next = rollTier(tier, rng);
+  // (26-11-2026, usuario) TUTORIAL: la ruleta del nivel 3 (al pasar al 4) evoluciona a DORADA sí o sí en el primer toque extra, y ahí se queda
+  const goldTut = sp.matchId === GOLD_TUTORIAL_WHEEL;
+  const next = goldTut ? 'gold' : rollTier(tier, rng);
   if (next === tier) return { ok: true, state: n, reward: sp.reward, tier, upgraded: false };
   sp.tier = next;
   sp.reward = scaleReward(sp.base, next);

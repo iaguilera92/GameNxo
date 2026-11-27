@@ -245,7 +245,8 @@ export function showVersus(scene: Phaser.Scene, player: VersusSide, rival: Versu
     c.add([tag, tagT]);
     // nombre (se reduce si es largo)
     const name = scene.add
-      .text(0, -10 * sc, side.name.toUpperCase(), { fontFamily: FONT, fontSize: `${Math.round(40 * sc)}px`, color: '#ffffff', stroke: '#050b1c', strokeThickness: Math.max(3, Math.round(6 * sc)) })
+      .text(0, (side.hideLevel ? 8 : -10) * sc, side.name.toUpperCase(), // (26-11-2026, usuario) sin el NIVEL (tutorial): el nombre, centrado en la placa
+ { fontFamily: FONT, fontSize: `${Math.round(40 * sc)}px`, color: '#ffffff', stroke: '#050b1c', strokeThickness: Math.max(3, Math.round(6 * sc)) })
       .setOrigin(0.5);
     if (name.width > pw - 40 * sc) name.setScale((pw - 40 * sc) / name.width);
     c.add(name);

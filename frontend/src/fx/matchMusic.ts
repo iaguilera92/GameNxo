@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { ambienteForRoom, pickAmbiente } from '../view/CourtView';
+import { freshPick } from './tutorialVariety';
 
 /**
  * Música de la cancha (soundtrack del ambiente), compartida entre la pantalla VS y el partido.
@@ -21,7 +22,8 @@ const VOLUME = 0.22;
  */
 export const MATCH_TRACKS = ['soundtrack-1', 'soundtrack-2', 'soundtrack-3', 'soundtrack-6', 'soundtrack-7'];
 /** canción al azar */
-const randomTrack = () => MATCH_TRACKS[Math.floor(Math.random() * MATCH_TRACKS.length)];
+// (26-11-2026, usuario) tutorial: sin repetir canción hasta conocerlas todas (fx/tutorialVariety.ts)
+const randomTrack = () => freshPick('music', MATCH_TRACKS, () => MATCH_TRACKS[Math.floor(Math.random() * MATCH_TRACKS.length)]);
 /** canción de una sala online: el mismo cálculo en todos los teléfonos (hash del id de la sala, distinto del del ambiente) */
 export function trackForRoom(roomId: string): string {
   let h = 2166136261;

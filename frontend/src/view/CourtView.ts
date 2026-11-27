@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { ALLEY, COURT, NET_X } from '../config';
 import { COURT_SHIFT, VIEW, project } from './projection';
+import { freshPick } from '../fx/tutorialVariety';
 
 /**
  * Ambiente + cancha del partido (solo visual).
@@ -77,7 +78,7 @@ export const AMBIENTES: Ambiente[] = [
   // pie en y 396; postes de la malla hasta y ~251). Gradas a los dos costados: zoom 0.6 (con 0.7 casi no entraban en pantalla y los espectadores no se veian, 22-11-2026)
   // (23-11-2026, usuario) ambiente-2 v2 de ChatGPT: gradas abiertas siguiendo la cancha (pie de la grada izquierda (293,330)->(27,590) de 1254);
   // el muro verde no se movió (pie y 322 de 1254), mismos valores
-  { key: 'ambiente-2', file: 'ambiente-2.webp', w: 1536, h: 1536, scaleH: 1024, courtDY: 52, zoom: 0.6, wallBottomY: 396, wallTopY: 318, fenceTopY: 251, surface: 'clay', sky: 0x0c2e35, edges: { top: 0x7a57a0, bottom: 0xc52f06 } },
+  { key: 'ambiente-2', file: 'ambiente-2.webp', w: 1536, h: 1536, scaleH: 1024, courtDY: 52, zoom: 0.6, wallBottomY: 396, wallTopY: 318, fenceTopY: 251, surface: 'clay', sky: 0x0c2e35, footer: 0xb5532c /* (26-11-2026, usuario) color ARCILLA tras los botones (antes azul oscuro) */, edges: { top: 0x7a57a0, bottom: 0xc52f06 } },
   // (22-11-2026, usuario) CIUDAD nueva (1536 x 1536, estructura est�ndar): calle a la izquierda (pasar�n autos), gradas a la derecha. Muro azul
   // del fondo medido sobre la imagen (borde de arriba en y 317, pie en y 392; malla hasta y ~251). Sin cornisa: se posa en el borde del muro
   // (23-11-2026, usuario) imagen v2 de ChatGPT: a la derecha, reja y camino del parque en vez de gradas; muro y bordes del piso donde estaban (mismos valores)
@@ -173,7 +174,9 @@ export function pickAmbiente(scene: Phaser.Scene, doubles = false): string | nul
   } catch {
     /* sin almacenamiento */
   }
-  return (available.find((a) => a.key === forced) ?? (Phaser.Utils.Array.GetRandom(available) as Ambiente)).key;
+  const rnd = () => (Phaser.Utils.Array.GetRandom(available) as Ambiente).key;
+  // (26-11-2026, usuario) tutorial: sin repetir mapa hasta conocerlos todos (fx/tutorialVariety.ts)
+  return available.find((a) => a.key === forced)?.key ?? (doubles ? rnd() : freshPick('map', available.map((a) => a.key), rnd));
 }
 
 /** (21-11-2026) Ambiente que se usará en el partido (mismo criterio que drawCourtView): 'dev.ambiente' puede forzar cualquiera, luego el elegido (preferred) y si no, sorteo. null = no hay imágenes cargadas. */
@@ -186,7 +189,12 @@ export function resolveAmbiente(scene: Phaser.Scene, preferred?: string | null, 
   } catch {
     /* sin almacenamiento */
   }
-  return loaded.find((a) => a.key === forced) ?? available.find((a) => a.key === preferred) ?? (Phaser.Utils.Array.GetRandom(available.length ? available : loaded) as Ambiente);
+  const hit = loaded.find((a) => a.key === forced) ?? available.find((a) => a.key === preferred);
+  if (hit) return hit;
+  const pool = available.length ? available : loaded;
+  const rnd = () => (Phaser.Utils.Array.GetRandom(pool) as Ambiente).key;
+  const k = doubles ? rnd() : freshPick('map', pool.map((a) => a.key), rnd); // (26-11-2026) tutorial: sin repetir mapa
+  return pool.find((a) => a.key === k) ?? null;
 }
 
 /**

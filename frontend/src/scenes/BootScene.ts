@@ -149,7 +149,7 @@ export class BootScene extends Phaser.Scene {
   private crossfadeToMenu() {
     const cam = this.cameras.main;
     // (24-11-2026, usuario) cuenta nueva: primero la pantalla de inicio (nombre de usuario y personaje)
-    const first = needsOnboarding(getPlayer(), isDevMode()) ? 'Onboarding' : 'Menu';
+    const first = needsOnboarding(getPlayer(), isDevMode()) ? 'Login' : 'Menu'; // (27-11-2026) cuenta nueva: INICIAR SESIÓN y luego la pantalla de inicio
     const menu = this.scene.get(first);
     menu.events.once(Phaser.Scenes.Events.CREATE, () => {      // el menú hace su propio fadeIn desde negro: se espera a que termine (queda oculto bajo el cargando)
       this.time.delayedCall(300, () => {

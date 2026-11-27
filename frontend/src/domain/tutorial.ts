@@ -201,12 +201,14 @@ export const GUIDE = {
   friends: 'guide-friends',
   l5: 'guide-l5', // (26-11-2026, usuario) partido guiado del nivel 5: DROP SHOT 0 y SMASH con el círculo // (26-11-2026, usuario) nivel 5: ya puedes jugar con tus AMIGOS // (25-11-2026, usuario) partido guiado del nivel 3: cortita, remate, ESPECIAL del rival
   daily: 'guide-daily', // (25-11-2026, usuario) nivel 3, menú: abrir el PREMIO DIARIO y cobrarlo (antes del partido del nivel 3)
+  zone: 'guide-zone', // (27-11-2026, usuario) nivel 8: PERSONAJE › ZONA desbloqueada (como la ULTI del nivel 6)
+  l8: 'guide-l8', // (27-11-2026, usuario) partido guiado del nivel 8: ZONA y DESCONCENTRACIÓN
   l7: 'guide-l7', // (27-11-2026, usuario) partido guiado del nivel 7: ESTIRADA y DUELO RED
   l6: 'guide-l6', // (27-11-2026, usuario) partido guiado del nivel 6: 2-2, tu ULTI y la del rival
   ulti: 'guide-ulti', // (27-11-2026, usuario) nivel 6: PERSONAJE › ULTI desbloqueada (como el ESPECIAL del nivel 4)
   special: 'guide-special', // (25-11-2026, usuario) nivel 4, tras los premios: PERSONAJE › ESPECIAL desbloqueado (como el DEFENSIVO del nivel 2)
 } as const;
-export type GuidedMatch = 'first' | 'spin' | 'l3' | 'l4' | 'l5' | 'l6' | 'l7';
+export type GuidedMatch = 'first' | 'spin' | 'l3' | 'l4' | 'l5' | 'l6' | 'l7' | 'l8';
 export const GUIDE_FIRST_WHEEL = 'guide-first-wheel';
 export function guidedStep(level: number, seen: readonly string[] = []) {
   if (level === 1 && !seen.includes(GUIDE.firstMatch)) return 'play';
@@ -227,6 +229,8 @@ export function guidedStep(level: number, seen: readonly string[] = []) {
   if (level >= UNLOCK_LEVEL.ulti && !seen.includes(GUIDE.ulti)) return 'ulti';
   // (27-11-2026, usuario) nivel 6, ya equipada la ULTI: el menú guía a JUGAR su partido guiado (hasta ganarlo)
   if (level === UNLOCK_LEVEL.ulti && !seen.includes(GUIDE.l6)) return 'l6';
+  // (27-11-2026, usuario) nivel 8: PERSONAJE › ZONA (deslizar, ver la demostración y EQUIPAR)
+  if (level >= UNLOCK_LEVEL.zone && !seen.includes(GUIDE.zone)) return 'zone';
   // (27-11-2026, usuario) nivel 7: el menú queda LIBRE (amigos, tienda, pase); al tocar JUGAR sale su partido guiado (MenuScene)
   return null;
 }
@@ -244,6 +248,7 @@ export function tutorialSeenBefore(level: number): string[] {
   if (level >= 6) seen.push(GUIDE.pass, GUIDE.shop, GUIDE.friends);
   if (level >= 7) seen.push(GUIDE.ulti, GUIDE.l6);
   if (level >= 8) seen.push(GUIDE.l7);
+  if (level >= 9) seen.push(GUIDE.zone, GUIDE.l8);
   return seen;
 }
 

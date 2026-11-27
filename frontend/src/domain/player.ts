@@ -6,6 +6,7 @@
  * Solo se importan TIPOS de otros módulos (se borran al compilar).
  */
 import type { AbilityId } from '../logic/Abilities';
+import type { AccountLink } from './account';
 import type { SkinId } from '../characters/skins';
 import type { RankId } from './ranks';
 import { type WheelState, cloneWheel, newWheelState } from './wheelState';
@@ -105,6 +106,8 @@ export interface PlayerState {
   shopReroll?: ShopRerollState;
   /** (24-11-2026, usuario) ya pasó la pantalla de inicio (nombre de usuario y personaje elegido, sin vuelta atrás: operations.completeOnboarding) */
   onboarded?: boolean;
+  /** (27-11-2026, usuario) cuenta vinculada (domain/account.ts); sin ella = INVITADO */
+  account?: AccountLink;
 }
 /** categorías de la Tienda ya cambiadas en una semana (week = lunes AAAA-MM-DD) */
 export interface ShopRerollState {

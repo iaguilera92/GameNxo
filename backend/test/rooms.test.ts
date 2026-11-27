@@ -274,3 +274,20 @@ test('2v2 (19-11-2026): si se va el host con el compañero también fuera, el pa
   assert.equal(end?.promoted, undefined);
   assert.equal(m.room.status, 'FINISHED');
 });
+
+test('sala privada (duelo): solo se une quien trae la misma clave; espera 20 s', () => {
+  const { rm, ft, timeouts } = setup();
+  assert.equal(rm.find('A', P('A'), '1v1', 'abcd1234abcd1234').type, 'waiting');
+  // un jugador público no entra a la privada (crea la suya)
+  assert.equal(rm.find('C', P('C')).type, 'waiting');
+  // otra clave tampoco
+  assert.equal(rm.find('D', P('D'), '1v1', 'ffff0000ffff0000').type, 'waiting');
+  ft.advance(6000); // las públicas vencen a los 5 s; la privada sigue
+  assert.ok(timeouts.includes('C'));
+  assert.ok(!timeouts.includes('A'));
+  const b = rm.find('B', P('B'), '1v1', 'abcd1234abcd1234');
+  assert.equal(b.type, 'matched');
+  if (b.type === 'matched') assert.deepEqual(b.room.players.map((p) => p.id), ['A', 'B']);
+  ft.advance(20000);
+  assert.ok(timeouts.includes('D'));
+});

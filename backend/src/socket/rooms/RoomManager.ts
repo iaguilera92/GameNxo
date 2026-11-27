@@ -48,6 +48,8 @@ export interface Room {
   result: RoomResult | null;
   /** último número de secuencia de POINT aplicado por cada emisor (ignora duplicados) */
   pointSeq: Record<string, number>;
+  /** (27-11-2026) sala PRIVADA (duelo entre amigos): solo se une quien busca con la misma clave */
+  key?: string;
 }
 
 export interface Timers {
@@ -69,6 +71,8 @@ export interface RoomRules {
   searchTimeoutMs: number;
   /** (20-11-2026) espera del 2v2 (si falta, la de siempre) */
   searchTimeout2v2Ms?: number;
+  /** (27-11-2026) espera de una sala privada (duelo): el amigo puede tardar en cargar */
+  searchTimeoutPrivateMs?: number;
   gamesToWin: number;
   goldenPoint: boolean;
 }
@@ -111,13 +115,13 @@ export class RoomManager {
   }
 
   /** JUGAR: unirse a una sala en espera o crear una. */
-  find(playerId: string, profile: PlayerProfile, mode: GameMode = '1v1'): FindResult {
+  find(playerId: string, profile: PlayerProfile, mode: GameMode = '1v1', key?: string): FindResult {
     const cur = this.roomOf(playerId);
     if (cur) return { type: 'error', code: cur.status === 'WAITING' ? 'already_searching' : 'already_in_room' };
     // la sala en espera más antigua de OTRO jugador
     let target: Room | undefined;
     for (const r of this.rooms.values())
-      if (r.status === 'WAITING' && r.mode === mode && r.players.length === 1 && r.players[0].id !== playerId && (!target || r.createdAt < target.createdAt)) target = r;
+      if (r.status === 'WAITING' && r.mode === mode && r.key === key && r.players.length === 1 && r.players[0].id !== playerId && (!target || r.createdAt < target.createdAt)) target = r;
     if (target) {
       this.clearSearch(target.id);
       target.players.push({ id: playerId, profile, ready: false, token: randomUUID() });
@@ -136,12 +140,13 @@ export class RoomManager {
       score: newScore(),
       result: null,
       pointSeq: {},
+      ...(key ? { key } : {}),
     };
     this.rooms.set(room.id, room);
     this.playerRoom.set(playerId, room.id);
     this.searchTimers.set(
       room.id,
-      this.timers.set(() => this.expire(room.id), this.searchMs(mode)),
+      this.timers.set(() => this.expire(room.id), key ? (this.rules.searchTimeoutPrivateMs ?? 20000) : this.searchMs(mode)),
     );
     return { type: 'waiting', room };
   }

@@ -6,6 +6,7 @@
  * límite de mensajes por segundo y por tipo, y un error en un manejador no tumba el proceso (ni los demás partidos).
  */
 import type { Server, Socket } from 'socket.io';
+import { isDeviceId, sharedFriendsStore } from '../../friends/friendsStore.js';
 import { CONFIG } from '../../config/env.js';
 import { RoomManager, type Room } from '../rooms/RoomManager.js';
 import { SocketLimiter, sanitizeAction, sanitizeHit, sanitizeLog, sanitizePoint, sanitizeState, type LimitKey } from '../guard.js';
@@ -43,9 +44,12 @@ const clientIp = (socket: Socket) => {
 export const matchLog = new MatchLogger();
 const logForRoom = (room: Room, src: string, entry: Record<string, unknown>) => matchLog.write(room.id, src, entry, room.mode);
 
+/** (27-11-2026) socket -> id del teléfono (solo para anotar rivales/compañeros en AMIGOS) */
+const devices = new Map<string, string>();
+
 export function registerSocketHandlers(io: Server) {
   const rooms = new RoomManager(
-    { searchTimeoutMs: CONFIG.searchTimeoutMs, searchTimeout2v2Ms: CONFIG.searchTimeout2v2Ms, gamesToWin: CONFIG.gamesToWin, goldenPoint: CONFIG.goldenPoint },
+    { searchTimeoutMs: CONFIG.searchTimeoutMs, searchTimeout2v2Ms: CONFIG.searchTimeout2v2Ms, searchTimeoutPrivateMs: CONFIG.searchTimeoutPrivateMs, gamesToWin: CONFIG.gamesToWin, goldenPoint: CONFIG.goldenPoint },
     {
       onTimeout(playerId, roomId) {
         log(`búsqueda sin rival ${short(playerId)} (sala ${short(roomId)} borrada)`);
@@ -175,20 +179,33 @@ export function registerSocketHandlers(io: Server) {
           },
         };
         const mode = req?.mode === '2v2' ? '2v2' : '1v1'; // (21-11-2026) 2v2: dos humanos del mismo equipo contra 2 bots del host
-        const res = rooms.find(socket.id, clean, mode);
+        // (27-11-2026) duelo entre amigos: sala privada con la clave que dio el servidor de amigos
+        const key = typeof req?.key === 'string' && /^[a-f0-9]{8,32}$/.test(req.key) ? req.key : undefined;
+        if (isDeviceId(req?.device)) devices.set(socket.id, req.device);
+        const res = rooms.find(socket.id, clean, key ? '1v1' : mode, key);
         if (res.type === 'error') {
           socket.emit(EV.ERROR, { code: res.code, message: res.code === 'already_searching' ? 'Ya estás buscando partida' : 'Ya estás en una partida' });
           return;
         }
         const room = res.room;
         if (res.type === 'waiting') {
-          const msg: SearchingMsg = { roomId: room.id, timeoutMs: rooms.searchMs(mode), players: 1 };
+          const msg: SearchingMsg = { roomId: room.id, timeoutMs: key ? CONFIG.searchTimeoutPrivateMs : rooms.searchMs(mode), players: 1 };
           socket.emit(EV.SEARCHING, msg);
           log(`buscando ${short(socket.id)} (${clean.name}) sala ${short(room.id)} 1/2`);
           return;
         }
         // emparejados: los dos pasan al partido sin confirmaciones
         const [host, guest] = room.players;
+        // (27-11-2026) AMIGOS > SUGERENCIAS: se anotan como rivales (1v1) o compañeros (2v2)
+        const dh = devices.get(host.id);
+        const dg = devices.get(guest.id);
+        if (dh && dg) {
+          try {
+            sharedFriendsStore().met(dh, dg, room.mode === '2v2' ? 'mate' : 'rival');
+          } catch (e) {
+            log('no se pudo anotar rival/compañero:', e);
+          }
+        }
         const toHost: MatchedMsg = { roomId: room.id, role: 'host', opponent: guest.profile, gamesToWin: CONFIG.gamesToWin, token: host.token, ...(room.mode === '2v2' ? { mode: room.mode } : {}) };
         const toGuest: MatchedMsg = { roomId: room.id, role: 'guest', opponent: host.profile, gamesToWin: CONFIG.gamesToWin, token: guest.token, ...(room.mode === '2v2' ? { mode: room.mode } : {}) };
         io.to(host.id).emit(EV.MATCHED, toHost);
@@ -339,6 +356,7 @@ export function registerSocketHandlers(io: Server) {
     );
     socket.on('disconnect', (why: string) => {
       log(`desconectado ${short(socket.id)} (${why})`);
+      devices.delete(socket.id);
       const lr = logRoom.get(socket.id);
       if (lr && Date.now() > lr.until) logRoom.delete(socket.id);
       try {

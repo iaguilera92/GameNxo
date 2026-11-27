@@ -42,10 +42,11 @@ import { createTrailPreview } from '../fx/ballTrailFx';
 import { DASH_COOLDOWN, SMASH_COOLDOWN } from '../config';
 import { INFERNO } from '../logic/InfernoDrive';
 import { claimShopGift, shopGiftStatus } from '../logic/Ranked';
-import { coin2v2Image, coinIcon, drawGiftIcon } from '../ui/wheelArt';
+import { drawGiftIcon } from '../ui/wheelArt';
 import { EMOTE_ANIM, EMOTE_TEXTURE, ensureEmoteAnims, queueEmoteArt } from '../ui/Emotes';
 import { LEGENDARY_EMOTES, type EmoteKind } from '../domain/emotes';
 import { shopBlurb } from '../domain/shopBlurbs';
+import { giftReveal } from '../ui/giftReveal';
 
 /**
  * TIENDA: todo se compra con DINERO (billetes); la cabecera solo muestra ese saldo.
@@ -622,64 +623,9 @@ export class ShopScene extends Phaser.Scene {
     });
   }
 
-  /**
-   * (26-11-2026, usuario) PRESENTACIÓN del regalo (como el premio de la ruleta, más chica): todo oscuro, rayos que giran, el premio con
-   * su imagen que entra con rebote, "+N" que cuenta y el nombre; TOCA PARA CONTINUAR.
-   */
+  /** Presentación del regalo (ui/giftReveal.ts, compartida con el regalo de un amigo en el menú). */
   private giftReveal(kind: GiftKindView, amount: number, onDone: () => void) {
-    const W = this.scale.width;
-    const H = this.scale.height;
-    const cy = H * 0.44;
-    const col = kind === 'cash' ? 0x8dffad : kind === 'coins2v2' ? 0xd2b0ff : 0xffd23f;
-    const css = kind === 'cash' ? '#8dffad' : kind === 'coins2v2' ? '#d2b0ff' : '#ffd23f';
-    const root = this.add.container(0, 0).setDepth(9400);
-    const dark = this.add.rectangle(0, 0, W, H, 0x02060f, 0.88).setOrigin(0).setInteractive();
-    root.add(dark);
-    // rayos de luz que giran detrás del premio
-    const rays = this.add.graphics({ x: W / 2, y: cy }).setBlendMode(Phaser.BlendModes.ADD);
-    drawFadingRays(rays, 12, 280, col, 0.28, 0.12);
-    rays.fillStyle(col, 0.22).fillCircle(0, 0, 90);
-    root.add(rays);
-    this.tweens.add({ targets: rays, angle: 360, duration: 9000, repeat: -1 });
-    root.add(this.add.text(W / 2, cy - 190, 'REGALO DIARIO', textStyle(40, '#ffffff')).setOrigin(0.5));
-    // el premio con su imagen
-    let icon: Phaser.GameObjects.Image;
-    if (kind === 'cash' && this.textures.exists('cash-pack')) {
-      icon = this.add.image(W / 2, cy, 'cash-pack');
-      icon.setScale(150 / Math.max(icon.width, icon.height));
-    } else icon = (kind === 'coins2v2' ? coin2v2Image : coinIcon)(this, W / 2, cy, 62) as Phaser.GameObjects.Image;
-    root.add(icon);
-    const sx = icon.scaleX;
-    const sy = icon.scaleY;
-    icon.setScale(sx * 0.2, sy * 0.2);
-    this.tweens.add({ targets: icon, scaleX: sx, scaleY: sy, duration: 520, ease: 'Back.easeOut' });
-    this.tweens.add({ targets: icon, y: cy - 8, duration: 900, yoyo: true, repeat: -1, ease: 'Sine.easeInOut', delay: 520 });
-    const amt = this.add.text(W / 2, cy + 120, '+0', textStyle(56, css)).setOrigin(0.5).setAlpha(0);
-    const name = this.add.text(W / 2, cy + 172, kind === 'cash' ? 'DINERO' : kind === 'coins2v2' ? 'MONEDAS 2V2' : 'MONEDAS', textStyle(26, '#ffffff')).setOrigin(0.5).setAlpha(0);
-    root.add([amt, name]);
-    this.tweens.add({ targets: [amt, name], alpha: 1, delay: 300, duration: 250 });
-    const n = { v: 0 };
-    this.tweens.add({ targets: n, v: amount, delay: 350, duration: 700, ease: 'Cubic.easeOut', onUpdate: () => amt.setText('+' + Math.round(n.v)) });
-    // destellos
-    for (let i = 0; i < 18; i++) {
-      const a = (i / 18) * Math.PI * 2;
-      const st = this.add.star(W / 2, cy, 5, 5, 12, Phaser.Utils.Array.GetRandom([col, 0xffffff, GOLD])).setBlendMode(Phaser.BlendModes.ADD);
-      root.add(st);
-      this.tweens.add({ targets: st, x: W / 2 + Math.cos(a) * 200, y: cy + Math.sin(a) * 160, angle: 300, alpha: 0, scale: 0.4, duration: 800, ease: 'Cubic.easeOut' });
-    }
-    this.cameras.main.flash(160, 255, 240, 180);
-    sfx(this, 'equipar');
-    const prompt = this.add.text(W / 2, H * 0.86, 'TOCA PARA CONTINUAR', textStyle(26, '#ffffff')).setOrigin(0.5).setAlpha(0);
-    root.add(prompt);
-    root.setAlpha(0);
-    this.tweens.add({ targets: root, alpha: 1, duration: 220 });
-    this.time.delayedCall(900, () => {
-      if (!root.active) return;
-      this.tweens.add({ targets: prompt, alpha: { from: 0.4, to: 1 }, duration: 600, yoyo: true, repeat: -1 });
-      dark.once('pointerup', () => {
-        this.tweens.add({ targets: root, alpha: 0, duration: 200, onComplete: () => { root.destroy(); onDone(); } });
-      });
-    });
+    giftReveal(this, kind, amount, onDone);
   }
 
   /** Flecha GRATIS (fija, abajo a la derecha): baja deslizando hasta el REGALO GRATIS del final. */

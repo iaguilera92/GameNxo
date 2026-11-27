@@ -4,6 +4,7 @@ import '@fontsource/lilita-one';
 import { BootScene } from './scenes/BootScene';
 import { MenuScene } from './scenes/MenuScene';
 import { OnboardingScene } from './scenes/OnboardingScene';
+import { LoginScene } from './scenes/LoginScene';
 import { CustomizeScene } from './scenes/CustomizeScene';
 import { ShopScene } from './scenes/ShopScene';
 import { BattlePassScene } from './scenes/BattlePassScene';
@@ -35,7 +36,7 @@ const game = new Phaser.Game({
   // en 60 Hz un cuadro de 16,6 ms (jitter) se salta -> 30 fps (invitado) y en 120 Hz ~45. Con 100 (10 ms): 60 Hz -> 60, 120 Hz -> 60
   // (8,3 ms no llega, 16,7 sí), 90 Hz -> 90, 144 Hz -> 72; margen de 1+ ms contra el jitter en todas.
   fps: { target: 60, limit: 100 },
-  scene: [BootScene, OnboardingScene, MenuScene, CustomizeScene, ShopScene, BattlePassScene, MatchmakingScene, MatchScene, ResultScene, RankedScene, LanSearchScene],
+  scene: [BootScene, LoginScene, OnboardingScene, MenuScene, CustomizeScene, ShopScene, BattlePassScene, MatchmakingScene, MatchScene, ResultScene, RankedScene, LanSearchScene],
 });
 
 // Ajustes del jugador (sonido, vibración, temblor de pantalla) aplicados a todo el juego

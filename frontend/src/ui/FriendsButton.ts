@@ -2,7 +2,7 @@ import Phaser from 'phaser';
 import { FONT } from './theme';
 import { fitText } from './fitText';
 import { roundedPoly } from './shapes';
-import { friendsRepository, openFriendsDialog } from './FriendsDialog';
+import { FRIEND_GIFT_EVENT, friendsRepository, openFriendsDialog } from './FriendsDialog';
 
 /**
  * Botón AMIGOS del menú principal: misma forma que DIARIO y GLOBAL (paralelogramo inclinado, icono arriba y texto abajo). Abre la ventana de amigos
@@ -31,12 +31,24 @@ export function friendsButton(scene: Phaser.Scene, x: number, y: number, onToast
   fitText(t, w - 14, 0.55); // se achica antes que cortarse
 
   c.add([g, ic, t]);
-  // punto rojo: solicitudes pendientes
-  if (friendsRepository().load().requests.length > 0) {
-    const b = scene.add.graphics({ x: w / 2 - 14, y: -h / 2 + 12 });
-    b.fillStyle(0x0a1638, 1).fillCircle(0, 0, 11).fillStyle(0xff3b4f, 1).fillCircle(0, 0, 8);
-    c.add(b);
-  }
+  // punto rojo: solicitudes pendientes (27-11-2026: se pone al día cuando llega la lista del servidor)
+  // (27-11-2026, usuario) círculo rojo con el NÚMERO de solicitudes, que late (como el del PASE)
+  const b = scene.add.container(w / 2 - 10, -h / 2 + 8);
+  const bg = scene.add.graphics();
+  bg.fillStyle(0x0a1638, 1).fillCircle(0, 0, 15).fillStyle(0xff3b4f, 1).fillCircle(0, 0, 12);
+  const num = scene.add.text(0, 0, '', { fontFamily: FONT, fontSize: '14px', color: '#ffffff' }).setOrigin(0.5);
+  b.add([bg, num]);
+  c.add(b);
+  scene.tweens.add({ targets: b, scale: 1.2, duration: 380, yoyo: true, repeat: -1 });
+  const dot = () => {
+    if (!b.active) return;
+    const n = friendsRepository().load().requests.length;
+    num.setText(String(Math.min(99, n)));
+    b.setVisible(n > 0);
+  };
+  dot();
+  scene.events.on(FRIEND_GIFT_EVENT, dot);
+  scene.events.once(Phaser.Scenes.Events.SHUTDOWN, () => scene.events.off(FRIEND_GIFT_EVENT, dot));
   c.setSize(w, h).setInteractive({ useHandCursor: true });
   c.on('pointerup', () => {
     if (locked) return onToast('Amigos se desbloquea en el nivel 5');

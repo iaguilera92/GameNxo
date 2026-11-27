@@ -178,7 +178,7 @@ export class CustomizeScene extends Phaser.Scene {
   private guideDefensiveRect?: { x: number; y: number; w: number; h: number };
 
   /** (25-11-2026, usuario) la guía de la tarjeta: DEFENSIVO (nivel 2) o ESPECIAL (nivel 4, recién desbloqueado) */
-  private guideCard: 'defensive' | 'special' | 'ulti' = 'defensive';
+  private guideCard: 'defensive' | 'special' | 'ulti' | 'zone' = 'defensive';
   private focusDefensiveGuide(equipped: boolean) {
     this.guideOverlay?.destroy();
     const target = equipped ? { x: 54, y: 64, w: 78, h: 78 } : this.guideDefensiveRect;
@@ -187,7 +187,10 @@ export class CustomizeScene extends Phaser.Scene {
   }
 
   /** (25-11-2026, usuario) tutorial: al equipar, la tarjeta DEFENSIVO se ve brillar sobre el opaco; luego VUELVE AL MENÚ */
+  /** (27-11-2026, usuario) guía terminada (ya equipaste): solo queda VOLVER AL MENÚ; las tarjetas no abren nada */
+  private guideDone = false;
   private equipDefensiveGuide() {
+    this.guideDone = true;
     this.guideOverlay?.destroy();
     const t = this.guideDefensiveRect;
     const r = this.cardRects[this.guideCard];
@@ -228,6 +231,7 @@ export class CustomizeScene extends Phaser.Scene {
     restartOnResize(this);
     installTapSound(this); // clic de interfaz en cada botón / diálogo
     this.cardRects = {};
+    this.guideDone = false;
     this.infernoBox = undefined; // la escena se reinicia (p. ej. al subir un atributo de Zona)
     ensureBallAnims(this);
     this.cameras.main.fadeIn(200, 0, 0, 0);
@@ -326,9 +330,10 @@ export class CustomizeScene extends Phaser.Scene {
     y += L.titleToCard + L.ability + L.gapFeatures;
     this.featureCards(W, y, L.features);
     // (27-11-2026, usuario) nivel 6: la guía va a la tarjeta de la ULTI (igual que el ESPECIAL del nivel 4)
-    if (gStep === 'ulti' && this.cardRects.ulti) {
-      this.guideCard = 'ulti';
-      const r = this.cardRects.ulti;
+    if ((gStep === 'ulti' && this.cardRects.ulti) || (gStep === 'zone' && this.cardRects.zone)) {
+      // (27-11-2026, usuario) nivel 8: también la ZONA
+      this.guideCard = gStep === 'zone' ? 'zone' : 'ulti';
+      const r = this.cardRects[this.guideCard];
       this.guideDefensiveRect = { x: r.x + r.w / 2, y: r.y + r.h / 2, w: r.w, h: r.h }; // cardRects: esquina; la guía: centro
       this.focusDefensiveGuide(false);
     }
@@ -680,6 +685,7 @@ ${unlockLabel(key)}`, { fontFamily: FONT, fontSize: '16px', color: '#ffd23f', st
 
   /** EFECTO PELOTA: estela de tus golpes (estilos de la Tienda y del Pase). */
   private openStyleDialog() {
+    if (this.guideDone) return; // (27-11-2026, usuario) tras equipar en la guía: solo VOLVER AL MENÚ
     const p = getPlayer();
     const cur = (p.equipped.style ?? 'classic') as StyleId;
     const ids = Object.keys(STYLE_LOOK) as StyleId[];
@@ -749,6 +755,7 @@ ${unlockLabel(key)}`, { fontFamily: FONT, fontSize: '16px', color: '#ffd23f', st
 
   /** ESTILOS DE COLOR: televisión con el personaje pintado; los que faltan se ganan en el PASE DE BATALLA. */
   private openColorDialog(skin: SkinId) {
+    if (this.guideDone) return; // (27-11-2026, usuario) tras equipar en la guía: solo VOLVER AL MENÚ
     const p = getPlayer();
     const cur = charColorFor(p.owned, p.equipped.color, skin); // (19-11-2026) colores por personaje
     const portrait = (x: number, y: number, size: number, id: CharColorId) => {
@@ -831,6 +838,7 @@ ${unlockLabel(key)}`, { fontFamily: FONT, fontSize: '16px', color: '#ffd23f', st
    * guarda la skin en el perfil (menú, VS y partido) y la pantalla se reinicia con el personaje nuevo.
    */
   private openCharacterDialog(skin: SkinId) {
+    if (this.guideDone) return; // (27-11-2026, usuario) tras equipar en la guía: solo VOLVER AL MENÚ
     // Los retratos de los personajes bloqueados se piden al abrir el diálogo.
     const need = ['jun', 'net', 'rin', 'zac', 'flo'].map((id) => rosterPortrait(id)).filter((p): p is NonNullable<typeof p> => !!p && !this.textures.exists(p.key));
     if (need.length) {
@@ -1316,6 +1324,7 @@ ${unlockLabel(key)}`, { fontFamily: FONT, fontSize: '16px', color: '#ffd23f', st
 
   /** ULTI › PODERES: televisión con el poder elegido y todos los de la ULTI (los que no se tienen, con candado). */
   private openUltiDialog() {
+    if (this.guideDone) return; // (27-11-2026, usuario) tras equipar en la guía: solo VOLVER AL MENÚ
     const p = getPlayer();
     const cur = getProfile().inferno;
     // (27-11-2026, usuario) nivel 6 (tutorial): como el ESPECIAL del nivel 4: solo tu poder, ver la demostración y EQUIPAR
@@ -1461,6 +1470,7 @@ ${unlockLabel(key)}`, { fontFamily: FONT, fontSize: '16px', color: '#ffd23f', st
 
   /** ESPECIAL › PODERES: televisión con el poder del SMASH elegido y los disponibles (los 6 de domain/smashPowers.ts). Equipar refresca la pantalla. */
   private openSmashDialog(a: AbilityDef) {
+    if (this.guideDone) return; // (27-11-2026, usuario) tras equipar en la guía: solo VOLVER AL MENÚ
     const p = getPlayer();
     const cur = smashPowerOf(p.equipped.smash);
     // (25-11-2026, usuario) nivel 4 (tutorial): como el DEFENSIVO del nivel 2: solo tu poder, ver la demostración y EQUIPAR
@@ -1510,9 +1520,16 @@ ${unlockLabel(key)}`, { fontFamily: FONT, fontSize: '16px', color: '#ffd23f', st
    * Solo cómo se ve: los atributos (Rayos) siguen en la tarjeta. La SOMBRA (legendaria, no se ve en la Tienda) solo aparece si es tuya.
    */
   private openZoneDialog() {
+    if (this.guideDone) return; // (27-11-2026, usuario) tras equipar en la guía: solo VOLVER AL MENÚ
     const p = getPlayer();
     const cur = zoneSkinOf(p).id;
-    const ids = ZONE_SKIN_IDS.filter((id) => id !== 'shadow' || zoneSkinOwned(p, id));
+    // (27-11-2026, usuario) nivel 8 (tutorial): como la ULTI del nivel 6: solo tu estilo, ver la demostración y EQUIPAR
+    const guided = !isDevMode() && guidedStep(p.level, p.tutorial) === 'zone';
+    if (guided) {
+      this.guideOverlay?.destroy();
+      this.guideOverlay = undefined;
+    }
+    const ids = ZONE_SKIN_IDS.filter((id) => (id !== 'shadow' || zoneSkinOwned(p, id)) && (!guided || id === cur));
     const slots: PowerSlot[] = ids.map((id) => {
       const d = ZONE_SKINS[id];
       return {
@@ -1521,7 +1538,7 @@ ${unlockLabel(key)}`, { fontFamily: FONT, fontSize: '16px', color: '#ffd23f', st
         ...byDefault(id === 'electric', d.name.toUpperCase(), d.desc),
         owned: zoneSkinOwned(p, id),
         rarity: id === 'electric' ? undefined : itemRarity(`zone:${id}`),
-        equipped: id === cur,
+        equipped: !guided && id === cur,
         preview: (ix, iy, size) => this.zoneIcon(d, ix, iy, size),
         onEquip: () => {
           commit((st) => equipZoneSkin(st, id));
@@ -1534,12 +1551,21 @@ ${unlockLabel(key)}`, { fontFamily: FONT, fontSize: '16px', color: '#ffd23f', st
       slots,
       // televisión grande; deslizando se ve tu personaje entrando en Zona con ese estilo (fx/zoneDemo.ts, el mismo de la Tienda)
       bigTv: true,
+      requireDemoBeforeEquip: guided,
       demo: { create: (parent, outer, inner, id) => createZoneDemo(this, parent, outer, inner, getProfile().skin, ZONE_SKINS[(id as ZoneSkinId | undefined) ?? cur]) },
       onShop: () => {
         this.cameras.main.fadeOut(180, 0, 0, 0);
         this.cameras.main.once('camerafadeoutcomplete', () => this.scene.start('Shop'));
       },
       onClose: ({ changed }) => {
+        if (guided) {
+          if (changed) {
+            commit((s) => markTutorialSeen(s, GUIDE.zone));
+            commit((s) => markTutorialSeen(s, 'l15-zona'));
+            this.equipDefensiveGuide();
+          } else this.focusDefensiveGuide(false);
+          return;
+        }
         if (changed) this.restartEquipped('zone');
       },
     });
@@ -1572,6 +1598,7 @@ ${unlockLabel(key)}`, { fontFamily: FONT, fontSize: '16px', color: '#ffd23f', st
 
   /** DEFENSIVO › PODERES: televisión con el poder elegido y los disponibles (DASH, DESTELLO). */
   private openDefensiveDialog(a: AbilityDef) {
+    if (this.guideDone) return; // (27-11-2026, usuario) tras equipar en la guía: solo VOLVER AL MENÚ
     const p = getPlayer();
     const cur = defensivePowerOf(p.equipped.defensive);
     const guided = !isDevMode() && guidedStep(p.level, p.tutorial) === 'defensive';
@@ -1643,6 +1670,7 @@ ${unlockLabel(key)}`, { fontFamily: FONT, fontSize: '16px', color: '#ffd23f', st
 
   /** CARGANDO GOLPE: televisión con el efecto de carga elegido y los disponibles (clásico, fuego, energía, tulipán y rayo). */
   private openChargeDialog() {
+    if (this.guideDone) return; // (27-11-2026, usuario) tras equipar en la guía: solo VOLVER AL MENÚ
     const p = getPlayer();
     const skin = p.equipped.skin;
     const cur = chargeFxOf(p.equipped.charge, skin);

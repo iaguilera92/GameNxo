@@ -84,3 +84,10 @@ Cada personaje tendrá una pasiva (Nxo = Agilidad, Mai = Precisión, hasta +10 %
 abiertas: `docs/MAESTRIAS.md`.
 
 Liga 2v2 (neto semanal de monedas 2v2, recompensas, `league2v2`, marcos 2v2): ver `docs/LIGA-2V2.md`. Lo que decide ahí el servidor (sync, anotar partido, cobrar) está en `domain/league2v2.ts`.
+
+## Cuenta e inicio de sesión (27-11-2026)
+
+- Pantalla INICIAR SESIÓN (`scenes/LoginScene.ts`) en una cuenta nueva: FACEBOOK, GOOGLE, APPLE | GOOGLE PLAY e INVITADO. Hoy solo funciona INVITADO.
+- `PlayerState.account` (`domain/account.ts`: `provider` facebook | google | apple | playgames, `uid`, `email` opcional). Sin ella = invitado. Ids de proveedor fijos. `migrate.ts` la valida (`parseAccount`).
+- AJUSTES: invitado = VINCULAR CUENTA (los mismos botones, `ui/authButtons.ts`); con cuenta = CERRAR SESIÓN (confirma, `playerStore.signOutLocal` borra el perfil del teléfono y la app se reinicia en INICIAR SESIÓN). Con el servidor, al vincular el progreso del invitado pasa a la cuenta.
+- Sigue SIN decidir el servicio (Firebase, PlayFab o Supabase) y dónde se guardan las cuentas.

@@ -26,6 +26,11 @@ export interface DailyWheelsOpts {
   fromLoading?: boolean;
   /** RULETA TEST (solo desarrollo, como el DÍA TEST del premio diario): 5.ª ruleta celeste al final de la fila */
   onTest?: () => void;
+  /**
+   * (27-11-2026, usuario) TUTORIAL: sin ruletas diarias. La card solo se ve si quedó una ruleta ganada SIN COBRAR (devuelve true si la hay)
+   * y muestra solo esa (tocarla llama a onOpen); si no hay ninguna, la card queda invisible.
+   */
+  tutorialPending?: () => boolean;
 }
 
 const MINI_R = 34;
@@ -80,7 +85,7 @@ export class DailyWheels extends Phaser.GameObjects.Container {
     tag.fillStyle(NAVY, 1).fillRoundedRect(tx, ty - 15, 196, 30, 15);
     tag.lineStyle(2, GOLD, 1).strokeRoundedRect(tx, ty - 15, 196, 30, 15);
     this.add(tag);
-    this.add(this.scene.add.text(tx + 98, ty, 'RULETAS DIARIAS', { fontFamily: FONT, fontSize: '17px', color: '#ffd23f' }).setOrigin(0.5).setLetterSpacing(1));
+    this.add(this.scene.add.text(tx + 98, ty, this.opts.tutorialPending ? 'RULETA GANADA' : 'RULETAS DIARIAS', { fontFamily: FONT, fontSize: '17px', color: '#ffd23f' }).setOrigin(0.5).setLetterSpacing(1));
     this.info = this.scene.add.text(w / 2 - 22, -h / 2 + 24, '', { fontFamily: FONT, fontSize: '18px', color: '#cfe0ff' }).setOrigin(1, 0.5);
     this.timer = this.scene.add.text(w / 2 - k - 16, h / 2 - 20, '', { fontFamily: FONT, fontSize: '14px', color: '#7f93bf' }).setOrigin(1, 0.5);
     this.add([this.info, this.timer]);
@@ -88,6 +93,20 @@ export class DailyWheels extends Phaser.GameObjects.Container {
 
   /** Redibuja según el estado guardado (también al girar/cobrar). */
   refresh() {
+    if (this.opts.tutorialPending) {
+      // TUTORIAL: solo la ruleta ganada sin cobrar (o nada: card invisible)
+      const has = this.opts.tutorialPending();
+      this.setVisible(has);
+      this.timer.setVisible(false);
+      if (!has || this.slots.length) return;
+      const x = -this.pw / 2 + PANEL_H * 0.22 + 12 + this.step() / 2;
+      this.status = ['ready'];
+      const c = this.mini(x, 4, 0, 'ready', false);
+      this.slots.push(c);
+      this.info.setText('¡1 PARA GIRAR!').setColor('#ffd23f');
+      fitText(this.info, 150);
+      return;
+    }
     const st = wheelStatuses();
     if (this.status.length && st.join() === this.status.join()) return;
     const prev = this.status;
@@ -176,6 +195,7 @@ export class DailyWheels extends Phaser.GameObjects.Container {
   }
 
   private tickTimer() {
+    if (this.opts.tutorialPending) return;
     const ms = msToWheelReset();
     const h = Math.floor(ms / 3600_000);
     const m = Math.floor((ms % 3600_000) / 60_000);

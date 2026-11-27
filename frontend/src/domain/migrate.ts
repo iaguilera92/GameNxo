@@ -20,6 +20,7 @@ import { CHAR_COLOR_LIST, COLOR_SKINS, type CharColorId, charColorItem, charColo
 import { isSmashPower, smashOwned } from './smashPowers';
 import { defensiveOwned, isDefensivePower } from './defensivePowers';
 import { isTutorialId } from './tutorial';
+import { parseAccount } from './account';
 import { sanitizeChest } from './chest';
 import { sanitizeRisk } from './riskMode';
 import { sanitizeCoins2v2 } from './coins2v2';
@@ -68,6 +69,7 @@ export function migratePlayer(raw: unknown, starter: StarterSkin = 'nxo'): Playe
   // tutorial por nivel: solo ids de avisos que existen
   if (Array.isArray(r.tutorial)) s.tutorial = [...new Set(r.tutorial.filter(isTutorialId))];
   if (r.onboarded === true) s.onboarded = true; // (24-11-2026) pantalla de inicio ya hecha
+  { const acc = parseAccount(r.account); if (acc) s.account = acc; } // (27-11-2026) cuenta vinculada (si no, invitado)
   const risk = sanitizeRisk(r.riskMode); // MODO RIESGO x2 (domain/riskMode.ts)
   if (risk) s.riskMode = risk;
   const c2 = sanitizeCoins2v2(r.coins2v2); // MONEDAS 2v2 (domain/coins2v2.ts)

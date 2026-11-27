@@ -14,6 +14,7 @@ import type { SkinId } from '../characters/skins';
 import { getProfile } from '../logic/Profile';
 import { charColorOf } from '../domain/charColors';
 import { connect } from '../net/NetClient';
+import { riskPlayerId } from '../net/riskApi';
 import { botNamesFor } from '../net/doubles';
 import { rivalFor } from '../characters/catalog';
 import { MatchNet } from '../net/MatchNet';
@@ -37,6 +38,9 @@ export interface LanSearchData {
   fallback: Record<string, unknown>;
   /** (21-11-2026) '2v2': busca un COMPAÑERO (2 humanos del mismo equipo contra 2 bots); sin él se ofrece el 2v2 contra bots */
   mode?: '1v1' | '2v2';
+  /** (27-11-2026) DUELO entre amigos: clave de la sala privada (solo entra el amigo) y su nombre; sin él no hay bot: vuelve al menú */
+  duelKey?: string;
+  duelName?: string;
 }
 
 export class LanSearchScene extends Phaser.Scene {
@@ -49,8 +53,13 @@ export class LanSearchScene extends Phaser.Scene {
     super('LanSearch');
   }
 
+  private duelKey: string | null = null;
+  private duelName = '';
+
   init(data: LanSearchData) {
     this.fallback = data?.fallback ?? {};
+    this.duelKey = typeof data?.duelKey === 'string' ? data.duelKey : null;
+    this.duelName = data?.duelName ?? '';
     this.mode = data?.mode === '2v2' ? '2v2' : '1v1';
     this.done = false;
     this.matched = false;
@@ -94,7 +103,7 @@ export class LanSearchScene extends Phaser.Scene {
     const c = this.add.container(W / 2, H * 0.44);
     searchSpinner(this, c, W, H);
     const duo = this.mode === '2v2';
-    const title = this.add.text(0, 216, duo ? 'BUSCANDO PARTIDA 1/4' : 'BUSCANDO RIVAL', { fontFamily: FONT, fontSize: '40px', color: UI.text }).setOrigin(0.5).setLetterSpacing(2);
+    const title = this.add.text(0, 216, duo ? 'BUSCANDO PARTIDA 1/4' : this.duelKey ? 'DUELO' : 'BUSCANDO RIVAL', { fontFamily: FONT, fontSize: '40px', color: UI.text }).setOrigin(0.5).setLetterSpacing(2);
     c.add(title);
     styleSearchTitle(this, c, title); // (21-11-2026) título con el estilo del mockup
     const count = searchTimer(this, c, 0, 142, 200); // (21-11-2026) placa con cronómetro (assets/buscando/contador.webp)
@@ -110,7 +119,7 @@ export class LanSearchScene extends Phaser.Scene {
         const onSearching = (m: SearchingMsg) => {
           // 2v2: "BUSCANDO PARTIDA n/4", que se va llenando de bots mientras se espera al compañero (el servidor espera 10 s)
           if (duo) this.fill = doublesFill(this, title, m.timeoutMs);
-          else title.setText('BUSCANDO RIVAL 1/2'); // jugadores en la sala
+          else title.setText(this.duelKey ? `ESPERANDO A ${this.duelName.toUpperCase()}` : 'BUSCANDO RIVAL 1/2'); // jugadores en la sala
           // cuenta atrás visual; el tiempo real lo controla el servidor (mm:timeout)
           const end = this.time.now + m.timeoutMs;
           const tick = () => count.setText(`0:${String(Math.max(0, Math.ceil((end - this.time.now) / 1000))).padStart(2, '0')}`);
@@ -142,7 +151,7 @@ export class LanSearchScene extends Phaser.Scene {
           tr.off('disconnect', onDisc as (d: never) => void);
         });
         const p = getProfile();
-        tr.emit(EV.FIND, { mode: this.mode, profile: { name: p.name, level: p.level, skin: p.skin, zoneStats: p.zoneStats, charge: p.charge, color: p.color, wins: totalWins(), frame: equippedFrame(getPlayer() as PlayerState) ?? undefined, zone: getPlayer().equipped.zone } });
+        tr.emit(EV.FIND, { mode: this.mode, device: riskPlayerId(), ...(this.duelKey ? { key: this.duelKey } : {}), profile: { name: p.name, level: p.level, skin: p.skin, zoneStats: p.zoneStats, charge: p.charge, color: p.color, wins: totalWins(), frame: equippedFrame(getPlayer() as PlayerState) ?? undefined, zone: getPlayer().equipped.zone } });
         this.cleanup.push(() => {
           // salir de la escena sin emparejar = cancelar la búsqueda (no queda sala fantasma)
           if (!this.matched) tr.emit(EV.CANCEL);
@@ -168,6 +177,15 @@ export class LanSearchScene extends Phaser.Scene {
   private noRival(why: string) {
     if (this.done) return;
     this.done = true;
+    // (27-11-2026) duelo: sin bot; avisa y vuelve al menú
+    if (this.duelKey) {
+      // (27-11-2026) duelo: sin bot; avisa un momento y vuelve al menú
+      const msg = why === 'No se encontró rival' ? `${(this.duelName || 'Tu amigo').toUpperCase()} NO LLEGÓ` : why.toUpperCase();
+      this.title?.setText(msg);
+      if (this.title && this.title.width > this.scale.width - 40) this.title.setScale((this.scale.width - 40) / this.title.width);
+      this.time.delayedCall(2200, () => this.scene.start('Menu'));
+      return;
+    }
     if (this.mode === '2v2') {
       // (20-11-2026, usuario) 2v2 sin compañero online: NO se pregunta; el lugar que falta se llena con un bot (4/4) y se juega contra bots
       // sin servidor (o error antes de buscar): un llenado corto con bots, para que igual se vea 1/4 → 4/4
@@ -240,7 +258,7 @@ export class LanSearchScene extends Phaser.Scene {
         detail: '¿Buscar otra partida?',
         confirmLabel: 'BUSCAR',
         cancelLabel: 'MENÚ',
-        onConfirm: () => this.scene.restart({ fallback: this.fallback, mode: this.mode }),
+        onConfirm: () => (this.duelKey ? this.scene.start('Menu') : this.scene.restart({ fallback: this.fallback, mode: this.mode })),
         onCancel: () => this.scene.start('Menu'),
         depth: 9000,
       });

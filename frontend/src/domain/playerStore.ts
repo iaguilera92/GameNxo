@@ -12,6 +12,8 @@ import type { PlayerState, StarterSkin } from './player';
 export interface PlayerRepository {
   load(): unknown; // datos crudos (se validan con migratePlayer)
   save(s: PlayerState): void;
+  /** (27-11-2026) borra lo guardado en este dispositivo (CERRAR SESIÓN: la cuenta queda en el servidor) */
+  clear?(): void;
 }
 
 const KEY_V2 = 'gamenxo.player.v2';
@@ -35,6 +37,14 @@ export class LocalPlayerRepository implements PlayerRepository {
       /* sin almacenamiento: se juega igual */
     }
   }
+  clear() {
+    try {
+      localStorage.removeItem(this.key);
+      if (this.key === KEY_V2) localStorage.removeItem(KEY_V1);
+    } catch {
+      /* sin almacenamiento */
+    }
+  }
 }
 
 /** perfil activo: el de siempre o, con el MODO DESARROLLO de AJUSTES, el de pruebas (domain/devMode.ts). Se elige al arrancar la app. */
@@ -49,6 +59,14 @@ export function setStarterSkin(skin: StarterSkin) {
 type Listener = (s: PlayerState) => void;
 const listeners = new Set<Listener>();
 
+/**
+ * (27-11-2026, usuario) CERRAR SESIÓN: borra el perfil de este dispositivo (con cuenta, su progreso está en el servidor) y vuelve a empezar;
+ * quien llama reinicia la app, que abre INICIAR SESIÓN.
+ */
+export function signOutLocal() {
+  repo.clear?.();
+  state = null;
+}
 /** Cambia el almacenamiento (tests / backend futuro). */
 export function setPlayerRepository(r: PlayerRepository) {
   repo = r;

@@ -88,6 +88,10 @@ export interface FindRequest {
   profile: PlayerProfile;
   /** sin él, '1v1' */
   mode?: GameMode;
+  /** (27-11-2026) clave de sala privada (duelo entre amigos) */
+  key?: string;
+  /** (27-11-2026) id del teléfono (el de AMIGOS): el servidor anota rivales y compañeros para SUGERENCIAS */
+  device?: string;
 }
 
 export interface SearchingMsg {

@@ -35,6 +35,8 @@ import { xpToLevelUp } from '../domain/tutorialMatch';
 import type { EndClip } from '../objects/NxoActor';
 import { addPortrait } from '../characters/portrait';
 import type { SkinId } from '../characters/skins';
+/** (27-11-2026, usuario) desde este nivel cuentan las RACHAS (y se ven en el VS) */
+export const STREAK_LEVEL = 10;
 
 type DuelClips = { idle: EndClip; victory: EndClip; defeat: EndClip };
 /** Lo que muestran los dos cuadros del duelo: entrada de cada uno, bolsa y cambio neto. `demo` = solo visual (sin monedas). */
@@ -299,7 +301,18 @@ export class MatchEndScene extends Phaser.Scene {
     // ruletas diarias: cada partida COMPLETADA (ganada o perdida; no rendición) cuenta UNA vez (id único guardado)
     const wstore = d as MatchEndData & { _matchId?: string; _wheel?: number | null; _playedId?: string; _tutWheel?: boolean };
     // partidas jugadas (PERFIL): toda partida terminada, también la rendida; una sola vez aunque la escena se repita
-    if (!wstore._playedId) recordPlayed((wstore._playedId = newMatchId()));
+    if (!wstore._playedId) {
+      recordPlayed((wstore._playedId = newMatchId()));
+      // (27-11-2026, usuario) RACHAS desde el nivel 10 también fuera de la Liga (la Liga ya las cuenta al liquidar): ganar suma, perder la corta
+      if (!d.ranked && getPlayer().level >= STREAK_LEVEL) {
+        commit((s) => {
+          const t = { ...s.ranked.total };
+          t.streak = d.win && !d.surrendered ? t.streak + 1 : 0;
+          t.bestStreak = Math.max(t.bestStreak, t.streak);
+          return { ok: true as const, state: { ...s, ranked: { ...s.ranked, total: t } } };
+        });
+      }
+    }
     if (d.tutorial && !d.surrendered && !wstore._matchId) {
       // (25-11-2026, usuario) TUTORIAL: UNA ruleta por NIVEL subido (ganado y con sus misiones), fuera del tope diario; se abre sola al salir
       const allM = !d.missionsRequired || !d.missionList || d.missionList.every((id) => d.missions?.includes(id));
@@ -494,7 +507,7 @@ export class MatchEndScene extends Phaser.Scene {
       // el MENÚ, al volver, muestra "+N EXP" y llena las barras de nivel y del pase (después de la ruleta, si se abre)
       this.registry.set('menu.xpGain', gained);
       if (!d.surrendered && d.guide && d.win) {
-        commit((s) => markTutorialSeen(s, d.guide === 'first' ? GUIDE.firstMatch : d.guide === 'l3' ? GUIDE.l3 : d.guide === 'l5' ? GUIDE.l5 : d.guide === 'l6' ? GUIDE.l6 : d.guide === 'l7' ? GUIDE.l7 : GUIDE.spin));
+        commit((s) => markTutorialSeen(s, d.guide === 'first' ? GUIDE.firstMatch : d.guide === 'l3' ? GUIDE.l3 : d.guide === 'l5' ? GUIDE.l5 : d.guide === 'l6' ? GUIDE.l6 : d.guide === 'l7' ? GUIDE.l7 : d.guide === 'l8' ? GUIDE.l8 : GUIDE.spin));
       }
     }
     // 2v2 (21-11-2026, usuario): no se ganan monedas de 1v1, solo las MONEDAS 2v2

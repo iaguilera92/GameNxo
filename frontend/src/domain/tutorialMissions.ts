@@ -38,7 +38,8 @@ export type TutorialMissionId =
   | 'tZone'
   | 't05Smash'
   | 'tPickRacket'
-  | 'tLobBack';
+  | 'tLobBack'
+  | 'tDescon';
 
 /** regla del usuario: como mucho 4 misiones por partido */
 export const TUTORIAL_MISSIONS_MAX = 4;
@@ -72,7 +73,8 @@ export const TUTORIAL_MISSION_DEFS: Record<TutorialMissionId, { title: string; c
   tZone: { title: 'Entra en ZONA', coins: 15 },
   t05Smash: { title: 'SMASH cargado', coins: 15 },
   tPickRacket: { title: 'Recoge tu raqueta', coins: 10 },
-  tLobBack: { title: 'Devuelve globo', coins: 10 }, // (27-11-2026, usuario) nivel 7, P3: devolver su SUPER GLOBO con el DEFENSIVO // (27-11-2026, usuario) nivel 6, P3 // (26-11-2026, usuario) nivel 5: smash en el círculo
+  tLobBack: { title: 'Devuelve globo', coins: 10 },
+  tDescon: { title: 'Gana por desconcentración', coins: 10 }, // (27-11-2026, usuario) nivel 8, P2 // (27-11-2026, usuario) nivel 7, P3: devolver su SUPER GLOBO con el DEFENSIVO // (27-11-2026, usuario) nivel 6, P3 // (26-11-2026, usuario) nivel 5: smash en el círculo
 };
 
 /** Misiones del partido del tutorial de cada nivel (orden de las cards). 16 a 19: las normales (partidos completos). */
@@ -84,7 +86,7 @@ const BY_LEVEL: Record<number, string[]> = {
   5: ['tDrop0', 't05Smash', 'tWin'], // (26-11-2026, usuario) DROP SHOT 0 y SMASH con el círculo (partido guiado)
   6: ['tUlti', 'tPickRacket', 'tWin'], // ULTI (27-11-2026, usuario: sin Rival sin raqueta; solo Usar Ulti)
   7: ['tDive', 'tDuel', 'tLobBack', 'tWin'], // (27-11-2026, usuario) ESTIRADA y DUELO RED (partido guiado)
-  8: ['tCharge', 'tChargedLob', 'tDrop0'], // CARGANDO GOLPE (25-11-2026: antes en el 12)
+  8: ['tZone', 'tDescon', 'tWin'], // (27-11-2026, usuario) ZONA y DESCONCENTRACIÓN (partido guiado); antes // CARGANDO GOLPE (25-11-2026: antes en el 12)
   9: ['tDive', 'tUlti', 'tWin'], // estirada
   10: ['tTeamPoint', 'tPoints3', 'tSpecial'], // 2v2
   11: ['tDuel', 'tDef', 'tSpecial'], // Duelo en la Red

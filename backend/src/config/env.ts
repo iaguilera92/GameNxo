@@ -30,6 +30,8 @@ export const CONFIG = {
   searchTimeoutMs: num(process.env.SEARCH_TIMEOUT_MS, 5000),
   /** (20-11-2026, usuario) 2v2: se busca compañero hasta 10 s (mientras, la pantalla va llenando con bots) */
   searchTimeout2v2Ms: num(process.env.SEARCH_TIMEOUT_2V2_MS, 10000),
+  /** (27-11-2026) espera de la sala privada de un duelo entre amigos */
+  searchTimeoutPrivateMs: num(process.env.SEARCH_TIMEOUT_PRIVATE_MS, 20000),
   /** espera máxima a que los dos clientes carguen el partido antes de empezar igualmente */
   readyTimeoutMs: num(process.env.READY_TIMEOUT_MS, 12000),
   /** RECONEXIÓN: tiempo que se guarda el sitio de un jugador que se cortó en pleno partido (0 = pierde al instante) */

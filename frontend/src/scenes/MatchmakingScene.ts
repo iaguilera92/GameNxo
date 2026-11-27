@@ -26,6 +26,7 @@ import { startIntroMusic, stopIntroMusic } from '../fx/introMusic';
 import { MAX_LEVEL } from '../config';
 import { isDevMode } from '../domain/devMode';
 import type { GuidedMatch } from '../domain/tutorial';
+import { STREAK_LEVEL } from './MatchEndScene';
 
 /** (25-11-2026, usuario) los rivales BOT se llaman como su personaje (antes, nombres inventados: RoboAce, BotNadal…) */
 const charName = (id: string) => skinById(id as SkinId).name.toUpperCase();
@@ -87,9 +88,8 @@ export class MatchmakingScene extends Phaser.Scene {
   }
 
   preload() {
-    // (25-11-2026) los personajes del partido: el rival de frente (y en el 2v2 tu compañero de espaldas); el partido los usa ya cargados
-    const me = getProfile().skin;
-    queueNxoSpriteLoads(this.load, sheetsOf([[me, 'back'], [me, 'front'], [this.rival1Skin(), 'front'], ...(this.doubles ? [[this.duo.ally, 'back'], [this.duo.rival2, 'front']] as [string, 'back' | 'front'][] : [])]));
+    // (27-11-2026, usuario) los personajes del partido ya NO se cargan aquí (la pantalla quedaba oscura): se cargan mientras se ve el VS
+    // (queueMatchSprites en showVersus); el partido carga solo lo que falte
     if (!this.textures.exists('menu-bg')) this.load.image('menu-bg', 'assets/menu-bg.webp');
     if (this.rankedBet || this.unranked) preloadRankBadges(this.load, [rankedView().league]);
     preloadSearchTimer(this.load);
@@ -164,6 +164,13 @@ export class MatchmakingScene extends Phaser.Scene {
 
   // ---------------------------------------------------------------- VS
   /** Presentación VS (diseño en ui/VersusScreen.ts) y paso al partido. */
+  /** (27-11-2026, usuario) personajes del partido: se cargan MIENTRAS se ve el VS (antes, en el preload, con la pantalla oscura) */
+  private queueMatchSprites() {
+    const me = getProfile().skin;
+    queueNxoSpriteLoads(this.load, sheetsOf([[me, 'back'], [me, 'front'], [this.rival1Skin(), 'front'], ...(this.doubles ? [[this.duo.ally, 'back'], [this.duo.rival2, 'front']] as [string, 'back' | 'front'][] : [])]));
+    if (!this.load.isLoading()) this.load.start();
+  }
+
   private showVersus(botName: string) {
     stopIntroMusic(this, 400); // sale el VS: la música de la búsqueda se apaga de a poco
     const p = getProfile();
@@ -174,7 +181,7 @@ export class MatchmakingScene extends Phaser.Scene {
     const tutorial = !isDevMode() && p.level < MAX_LEVEL;
     showVersusScreen(
       this,
-      { name: this.doubles ? `${p.name} + ${this.allyName}` : p.name, level: p.level, look: playerLook(p.skin), portraitSkin: p.skin as SkinId, wins: tutorial ? undefined : totalWins(), streak: (getPlayer() as PlayerState).ranked.total.streak, color: p.color, frame: equippedFrame(getPlayer() as PlayerState) }, // tu color y tu MARCO; el rival, el suyo de siempre
+      { name: this.doubles ? `${p.name} + ${this.allyName}` : p.name, level: p.level, look: playerLook(p.skin), portraitSkin: p.skin as SkinId, wins: tutorial ? undefined : totalWins(), streak: p.level >= STREAK_LEVEL ? (getPlayer() as PlayerState).ranked.total.streak : 0, color: p.color, frame: equippedFrame(getPlayer() as PlayerState) }, // tu color y tu MARCO; el rival, el suyo de siempre
       {
         name: botName,
         level: rivalLevel,
@@ -203,11 +210,23 @@ export class MatchmakingScene extends Phaser.Scene {
           }
         : undefined,
     );
+    this.queueMatchSprites();
     // 1 s después del sonido del VS entra la música de la cancha (sigue sonando en el partido)
     this.time.delayedCall(1000, () => playMatchMusic(this, this.ambiente));
 
     // transición al partido
     this.time.delayedCall(2700 + (this.doubles ? 200 : 0), () => {
+      // (27-11-2026) si los personajes aún se cargan, el VS espera a que terminen (así el partido no queda en negro)
+      if (this.load.isLoading()) {
+        this.load.once(Phaser.Loader.Events.COMPLETE, () => this.sys.isActive() && this.goToMatch(botName, rivalLevel));
+        return;
+      }
+      this.goToMatch(botName, rivalLevel);
+    });
+  }
+
+  private goToMatch(botName: string, rivalLevel: number) {
+    {
       this.cameras.main.fadeOut(250, 0, 0, 0);
       this.cameras.main.once('camerafadeoutcomplete', () => {
         // Ranked: la entrada se paga justo al empezar (cancelar la búsqueda no cobra nada)
@@ -218,7 +237,7 @@ export class MatchmakingScene extends Phaser.Scene {
         this.toMatch = true;
         this.scene.start('Match', this.doubles ? { botName, rivalLevel, ambiente: this.ambiente, mode: '2v2', allyName: this.allyName, rival2Name: this.rival2Name, duo: this.duo } : { botName, rivalLevel, rivalSkin: this.devRival ?? undefined, ambiente: this.ambiente, guide: this.guide });
       });
-    });
+    }
   }
 
   /** el rival (1v1) o el rival 1 (2v2): el nombre de su personaje (rivalFor, el mismo que sale en la VS y en el partido) */

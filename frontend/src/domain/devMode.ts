@@ -21,8 +21,17 @@ import { CHAR_COLOR_LIST, COLOR_SKINS, charColorItem } from './charColors';
 import { BP_SEASON } from './battlePassConfig';
 import { newBattlePass } from './battlePassState';
 
-/** Con qué modo arranca la app cuando el jugador aún no ha elegido. true mientras se prueba; ponlo en false para publicar. */
-export const DEV_MODE_DEFAULT = true;
+/** Con qué modo arranca la app cuando el jugador aún no ha elegido. (27-11-2026, usuario) false: siempre empieza en modo TUTORIAL (perfil normal). */
+export const DEV_MODE_DEFAULT = false;
+/**
+ * (27-11-2026, usuario) Contraseña para ENCENDER el modo desarrollo en AJUSTES (numérica, hasta 6 dígitos). Está en el cliente: solo
+ * evita que se encienda por error, no es seguridad de verdad (con cuentas, el modo desarrollo lo debería decidir el servidor).
+ */
+const DEV_PASSWORD = '7';
+export const DEV_PASSWORD_MAX = 6;
+export function checkDevPassword(pin: string): boolean {
+  return pin === DEV_PASSWORD;
+}
 export const DEV_LEVEL = MAX_LEVEL;
 /** dinero de pruebas del perfil de desarrollo (para poder comprar el Pase Premium u otros ítems de dinero) */
 export const DEV_CASH = 500;

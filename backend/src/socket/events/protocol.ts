@@ -86,6 +86,10 @@ export interface FindRequest {
   profile: PlayerProfile;
   /** sin él, '1v1' */
   mode?: GameMode;
+  /** (27-11-2026) clave de sala privada (duelo entre amigos): solo empareja con quien mande la misma */
+  key?: string;
+  /** (27-11-2026) id del teléfono (el de AMIGOS): para anotar rivales y compañeros en SUGERENCIAS. Nunca se reenvía al rival */
+  device?: string;
 }
 
 export interface SearchingMsg {

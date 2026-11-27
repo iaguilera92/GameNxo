@@ -24,7 +24,7 @@ export const UNLOCK_LEVEL = {
   styles: 15,
   trail: 12, // (25-11-2026, usuario) antes 10
   charge: 8,
-  zone: 10,
+  zone: 8, // (27-11-2026, usuario) la ZONA pasa al nivel 8 (antes 10)
   spin: 15,
 } as const;
 

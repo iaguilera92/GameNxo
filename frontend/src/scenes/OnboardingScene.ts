@@ -180,7 +180,29 @@ export class OnboardingScene extends Phaser.Scene {
     this.nameBox?.addEventListener('keydown', (e) => e.key === 'Enter' && next());
     // SIGUIENTE: como el JUGAR del menú, sin la sombra
     // (24-11-2026, usuario) a la misma altura que ELEGIR de la pantalla siguiente (BTN_Y) y del mismo tamaño
-    c.add(arcadeButton(this, W / 2, H - BTN_Y, 420, 108, 'SIGUIENTE', next, { palette: 'yellow', noShadow: true }));
+    const btn = arcadeButton(this, W / 2, H - BTN_Y, 420, 108, 'SIGUIENTE', next, { palette: 'yellow', noShadow: true });
+    c.add(btn);
+    // (27-11-2026, usuario) con el TECLADO del teléfono abierto el botón quedaba tapado: sube justo encima del teclado
+    const vv = window.visualViewport;
+    if (vv) {
+      const place = () => {
+        if (!btn.active) return;
+        const r = this.game.canvas.getBoundingClientRect();
+        const k = r.height / this.scale.height;
+        const visBottom = (vv.offsetTop + vv.height - r.top) / k; // borde de abajo de lo visible, en coordenadas del juego
+        const y = Math.min(H - BTN_Y, visBottom - 80);
+        this.tweens.killTweensOf(btn);
+        this.tweens.add({ targets: btn, y: Math.max(H * 0.45, y), duration: 160, ease: 'Quad.easeOut' });
+      };
+      vv.addEventListener('resize', place);
+      vv.addEventListener('scroll', place);
+      const off = () => {
+        vv.removeEventListener('resize', place);
+        vv.removeEventListener('scroll', place);
+      };
+      btn.once(Phaser.GameObjects.Events.DESTROY, off);
+      this.events.once(Phaser.Scenes.Events.SHUTDOWN, off);
+    }
   }
 
   /** <input> de HTML sobre el lienzo (Phaser no trae cajas de texto), en coordenadas del juego. */
@@ -204,6 +226,7 @@ export class OnboardingScene extends Phaser.Scene {
       if (clean !== el.value) el.value = clean;
     });
     el.autocomplete = 'off';
+    el.enterKeyHint = 'next'; // (27-11-2026, usuario) la tecla Enter del teclado dice SIGUIENTE y avanza
     el.setAttribute('autocapitalize', 'words');
     Object.assign(el.style, {
       position: 'fixed',

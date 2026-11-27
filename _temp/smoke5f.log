@@ -1,0 +1,5 @@
+Customize    {"act":["Customize"],"chars":{"nxo":1,"nxof":0,"mai":51,"maif":27,"mat":0,"matf":0},"amb":[],"liga":0,"shop":0,"charge":10,"total":202}
+reinicio sin cambiar ms hasta create: 542 | pedidos: 55 {"otro":28} | tareas largas (ms): [64]
+cambio a MAT        ms hasta create: 1151 | pedidos: 200 {"mat-front-v2":30,"mat-front-inferno":6,"otro":100,"mat-v2":31,"mat-inferno":6} | tareas largas (ms): [98]
+cambio a NXO        ms hasta create: 1154 | pedidos: 226 {"nxo-front-v2":37,"otro":113,"nxo-front-inferno":6,"nxo-v2":37,"nxo-inferno":6} | tareas largas (ms): [98]
+sin errores

@@ -1,7 +1,8 @@
 import { isDevMode } from '../domain/devMode';
+import { loadBackViewLater } from '../objects/NxoActor';
 import { GUIDE, guidedStep } from '../domain/tutorial';
 import { markTutorialSeen } from '../domain/operations';
-import { setDefensive } from '../logic/Profile';
+import { getProfile, setDefensive } from '../logic/Profile';
 import { sfx } from '../fx/sfx';
 import { guideFocus, tapHint } from '../ui/guideFocus';
 import { drawFadingRays } from '../ui/fadeRays';
@@ -179,6 +180,7 @@ export class ShopScene extends Phaser.Scene {
   }
 
   create() {
+    loadBackViewLater(this, getProfile().skin); // (26-11-2026) tu personaje de espaldas para las demos EN ACCIÓN, sin frenar la pantalla
     const W = this.scale.width;
     restartOnResize(this);
     installTapSound(this); // clic de interfaz en cada botón / diálogo

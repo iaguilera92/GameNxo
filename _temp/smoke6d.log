@@ -1,0 +1,18 @@
+Ranked       {"act":["Ranked"],"chars":{"nxo":1,"nxof":0,"mai":10,"maif":27,"mat":0,"matf":0},"amb":[],"liga":17,"shop":0,"charge":0,"total":162}
+tweens al entrar: 1 | fps: 61
+tweens tras 6 cambios de pesta?a: 1
+antes de prune manual 3 tiene prune: function {"hasType":true,"scene":"undefined","len":1}
+dbg {"hasParent":true,"processing":false,"tgLen":1,"every":true,"state":21,"after":2}
+despues 2
+cofre #1 | fps con el cofre: 61 | tweens tras cerrarlo: 2
+antes de prune manual 5 tiene prune: function {"hasType":true,"scene":"undefined","len":1}
+dbg {"hasParent":true,"processing":false,"tgLen":1,"every":true,"state":21,"after":4}
+despues 4
+cofre #2 | fps con el cofre: 61 | tweens tras cerrarlo: 4
+antes de prune manual 0 tiene prune: function sin
+dbg TypeError: Cannot read properties of undefined (reading 'targets')
+    at <anonymous>:1:154
+    at <anonymous>:1:505
+despues 0
+cofre #3 | fps con el cofre: 24 | tweens tras cerrarlo: 0
+sin errores

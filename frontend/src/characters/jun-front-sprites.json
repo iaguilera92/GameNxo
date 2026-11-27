@@ -2,7 +2,7 @@
   "source": "Jun/rival/hd/jun-rival-{movimientos,golpes,reacciones,extras}-*.png",
   "view": "front",
   "cell": {
-    "w": 104,
+    "w": 106,
     "h": 160
   },
   "origin": {
@@ -21,7 +21,7 @@
       "loop": true,
       "scale": 1,
       "cell": {
-        "w": 104,
+        "w": 106,
         "h": 160
       },
       "origin": {
@@ -37,11 +37,11 @@
       "scale": 1,
       "cell": {
         "w": 150,
-        "h": 160
+        "h": 161
       },
       "origin": {
         "x": 0.5,
-        "y": 0.975
+        "y": 0.97516
       }
     },
     "runstop": {
@@ -84,11 +84,11 @@
       "scale": 1,
       "cell": {
         "w": 168,
-        "h": 161
+        "h": 162
       },
       "origin": {
         "x": 0.5,
-        "y": 0.97516
+        "y": 0.97531
       }
     },
     "serve": {
@@ -100,11 +100,11 @@
       "scale": 1,
       "cell": {
         "w": 152,
-        "h": 196
+        "h": 197
       },
       "origin": {
         "x": 0.5,
-        "y": 0.97959
+        "y": 0.9797
       }
     },
     "smash": {
@@ -115,12 +115,12 @@
       "impact": 4,
       "scale": 1,
       "cell": {
-        "w": 148,
-        "h": 198
+        "w": 150,
+        "h": 199
       },
       "origin": {
         "x": 0.5,
-        "y": 0.9798
+        "y": 0.9799
       }
     },
     "victory": {

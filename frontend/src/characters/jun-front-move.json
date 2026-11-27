@@ -2,7 +2,7 @@
   "source": "Jun/rival/hd/jun-rival-{movimientos,golpes,reacciones,extras}-*.png",
   "view": "front",
   "cell": {
-    "w": 104,
+    "w": 106,
     "h": 160
   },
   "origin": {
@@ -23,7 +23,7 @@
       "fps": 14,
       "loop": false,
       "cell": {
-        "w": 148,
+        "w": 150,
         "h": 154
       },
       "origin": {

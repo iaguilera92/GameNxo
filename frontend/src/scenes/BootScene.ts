@@ -36,7 +36,7 @@ export class BootScene extends Phaser.Scene {
     queueUiSounds(this.load); // sonidos de interfaz en mp3 (solo los de UI_SOUND_FILES; el resto se sintetiza)
     queuePortraitLoads(this.load);
     // (25-11-2026) solo TU personaje (de espaldas y de frente): el rival se carga al ir al partido (si falta algo, se usa el dibujo de siempre)
-    queueNxoSpriteLoads(this.load, sheetsOf([[getProfile().skin, 'back'], [getProfile().skin, 'front']]));
+    queueNxoSpriteLoads(this.load, sheetsOf([[getProfile().skin, 'front']])); // (26-11-2026) solo de frente: el arranque carga la mitad
     this.load.image('nxo-logo', 'assets/nxo-logo.webp');
     this.load.image('loading-bg', 'assets/loading-bg.webp');
     // recursos del menú: así el menú aparece al instante detrás del cargando

@@ -1,5 +1,5 @@
 import { installTapSound } from '../fx/uiSound';
-import { releaseSceneTexturesOnExit } from '../ui/sceneTextures';
+import { markSceneRestart, releaseSceneTexturesOnExit } from '../ui/sceneTextures';
 import Phaser from 'phaser';
 import { FONT, restartOnResize, textStyle } from '../ui/theme';
 import { stadiumBg } from '../ui/ui';
@@ -10,7 +10,7 @@ import { CHAR_COLOR_LIST, type CharColorId, charColorFor, charColorInfo, charCol
 import { applyCharColor } from '../fx/CharColorFx';
 import { type UnlockKey, isUnlocked, unlockLabel } from '../domain/unlocks';
 import { skinById } from '../characters/catalog';
-import { queueNxoSpriteLoads, registerNxoAnims, sheetsOf } from '../objects/NxoActor';
+import { loadBackViewLater, queueNxoSpriteLoads, registerNxoAnims, sheetsOf } from '../objects/NxoActor';
 import { rosterPortrait } from '../characters/passPortrait';
 import { addPortrait } from '../characters/portrait';
 import type { SkinId } from '../characters/skins';
@@ -178,11 +178,11 @@ export class CustomizeScene extends Phaser.Scene {
   private guideDefensiveRect?: { x: number; y: number; w: number; h: number };
 
   /** (25-11-2026, usuario) la guía de la tarjeta: DEFENSIVO (nivel 2) o ESPECIAL (nivel 4, recién desbloqueado) */
-  private guideCard: 'defensive' | 'special' = 'defensive';
+  private guideCard: 'defensive' | 'special' | 'ulti' = 'defensive';
   private focusDefensiveGuide(equipped: boolean) {
     this.guideOverlay?.destroy();
     const target = equipped ? { x: 54, y: 64, w: 78, h: 78 } : this.guideDefensiveRect;
-    const tap = this.guideCard === 'special' ? 'TOCA PARA EQUIPAR' : 'TOCA DEFENSIVO'; // (26-11-2026, usuario) sin repetir ESPECIAL DESBLOQUEADO (ya sale en el menú)
+    const tap = this.guideCard !== 'defensive' ? 'TOCA PARA EQUIPAR' : 'TOCA DEFENSIVO'; // (26-11-2026, usuario) sin repetir ESPECIAL DESBLOQUEADO (ya sale en el menú)
     if (target) this.guideOverlay = guideFocus(this, target, equipped ? 'VUELVE AL MENÚ' : tap, { textDy: equipped ? 34 : 0 });
   }
 
@@ -207,7 +207,8 @@ export class CustomizeScene extends Phaser.Scene {
 
   preload() {
     releaseSceneTexturesOnExit(this); // (25-11-2026) sus imágenes propias se liberan al salir (ui/sceneTextures.ts)
-    queueNxoSpriteLoads(this.load, sheetsOf([[getProfile().skin, 'back'], [getProfile().skin, 'front']])); // (25-11-2026) tu personaje (al cambiarlo, la escena se reinicia y lo carga)
+    // (26-11-2026) solo tu personaje DE FRENTE (el que se ve aquí): el de espaldas (las demos EN ACCIÓN) se carga después, sin frenar la pantalla
+    queueNxoSpriteLoads(this.load, sheetsOf([[getProfile().skin, 'front']]));
     if (!this.textures.exists('menu-bg')) this.load.image('menu-bg', 'assets/menu-bg.webp');
     if (!this.textures.exists('icon-zona')) this.load.image('icon-zona', 'assets/icon-zona.webp');
     if (!this.textures.exists('personalizar-title')) this.load.image('personalizar-title', 'assets/personalizar-titulo.webp'); // (18-11-2026) título en imagen
@@ -221,6 +222,7 @@ export class CustomizeScene extends Phaser.Scene {
 
   create() {
     registerNxoAnims(this);
+    loadBackViewLater(this, getProfile().skin);
     const W = this.scale.width;
     const H = this.scale.height;
     restartOnResize(this);
@@ -323,6 +325,13 @@ export class CustomizeScene extends Phaser.Scene {
     }
     y += L.titleToCard + L.ability + L.gapFeatures;
     this.featureCards(W, y, L.features);
+    // (27-11-2026, usuario) nivel 6: la guía va a la tarjeta de la ULTI (igual que el ESPECIAL del nivel 4)
+    if (gStep === 'ulti' && this.cardRects.ulti) {
+      this.guideCard = 'ulti';
+      const r = this.cardRects.ulti;
+      this.guideDefensiveRect = { x: r.x + r.w / 2, y: r.y + r.h / 2, w: r.w, h: r.h }; // cardRects: esquina; la guía: centro
+      this.focusDefensiveGuide(false);
+    }
     // bloqueos por nivel (domain/unlocks.ts): DEFENSIVO 2 · ESPECIAL 4 · ULTI 6 · ESTILOS 8 · EFECTO PELOTA 10 · CARGANDO 12 · ZONA 15
     // (el saque con efecto sigue bloqueado hasta el 15 en el partido; ya no tiene tarjeta)
     {
@@ -346,6 +355,7 @@ export class CustomizeScene extends Phaser.Scene {
   /** Reinicia la pantalla para mostrar lo equipado; al volver, playEquipFx hace brillar la tarjeta id. */
   private restartEquipped(id: string) {
     this.registry.set('custom.equipped', id);
+    markSceneRestart(this);
     this.scene.restart();
   }
 
@@ -885,7 +895,8 @@ ${unlockLabel(key)}`, { fontFamily: FONT, fontSize: '16px', color: '#ffd23f', st
       pulse: 0.3, // y casi sin palpitar
       lockedNote: 'Aún no disponible.',
       onClose: ({ changed }) => {
-        if (changed) this.scene.restart(); // al instante: la pantalla ya muestra el personaje elegido
+        if (changed) markSceneRestart(this);
+    this.scene.restart(); // al instante: la pantalla ya muestra el personaje elegido
       },
     });
   }
@@ -1045,7 +1056,8 @@ ${unlockLabel(key)}`, { fontFamily: FONT, fontSize: '16px', color: '#ffd23f', st
           hit.on('pointerup', () => {
             const result = commit((state) => upgradeZoneStat(state, key, zoneSkin));
             if (!result.ok) return this.toast(result.error === 'not_enough_rays' ? 'Gana Rayos en las recompensas semanales de la Liga' : 'Este atributo ya llegó al 20%');
-            this.scene.restart();
+            markSceneRestart(this);
+    this.scene.restart();
           });
         });
       }
@@ -1306,13 +1318,19 @@ ${unlockLabel(key)}`, { fontFamily: FONT, fontSize: '16px', color: '#ffd23f', st
   private openUltiDialog() {
     const p = getPlayer();
     const cur = getProfile().inferno;
-    const slots: PowerSlot[] = INFERNO_POWERS.map((d) => ({
+    // (27-11-2026, usuario) nivel 6 (tutorial): como el ESPECIAL del nivel 4: solo tu poder, ver la demostración y EQUIPAR
+    const guided = !isDevMode() && guidedStep(p.level, p.tutorial) === 'ulti';
+    if (guided) {
+      this.guideOverlay?.destroy();
+      this.guideOverlay = undefined;
+    }
+    const slots: PowerSlot[] = INFERNO_POWERS.filter((d) => !guided || d.id === cur).map((d) => ({
       id: d.id,
       demoName: d.name,
       ...byDefault(d.id === 'default', d.name, `${d.ball}. ${d.desc}`),
       owned: infernoOwned(p.owned, d.id, p.equipped.skin),
       rarity: itemRarity(`inferno:${d.id}`),
-      equipped: d.id === cur,
+      equipped: !guided && d.id === cur,
       preview: (ix, iy, size) => this.ballIcon(d.id, ix, iy, size, true),
       thumb: (ix, iy, size) => this.ballIcon(d.id, ix, iy, size, false),
       onEquip: () => setInferno(d.id),
@@ -1324,12 +1342,21 @@ ${unlockLabel(key)}`, { fontFamily: FONT, fontSize: '16px', color: '#ffd23f', st
       special: true,
       // televisión grande; deslizando se ve la ULTI en acción contra la máquina de pelotas (fx/powerDemo.ts, modo special)
       bigTv: true,
+      requireDemoBeforeEquip: guided,
       demo: { create: (parent, outer, inner, id) => createSpecialDemo(this, parent, outer, inner, getProfile().skin, 'inferno', id ?? cur) },
       onShop: () => {
         this.cameras.main.fadeOut(180, 0, 0, 0);
         this.cameras.main.once('camerafadeoutcomplete', () => this.scene.start('Shop'));
       },
       onClose: ({ changed }) => {
+        if (guided) {
+          if (changed) {
+            commit((s) => markTutorialSeen(s, GUIDE.ulti));
+            commit((s) => markTutorialSeen(s, 'l06-ulti'));
+            this.equipDefensiveGuide();
+          } else this.focusDefensiveGuide(false);
+          return;
+        }
         if (changed) this.restartEquipped('ulti'); // al instante: la tarjeta ya muestra la ULTI equipada
       },
     });

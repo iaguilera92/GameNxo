@@ -45,7 +45,8 @@ import { bpSeasonInfo } from '../domain/battlePassConfig';
 import { UNLOCK_LEVEL } from '../domain/unlocks';
 import { totalPlayed } from '../logic/Stats';
 import type { PlayerState } from '../domain/player';
-import { openWheel, whenWheelReady } from './WheelScene';
+import { WheelScene, openWheel, whenWheelReady } from './WheelScene';
+import { chestImage } from '../ui/wheelArt';
 import { uiSound } from '../fx/uiSound';
 import { sfx } from '../fx/sfx';
 import { masteryLevel, masteryProgress, passiveOf } from '../domain/characterPassives';
@@ -178,11 +179,11 @@ export class MenuScene extends Phaser.Scene {
         return;
       }
     }
-    const target = step === 'defensive' || step === 'special' ? this.guideRects.defensive : step === 'profile' ? this.guideRects.profile : step === 'daily' ? this.guideRects.daily : step === 'pass' ? this.guideRects.pass : step === 'shop' ? this.guideRects.shop : step === 'friends' ? this.guideRects.friends : this.modeRects[0];
+    const target = step === 'defensive' || step === 'special' || step === 'ulti' ? this.guideRects.defensive : step === 'profile' ? this.guideRects.profile : step === 'daily' ? this.guideRects.daily : step === 'pass' ? this.guideRects.pass : step === 'shop' ? this.guideRects.shop : step === 'friends' ? this.guideRects.friends : this.modeRects[0];
     if (!target) return;
-    const labels = { play: 'TOCA PARA JUGAR', defensive: 'ABRIR PERSONALIZAR PERSONAJE', profile: 'TOCA TU PERFIL', spin: 'TOCA PARA CONTINUAR', daily: 'ABRE TU PREMIO DIARIO', l3: 'TOCA PARA CONTINUAR', special: '¡ESPECIAL DESBLOQUEADO!', l4: 'TOCA PARA CONTINUAR', pass: 'COBRA TUS PREMIOS DEL PASE', shop: 'ABRE LA TIENDA', friends: 'YA PUEDES JUGAR CON TUS AMIGOS' } /* (26-11-2026, usuario) TOCA PARA JUGAR solo en el nivel 1 */; // (24-11-2026) nivel 2: solo DEFENSIVO
+    const labels = { play: 'TOCA PARA JUGAR', defensive: 'ABRIR PERSONALIZAR PERSONAJE', profile: 'TOCA TU PERFIL', spin: 'TOCA PARA CONTINUAR', daily: 'ABRE TU PREMIO DIARIO', l3: 'TOCA PARA CONTINUAR', special: '¡ESPECIAL DESBLOQUEADO!', ulti: '¡ULTI DESBLOQUEADA!', l6: 'TOCA PARA CONTINUAR', l7: 'TOCA PARA CONTINUAR', l4: 'TOCA PARA CONTINUAR', pass: 'COBRA TUS PREMIOS DEL PASE', shop: 'ABRE LA TIENDA', friends: 'YA PUEDES JUGAR CON TUS AMIGOS' } /* (26-11-2026, usuario) TOCA PARA JUGAR solo en el nivel 1 */; // (24-11-2026) nivel 2: solo DEFENSIVO
     const focus = step === 'play' ? { ...target, h: target.h + 24 } : target;
-    this.guideOverlay = guideFocus(this, focus, labels[step], { centerText: step === 'defensive' || step === 'special' || step === 'daily' || step === 'shop' || step === 'friends' }); // (25-11-2026, usuario) centrado: no choca con el personaje ni la mano
+    this.guideOverlay = guideFocus(this, focus, labels[step], { centerText: step === 'defensive' || step === 'special' || step === 'ulti' || step === 'daily' || step === 'shop' || step === 'friends' }); // (25-11-2026, usuario) centrado: no choca con el personaje ni la mano
     // (26-11-2026, usuario) AMIGOS aún no está listo: solo se avisa (3 s) y la guía sigue
     if (step === 'friends') {
       this.time.delayedCall(3000, () => {
@@ -292,7 +293,7 @@ export class MenuScene extends Phaser.Scene {
   }
 
   preload() {
-    queueNxoSpriteLoads(this.load, sheetsOf([[getProfile().skin, 'back'], [getProfile().skin, 'front']])); // (25-11-2026) tu personaje (p. ej. recién elegido o cambiado)
+    queueNxoSpriteLoads(this.load, sheetsOf([[getProfile().skin, 'front']])); // (26-11-2026) tu personaje DE FRENTE (el del menú); el de espaldas, en la búsqueda / PERSONALIZAR
     if (!this.textures.exists('menu-bg')) this.load.image('menu-bg', 'assets/menu-bg.webp');
     if (!this.textures.exists('guide-click')) this.load.image('guide-click', 'assets/ui/guide-click.webp'); // mano del tutorial (guideFocus)
     queueProfileFrameArt(this.load); // marcos del perfil por liga (assets/marcos/<liga>.webp)
@@ -510,7 +511,7 @@ export class MenuScene extends Phaser.Scene {
       const p = getPlayer();
       if (!isDevMode() && p.level <= 15) {
         const step = guidedStep(p.level, p.tutorial);
-        this.scene.start('Matchmaking', { skipSearch: true, from: 'Menu', guide: step === 'play' ? 'first' : step === 'spin' ? 'spin' : step === 'l3' ? 'l3' : step === 'l4' ? 'l4' : p.level === 5 && !p.tutorial?.includes(GUIDE.l5) ? 'l5' : undefined }); // (26-11-2026) nivel 5 guiado
+        this.scene.start('Matchmaking', { skipSearch: true, from: 'Menu', guide: step === 'play' ? 'first' : step === 'spin' ? 'spin' : step === 'l3' ? 'l3' : step === 'l4' ? 'l4' : step === 'l6' ? 'l6' : p.level === 7 && !p.tutorial?.includes(GUIDE.l7) ? 'l7' : p.level === 5 && !p.tutorial?.includes(GUIDE.l5) ? 'l5' : undefined }); // (26-11-2026) nivel 5 guiado
         return;
       }
       // (24-11-2026, usuario) niveles 16 a 19: partido COMPLETO amistoso contra el bot (sin apuesta: las ligas se abren en el nivel 20)
@@ -1911,11 +1912,48 @@ export class MenuScene extends Phaser.Scene {
     const ch = 84;
     const makeChest = () => chestButton(this, W - 26 - cw / 2, playY - 54 - 18 - 52 - 104 - 30 + (104 - ch) / 2, (m) => this.toast(m), cw, ch);
     let chestCard = makeChest();
+    // (27-11-2026, usuario) COFRE recién ganado (o evolucionado): al cerrarse la ruleta vuela del centro a su card (así se ve dónde quedó)
+    let prevLv = getPlayer().chest?.level ?? -1;
+    let flyLv = -1;
     // recién ganado en la ruleta (se abre encima del menú): la card aparece sin reiniciar el menú
     const offChest = onPlayerChange((s) => {
       if (s.chest && !chestCard?.active) chestCard = makeChest();
+      const lv = s.chest?.level ?? -1;
+      if (lv > prevLv) flyLv = lv;
+      prevLv = lv;
     });
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => offChest());
+    this.time.addEvent({
+      delay: 150,
+      loop: true,
+      callback: () => {
+        if (flyLv < 0 || this.scene.isActive(WheelScene.KEY) || !chestCard?.active) return;
+        const lv = flyLv;
+        flyLv = -1;
+        const card = chestCard;
+        const W2 = this.scale.width;
+        const img = chestImage(this, W2 / 2, this.scale.height * 0.45, Math.min(220, W2 * 0.5), lv).setDepth(9500);
+        img.setScale(img.scaleX * 0.3).setAlpha(0);
+        const s0 = img.scaleX / 0.3;
+        this.tweens.add({ targets: img, scaleX: s0, scaleY: s0, alpha: 1, duration: 280, ease: 'Back.easeOut' });
+        this.tweens.add({
+          targets: img,
+          x: card.x,
+          y: card.y,
+          scaleX: s0 * 0.3,
+          scaleY: s0 * 0.3,
+          delay: 650,
+          duration: 520,
+          ease: 'Cubic.easeIn',
+          onComplete: () => {
+            img.destroy();
+            if (!card.active) return;
+            uiSound(this, 'card');
+            this.tweens.add({ targets: card, scale: 1.22, duration: 140, yoyo: true, ease: 'Quad.easeOut' });
+          },
+        });
+      },
+    });
     new DailyWheels(this, W / 2, playY - 54 - 18 - 52, w, {
       onOpen: (i) => openWheel(this, i),
       onToast: (m) => this.toast(m),

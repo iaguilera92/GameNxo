@@ -517,6 +517,11 @@ export class Character extends Phaser.GameObjects.Container {
     return this.nxo?.lunge(side, hold) ?? false;
   }
 
+  /** (27-11-2026) la estirada llega a su cuadro de contacto en `sec` segundos */
+  lungeSync(sec: number) {
+    this.nxo?.lungeSync(sec);
+  }
+
   /** Recibe un ataque especial (aturdido / impacto del INFERNO). false = sin hoja: el llamador usa el giro de siempre. */
   /** Tutorial: congela la pose actual (sin temblor ni animación). */
   freezePose() {
@@ -584,9 +589,14 @@ export class Character extends Phaser.GameObjects.Container {
     return this.nxo?.pickingUp ?? false;
   }
 
-  /** Reacción al acabar un punto. */
-  pointEnd(won: boolean, epic = false) {
-    this.nxo?.pointEnd(won, epic);
+  /** Reacción al acabar un punto. `force` (27-11-2026): también sin raqueta (tutorial nivel 6). */
+  pointEnd(won: boolean, epic = false, force = false) {
+    this.nxo?.pointEnd(won, epic, force);
+  }
+
+  /** (27-11-2026) termina ya su aturdido (sale a correr) */
+  endStun() {
+    this.nxo?.endStun();
   }
 
   /** Tiene hoja de sprites (poses de final propias). */

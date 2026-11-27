@@ -1,0 +1,13 @@
+Ranked       {"act":["Ranked"],"chars":{"nxo":1,"nxof":0,"mai":10,"maif":27,"mat":0,"matf":0},"amb":[],"liga":17,"shop":0,"charge":0,"total":162}
+tweens al entrar: 1 | fps: 61
+tweens tras 6 cambios de pesta?a: 1
+antes de prune manual 3 tiene prune: function {"hasType":true,"scene":"undefined","len":1}
+despues 3
+cofre #1 | fps con el cofre: 60 | tweens tras cerrarlo: 3
+antes de prune manual 6 tiene prune: function {"hasType":true,"scene":"undefined","len":1}
+despues 6
+cofre #2 | fps con el cofre: 61 | tweens tras cerrarlo: 6
+antes de prune manual 9 tiene prune: function {"hasType":true,"scene":"undefined","len":1}
+despues 9
+cofre #3 | fps con el cofre: 61 | tweens tras cerrarlo: 9
+sin errores

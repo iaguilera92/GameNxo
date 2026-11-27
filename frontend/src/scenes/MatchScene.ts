@@ -81,7 +81,7 @@ import { ENERGY_CINE, ENERGY_MATCH_CINE, ENERGY_MATCH_K, ENERGY_RALLY, attackerA
 import { EnergyCineFx } from '../fx/energyBallCine';
 import { EnergyImpactFx } from '../fx/energyBallFx';
 import { MAX_PUSH, POWER_IMPACT, type PowerKind, RACKET_LOSS, knockbackX, stunMsFor, stunSeconds } from '../logic/PowerImpact';
-import { ensureLooseRacket, queueNxoSpriteLoads, registerNxoAnims, sheetsOf } from '../objects/NxoActor';
+import { ensureLooseRacket, looseRacketColor, queueNxoSpriteLoads, registerNxoAnims, sheetsOf } from '../objects/NxoActor';
 import { type BotKit, botKitFor, randomBotKit, randomDoublesKits } from '../ai/botKit';
 import { ZONE_SKINS, type ZoneSkinDef, isZoneSkin, zoneSkinOf } from '../domain/zoneSkins';
 import { NetView } from '../fx/NetView';
@@ -395,7 +395,7 @@ const L2_AIM_PAUSE_MS = 1000;
 const L2_AIM_AUTO_MS = 15000;
 /** (25-11-2026, usuario) textos de los puntos guiados (globo, cortita, remate, ESPECIAL del rival) */
 const SP_TEXT = {
-  serve: 'TE TOCA SACAR',
+  serve: 'TU TURNO',
   // (25-11-2026, usuario) GLOBO: la pelota bota en la T y se para (pulsando): vas a ella; al llegar, joystick arriba
   lobGo: 'MUEVE EL JOYSTICK HACIA LA PELOTA',
   lob: 'JOYSTICK ARRIBA PARA EL GLOBO',
@@ -405,6 +405,74 @@ const SP_TEXT = {
   special: '¡ESPECIAL! NO SE PUEDE DEVOLVER',
   defensive: 'USA EL DEFENSIVO', // (26-11-2026, usuario) nivel 3, P4
 };
+/** (27-11-2026, usuario) nivel 7 guiado */
+const G7_TEXT = {
+  dive: 'CARGADO, LLEGAS MÁS LEJOS', // (27-11-2026, usuario) más corto
+  net: 'SUBE A LA RED\nHASTA LA PELOTA',
+  ring: 'TOCA CUANDO\nEL ARO SE CIERRE',
+  best3: 'GANA EL MEJOR DE 3 RONDAS',
+  explain: 'TOCA LA PANTALLA CUANDO EL ARO SE CIERRE\nEL MÁS PRECISO GANA LA RONDA',
+  won: '¡GANASTE EL DUELO EN LA RED!',
+  aim: 'ELIGE DÓNDE VA EL GLOBO\nJOYSTICK IZQUIERDA O DERECHA',
+};
+/** nivel 7, P2: pausa de la explicación del duelo, del ¡GANASTE! con el marcador cerca */
+const G7_EXPLAIN_MS = 4000; // (27-11-2026, usuario) 3 -> 4 s
+/** explicación del duelo: bajo el jugador */
+const G7_EXPLAIN_Y = 0.72;
+const G7_WON_MS = 2600;
+/** ¡GANASTE!: escala del marcador y su altura (fracción de la pantalla) */
+const G7_SCORE_K = 2.1; // (27-11-2026, usuario) un poco más chico (2.3)
+const G7_SCORE_Y = 0.4;
+/** nivel 7: reloj de las pausas, aviso de la estirada, a qué distancia de lado va la pelota (más que tu alcance) y cerca de la red */
+const G7_CLOCK_MS = 2000;
+const G7_MSG_MS = 1800;
+const G7_DIVE_DY = 110; // (27-11-2026, usuario) más lejos: hay que estirarse (x (1 + AGILIDAD): con más alcance, aún más lejos)
+const G7_NET_GAP = 70;
+/** cuánto tarda el rival en subir a su red tras su golpe (P2 / P3) */
+const G7_BOT_NET_MS = 1100;
+/** P3: la pausa del DEFENSIVO sale con su globo bajando por debajo de esta altura */
+const G7_DEF_Z = 130;
+/** (27-11-2026, usuario) nivel 6 guiado */
+const G6_TEXT = {
+  p1: 'GANA 1 PUNTO\nUSA DEFENSIVO O ESPECIAL', // (27-11-2026, usuario)
+  info: 'GANA 3 PUNTOS\nY SE CARGA LA ULTI', // (27-11-2026, usuario)
+  use: 'USA LA ULTI',
+  taken: 'LA ULTI TE ATURDE\nY TE QUITA LA RAQUETA',
+  racket: '¡RECOGE TU RAQUETA!',
+  stun: 'SI EL RIVAL RECIBE LA ULTI\nQUEDARÁ ATURDIDO Y SIN RAQUETA',
+  ring: 'SI EL RIVAL NO HA RECOGIDO\nLA RAQUETA NO PODRÁ RESPONDER',
+};
+/** (27-11-2026, usuario) nivel 6, P2: pausa con el rival aturdido y sin raqueta */
+/** altura (fracción de la pantalla) del texto de la pausa del aturdido; el reloj, debajo */
+const G6_STUN_Y = 0.28;
+const G6_STUN_MS = 4000;
+/** (27-11-2026, usuario) antes del texto: el impacto de la ULTI en el rival se ve 2 s sin oscuro */
+const G6_IMPACT_MS = 2000;
+/** (27-11-2026, usuario) P3: reloj de ¡RECOGE TU RAQUETA! */
+const G6_RACKET_MS = 3000;
+/** P2: altura de GANA 3 PUNTOS… / USA LA ULTI (su reloj debajo) */
+const G6_INFO_Y = 0.325; // (27-11-2026, usuario) un poquito más abajo
+/** USA LA ULTI: al medio de la pantalla */
+const G6_USE_Y = 0.45;
+/** CORRE AL CÍRCULO (niveles 5 y 6): más arriba, con el reloj debajo */
+const G5_CIRCLE_Y = 0.335; // (27-11-2026, usuario) un poco más abajo (el reloj sigue en 0.32 + 110)
+/** P2 terminado: tiempo extra antes del punto siguiente para que el rival recoja su raqueta */
+const G6_FETCH_WAIT_MS = 500; // (27-11-2026, usuario) antes 1.4 s: se quedaba pegado
+/** P3: altura del texto ¡RECOGE TU RAQUETA! (su reloj, debajo) */
+const G6_RACKET_Y = 0.38; // (27-11-2026, usuario) 0.45 quedaba muy abajo
+/** la pelota vuelve a andar este tiempo antes de que termine la pausa */
+const G6_BALL_EARLY_MS = 1000; // (27-11-2026, usuario) 3 -> 4 s: que alcance a leer
+/** zoom extra al rival aturdido y cuánto sube el encuadre sobre sus pies */
+const G6_ZOOM = 0.95; // (27-11-2026, usuario) cerca, con el rival y su raqueta en el suelo a la vista (1.15 la dejaba fuera)
+/** altura del impacto de la ULTI en el rival (cuerpo) */
+const G6_IMPACT_Z = 75;
+/** cámara lenta mientras el rival queda aturdido y su raqueta sale volando (los 4 s del reloj) */
+const G6_SLOW = 0.3;
+/** velocidad extra de la animación del rival aturdido (estrellas) durante el zoom (encima de la cámara lenta) */
+const G6_STARS_K = 0.5;
+const G6_FOCUS_LIFT = 90;
+/** (27-11-2026, usuario) nivel 6: reloj de la pausa de la ULTI */
+const G6_CLOCK_MS = 2000;
 /** (26-11-2026, usuario) nivel 5 guiado */
 const G5_TEXT = {
   drop: 'JOYSTICK ABAJO: DROP SHOT 0',
@@ -447,6 +515,9 @@ const CHARGE_PLAY_LEVEL = 4;
 const BOT_DROP0_LEVEL = 6;
 /** (26-11-2026, usuario) el REMATE del globo (con círculo) se enseña en el nivel 7: el rival bot lo usa desde el siguiente */
 const BOT_REMATE_LEVEL = 8;
+/** (27-11-2026, usuario) SMASH del rival: se queda en el aire en el cuadro del impacto (índice 5 = cuadro 6) este tiempo antes de caer */
+const BOT_REMATE_HOLD_FRAME = 5;
+const BOT_REMATE_HOLD_MS = 380;
 /** (25-11-2026, usuario) nivel 1: la pelota se queda pegada al subir esto tras el bote (sigue dentro del cuadro) */
 const GUIDE_HOLD_Z = 34; // (25-11-2026, usuario) 16 se pegaba justo en el bote: que avance un poco más
 /** GLOBO DISPARADO (globo cargado al máximo): velocidad (× SHOT_SPEED), margen sobre la red (bajo = tenso) y cuánto se aleja la cámara */
@@ -1721,7 +1792,7 @@ export class MatchScene extends Phaser.Scene {
       this.lesson = this.tutorial && !data?.mode && !this.guide && (lv === 3 || lv === 4) ? lv : null;
       // las misiones del nivel solo en el partido que trae su ejercicio (si no, no se podrían cumplir y no se subiría): nivel 1 = el primer
       // partido guiado, nivel 2 = el del DEFENSIVO, niveles 3 y 4 = su ejercicio
-      const withLesson = (lv === 1 && this.guide === 'first') || (lv === 2 && this.guide === 'spin') || (lv === 3 && this.guide === 'l3') || (lv === 4 && this.guide === 'l4') || (lv === 5 && this.guide === 'l5') || !!this.lesson;
+      const withLesson = (lv === 1 && this.guide === 'first') || (lv === 2 && this.guide === 'spin') || (lv === 3 && this.guide === 'l3') || (lv === 4 && this.guide === 'l4') || (lv === 5 && this.guide === 'l5') || (lv === 6 && this.guide === 'l6') || (lv === 7 && this.guide === 'l7') || !!this.lesson;
       const required = TUTORIAL_REQUIRED_LEVELS.has(lv);
       this.tutMissions = this.tutorial && (!required || withLesson) ? (tutorialMissionsFor(lv) as MissionId[] | null) : null;
       this.tutMissionsRequired = this.tutorial && required && withLesson;
@@ -1938,8 +2009,8 @@ export class MatchScene extends Phaser.Scene {
     this.joy = new Joystick(this);
     const d = ABILITIES.dash;
     const s = ABILITIES.smash;
-    this.dashBtn = new AbilityButton(this, 0, 0, 54, Math.max(1, DASH_COOLDOWN - (this.passiveResistOn ? RESIST_PASSIVE.dashFaster : 0)), d.color, d.colorDark, d.icon, 'DEFENSIVO', () => this.activateDash());
-    this.smashBtn = new AbilityButton(this, 0, 0, 64, SMASH_COOLDOWN, s.color, s.colorDark, s.icon, 'ESPECIAL', () => (this.smashBtn.inferno ? this.armInferno() : this.activateSmash()));
+    this.dashBtn = new AbilityButton(this, 0, 0, 54, Math.max(1, DASH_COOLDOWN - (this.passiveResistOn ? RESIST_PASSIVE.dashFaster : 0)), d.color, d.colorDark, d.icon, 'DEFENSIVO', () => this.g6Mark(this.activateDash())); // (27-11-2026) nivel 6, P1: cuenta si lo usaste
+    this.smashBtn = new AbilityButton(this, 0, 0, 64, SMASH_COOLDOWN, s.color, s.colorDark, s.icon, 'ESPECIAL', () => this.g6UltiGate() && this.g6Mark(this.smashBtn.inferno ? this.armInferno() : this.activateSmash())); // (27-11-2026) nivel 6
     // solo DEFENSIVO / ESPECIAL (sin el nombre del poder); en nivel máximo, sin textos
     if (getProfile().level >= MAX_LEVEL) {
       this.dashBtn.hideTexts();
@@ -2040,6 +2111,12 @@ export class MatchScene extends Phaser.Scene {
     this.cine = new SmashCinematic(this);
     // INFERNO DRIVE: la carga empieza en 0 en cada partido
     this.inferno = new InfernoDrive();
+    if (this.guide === 'l6') {
+      // (27-11-2026, usuario) nivel 6: el partido empieza 2-2 y tu ULTI ya lleva 2 de 3 cargas (el ESPECIAL suma para la ULTI)
+      // (27-11-2026, usuario) empieza 0-0 (antes 2-2: con las ULTIS los puntos no alcanzaban); la ULTI ya con 2 de 3: el punto del P1 la carga
+      this.inferno.charge = 2;
+      this.smashBtn.setMeter(2, INFERNO.pointsToCharge);
+    }
     this.ghosts = new GhostTrail(this);
     this.fire = new InfernoFire(this);
     this.energyCine = new EnergyCineFx(this); // (17-11-2026) ULTI LEGENDARIA
@@ -3000,6 +3077,8 @@ export class MatchScene extends Phaser.Scene {
   private activateDash(): boolean {
     if (this.l2Freeze) return this.l2Dash();
     if (this.g4Point() !== null || this.g5Point() !== null) return false; // (26-11-2026) niveles 4 y 5 guiados: sin DEFENSIVO
+    if (this.g6Point() === 1 || this.g6Point() === 2) return false; // (27-11-2026) nivel 6, P2 y P3: sin DEFENSIVO
+    if (this.g7Point() !== null) return this.g7Dash(); // (27-11-2026) nivel 7: solo el de las pausas (su SMASH en el P1, su globo en el P3)
     if (this.spKind()) return this.spKind() === 'defspecial' && this.spSt === 'defwait' ? this.spDefDash() : false; // (26-11-2026, usuario) puntos guiados: sin DEFENSIVO, salvo el del nivel 3, P4
     if (this.paused || this.cineLock || this.duel || !this.unlocked('defensive')) return false;
     if (this.player.racket) return this.noRacketHint();
@@ -4215,15 +4294,18 @@ export class MatchScene extends Phaser.Scene {
       this.renderActors();
       return;
     }
+    // (26-11-2026, usuario) ULTI DEFAULT: el mismo avance rápido hasta la pelota, pero SIN sombras de colores (la Default no lleva tanto estilo)
+    const plain = el === 'default';
     if (!st.sound) {
       st.sound = true;
       infernoSound.dash(this);
-      this.ghosts.begin(D.toMs - D.fromMs - 120);
+      if (!plain) this.ghosts.begin(D.toMs - D.fromMs - 120);
     }
     const u = Math.min(1, (e - D.fromMs) / (D.toMs - D.fromMs - 120));
     a.x = from.x + (to.x - from.x) * u;
     a.y = from.y + (to.y - from.y) * u;
     this.renderActors();
+    if (plain) return;
     // 4 sombras en posiciones anteriores reales (solo mientras se desplaza; luego se quedan y se desvanecen)
     if (u < 1) this.ghosts.record(sprites[0], a.ch.depth);
     else this.ghosts.end();
@@ -5062,6 +5144,8 @@ export class MatchScene extends Phaser.Scene {
    * exige alcance y su onHit llama a playerHit una sola vez. Contra un tiro de poder rival, playerHit aplica el aturdido.
    */
   private forcedHit() {
+    // (27-11-2026, usuario) DEFENSIVO: devolvía la pelota desde lejos (le pegaba al aire, p. ej. contra un SUPER SMASH): llega JUNTO a la pelota
+    this.snapToBall(this.player);
     const rivalPower = this.ball.power && this.lastHitter === 'bot';
     if (!rivalPower && this.smashArmed && !this.serveLock && this.startSmashCine()) return;
     this.playerHit(true);
@@ -5123,8 +5207,13 @@ export class MatchScene extends Phaser.Scene {
     this.fire.clear();
     b.ch.swing();
     // devolución débil: GLOBO de verdad al centro (genera el círculo del SMASH para quien lanzó el poder)
-    const tx = NET_X - (NET_X - COURT.left) * rand(0.45, 0.7);
-    const ty = LAT_C + rand(-0.5, 0.5) * HALF_W;
+    let tx = NET_X - (NET_X - COURT.left) * rand(0.45, 0.7);
+    let ty = LAT_C + rand(-0.5, 0.5) * HALF_W;
+    if (this.g6Point() === 1) {
+      // (27-11-2026, usuario) nivel 6, P2: al otro lado del jugador (se mueve un poco y el rival, sin raqueta, alcanza a correr)
+      tx = NET_X - (NET_X - COURT.left) * 0.5;
+      ty = this.player.y > LAT_C ? LAT_C - HALF_W * 0.45 : LAT_C + HALF_W * 0.45;
+    }
     s.z = Math.max(s.z, 22);
     this.smashableLob(s, tx, ty);
     this.ball.setPower(false);
@@ -5400,6 +5489,7 @@ export class MatchScene extends Phaser.Scene {
     this.stunFog.keepSharp(stunTxt);
     // se queda más que un texto normal (1,5 s) para que se lea
     this.tweens.killTweensOf(stunTxt);
+    if (this.g6Point() === 2) stunTxt.setAlpha(0.35); // (27-11-2026, usuario) nivel 6, P3: ¡ATURDIDO! opaco (lo importante: la raqueta)
     this.tweens.add({ targets: stunTxt, scale: 1, y: head.y - 60, duration: 350, ease: 'Back.easeOut' });
     this.tweens.add({ targets: stunTxt, alpha: 0, delay: this.g5Point() === 4 ? 500 : 1500, duration: 300, onComplete: () => stunTxt.destroy() }); // (26-11-2026, usuario) nivel 5, P4: 1 s antes
   }
@@ -5564,6 +5654,7 @@ export class MatchScene extends Phaser.Scene {
       decAt: 0,
     };
     this.duel = d;
+    if (this.cache.audio.exists('vs')) this.sound.play('vs', { volume: 0.7 }); // (27-11-2026, usuario) al aparecer las 2 miradas: sonido de aparición
     this.duelHideButtons(true); // (26-11-2026, usuario) sin RENDIRSE, EMOTES ni AUTO durante el duelo
     this.duelZoomAmt = NET_DUEL.camZoom;
     this.duelCamMid = this.duelMid();
@@ -5715,6 +5806,8 @@ export class MatchScene extends Phaser.Scene {
     this.duelCamera((now - d.lastAt) / 1000);
     d.lastAt = now;
     this.syncAbilityLock();
+    // (27-11-2026, usuario) nivel 7, P2: pausas guiadas del duelo (explicación del primer aro, ¡GANASTE!, elegir el lado)
+    if (this.g7DuelTick(now, d, dt)) return;
     // tope: el duelo NUNCA pasa de maxMs; si algo se atrasa (red), se corta aquí y sale el globo
     if (now - d.t0 > NET_DUEL.maxMs && d.stage !== 'hit') this.duelForceHit(now);
     if (d.stage === 'rounds') this.duelRounds(now, d, dt / 1000);
@@ -5852,6 +5945,9 @@ export class MatchScene extends Phaser.Scene {
     for (const sp of [...spritesIn(this.player.ch), ...spritesIn(this.bot.ch)]) sp.anims?.pause();
     this.ball.spinExtra = 22;
     if (!this.net) rr.rival = botTapMs(this.ai.d, Math.random, rr.ringMs);
+    // (27-11-2026, usuario) nivel 7: el rival toca mal (P2) o casi perfecto (P3); en el primer aro, la instrucción
+    const g7t = this.g7RivalTap();
+    if (g7t !== null) rr.rival = g7t;
     if (this.autoPlay) rr.autoAt = botTapMs(0.7, Math.random, rr.ringMs);
   }
 
@@ -5889,6 +5985,7 @@ export class MatchScene extends Phaser.Scene {
   private duelTap() {
     const d = this.duel;
     if (!d || d.stage !== 'rounds') return;
+    if (this.g7DuelPh === 'explain') return; // (27-11-2026) nivel 7: durante la explicación no cuenta el toque
     const e = performance.now() - d.tR0;
     // la ronda cuyo aro está cerrándose (o se cerró hace menos de lateMs)
     const i = d.rounds.findIndex((r) => e >= r.ringStart && e <= r.close + NET_DUEL.lateMs);
@@ -5979,7 +6076,7 @@ export class MatchScene extends Phaser.Scene {
     d.ring.clear();
     this.setSlowMo(1);
     d.waitUntil = now + (this.net && !d.judge ? NET_DUEL.netWaitMs : 0);
-    if (d.judge) this.duelDecide(duelWinner(d.rounds.map((r) => r.winner ?? 'tie'), d.receiver));
+    if (d.judge) this.duelDecide(this.g7DuelWinner() ?? duelWinner(d.rounds.map((r) => r.winner ?? 'tie'), d.receiver)); // (27-11-2026) nivel 7: ganador del guion
   }
 
   /** (no-juez) espera el 'duel-result' del juez; si no llega a tiempo, usa su propia cuenta de rondas. */
@@ -5988,6 +6085,8 @@ export class MatchScene extends Phaser.Scene {
     else if (now >= d.waitUntil) this.duelDecide(duelWinner(d.rounds.map((r) => r.winner ?? 'tie'), d.receiver));
   }
 
+  /** (27-11-2026) posición del que perdió el duelo mientras el ganador elige el lado (quieto) */
+  private duelAimPin: { x: number; y: number } | null = null;
   /** Ya hay ganador del duelo: avisos y empieza la elección del lado del globo. */
   private duelDecide(winner: Who) {
     const d = this.duel;
@@ -6006,6 +6105,8 @@ export class MatchScene extends Phaser.Scene {
   private duelAimStart(d: DuelState) {
     const w = d.winner as Who;
     const a = w === 'player' ? this.player : this.bot;
+    const lo = w === 'player' ? this.bot : this.player;
+    this.duelAimPin = { x: lo.x, y: lo.y }; // (27-11-2026, usuario) el que perdió queda QUIETO mientras se elige el lado
     a.ch.setCharging(true); // pose de preparación mientras elige
     if (w !== 'player' && !this.net) d.side = Math.random() < 0.75 ? defaultAimSide(this.player.y, LAT_C) : Math.random() < 0.5 ? -1 : 1;
   }
@@ -6013,6 +6114,12 @@ export class MatchScene extends Phaser.Scene {
   /** El ganador sostiene la pelota y elige el lado con el joystick durante aimMs. */
   private duelAim(now: number, d: DuelState) {
     const w = d.winner as Who;
+    const lo = w === 'player' ? this.bot : this.player;
+    if (this.duelAimPin) {
+      lo.x = this.duelAimPin.x;
+      lo.y = this.duelAimPin.y;
+    }
+    lo.ch.setMoving(false, 0);
     const s = this.ball.s;
     const c = this.duelHold(w);
     s.x = c.x;
@@ -6233,7 +6340,7 @@ export class MatchScene extends Phaser.Scene {
       this.maxContactFlash(pc.sx, pc.sy, pc.s);
     });
     const h = this.headPos(a);
-    this.popText(h.x, h.y - 10, '¡GLOBO!', '#ffe680', 34);
+    this.popText(h.x, h.y - 10, '¡SUPER GLOBO!', '#ffd23f', 34); // (27-11-2026, usuario)
     this.duelDefend = loser === this.bot ? 'bot' : 'player';
     this.duelLungeRoll = null;
     this.duelLobUntil = performance.now() + NET_DUEL.lobGraceMs;
@@ -6630,6 +6737,11 @@ export class MatchScene extends Phaser.Scene {
     // en red, un saque / lanzamiento del rival puede adelantar el punto: la llamada retrasada ya no hace nada
     if (this.net && this.phase !== 'pointover' && this.phase !== 'intro') return;
     this.resetRallyClock();
+    // (27-11-2026, usuario) ESPECIAL pulsado tras sacar (falta, o con el punto ya decidido) que no salió: se desarma al volver a sacar
+    // (también su sonido de carga, que seguía sonando)
+    this.disarmUnusedSmash();
+    this.fadeOutSnd(this.smashSnd);
+    this.smashSnd = null;
     if (!secondServe) this.guidePracticeStep = 0;
     this.l2Freeze = null;
     this.l2Won = false;
@@ -6648,6 +6760,8 @@ export class MatchScene extends Phaser.Scene {
     this.spDefRunning = false;
     this.g4Reset();
     this.g5Reset();
+    this.g6Reset();
+    this.g7Reset();
     this.spClock?.destroy();
     this.spClock = undefined;
     this.spHold = null;
@@ -6655,7 +6769,7 @@ export class MatchScene extends Phaser.Scene {
     // (25-11-2026, usuario) puntos guiados: nivel 1 = saca el bot el 1.º y tú los otros 2; nivel 2 = sacas tú los 2. Después, el turno normal
     // por los puntos que cuentan (empiezas tú: 1 tú, 2 el bot, 2 tú)
     // (25-11-2026, usuario) nivel 3: sacas tú en P1 (cortita) y P2 (remate); en P3 saca el rival (lo respondes y luego su ESPECIAL)
-    this.score.fixedServer = this.guide === 'first' && this.score.played < 3 ? (this.score.played === 0 ? 1 : 0) : this.guide === 'spin' && this.score.played < 3 ? 0 : this.guide === 'l3' && this.score.played < 4 ? (this.score.played === 2 ? 1 : 0) : this.guide === 'l4' && this.score.played < 3 ? (this.score.played === 0 ? 0 : 1) : this.guide === 'l5' && this.score.played < 4 ? (this.score.played < 2 ? 0 : 1) : null;
+    this.score.fixedServer = this.guide === 'first' && this.score.played < 3 ? (this.score.played === 0 ? 1 : 0) : this.guide === 'spin' && this.score.played < 3 ? 0 : this.guide === 'l3' && this.score.played < 4 ? (this.score.played === 2 ? 1 : 0) : this.guide === 'l4' && this.score.played < 3 ? (this.score.played === 0 ? 0 : 1) : this.guide === 'l5' && this.score.played < 4 ? (this.score.played < 2 ? 0 : 1) : this.guide === 'l6' && this.score.played < 3 ? (this.score.played < 2 ? 0 : 1) : this.guide === 'l7' && this.score.played < 3 ? 0 : null;
     this.level2PauseArmed = false;
     this.netNextSecond = false;
     this.rallyOutMarkPending = false;
@@ -7103,7 +7217,13 @@ export class MatchScene extends Phaser.Scene {
       this.ball.setImpactTrail(1, 0xffd23f);
       this.cameras.main.flash(110, 255, 220, 120);
       this.cameras.main.shake(120, 0.006);
-      this.popText(p.sx, p.sy - 50, '¡SAQUE DIRECTO!', '#ffd23f', 38);
+      // (27-11-2026, usuario) el texto, en la T de quien saca y hacia su lado (antes en lo alto del saque: a media pantalla)
+      const srv = this.srvActor();
+      const mine = srv.x < NET_X;
+      const tx = mine ? NET_X - (NET_X - COURT.left) * 0.538 : NET_X + (COURT.right - NET_X) * 0.538;
+      const ty = LAT_C + Math.sign(srv.y - LAT_C || 1) * HALF_W * 0.3;
+      const tp = project(tx, ty, 0);
+      this.popText(tp.sx, tp.sy - 20, '¡SAQUE DIRECTO!', '#ffd23f', 38);
       return;
     }
     const p = project(bx, by, bz);
@@ -7362,7 +7482,7 @@ export class MatchScene extends Phaser.Scene {
     if (this.guide === 'spin' && this.score.played === 1) {
       this.phase = 'pointover';
       const h0 = this.headPos(this.srvActor());
-      this.popText(h0.x, h0.y - 10, 'OTRA VEZ', '#ffc42e', 36);
+      this.popText(h0.x, h0.y - 10, 'REPITAMOS EL PUNTO', '#ffc42e', 36);
       this.time.delayedCall(1100, () => this.startPoint(false));
       return;
     }
@@ -7415,7 +7535,7 @@ export class MatchScene extends Phaser.Scene {
     for (const b of this.doubles ? this.rivalBrains : [this.brain]) b.forceOut = chance;
     // (26-11-2026, usuario) niveles 1 y 2, puntos libres: el rival falla (fuera o a la red) tras 3 o 4 peloteos
     this.botHitsPoint = 0;
-    this.botMissAt = on && lv <= 2 && !this.doubles ? Phaser.Math.Between(3, 4) : 0;
+    this.botMissAt = on && lv <= 2 && !this.doubles ? Phaser.Math.Between(3, 4) : on && this.g6Point() === 0 ? Phaser.Math.Between(3, 5) : 0; // (27-11-2026, usuario) nivel 6, P1: tras 3 a 5 golpes
     if (this.botMissAt) this.brain.forceOut = 0;
   }
   /** golpes del rival en este punto y en cuál falla a propósito (0 = no) */
@@ -7441,6 +7561,8 @@ export class MatchScene extends Phaser.Scene {
     }
     if (this.spRetry(w)) return;
     if (this.g4Retry(w)) return;
+    if (this.g6Retry(w)) return; // (27-11-2026, usuario) nivel 6 guiado
+    if (this.g7Retry()) return; // (27-11-2026, usuario) nivel 7 guiado
     if (this.g5Retry()) return; // (26-11-2026, usuario) nivel 5 guiado sin terminar // (26-11-2026, usuario) nivel 4 guiado sin terminar: OTRA VEZ // (25-11-2026, usuario) punto guiado sin terminar: el bot la tira otra vez
     if (this.lessonPractice()) {
       this.feedLessonBall(); // (24-11-2026) ejercicio del nivel 3 / 4: la pelota vuelve hasta terminarlo
@@ -7470,7 +7592,13 @@ export class MatchScene extends Phaser.Scene {
       else if (who && who === this.rivalActors[0]) this.pointStats.r1++;
       else if (who && who === this.rivalActors[1]) this.pointStats.r2++;
     }
-    if (w === 'player' && ++this.tutPointsWon >= 3) this.tutMission('tPoints3'); // (24-11-2026) misiones del tutorial
+    if (w === 'player' && ++this.tutPointsWon >= 3) this.tutMission('tPoints3');
+    if ((this.g6Smash || this.g7Point() === 1) && w === 'player') {
+      // (27-11-2026, usuario) nivel 6: los avisos de misión del P2 (Usar Ulti…) salen al ganar ese punto
+      const q = this.g6AlertQ;
+      this.g6AlertQ = [];
+      q.forEach((f, i) => this.time.delayedCall(500 + i * 700, () => this.sys.isActive() && f()));
+    } // (24-11-2026) misiones del tutorial
     if (w === 'player' && reason === '¡DROP SHOT 0!') this.tutMission('tDrop0');
     this.duelAbort('point'); // punto decidido (también el que llega por red): el duelo en curso se cancela
     this.phase = 'pointover';
@@ -7487,7 +7615,7 @@ export class MatchScene extends Phaser.Scene {
     const prevLabels = this.score.labels();
     const prevGames: [string, string] = [String(this.score.games[0]), String(this.score.games[1])];
     // (25-11-2026, usuario) los puntos guiados también CUENTAN (antes no sumaban: Score.pointTo practice)
-    const res = this.score.pointTo(w === 'player' ? 0 : 1);
+    const res = this.score.pointTo(w === 'player' ? 0 : 1, this.g6Practice()); // (27-11-2026) nivel 6: P2 y P3 no suman
     if (!this.net) this.botEmoteOnPoint(w, res.gameWinner === 0);
     this.netPlaced = false; // (red) los estados que mande desde ahora son del punto siguiente, aún sin colocarse
     // ZONA: el punto jugado consume un turno de Zona; quien va perdiendo por 2 con 2+ puntos ganados (o va 0-40) puede entrar
@@ -7546,7 +7674,7 @@ export class MatchScene extends Phaser.Scene {
     }
     stopMotion(this.motion);
     this.player.ch.pointEnd(w === 'player', w === 'player' && this.epicPoint);
-    this.bot.ch.pointEnd(w === 'bot');
+    this.bot.ch.pointEnd(w === 'bot'); // (27-11-2026, usuario) nivel 6, P2: sin raqueta no reacciona: va a buscarla y la recoge
     if (this.doubles && this.ally) {
       this.ally.ch.pointEnd(w === 'player');
       this.otherRival()?.ch.pointEnd(w === 'bot');
@@ -7561,7 +7689,7 @@ export class MatchScene extends Phaser.Scene {
         showPointSplash(this, { ...names, labels: [String(g2[0]), String(g2[1])], prevLabels: prevGames, title: 'JUEGOS', status: null, matchPoint: false, onChange: () => this.updateHud() }),
       );
       if (mp) this.time.delayedCall(450, () => showSideNotice(this, 'Punto de partido', 0xff3b4e, 1800));
-      this.time.delayedCall(250 + POINT_SPLASH_MS + 100, () => this.startPoint());
+      this.time.delayedCall(250 + POINT_SPLASH_MS + 100 + (this.g6Smash ? G6_FETCH_WAIT_MS : 0), () => this.startPoint());
       return;
     }
     const status = [why, this.score.status()].filter(Boolean).join(' · ') || null;
@@ -7569,7 +7697,7 @@ export class MatchScene extends Phaser.Scene {
     // qué pasó (DOBLE FALTA, FUERA, IGUALES…) y PUNTO DE PARTIDO: avisos que entran desde la izquierda
     if (status) this.time.delayedCall(450, () => showSideNotice(this, status, 0xffd23f, 1600));
     if (mp) this.time.delayedCall(650, () => showSideNotice(this, 'Punto de partido', 0xff3b4e, 1600));
-    this.time.delayedCall(250 + POINT_SPLASH_MS + 100, () => this.startPoint());
+    this.time.delayedCall(250 + POINT_SPLASH_MS + 100 + (this.g6Smash ? G6_FETCH_WAIT_MS : 0), () => this.startPoint());
   }
 
   /**
@@ -7673,17 +7801,19 @@ export class MatchScene extends Phaser.Scene {
     // (25-11-2026, usuario) en los puntos guiados (globo, cortita, remate...) tampoco: se ven en gris
     // (26-11-2026, usuario) nivel 5, P3: el ESPECIAL se enciende recién al terminar el reloj
     const g5SpReady = this.g5Point() === 3 && this.g5St === 'spwait' && this.time.now - this.g5At >= SP_LOB_CLOCK_MS;
-    const lock = this.serveLock || !!this.player.racket || !!this.duel || this.player.stun > 0 || (!!this.spKind() && !this.spDefWait()) || this.g4LockAbilities() || (this.g5Point() !== null && !g5SpReady);
+    const g6Lock = (this.g6Point() === 1 || this.g6Point() === 2) && !(this.g6Point() === 1 && this.g6St === 'uwait' && this.g6UltiGate()); // (27-11-2026) nivel 6: P2 solo la ULTI tras el reloj; P3 nada
+    const g7Lock = this.g7Point() !== null && !this.g7DashReady(); // (27-11-2026) nivel 7: solo el DEFENSIVO de su pausa
+    const lock = this.serveLock || !!this.player.racket || !!this.duel || this.player.stun > 0 || (!!this.spKind() && !this.spDefWait()) || this.g4LockAbilities() || (this.g5Point() !== null && !g5SpReady) || g6Lock || g7Lock;
     // (26-11-2026, usuario) nivel 4, P1: el ESPECIAL se ve ENCENDIDO al pedirlo (aunque sea el resto del saque); DEFENSIVO apagado en los 3 guiados
     const g4Spec = (this.g4Point() === 0 && this.g4St === 'wait') || g5SpReady;
     const want = (btn: AbilityButton, key: UnlockKey, extraLock = false, force = false) => {
       const on = force || (!lock && !extraLock && this.unlocked(key));
       if (btn.enabled !== on) btn.setEnabled(on);
     };
-    want(this.dashBtn, 'defensive', this.g4Point() !== null || this.g5Point() !== null || (this.guide === 'l5' && !!this.remateCine)); // (26-11-2026, usuario) nivel 5 guiado: DEFENSIVO apagado (ESPECIAL y SMASH)
+    want(this.dashBtn, 'defensive', this.g4Point() !== null || this.g5Point() !== null || this.g6Point() === 1 || this.g6Point() === 2 || (this.guide === 'l5' && !!this.remateCine)); // (26-11-2026, usuario) nivel 5 guiado: DEFENSIVO apagado (ESPECIAL y SMASH)
     // en modo ULTI el botón del ESPECIAL usa el desbloqueo de la ULTI; y (21-11-2026, usuario) sin ULTI contra ULTI: si el rival lanzó la suya
     // primero, la tuya queda apagada hasta que el que recibe su golpe recupere la raqueta
-    want(this.smashBtn, this.smashBtn.inferno ? 'ulti' : 'special', this.smashBtn.inferno && this.ultiBlocked('player'), g4Spec);
+    want(this.smashBtn, this.smashBtn.inferno ? 'ulti' : 'special', (this.smashBtn.inferno && this.ultiBlocked('player')) || this.g7Point() !== null, g4Spec);
   }
 
   /** ¿La habilidad está desbloqueada para tu nivel? (domain/unlocks.ts; en modo desarrollo el perfil es nivel 20) */
@@ -7722,7 +7852,9 @@ export class MatchScene extends Phaser.Scene {
       return;
     }
     if (this.g4Point() !== null && (!this.g4ChargeOk() || this.charging)) return;
-    if (this.g5Point() !== null && !this.remateCine && (this.g5St !== 'charge' || this.charging)) return; // (el toque del REMATE sí pasa) // (26-11-2026, usuario) nivel 5: cargar solo cuando se pide // (26-11-2026, usuario) nivel 4: cargar solo cuando se pide (y sin cancelarla)
+    if ((this.g6Point() === 1 || this.g6Point() === 2) && !this.remateCine) return;
+    if (this.g7Point() !== null && !this.g7ChargeOk()) return; // (27-11-2026, usuario) nivel 7: cargar solo en la pausa de la ESTIRADA // (27-11-2026, usuario) nivel 6, P2 y P3: sin CARGAR golpe (solo el botón de la ULTI; el toque del SMASH sí pasa)
+    if (this.g5Sm() && !this.remateCine && (this.g5St !== 'charge' || this.charging)) return; // (el toque del REMATE sí pasa) // (26-11-2026, usuario) nivel 5: cargar solo cuando se pide // (26-11-2026, usuario) nivel 4: cargar solo cuando se pide (y sin cancelarla)
     // (25-11-2026, usuario) nivel 2, P3 GLOBO: mientras se explica o se espera el joystick, los toques no hacen nada
     if (((this.spSt === 'approach' || this.spSt === 'hold' || this.spSt === 'defwait' || this.spSt === 'approach2') && !!this.spKind()) || this.spSpecialLock()) return; // (y nivel 3: CORTITA y REMATE)
     // REMATE en curso: el toque es el golpe
@@ -7746,7 +7878,7 @@ export class MatchScene extends Phaser.Scene {
     // Perfect Timing: el toque que empieza la carga es el "swing" del jugador
     if (this.phase === 'rally') this.timing.registerTap(this.tapClock(eventMs));
     // CARGANDO GOLPE bloqueado por nivel (domain/unlocks.ts): el toque cuenta para el timing, pero no carga
-    if (!this.unlocked('charge') && !this.practiceChargeLimit() && !this.g4ChargeOk()) return;
+    if (!this.unlocked('charge') && !this.practiceChargeLimit() && !this.g4ChargeOk() && !this.g7ChargeOk()) return;
     this.chargeFullAt = null;
     this.charging = true;
     this.charge = 0;
@@ -8003,6 +8135,8 @@ export class MatchScene extends Phaser.Scene {
         this.serveCtl.startRally();
         if (this.g4Point() === 0 && this.server === 'player') this.g4St = 'fly'; // (26-11-2026, usuario) nivel 4, P1
         else if (this.g5Point() !== null && this.server === 'player') this.g5St = 'fly'; // (26-11-2026, usuario) nivel 5
+        else if (this.g6Point() === 1 && this.server === 'player') this.g6St = 'fly'; // (27-11-2026, usuario) nivel 6, P2
+        else if (this.g7Point() !== null && this.server === 'player') this.g7St = 'fly'; // (27-11-2026, usuario) nivel 7
         else if (this.spKind() && this.server === 'player') this.spSt = 'fly'; // (25-11-2026, usuario) punto guiado: tu saque va al bot (tickScripted)
         else if (this.practicingReturns() && this.server === 'player') {
           // (25-11-2026, usuario) nivel 2, P1: tu saque va al bot (tickGuide 'fly') y te tira fuerte al otro lado (quieto: solo queda el DEFENSIVO)
@@ -8072,6 +8206,21 @@ export class MatchScene extends Phaser.Scene {
   }
 
   /** Distancia (en el suelo) entre la pelota y la raqueta del personaje. */
+  /**
+   * (27-11-2026, usuario) Golpe con la pelota lejos (más de medio alcance): el personaje da un paso rápido (90 ms) hasta ella, con la pelota
+   * junto a su raqueta (antes golpeaba "al aire", a ~2 m). Solo 1v1.
+   */
+  private snapToBall(a: Actor) {
+    const s = this.ball.s;
+    if (this.doubles || this.reachDist(a, s) <= HIT_RANGE * 0.4) return;
+    const mine = a === this.player;
+    const ty = clamp(s.y + (s.y > a.y ? -18 : 18), Y_MIN, Y_MAX);
+    const tx = mine ? clamp(Math.min(a.x, s.x - 10), P_X[0], P_X[1]) : clamp(Math.max(a.x, s.x + 10), B_X[0], B_X[1]);
+    // (27-11-2026, usuario) al instante: con el tween el golpe salía con el sprite aún lejos de la pelota
+    this.tweens.killTweensOf(a);
+    a.x = tx;
+    a.y = ty;
+  }
   private reachDist(a: Actor, s: BallState) {
     const dx = s.x - (a.x + a.dir * 15);
     const dy = (s.y - a.y) * 1.25;
@@ -8150,9 +8299,12 @@ export class MatchScene extends Phaser.Scene {
     // el cuerpo va a por la pelota en profundidad; de lado solo lo que no cubre el brazo tendido del clip
     const arm = dived ? LUNGE_ARM : HIT_RANGE / 1.25 * 0.6;
     const gapY = Math.abs(c.y - pl.y);
-    const tx = clamp(c.x - pl.dir * 15, P_X[0], P_X[1]);
-    const ty = clamp(c.y - side * Math.min(arm, gapY), Y_MIN, Y_MAX);
+    // (27-11-2026, usuario) el cuerpo se desplaza de LADO hacia la pelota (en profundidad casi nada): el brazo tendido cubre como mucho el
+    // 30 %; el resto lo recorre el cuerpo. El desplazamiento termina justo con el CONTACTO del sprite de la estirada (lungeSync)
+    const tx = clamp(pl.x + clamp(c.x - pl.dir * 15 - pl.x, -25, 25), P_X[0], P_X[1]);
+    const ty = clamp(c.y - side * Math.min(arm * 0.3, gapY), Y_MIN, Y_MAX);
     const ms = Math.max(60, c.t * 1000);
+    if (dived) pl.ch.lungeSync(ms / 1000);
     this.tweens.add({ targets: pl, x: tx, y: ty, duration: ms, ease: 'Quad.easeOut' });
     // en red el rival ve la estirada AL EMPEZAR (no 0,2 s tarde con el golpe): lado y punto de llegada
     this.net?.sendAction('lunge', { side, x: pl.x, y: pl.y, tx, ty, ms });
@@ -8183,7 +8335,8 @@ export class MatchScene extends Phaser.Scene {
     const tgx = NET_X + (COURT.right - NET_X) * rand(0.6, 0.85);
     const tgy = LAT_C + rand(-0.45, 0.45) * (HALF_W - 30);
     s.z = Math.max(s.z, 18);
-    aimShot(s, tgx, tgy, SHOT_SPEED * 0.72, 80);
+    if (this.g7Point() === 0) this.smashableLob(s, NET_X + (COURT.right - NET_X) * 0.5, LAT_C); // (27-11-2026, usuario) nivel 7, P1: globo con círculo (su SMASH)
+    else aimShot(s, tgx, tgy, SHOT_SPEED * 0.72, 80);
     this.ball.setPower(false);
     // ESPECIAL armado: la estirada NO lo gasta (se pagó su recarga al armarlo) y sigue armado para tu próximo golpe, pero
     // este globo no es un tiro de poder: se apaga el fuego de la pelota y vuelve a encenderse cuando el rival la devuelve
@@ -8211,7 +8364,9 @@ export class MatchScene extends Phaser.Scene {
     }
     if (this.guide === 'first' && this.score.played <= 2 && this.guideHits()) return;
     if (this.g4Point() !== null && this.g4BlockHits()) return; // (26-11-2026, usuario) nivel 4 guiado
-    if (this.g5Point() !== null && this.g5BlockHits(s)) return; // (26-11-2026, usuario) nivel 5 guiado
+    if (this.g5Sm() && this.g5BlockHits(s)) return; // (26-11-2026, usuario) nivel 5 guiado (y el SMASH del nivel 6)
+    if (this.g6BlockHits()) return; // (27-11-2026, usuario) nivel 6 guiado
+    if (this.g7BlockHits()) return; // (27-11-2026, usuario) nivel 7 guiado
     if (this.spKind() && this.spBlockHits(s)) return; // (25-11-2026, usuario) puntos guiados: globo, cortita, remate, ESPECIAL del rival
     // (25-11-2026, usuario) nivel 2, P2: el saque del bot quieto en el aire; al llegar le pegas y va al bot
     if (this.guide === 'spin' && this.practicingReturns() && this.l2Stage === 'held') {
@@ -8333,6 +8488,8 @@ export class MatchScene extends Phaser.Scene {
         return;
       }
       if (near || smashReach) {
+        // (27-11-2026, usuario) el rival golpeaba con la pelota lejos (tutorial, o con su DEFENSIVO, que le da más alcance): llega JUNTO a ella
+        if ((this.tutorial || this.brain.dashBall) && !this.doubles) this.snapToBall(this.bot);
         // en ZONA el rival RESISTE el ESPECIAL (18-11-2026, usuario: "¡RESISTE!" y aturdido solo 1 s); la ULTI aturde siempre
         if (this.ball.power && (this.infernoFlight || !this.zone.active('bot'))) this.fireImpact();
         else if (this.ball.power && !this.infernoFlight) this.fireImpact(true);
@@ -8367,14 +8524,15 @@ export class MatchScene extends Phaser.Scene {
    * INFERNO (mirada, energía, desplazamiento con sombras) y luego el golpe con la esfera de fuego. true = la lanzó
    * (el golpe lo da la cinemática al terminar).
    */
-  private botUlti(s: BallState): boolean {
-    if (!this.botAbilityUnlocked('ulti')) return false;
+  /** `force` (27-11-2026, nivel 6 guiado): la lanza sí o sí (sin desbloqueo, sin su decisión ni el bloqueo de ULTI contra ULTI) */
+  private botUlti(s: BallState, force = false): boolean {
+    if (!force && !this.botAbilityUnlocked('ulti')) return false;
     if (this.cineLock || this.phase !== 'rally' || this.serveLock) return false; // sin ULTI en el resto del saque
-    if (this.ultiBlocked('bot')) return false; // sin ULTI contra ULTI: tu ULTI salió primero y el rival espera a recuperar la raqueta
+    if (!force && this.ultiBlocked('bot')) return false; // sin ULTI contra ULTI: tu ULTI salió primero y el rival espera a recuperar la raqueta
     const bt = this.bot;
     const ctx = { playerX: this.player.x, playerY: this.player.y, botX: bt.x, botY: bt.y };
     if (this.rivalSpecialLimit) return false; // 2v2 online: el compañero ya lanzó un especial en este punto (contra bots no hay límite)
-    if (!this.brain.wantsUlti(s, ctx)) return false;
+    if (!force && !this.brain.wantsUlti(s, ctx)) return false;
     if (this.doubles) this.rivalSpecialUsed = true;
     this.ultiStart('bot', this.player);
     // su carga visible (botChargeTick) se apaga ya: la escena se congela durante la cinemática
@@ -8912,7 +9070,7 @@ export class MatchScene extends Phaser.Scene {
     // sin ESPECIAL en el resto del saque (serveLock: este golpe sería el 2º del punto)
     if (this.botMissAt) this.brain.forceOut = ++this.botHitsPoint >= this.botMissAt ? 1 : 0; // (26-11-2026) niveles 1-2: falla al 3.º-4.º
     let shot = this.brain.planShot(s, { playerX: this.player.x, playerY: this.player.y, botX: this.bot.x, botY: this.bot.y }, ulti,
-      !this.spForceSpecial && (this.serveLock || !this.botAbilityUnlocked('special') || (this.rivalSpecialLimit && !ulti)), forcePower || this.spForceSpecial, this.guide !== 'spin' && !(this.tutorial && getPlayer().level < BOT_DROP0_LEVEL)); // (26-11-2026, usuario) el rival sin DROP SHOT 0 hasta después de enseñarlo
+      !this.spForceSpecial && (this.serveLock || !this.botAbilityUnlocked('special') || (this.rivalSpecialLimit && !ulti)), forcePower || this.spForceSpecial, this.guide !== 'spin' && !(this.tutorial && getPlayer().level < BOT_DROP0_LEVEL) && this.g6Point() !== 0); // (27-11-2026, usuario) nivel 6, P1: sin DROP SHOT 0 // (26-11-2026, usuario) el rival sin DROP SHOT 0 hasta después de enseñarlo
     // (25-11-2026, usuario) nivel 3, P3: el ESPECIAL del rival SIEMPRE (el cerebro lo negaba sin la habilidad cargada o con mal contacto)
     if (this.spForceSpecial && !shot.power) {
       shot = {
@@ -9021,7 +9179,9 @@ export class MatchScene extends Phaser.Scene {
       this.netHitA = this.rivalActors.indexOf(this.bot) + 1;
     }
     this.brain.onShot(shot); // se recoloca según su golpe (recuperación táctica)
-    this.hitFxAt(fxDelay, s.x, s.y, s.z, power, 0.15, ulti, ulti ? el : power ? this.botKit.smash : undefined);
+    // (27-11-2026, usuario) su impacto en la pelota se nota según la fuerza del golpe (antes siempre el más suave)
+    const botLv = power ? 0.15 : clamp(0.25 + (shotSpeed / SHOT_SPEED - 0.8) * 0.6, 0.2, 0.75);
+    this.hitFxAt(fxDelay, s.x, s.y, s.z, power, botLv, ulti, ulti ? el : power ? this.botKit.smash : undefined);
     const h = this.headPos(this.bot);
     if (ulti) {
       // ULTI: esfera de fuego en vuelo, explosión, sacudida y sonido (los mismos que cuando la lanza el jugador)
@@ -9105,7 +9265,7 @@ export class MatchScene extends Phaser.Scene {
   /** Vector de entrada en pantalla: x = derecha, y = abajo. */
   private inputVector(): Phaser.Math.Vector2 {
     if (this.autoPlay) return this.autoMoveVector();
-    if (this.l2Lock || this.spSpecialLock()) return new Phaser.Math.Vector2(0, 0); // (25-11-2026) nivel 2: quieto hasta el DEFENSIVO; nivel 3, P3: quieto ante el ESPECIAL
+    if (this.l2Lock || this.spSpecialLock() || (this.g6Point() === 2 && this.g6St === 'rpause')) return new Phaser.Math.Vector2(0, 0); // (27-11-2026, usuario) nivel 6, P3: quieto con el reloj de la raqueta // (25-11-2026) nivel 2: quieto hasta el DEFENSIVO; nivel 3, P3: quieto ante el ESPECIAL
     const v = this.joy.value.clone();
     const k = this.keys;
     if (k && v.lengthSq() === 0) {
@@ -9374,7 +9534,7 @@ export class MatchScene extends Phaser.Scene {
 
   /** (25-11-2026, usuario) puntos guiados del partido (sí suman al marcador; GANA 4 PUNTOS sale al terminar): nivel 1 = 3 (joystick, saque tocando, saque directo); nivel 2 = 3 (saque directo, DEFENSIVO, saque con efecto) */
   private guidePracticeCount() {
-    return this.guide === 'first' ? 3 : this.guide === 'spin' ? 3 : this.guide === 'l3' ? 4 : this.guide === 'l4' ? 3 : this.guide === 'l5' ? 4 : 0;
+    return this.guide === 'first' ? 3 : this.guide === 'spin' ? 3 : this.guide === 'l3' ? 4 : this.guide === 'l4' ? 3 : this.guide === 'l5' ? 4 : this.guide === 'l6' ? 3 : this.guide === 'l7' ? 3 : 0;
   }
 
   /** (25-11-2026, usuario) tutorial: al empezar los puntos que cuentan, "GANA 4 PUNTOS" grande (si no ganas, se repite el nivel sin EXP ni premios) */
@@ -9401,6 +9561,7 @@ export class MatchScene extends Phaser.Scene {
 
   private doingGuidePoint() {
     if (this.guide === 'l4') return this.score.played < 3; // (26-11-2026, usuario) nivel 4 guiado
+    if (this.guide === 'l7') return this.score.played < 3; // (27-11-2026) nivel 7 guiado: sin reloj del peloteo (pausas largas)
     return this.guide === 'first' ? this.score.played < 3 : this.guide === 'spin' ? this.practicingReturns() : this.lessonPractice();
   }
 
@@ -10045,6 +10206,17 @@ export class MatchScene extends Phaser.Scene {
     }
     // ---------------- P2 (y P4 tras el ESPECIAL): SMASH con el CÍRCULO
     if (pt === 2) return '';
+    return this.g5SmashFlow(pt, G5_TEXT.ring);
+  }
+
+  /**
+   * (26-11-2026, usuario) el SMASH guiado con el CÍRCULO: el globo del rival pasa la red y se para (reloj), CORRE AL CÍRCULO, saltas y, con el aro
+   * cerrándose despacio, `ringText` (pausa) y tocas = SUPER SMASH. Nivel 5 (P2 y P3) y (27-11-2026) nivel 6, P2 (tras la ULTI).
+   */
+  private g5SmashFlow(pt: number, ringText: string): string {
+    const s = this.ball.s;
+    const pl = this.player;
+    const now = this.time.now;
     // (26-11-2026, usuario) se pausa cuando el globo YA PASÓ LA RED (en el aire, en tu lado de la cancha), con el círculo a la vista
     if (this.g5St === 'fed' && this.lastHitter === 'bot' && this.lob.state.active && this.lob.state.receiver === 'player' && this.ball.s.x < NET_X - 40) {
       // salió el círculo: pausa de 2 s con el reloj
@@ -10054,7 +10226,7 @@ export class MatchScene extends Phaser.Scene {
       this.g5Pin = { x: pl.x, y: pl.y };
       this.g5At = now;
       this.g5Clock?.destroy();
-      this.g5Clock = this.guideClock(G5_CIRCLE_MS);
+      this.g5Clock = this.guideClock(G5_CIRCLE_MS, this.scale.height * 0.32 + 110); // (27-11-2026, usuario) bajo CORRE AL CÍRCULO (el reloj se queda ahí)
     }
     if (this.g5St === 'circle') {
       // 2 s con el reloj (tú quieto); luego CORRES al círculo con la pelota y el rival aún en pausa
@@ -10094,7 +10266,7 @@ export class MatchScene extends Phaser.Scene {
         s.y = b.y + b.vy * tau + 0.5 * (b.ay ?? 0) * tau * tau;
         s.z = Math.max(REMATE.contactZ * 0.8, b.z + b.vz * tau - 0.5 * gv * tau * tau);
         s.vx = s.vy = s.vz = 0;
-        return G5_TEXT.ring; // (26-11-2026, usuario) solo este texto (sin TOCA EL LADO DERECHO)
+        return ringText; // (26-11-2026, usuario) solo este texto (sin TOCA EL LADO DERECHO)
       }
       if (this.lastHitter === 'player') {
         this.lobMarker.setOnTop(false);
@@ -10119,8 +10291,966 @@ export class MatchScene extends Phaser.Scene {
     this.phase = 'pointover';
     this.faults = 0;
     const h0 = this.headPos(this.player);
-    this.popText(h0.x, h0.y - 10, 'OTRA VEZ', '#ffc42e', 36);
+    this.popText(h0.x, h0.y - 10, 'REPITAMOS EL PUNTO', '#ffc42e', 36);
     this.time.delayedCall(1100, () => this.startPoint(false));
+    return true;
+  }
+
+  // ---------------------------------------------------------------- NIVEL 6 GUIADO (27-11-2026, usuario)
+  /**
+   * El partido empieza 2-2 (tu ULTI ya con 2 de 3 cargas). P1 = GANA 1 PUNTO usando DEFENSIVO o ESPECIAL (si no, se repite): cuenta (3-2) y la
+   * ULTI queda lista. P2 = sacas; el rival devuelve a tu T y la pelota se para: vas a ella, reloj con ULTI DISPONIBLE / PRIMERO DEBES JUNTAR
+   * 3 PUNTOS y luego USA LA ULTI: va al rival, que pierde la raqueta y no responde. P3 = saca el rival, lo respondes y te lanza SU ULTI (quieto:
+   * ves cómo se siente). P2 y P3 se juegan pero NO suman (con el 2-2 el partido se acabaría). P4 = GANA 1 PUNTO.
+   */
+  private g6St: 'free' | 'serve' | 'fly' | 'fed' | 'approach' | 'uwait' | 'ucine' | 'ufly' | 'stunp' | 'smash' | 'ret' | 'bfly' | 'bulti' | 'taken' | 'rpause' | 'rget' | 'bret' | 'bfed' | 'papp' | 'pfin' | 'done' = 'free';
+  private g6Hold: { x: number; y: number; z: number } | null = null;
+  private g6Pin: { x: number; y: number } | null = null;
+  private g6At = 0;
+  private g6Clock?: Phaser.GameObjects.Container;
+  /** P1: usaste DEFENSIVO o ESPECIAL en este punto */
+  private g6Used = false;
+  /** avisos de misión retrasados (P2: no saltan en el zoom); salen al empezar el punto siguiente */
+  private g6AlertQ: (() => void)[] = [];
+  /** P2: el zoom al rival aturdido (pausa de 3 s) */
+  private g6Zoom() {
+    return this.g6Point() === 1 && (this.g6St === 'ufly' || this.g6St === 'stunp'); // (27-11-2026, usuario) el zoom empieza antes del impacto
+  }
+  /** botones y emotes ocultos durante el zoom */
+  private g6UiHidden = false;
+  private g6HideUi(hide: boolean) {
+    if (this.g6UiHidden === hide) return;
+    this.g6UiHidden = hide;
+    this.duelHideButtons(hide); // RENDIRSE, EMOTES y AUTO
+    this.joy.setHidden(hide);
+    this.dashBtn.setVisible(!hide);
+    this.smashBtn.setVisible(!hide);
+  }
+  /** P1: el rival ya respondió tu saque */
+  private g6Returned = false;
+  /** P1: el punto se perdió por DESCONCENTRACIÓN (cuenta y el tutorial sigue) */
+  private g6Desc = false;
+  /** P1: el guion lleva al rival a tu saque (hasta que lo responde) */
+  private g6P1Steer() {
+    return this.g6Point() === 0 && this.server === 'player' && !this.g6Returned && (this.phase === 'rally' || this.phase === 'toss');
+  }
+  /** P3: la ULTI del rival ya salió y va hacia ti */
+  private g6Aimed = false;
+
+  /** (27-11-2026) P2: tras la pausa del rival aturdido, el SMASH del círculo (usa los estados del nivel 5: g5SmashFlow) */
+  private g6Smash = false;
+  /** zoom de la cámara al rival aturdido (0..1) */
+  private g6CamK = 0;
+  /** aturdido del rival guardado en la pausa (no se le pasa mientras dura) */
+  private g6BotStun = 0;
+  private g6Vel: { vx: number; vy: number; vz: number } | null = null;
+  /** la pelota ya se soltó en la pausa del aturdido (no se vuelve a parar) */
+  private g6Released = false;
+  /** ¿SMASH guiado con el círculo (nivel 5 o nivel 6, P2)? */
+  private g5Sm() {
+    return this.g5Point() !== null || this.g6Smash;
+  }
+
+  private g6Point(): 0 | 1 | 2 | null {
+    if (this.guide !== 'l6' || this.score.played > 2) return null;
+    return this.score.played as 0 | 1 | 2;
+  }
+  /** P2: se juega pero no suma al marcador (con el 3-2 terminaría el partido). (27-11-2026, usuario) el P3 (la ULTI del rival) sí suma: 3-3 */
+  private g6Practice() {
+    // (27-11-2026, usuario) desde 0-0 todos los puntos guiados suman (P1, P2 y P3: 3-0) y el P4 cierra 4-0
+    return false;
+  }
+  /** P1: marca que usaste una habilidad (DEFENSIVO o ESPECIAL) */
+  private g6Mark(ok: boolean) {
+    if (ok && this.g6Point() === 0) this.g6Used = true;
+    return ok;
+  }
+  /** P2: la ULTI solo se puede pulsar en su pausa y tras el reloj */
+  private g6UltiGate() {
+    const pt = this.g6Point();
+    if (pt === null || pt === 0) return true;
+    return pt === 1 && this.g6St === 'uwait' && this.time.now - this.g6At >= G6_CLOCK_MS;
+  }
+  private g6Reset() {
+    if (this.g6St === 'stunp') {
+      this.setSlowMo(1); // (27-11-2026) la cámara lenta del aturdido no pasa al punto siguiente
+      for (const sp of spritesIn(this.bot.ch)) if (sp.anims) sp.anims.timeScale = 1;
+      this.ball.sprite.setAlpha(1);
+      this.ball.shadow.setAlpha(1);
+    }
+    const pt = this.g6Point();
+    this.g6St = pt === 0 ? 'free' : pt === 1 ? 'serve' : pt === 2 ? 'ret' : 'done';
+    this.g6At = this.time.now;
+    this.g6Hold = null;
+    this.g6Pin = null;
+    this.g6Used = false;
+    this.g6Returned = false;
+    this.g6Desc = false;
+    this.g6Aimed = false;
+    this.g6Smash = false;
+    this.g6Vel = null;
+    this.g6Released = false;
+    this.g6HideUi(false);
+    if (this.guide === 'l6') {
+      // (27-11-2026) los botones que se ocultaron sin raqueta (P3) vuelven
+      this.dashBtn.setVisible(true);
+      this.smashBtn.setVisible(true);
+    }
+    const q = this.g6AlertQ;
+    this.g6AlertQ = [];
+    q.forEach((f, i) => this.time.delayedCall(400 + i * 700, () => this.sys.isActive() && f()));
+    this.g6Clock?.destroy();
+    this.g6Clock = undefined;
+  }
+  /** estados en los que al rival lo mueve el guion (no su cerebro) */
+  private g6BotScripted() {
+    if (this.g6Smash && this.phase !== 'rally') return false; // (27-11-2026, usuario) P2 terminado: va a buscar su raqueta
+    if (this.g6P1Steer() && this.lastHitter === 'player') return true; // P1: va a tu saque
+    const pt = this.g6Point();
+    return pt !== null && pt !== 0 && ['serve', 'fly', 'fed', 'approach', 'uwait', 'ucine', 'ufly', 'stunp', 'smash', 'ret', 'bfly', 'bulti', 'taken', 'rpause', 'rget', 'bret', 'bfed', 'papp', 'pfin'].includes(this.g6St);
+  }
+  private g6BlockHits(): boolean {
+    const pt = this.g6Point();
+    if (pt === 0 && this.g6P1Steer() && this.lastHitter === 'player') return true; // (27-11-2026) P1: tu saque lo devuelve el guion (junto a la pelota)
+    if (pt === null || pt === 0) return false;
+    if (this.g6St === 'ret') return this.lastHitter === 'player'; // tu RESTO del saque del rival
+    if (this.g6St === 'bulti') return !(this.g6Aimed && this.lastHitter === 'bot'); // SU ULTI te llega (te aturde y te quita la raqueta)
+    if (this.g6St === 'ufly') return false;
+    if (this.g6St === 'smash') return false; // el SMASH lo regula g5BlockHits
+    return this.g6St !== 'done';
+  }
+  private g6Freeze() {
+    if (!this.g6Hold) return;
+    const s = this.ball.s;
+    Object.assign(s, this.g6Hold);
+    s.vx = s.vy = s.vz = 0;
+    this.bot.ch.freezePose();
+  }
+  /** P2: lanza tu ULTI con la pelota parada junto a ti (cinemática y golpe; luego va al rival) */
+  private g6Fire() {
+    const pl = this.player;
+    const s = this.ball.s;
+    this.g6Clock?.destroy();
+    this.g6Clock = undefined;
+    pl.ch.setCharging(false);
+    for (const sp of spritesIn(pl.ch)) if (sp.anims?.isPaused) sp.anims.resume();
+    if (this.g6Hold) Object.assign(s, this.g6Hold);
+    this.g6Hold = null;
+    this.g6Pin = null;
+    this.g6St = 'ucine';
+    if (!this.tryInferno()) this.startInferno({ x: pl.x, y: pl.y });
+  }
+  /** aviso LA ULTI TE ATURDE… (se quita al pedir ¡RECOGE TU RAQUETA!) */
+  private g6TakenMsg?: Phaser.GameObjects.Text;
+  private g6Msg(text: string, y = 0.3, color = '#ffd23f') {
+    const W = this.scale.width;
+    const msg = this.add.text(W / 2, this.scale.height * y, text, { ...textStyle(40, color), stroke: '#2a1600', strokeThickness: 8, align: 'center' }).setOrigin(0.5).setScrollFactor(0).setDepth(6080).setScale(0.4);
+    this.tweens.add({ targets: msg, scale: 1, duration: 300, ease: 'Back.easeOut' });
+    this.tweens.add({ targets: msg, alpha: 0, delay: 2200, duration: 300, onComplete: () => msg.destroy() });
+    return msg;
+  }
+
+  private tickG6(): string {
+    const pt = this.g6Point();
+    if (pt === null) return '';
+    const s = this.ball.s;
+    const pl = this.player;
+    const now = this.time.now;
+    if (this.g6Pin) {
+      pl.x = this.g6Pin.x;
+      pl.y = this.g6Pin.y;
+    }
+    // ---------------- P1: punto libre (con DEFENSIVO o ESPECIAL)
+    if (pt === 0) {
+      // (27-11-2026, usuario) DESCONCENTRACIÓN (el peloteo duró demasiado): pierdes el punto y el tutorial sigue (no se repite)
+      if (this.phase === 'rally' && !this.serving && this.rallyRemaining === 0 && !this.g6Desc) {
+        this.g6Desc = true;
+        this.pointTo('bot', 'DESCONCENTRACIÓN', '#ff9aa3');
+        return '';
+      }
+      // (27-11-2026, usuario) el rival SIEMPRE alcanza y responde tu saque (antes a veces no llegaba)
+      if (this.lastHitter === 'bot') this.g6Returned = true;
+      if (this.g6P1Steer() && this.lastHitter === 'player') {
+        const bt = this.bot;
+        let hit = false;
+        if (this.serving) this.steerBotToBall(); // el saque aún en el aire: va a su sitio
+        else {
+          // (27-11-2026, usuario) ya botó: SUBE hacia la pelota (va a ella, no a un punto calculado) y golpea solo con la pelota junto a él
+          const tx = clamp(s.x + 18, B_X[0], B_X[1]);
+          const ty = clamp(s.y + (s.y > bt.y ? -14 : 14), Y_MIN, Y_MAX);
+          const dx = tx - bt.x;
+          const dy = ty - bt.y;
+          const d = Math.hypot(dx, dy);
+          const step = Math.min(d, this.ai.speed * 1.8 * (this.game.loop.delta / 1000));
+          if (d > 0.5) {
+            bt.x += (dx / d) * step;
+            bt.y += (dy / d) * step;
+          }
+          this.botRun = { on: d > 2, dirX: Math.sign(dy) };
+          const close = this.reachDist(bt, s) <= HIT_RANGE * 0.35 && s.z <= HIT_MAX_Z * 1.2; // (27-11-2026, usuario) más cerca de la pelota al golpear
+          // se le pasa (o ya botó 2 veces): se coloca junto a ella y golpea igual
+          const late = s.x > bt.x + 8 || this.bounces >= 2;
+          if (late && !close) {
+            bt.x = clamp(s.x + 14, B_X[0], B_X[1]);
+            bt.y = clamp(s.y + (s.y > bt.y ? -16 : 16), Y_MIN, Y_MAX);
+          }
+          hit = close || late;
+        }
+        if (hit) {
+          this.g4Unfreeze();
+          // (27-11-2026, usuario) su PRIMER golpe (el resto de tu saque) nunca falla: golpe seguro, alto sobre la red y dentro de tu campo
+          this.botHitsPoint++; // cuenta para su fallo a propósito del golpe 3 a 5
+          this.applyBotShot({ tx: NET_X - (NET_X - COURT.left) * rand(0.55, 0.8), ty: LAT_C + rand(-0.5, 0.5) * HALF_W * 0.7, speed: SHOT_SPEED * 0.95, kind: 'normal', margin: 24, intent: 'normal', quality: 1 }, false, 'fire');
+          this.spLate = false;
+          this.g6Returned = true;
+        }
+      }
+      return this.meServes && (this.phase === 'serve' || this.phase === 'toss') ? G6_TEXT.p1 : '';
+    }
+    if (this.meServes && (this.phase === 'serve' || this.phase === 'toss')) return SP_TEXT.serve;
+    if (this.g6St === 'ret') {
+      // P3: saca el rival (limpio) y lo respondes
+      if (this.server === 'bot' && this.phase === 'serve' && this.serveCtl.state === 'POSITIONING' && now - this.g6At >= 1400) {
+        this.botPlan.pressAt = Math.max(0, SERVE.tossVz / GRAVITY - this.bot.ch.serveContactDelay());
+        this.beginToss('normal');
+      }
+      if (this.phase === 'rally' && !this.serving && this.lastHitter === 'player') this.g6St = 'bfly';
+      else return SP_TEXT.returnServe;
+    }
+    if (this.phase !== 'rally') return '';
+    // ---------------- P2: tu ULTI
+    if (pt === 1) {
+      if (this.g6St === 'fly' && this.lastHitter === 'player' && this.steerBotToBall()) {
+        this.g4Unfreeze();
+        this.applyBotShot({ tx: NET_X - (NET_X - COURT.left) * 0.538, ty: LAT_C, speed: SHOT_SPEED, kind: 'normal', margin: 14, intent: 'normal', quality: 1 }, false, 'fire');
+        this.lastHitter = 'bot';
+        this.spLate = false;
+        this.g6St = 'fed';
+      }
+      const tT = NET_X - (NET_X - COURT.left) * 0.538;
+      if (this.g6St === 'fed' && this.lastHitter === 'bot' && s.x < NET_X && this.bounces > 0 && (s.x <= tT - 45 || s.vz <= 0)) {
+        this.g6St = 'approach';
+        this.g6Hold = { x: s.x, y: s.y, z: s.z };
+      }
+      if (this.g6St === 'approach') {
+        this.g6Freeze();
+        // (27-11-2026, usuario) recién con la pelota bien junto a ti (más al centro; antes, viniendo de arriba, quedaba bajo tus pies)
+        if (this.reachDist(pl, s) > HIT_RANGE * 0.5) return SP_TEXT.lobGo;
+        this.g6St = 'uwait';
+        this.g6Hold = { x: s.x, y: s.y, z: Math.max(30, s.z) };
+        // y te acomoda: la pelota delante de ti, del lado de la raqueta
+        const gx = clamp(s.x - 26, P_X[0], P_X[1]);
+        const gy = clamp(s.y - 16, Y_MIN, Y_MAX);
+        stopMotion(this.motion);
+        this.tweens.killTweensOf(pl);
+        this.g6Pin = null;
+        this.tweens.add({ targets: pl, x: gx, y: gy, duration: 140, ease: 'Quad.easeOut', onComplete: () => { if (this.g6St === 'uwait') this.g6Pin = { x: gx, y: gy }; } });
+        this.g6At = now;
+        // la ULTI, lista (la cargaste con el punto del P1)
+        if (!this.inferno.ready) {
+          this.inferno.charge = INFERNO.pointsToCharge;
+          this.inferno.phase = 'READY';
+        }
+        this.smashBtn.setMeter(this.inferno.charge, INFERNO.pointsToCharge);
+        this.smashBtn.setInferno(true);
+        this.g6Clock?.destroy();
+        this.g6Clock = this.guideClock(G6_CLOCK_MS, this.scale.height * G6_INFO_Y + 110); // (27-11-2026, usuario) más arriba: no tapa al jugador
+      }
+      if (this.g6St === 'uwait') {
+        this.g6Freeze();
+        pl.ch.setCharging(true);
+        if (now - this.g6At > 300) pl.ch.freezePose();
+        const ready = now - this.g6At >= G6_CLOCK_MS;
+        if (ready && this.inferno.armed) this.g6Fire();
+        else if (now - this.g6At >= G6_CLOCK_MS + L2_DEF_AUTO_MS && this.armInferno()) this.g6Fire(); // 15 s: sale sola
+        else return ready ? G6_TEXT.use : G6_TEXT.info;
+        return '';
+      }
+      if (this.g6St === 'ucine' && this.lastHitter === 'player' && (this.infernoFlight || this.ball.power)) {
+        // tu ULTI va DERECHO al rival: lo aturde y pierde la raqueta (no te la puede devolver)
+        aimShot(s, Math.min(this.bot.x - 70, COURT.right - 90), this.bot.y, SHOT_SPEED * 1.5, 10); // (27-11-2026, usuario) bota dentro de la cancha y luego le pega
+        this.g6St = 'ufly';
+        this.tutMission('tUlti');
+      }
+      // (27-11-2026, usuario) la ULTI no le pegaba (pasaba alta o él se movía): el rival quieto y, al llegarle, lo golpea sí o sí
+      if (this.g6St === 'ufly' && this.lastHitter === 'player' && (this.infernoFlight || this.ball.power) && (this.reachDist(this.bot, s) <= HIT_RANGE * 0.7 || s.x >= this.bot.x + 5)) {
+        s.z = Math.max(s.z, G6_IMPACT_Z); // (27-11-2026, usuario) el impacto, en el cuerpo (no en los pies)
+        this.fireImpact();
+      }
+      if (this.g6St === 'ufly' && this.lastHitter === 'bot') {
+        // (27-11-2026, usuario) le llegó tu ULTI: aturdido y con la raqueta en el suelo. Todo en pausa 3 s (reloj) y la cámara se acerca a él
+        if (this.bot.racket) this.tutMission('tRacket');
+        // (27-11-2026, usuario) CÁMARA LENTA (los 4 s del reloj): se ve el aturdido sin raqueta, la raqueta volando y la pelota subiendo sobre
+        // él; la pelota se queda en lo más alto hasta que termina el reloj (tiempo real: performance.now)
+        this.g6St = 'stunp';
+        this.g6Hold = null;
+        this.g6Vel = null;
+        this.g6Pin = { x: pl.x, y: pl.y };
+        this.g6BotStun = this.bot.stun;
+        this.g6At = performance.now();
+        this.setSlowMo(G6_SLOW);
+        this.g6Clock?.destroy();
+        this.g6Clock = undefined; // (27-11-2026, usuario) primero se ve el IMPACTO (2 s, sin oscuro); luego el texto y el reloj
+      }
+      if (this.g6St === 'stunp') {
+        this.g6HideUi(true);
+        // (27-11-2026, usuario) la pelota opaca (lo que importa es el rival aturdido y la raqueta en el suelo)
+        this.ball.sprite.setAlpha(0.35);
+        this.ball.shadow.setAlpha(0.15);
+        // la pelota sube en cámara lenta y se queda en lo más alto (sin congelar el sprite del rival: se ve su aturdido sin raqueta)
+        if (!this.g6Hold && !this.g6Released && s.vz <= 0) {
+          this.g6Hold = { x: s.x, y: s.y, z: s.z };
+          this.g6Vel = { vx: s.vx, vy: s.vy, vz: s.vz };
+        }
+        const el0 = performance.now() - this.g6At;
+        if (this.g6Hold && el0 >= G6_IMPACT_MS + G6_STUN_MS - G6_BALL_EARLY_MS) {
+          // (27-11-2026, usuario) 1 s antes del final la pelota vuelve a andar (cámara lenta): al terminar el zoom ya va en camino
+          Object.assign(s, this.g6Hold, this.g6Vel ?? {});
+          this.g6Hold = null;
+          this.g6Vel = null;
+          this.g6Released = true;
+        }
+        if (this.g6Hold) {
+          Object.assign(s, this.g6Hold);
+          s.vx = s.vy = s.vz = 0;
+        }
+        this.bot.stun = Math.max(this.bot.stun, this.g6BotStun);
+        // (27-11-2026, usuario) las estrellas del aturdido (su animación en bucle) aún más lentas en el zoom
+        for (const sp of spritesIn(this.bot.ch)) if (sp.anims) sp.anims.timeScale = G6_STARS_K;
+        pl.ch.freezePose();
+        const el = performance.now() - this.g6At;
+        if (el < G6_IMPACT_MS) return ''; // el impacto, sin oscuro ni texto
+        if (!this.g6Clock) this.g6Clock = this.guideClock(G6_STUN_MS * G6_SLOW, this.scale.height * G6_STUN_Y + 110); // su tween va en cámara lenta: dura 4 s reales
+        if (el < G6_IMPACT_MS + G6_STUN_MS) return G6_TEXT.stun;
+        this.setSlowMo(1);
+        this.ball.sprite.setAlpha(1);
+        this.ball.shadow.setAlpha(1);
+        for (const sp of spritesIn(this.bot.ch)) if (sp.anims) sp.anims.timeScale = 1;
+        // (27-11-2026, usuario) ya no está aturdido: se queda sin raqueta (no la recoge en este punto)
+        this.bot.stun = 0;
+        this.bot.ch.endStun();
+        // sigue: su globo flojo vuelve a ti y haces el SMASH del círculo (los pasos del nivel 5)
+        if (this.g6Hold) Object.assign(s, this.g6Hold, this.g6Vel ?? {});
+        this.g6Hold = null;
+        this.g6Vel = null;
+        this.g6Pin = null;
+        this.g4Unfreeze();
+        for (const sp of spritesIn(pl.ch)) if (sp.anims?.isPaused) sp.anims.resume();
+        this.g6St = 'smash';
+        this.g6HideUi(false);
+        const r = this.bot.racket;
+        if (r) {
+          // la raqueta vuelve a su profundidad en la cancha (por su pie)
+          const rp = project(r.x, r.y);
+          r.img.setDepth(rp.sy + 0.5);
+          r.mark.setDepth(rp.sy - 0.5);
+          r.shadow.setDepth(rp.sy - 0.6);
+        }
+        this.g6Smash = true;
+        this.g5St = 'fed';
+        this.g5Hold = null;
+        this.g5Vel = null;
+        this.g5Pin = null;
+        this.g5RemAt = 0;
+        this.g5RemBall = null;
+      }
+      if (this.g6St === 'smash' && this.g5St === 'done' && this.lastHitter === 'player' && this.phase === 'rally') {
+        // (27-11-2026, usuario) tras tu SMASH el rival corre tras la pelota SIN raqueta (no la recoge): se ve que no puede responder
+        this.steerBotToBall();
+        return '';
+      }
+      if (this.g6St === 'smash' && (this.g5St === 'fed' || (this.g5St === 'go' && !this.remateCine))) {
+        // (27-11-2026, usuario) ya sin aturdido y SIN raqueta: corre a su sitio para intentar tu SMASH (no va a buscarla)
+        const bt = this.bot;
+        const tx = (B_X[0] + B_X[1]) / 2;
+        const ty = this.player.y > LAT_C ? LAT_C - 30 : LAT_C + 30;
+        const dx = tx - bt.x;
+        const dy = ty - bt.y;
+        const d = Math.hypot(dx, dy);
+        const step = Math.min(d, this.ai.speed * (this.game.loop.delta / 1000) * this.slowMo);
+        if (d > 0.5) {
+          bt.x += (dx / d) * step;
+          bt.y += (dy / d) * step;
+        }
+        this.botRun = { on: d > 2, dirX: Math.sign(dy) };
+      }
+      if (this.g6St === 'smash') {
+        if (this.g5Pin) {
+          pl.x = this.g5Pin.x;
+          pl.y = this.g5Pin.y;
+        }
+        return this.g5SmashFlow(-1, G6_TEXT.ring);
+      }
+      return '';
+    }
+    // ---------------- P3: la ULTI del rival
+    if (this.g6St === 'bfly' && this.lastHitter === 'player' && this.steerBotToBall()) {
+      this.g4Unfreeze();
+      this.g6Aimed = false;
+      this.g6Pin = { x: pl.x, y: pl.y }; // tú quieto: la recibes
+      this.spLate = false;
+      if (!this.botUlti(s, true)) this.botHit(true, this.botKit.inferno);
+      this.g6St = 'bulti';
+      return '';
+    }
+    if (this.g6St === 'bulti') {
+      if (!this.g6Aimed && this.lastHitter === 'bot' && this.infernoFlight) {
+        aimShot(s, clamp(pl.x + 70, COURT.left + 30, NET_X - 60), pl.y, SHOT_SPEED * 1.5, 6);
+        this.g6Aimed = true;
+      }
+      if (this.g6Aimed && this.lastHitter === 'bot' && this.infernoFlight && s.x <= pl.x + 30) this.playerImpact(); // te alcanza sí o sí
+      if (this.g6Aimed && this.lastHitter === 'player') {
+        this.g6Pin = null;
+        this.g6St = 'taken';
+        this.g6TakenMsg = this.g6Msg(G6_TEXT.taken, G6_RACKET_Y); // (27-11-2026, usuario) cerca del centro (0.45 era muy abajo)
+      }
+    }
+    // (27-11-2026, usuario) sin raqueta: los botones DEFENSIVO y ESPECIAL no se ven
+    const noR = !!pl.racket;
+    if (this.dashBtn.visible === noR) this.dashBtn.setVisible(!noR);
+    if (this.smashBtn.visible === noR) this.smashBtn.setVisible(!noR);
+    // (27-11-2026, usuario) tu globo flojo va al rival: se PARA antes de que él le pegue (o al terminar tu aturdido)
+    if (this.g6St === 'taken') {
+      if (!this.g6Hold && (s.x >= this.bot.x - 90 || this.bounces > 0 || pl.stun <= 0)) {
+        this.g6Hold = { x: s.x, y: s.y, z: s.z };
+        this.g6Vel = { vx: s.vx, vy: s.vy, vz: s.vz };
+      }
+      if (this.g6Hold) {
+        Object.assign(s, this.g6Hold);
+        s.vx = s.vy = s.vz = 0;
+        this.bot.ch.freezePose();
+      }
+      if (pl.stun <= 0 && this.g6Hold) {
+        // sin aturdido: pausa con reloj (3 s) y ¡RECOGE TU RAQUETA!
+        this.g6St = 'rpause';
+        this.g6At = now;
+        this.g6Pin = { x: pl.x, y: pl.y };
+        if (this.g6TakenMsg?.active) this.g6TakenMsg.destroy();
+        this.g6Clock?.destroy();
+        this.g6Clock = this.guideClock(G6_RACKET_MS, this.scale.height * G6_RACKET_Y + 105); // (27-11-2026, usuario) bajo el texto (un poco más arriba)
+        // quieto en el primer cuadro del reposo SIN raqueta hasta que termine el reloj
+        pl.ch.endStun();
+        pl.ch.setMoving(false, 0);
+      }
+      return '';
+    }
+    if (this.g6St === 'rpause' || this.g6St === 'rget') {
+      if (this.g6Hold) {
+        Object.assign(s, this.g6Hold);
+        s.vx = s.vy = s.vz = 0;
+      }
+      this.bot.ch.freezePose();
+      if (this.g6St === 'rpause') {
+        pl.ch.freezePose();
+        if (now - this.g6At < G6_RACKET_MS) return G6_TEXT.racket;
+        // ya puedes ir por ella (la pelota y el rival siguen en pausa)
+        this.g6Pin = null;
+        for (const sp of spritesIn(pl.ch)) if (sp.anims?.isPaused) sp.anims.resume();
+        this.g6St = 'rget';
+      }
+      if (pl.racket) return G6_TEXT.racket;
+      // la recogiste: el rival le pega a su pelota (va a tu campo)
+      if (this.g6Hold) Object.assign(s, this.g6Hold, this.g6Vel ?? {});
+      this.g6Hold = null;
+      this.g6Vel = null;
+      this.g4Unfreeze();
+      this.spLate = false;
+      this.g6St = 'bret';
+    }
+    if (this.g6St === 'bret' && this.lastHitter === 'player' && this.steerBotToBall()) {
+      this.g4Unfreeze();
+      this.applyBotShot({ tx: NET_X - (NET_X - COURT.left) * 0.538, ty: LAT_C, speed: SHOT_SPEED * 0.9, kind: 'normal', margin: 18, intent: 'normal', quality: 1 }, false, 'fire');
+      this.lastHitter = 'bot';
+      this.spLate = false;
+      this.g6St = 'bfed';
+    }
+    // tras su bote en tu campo se PARA: vas a ella con tu raqueta y le pegas (no la podrá responder)
+    const tT6 = NET_X - (NET_X - COURT.left) * 0.538;
+    if (this.g6St === 'bfed' && this.lastHitter === 'bot' && s.x < NET_X && this.bounces > 0 && (s.x <= tT6 - 45 || s.vz <= 0)) {
+      this.g6St = 'papp';
+      this.g6Hold = { x: s.x, y: s.y, z: Math.max(30, s.z) };
+    }
+    if (this.g6St === 'papp') {
+      if (this.g6Hold) {
+        Object.assign(s, this.g6Hold);
+        s.vx = s.vy = s.vz = 0;
+      }
+      this.bot.ch.freezePose();
+      if (!this.inReach(pl, s, HIT_RANGE * 1.1, Infinity)) return SP_TEXT.lobGo;
+      this.g6Hold = null;
+      this.g4Unfreeze();
+      this.playerHit();
+      // lejos del rival: no la alcanza
+      aimShot(s, COURT.right - 70, this.bot.y > LAT_C ? COURT.top + 50 : COURT.bottom - 50, SHOT_SPEED * 1.15, 18);
+      this.ball.setKind('normal');
+      this.lastHitter = 'player';
+      this.g6St = 'pfin';
+      return '';
+    }
+    return '';
+  }
+
+  /** punto del nivel 6 que termina antes de tiempo: P1 se repite hasta ganarlo con DEFENSIVO o ESPECIAL; P2 / P3 sin terminar: OTRA VEZ */
+  private g6Retry(w: Who) {
+    const pt = this.g6Point();
+    if (pt === null) return false;
+    if (pt === 0 && this.g6Desc) return false; // DESCONCENTRACIÓN: el punto cuenta (para el rival) y sigue el P2
+    if (pt === 0 && this.g6P1Steer() && w === 'player') {
+      this.spLate = true; // tu saque botó 2 veces antes de que llegara: el punto sigue y él la responde igual
+      return true;
+    }
+    if (pt === 0 && w === 'player' && this.g6Used) return false;
+    if (pt !== 0) {
+      if (this.g6St === 'ufly' || this.g6St === 'pfin' || this.g6St === 'done') return false;
+      if (this.g6St === 'taken' || this.g6St === 'rpause' || this.g6St === 'rget') return true; // la pelota está en pausa
+      if (this.g6St === 'bret') {
+        this.spLate = true; // botó 2 veces antes de que llegara: él va a ella igual
+        return true;
+      }
+      if (this.g6St === 'smash' && this.g5St === 'done') return false; // tu SMASH: el rival sin raqueta no responde
+      if (this.g6St === 'stunp') return true;
+      if (this.g6St === 'fly' || this.g6St === 'bfly') {
+        this.spLate = true; // tu pelota botó 2 veces antes de que llegara: el punto sigue y él va a ella
+        return true;
+      }
+      if (this.g6St === 'bulti' || this.g6St === 'ucine') return true; // su ULTI / la tuya siguen su camino
+    }
+    this.phase = 'pointover';
+    this.faults = 0;
+    const h0 = this.headPos(this.player);
+    this.popText(h0.x, h0.y - 10, pt === 0 && w === 'player' ? 'USA DEFENSIVO O ESPECIAL' : 'REPITAMOS EL PUNTO', '#ffc42e', 34);
+    this.time.delayedCall(1300, () => this.startPoint(false));
+    return true;
+  }
+
+  // ---------------------------------------------------------------- NIVEL 7 GUIADO (27-11-2026, usuario)
+  /**
+   * P1 = ESTIRADA: sacas; el rival devuelve a tu costado, un poco más lejos de tu alcance. Con la pelota en tu lado se para: reloj y TOCA A LA
+   * DERECHA PARA CARGAR; ya cargando, CON EL GOLPE CARGADO TE ESTIRAS A LA PELOTA y sigue: te estiras solo y la devuelves (el rival no llega).
+   * P2 = DUELO RED (lo ganas): sacas, devuelve corto; se para: SUBE A LA RED; al llegar empieza el duelo (TOCA CUANDO EL ARO SE CIERRE). El rival
+   * toca mal: ganas y tu GLOBO DISPARADO es punto. P3 = DUELO RED (lo gana el rival): igual, pero toca perfecto y te tira SU GLOBO DISPARADO; en
+   * el aire en tu lado se para: USA EL DEFENSIVO; llegas y la devuelves (no la alcanza). P4 = GANA 1 PUNTO.
+   */
+  private g7St: 'serve' | 'fly' | 'fed' | 'charge' | 'lmsg' | 'lgo' | 'blob' | 'bsm' | 'net' | 'duel' | 'end2' | 'duel3' | 'dwait' | 'dash' | 'pfin' = 'serve';
+  private g7Hold: { x: number; y: number; z: number } | null = null;
+  private g7Vel: { vx: number; vy: number; vz: number } | null = null;
+  private g7At = 0;
+  private g7Clock?: Phaser.GameObjects.Container;
+  private g7Pin: { x: number; y: number } | null = null;
+
+  private g7Point(): 0 | 1 | 2 | null {
+    if (this.guide !== 'l7' || this.score.played > 2) return null;
+    return this.score.played as 0 | 1 | 2;
+  }
+  private g7Reset() {
+    const q7 = this.g6AlertQ; // avisos de misión que quedaron pendientes
+    this.g6AlertQ = [];
+    q7.forEach((f, i) => this.time.delayedCall(400 + i * 700, () => this.sys.isActive() && f()));
+    this.g7St = 'serve';
+    this.g7DuelMsg2?.destroy();
+    this.g7DuelMsg2 = undefined;
+    this.g7DuelDim?.destroy();
+    this.g7DuelDim = undefined;
+    this.g7DuelPh = 'none';
+    this.g7DuelMsg?.destroy();
+    this.g7DuelMsg = undefined;
+    this.g7At = this.time.now;
+    this.g7Hold = null;
+    this.g7Vel = null;
+    this.g7Pin = null;
+    this.g7Clock?.destroy();
+    this.g7Clock = undefined;
+  }
+  /** P1: se puede CARGAR (tras el reloj de la pausa) */
+  private g7ChargeOk() {
+    return this.g7Point() === 0 && this.g7St === 'charge' && this.time.now - this.g7At >= G7_CLOCK_MS;
+  }
+  /** P3: el DEFENSIVO, tras el reloj de su pausa */
+  private g7DashReady() {
+    return this.g7Point() !== null && this.g7St === 'dwait' && this.time.now - this.g7At >= G7_CLOCK_MS;
+  }
+  /** ganador del duelo guiado (P2 tú, P3 el rival); null = el de siempre */
+  private g7DuelWinner(): Who | null {
+    const pt = this.g7Point();
+    return pt === 1 ? 'player' : pt === 2 ? 'bot' : null;
+  }
+  /** toque del rival en el duelo guiado: malo en el P2 (ganas tú), casi perfecto en el P3 */
+  private g7RivalTap(): number | null {
+    const pt = this.g7Point();
+    return pt === 1 ? Math.round(rand(170, 230)) : pt === 2 ? Math.round(rand(-6, 6)) : null;
+  }
+  private g7BotScripted() {
+    return this.g7Point() !== null && this.g7St !== 'duel' && this.g7St !== 'blob'; // P1: va solo al círculo de tu globo (su SMASH)
+  }
+  private g7BlockHits(): boolean {
+    return this.g7Point() !== null; // todos los golpes los da el guion (la estirada, su SMASH y tu DEFENSIVO)
+  }
+  private g7Freeze() {
+    if (!this.g7Hold) return;
+    const s = this.ball.s;
+    Object.assign(s, this.g7Hold);
+    s.vx = s.vy = s.vz = 0;
+    this.bot.ch.freezePose();
+  }
+  /** pelota parada guardando su velocidad (para seguir igual) */
+  private g7HoldBall() {
+    const s = this.ball.s;
+    this.g7Hold = { x: s.x, y: s.y, z: s.z };
+    this.g7Vel = { vx: s.vx, vy: s.vy, vz: s.vz };
+  }
+  private g7Release() {
+    if (this.g7Hold) Object.assign(this.ball.s, this.g7Hold, this.g7Vel ?? {});
+    this.g7Hold = null;
+    this.g7Vel = null;
+    this.g4Unfreeze();
+  }
+  private g7Clock0(ms: number, y = 0.4) {
+    this.g7Clock?.destroy();
+    this.g7Clock = this.guideClock(ms, this.scale.height * y + 110);
+  }
+  /** P3: pulsaste DEFENSIVO con su globo parado en el aire: corres hasta él y lo devuelves lejos del rival */
+  private g7Dash(): boolean {
+    if (!this.g7DashReady() || !this.g7Hold) return false;
+    // (27-11-2026, usuario) si la pelota está alta, el DEFENSIVO va a DONDE CAERÁ (a altura de golpe), no a la pelota en el aire
+    const sim = { ...this.ball.s, ...this.g7Hold, ...(this.g7Vel ?? {}) };
+    for (let k = 0; k < 240 && !(sim.vz < 0 && sim.z <= HIT_MAX_Z * 0.8); k++) if (stepBall(sim, 1 / 120) === 'bounce') break;
+    const f = { x: sim.x, y: sim.y, z: Math.max(20, Math.min(sim.z, HIT_MAX_Z * 0.8)) };
+    this.g7Hold = { ...f }; // la pelota se ve ya donde la alcanzas
+    this.g7St = 'dash';
+    this.g7Clock?.destroy();
+    this.g7Clock = undefined;
+    const pl = this.player;
+    const tx = clamp(f.x - 22, P_X[0], P_X[1]);
+    const ty = clamp(f.y, Y_MIN, Y_MAX);
+    const dirX = Math.sign(ty - pl.y) || 1;
+    const dist = Math.hypot(tx - pl.x, ty - pl.y);
+    this.stopCharge();
+    stopMotion(this.motion);
+    for (const sp of spritesIn(pl.ch)) if (sp.anims?.isPaused) sp.anims.resume();
+    pl.ch.setSprint(true, dirX);
+    const p = project(pl.x, pl.y);
+    this.dashFx.burst(p.sx, p.sy, p.s * VIEW.CHAR_K, pl.ch.depth);
+    sfx(this, dashSfx(this.smashEl));
+    this.dashBtn.tryActivate();
+    const h = this.headPos(pl);
+    this.popText(h.x, h.y - 10, 'DEFENSIVO', '#c9a4ff', 26);
+    this.tutMission('tDef');
+    this.tweens.add({
+      targets: pl,
+      x: tx,
+      y: ty,
+      duration: clamp((dist / (PLAYER_SPEED * 3)) * 1000, 250, 700),
+      ease: 'Quad.easeOut',
+      onComplete: () => {
+        pl.ch.setSprint(false, dirX, true);
+        if (this.g7St !== 'dash' || this.phase !== 'rally') return;
+        const s = this.ball.s;
+        Object.assign(s, f);
+        s.z = Math.min(s.z, 110);
+        s.g = undefined; // sin la gravedad propia del GLOBO DISPARADO
+        s.ay = undefined;
+        this.g7Hold = null;
+        this.g7Vel = null;
+        this.g4Unfreeze();
+        this.playerHit();
+        // lejos del rival: no la alcanza
+        aimShot(s, COURT.right - 70, this.bot.y > LAT_C ? COURT.top + 50 : COURT.bottom - 50, SHOT_SPEED * 1.1, 20);
+        this.ball.setKind('normal');
+        this.ball.setMaxCharge(false);
+        this.lastHitter = 'player';
+        if (this.g7Point() === 2) this.tutMission('tLobBack'); // (27-11-2026, usuario) devolviste su SUPER GLOBO
+        this.g7St = 'pfin';
+      },
+    });
+    return true;
+  }
+
+  private tickG7(): string {
+    const pt = this.g7Point();
+    if (pt === null) return '';
+    const s = this.ball.s;
+    const pl = this.player;
+    const now = this.time.now;
+    if (this.g7Pin) {
+      pl.x = this.g7Pin.x;
+      pl.y = this.g7Pin.y;
+    }
+    if (this.meServes && (this.phase === 'serve' || this.phase === 'toss')) return SP_TEXT.serve;
+    if (this.phase !== 'rally' || this.duel) return '';
+    // el rival va a TU saque y lo devuelve
+    if (this.g7St === 'fly' && this.lastHitter === 'player' && this.steerBotToBall()) {
+      this.g4Unfreeze();
+      if (pt === 0) {
+        // P1: a tu COSTADO, un poco más lejos de lo que alcanzas (sí con la estirada)
+        const side = pl.y > LAT_C ? -1 : 1;
+        this.applyBotShot({ tx: clamp(pl.x + 40, COURT.left + 40, NET_X - 60), ty: clamp(pl.y + side * G7_DIVE_DY * (1 + this.passiveAgility), COURT.top + 20, COURT.bottom - 20), speed: SHOT_SPEED * 0.85, kind: 'normal', margin: 20, intent: 'normal', quality: 1 }, false, 'fire');
+      } else {
+        // P2 / P3: corta hacia ti (vas a subir a la red)
+        this.applyBotShot({ tx: NET_X - (NET_X - COURT.left) * 0.62, ty: clamp(pl.y, COURT.top + 50, COURT.bottom - 50), speed: SHOT_SPEED * 0.7, kind: 'normal', margin: 40, intent: 'normal', quality: 1 }, false, 'fire');
+        // (27-11-2026, usuario) el rival sube a SU red (al medio) apenas golpea; si no llega antes de la pausa, sigue subiendo en ella
+        this.tweens.killTweensOf(this.bot);
+        this.tweens.add({ targets: this.bot, x: NET_X + G7_NET_GAP, y: LAT_C, duration: G7_BOT_NET_MS, ease: 'Sine.easeInOut' });
+      }
+      this.lastHitter = 'bot';
+      this.spLate = false;
+      this.g7St = 'fed';
+    }
+    // ---------------- P1: ESTIRADA
+    if (pt === 0) {
+      if (this.g7St === 'fed' && this.lastHitter === 'bot' && s.x < NET_X - 60) {
+        this.g7HoldBall();
+        this.g7Pin = { x: pl.x, y: pl.y };
+        this.g7St = 'charge';
+        this.g7At = now;
+        this.g7Clock0(G7_CLOCK_MS);
+      }
+      if (this.g7St === 'charge') {
+        this.g7Freeze();
+        if (now - this.g7At < G7_CLOCK_MS) return G4_TEXT.charge;
+        if (this.g7Clock) {
+          this.g7Clock.destroy();
+          this.g7Clock = undefined;
+        }
+        if (!this.charging) return G4_TEXT.charge;
+        this.g7St = 'lmsg';
+        this.g7At = now;
+      }
+      if (this.g7St === 'lmsg') {
+        this.g7Freeze();
+        if (now - this.g7At < G7_MSG_MS) return G7_TEXT.dive;
+        // sigue: con el golpe cargado, al pasar la pelota lejos de ti te estiras solo
+        this.g7Release();
+        this.g7Pin = null;
+        this.g7St = 'lgo';
+      }
+      if (this.g7St === 'lgo') {
+        // (27-11-2026, usuario) la pelota pasa lejos: te ESTIRAS sí o sí (cargando) y le tiras un globo
+        if (!this.lungeAt && this.lastHitter === 'bot' && this.bounces > 0 && s.x <= pl.x + 60) {
+          let c = this.charging ? this.lungeContact() : null;
+          if (!c) {
+            // (27-11-2026, usuario) contacto un poco más adelante (0,2 s): se ve cómo se lanza y se desplaza hasta ella
+            const f = { ...s };
+            for (let k = 0; k < 24; k++) stepBall(f, 1 / 120);
+            c = { t: 0.2, x: f.x, y: f.y, z: Math.max(20, f.z) };
+          }
+          this.playerLunge(c);
+        }
+        if (this.lungeAt && this.time.now >= this.lungeAt) this.lungeShot();
+        if (this.lastHitter === 'player') this.g7St = 'blob';
+        return '';
+      }
+      if (this.g7St === 'blob') {
+        // tu globo: el rival va al círculo y hace su SMASH con salto
+        if (this.lob.state.active && this.lob.state.receiver === 'bot') this.botRemateRoll = true;
+        if (!this.botRemate && this.lastHitter === 'player' && this.canBotStartRemate(s)) this.startBotRemate();
+        if (this.lastHitter === 'bot' && !this.botRemate) this.g7St = 'bsm';
+        return '';
+      }
+      // (27-11-2026, usuario) la pausa del DEFENSIVO, ya casi en tu T (antes se paraba recién pasada la red)
+      if (this.g7St === 'bsm' && (s.x <= NET_X - (NET_X - COURT.left) * 0.538 + 30 || this.bounces > 0)) {
+        // su SMASH ya en tu lado: pausa y USA EL DEFENSIVO
+        this.g7HoldBall();
+        this.g7Pin = { x: pl.x, y: pl.y };
+        this.g7St = 'dwait';
+        this.g7At = now;
+        this.dashBtn.reduceCooldown(999);
+        this.g7Clock0(G7_CLOCK_MS);
+      }
+      if (this.g7St === 'dwait') {
+        this.g7Freeze();
+        pl.ch.freezePose();
+        if (now - this.g7At >= G7_CLOCK_MS && this.g7Clock) {
+          this.g7Clock.destroy();
+          this.g7Clock = undefined;
+        }
+        if (now - this.g7At >= G7_CLOCK_MS + L2_DEF_AUTO_MS) {
+          this.g7Pin = null;
+          this.g7Dash(); // 15 s: sale solo
+        }
+        return SP_TEXT.defensive;
+      }
+      if (this.g7St === 'dash') {
+        this.g7Pin = null;
+        if (this.g7Hold) {
+          Object.assign(s, this.g7Hold);
+          s.vx = s.vy = s.vz = 0;
+        }
+      }
+      return '';
+    }
+    // ---------------- P2 / P3: DUELO RED
+    if (this.g7St === 'fed' && this.tweens.isTweening(this.bot)) this.botRun = { on: true, dirX: Math.sign(LAT_C - this.bot.y) || 1 }; // corre hacia su red
+    if (this.g7St === 'fed' && this.lastHitter === 'bot' && s.x < NET_X - 45) { // (27-11-2026, usuario) un poco más adentro de tu campo
+      this.g7HoldBall();
+      this.g7St = 'net';
+      this.g7At = now;
+      this.time.delayedCall(450, () => this.g7St === 'net' && this.joy.pulse('up'));
+    }
+    if (this.g7St === 'net') {
+      // la pelota quieta; el rival, si aún no llegó a su red, sigue subiendo (corriendo)
+      if (this.g7Hold) {
+        Object.assign(s, this.g7Hold);
+        s.vx = s.vy = s.vz = 0;
+      }
+      if (this.tweens.isTweening(this.bot)) {
+        this.g4Unfreeze();
+        this.botRun = { on: true, dirX: Math.sign(LAT_C - this.bot.y) || 1 };
+      } else this.bot.ch.freezePose();
+      // (27-11-2026, usuario) 2 condiciones: en la red Y junto a la pelota (el que responde llega a ella)
+      if (pl.x < NET_X - G7_NET_GAP - 12 || this.reachDist(pl, s) > HIT_RANGE) return G7_TEXT.net;
+      // ya en la red: sigue la pelota y empieza el DUELO
+      this.g7Release();
+      this.tweens.killTweensOf(this.bot);
+      this.bot.x = NET_X + G7_NET_GAP;
+      this.bot.y = LAT_C;
+      this.g7St = 'duel';
+      this.g7DuelPh = 'none';
+      this.duelStart('player');
+      return '';
+    }
+    if (this.g7St === 'duel' && !this.duel) {
+      // terminó el duelo: P2 tu GLOBO DISPARADO (punto); P3 el SUYO hacia ti
+      this.g7St = pt === 1 ? 'end2' : 'duel3';
+    }
+    // (27-11-2026, usuario) la pausa del DEFENSIVO, con su globo ya bajando cerca del suelo (antes muy alto)
+    if (this.g7St === 'duel3' && this.lastHitter === 'bot' && s.x < NET_X - 60 && s.vz < 0 && (s.z < G7_DEF_Z || this.bounces > 0)) {
+      // su globo, en el aire en tu lado: pausa y USA EL DEFENSIVO
+      this.g7HoldBall();
+      this.g7Pin = { x: pl.x, y: pl.y };
+      this.g7St = 'dwait';
+      this.g7At = now;
+      this.dashBtn.reduceCooldown(999);
+      this.g7Clock0(G7_CLOCK_MS);
+    }
+    if (this.g7St === 'dwait') {
+      this.g7Freeze();
+      pl.ch.freezePose();
+      if (now - this.g7At >= G7_CLOCK_MS && this.g7Clock) {
+        this.g7Clock.destroy();
+        this.g7Clock = undefined;
+      }
+      if (now - this.g7At >= G7_CLOCK_MS + L2_DEF_AUTO_MS) {
+        this.g7Pin = null;
+        this.g7Dash(); // 15 s: sale solo
+      }
+      return SP_TEXT.defensive;
+    }
+    if (this.g7St === 'dash') {
+      this.g7Pin = null;
+      if (this.g7Hold) {
+        Object.assign(s, this.g7Hold);
+        s.vx = s.vy = s.vz = 0;
+      }
+    }
+    return '';
+  }
+
+  /** nivel 7, P2: fase de las pausas guiadas del duelo */
+  private g7DuelPh: 'none' | 'explain' | 'rounds' | 'won' | 'pick' | 'go' = 'none';
+  private g7PauseAt = 0;
+  private g7DuelMsg?: Phaser.GameObjects.Text;
+  private g7DuelMsg2?: Phaser.GameObjects.Text;
+  /** oscuro de pantalla completa de la explicación del duelo */
+  private g7DuelDim?: Phaser.GameObjects.Rectangle;
+  private g7DuelText(text: string, y: number, size: number) {
+    const W = this.scale.width;
+    return this.add.text(W / 2, this.scale.height * y, text, { ...textStyle(size, '#ffd23f'), stroke: '#2a1600', strokeThickness: 8, align: 'center' }).setOrigin(0.5).setScrollFactor(0).setDepth(7700);
+  }
+  /**
+   * (27-11-2026, usuario) Pausas del DUELO guiado (P2), en tiempo real: el reloj del duelo (t0 / tR0) no avanza mientras dura cada una.
+   * true = este fotograma no sigue el duelo.
+   */
+  private g7DuelTick(now: number, d: DuelState, dt: number): boolean {
+    if (this.g7Point() !== 1) return false;
+    if (this.g7DuelPh === 'none' && d.stage === 'rounds') {
+      // (27-11-2026, usuario) ANTES del primer aro: pantalla oscura y la explicación (GANA EL MEJOR DE 3 RONDAS en amarillo y lo demás en
+      // blanco), con el reloj, bajo el jugador; 4 s para que la lea
+      this.g7DuelPh = 'explain';
+      this.g7PauseAt = now;
+      this.g7DuelDim?.destroy();
+      // (27-11-2026, usuario) el marcador de 3 pelotas también se ve sobre el oscuro (y un poco más grande)
+      this.g7DuelDim = this.add.rectangle(0, 0, this.scale.width, this.scale.height, 0x02060f, 0.92).setOrigin(0).setScrollFactor(0).setDepth(7590);
+      d.score.focus(1.35, 24);
+      this.g7DuelMsg?.destroy();
+      this.g7DuelMsg = this.g7DuelText(G7_TEXT.best3, G7_EXPLAIN_Y - 0.07, 46);
+      this.g7DuelMsg2?.destroy();
+      this.g7DuelMsg2 = this.g7DuelText(G7_TEXT.explain, G7_EXPLAIN_Y + 0.02, 32).setColor('#ffffff');
+      this.g7Clock?.destroy();
+      this.g7Clock = this.guideClock(G7_EXPLAIN_MS, this.scale.height * (G7_EXPLAIN_Y + 0.02) + 120).setDepth(7710);
+    }
+    if (this.g7DuelPh === 'explain') {
+      d.t0 += dt;
+      d.tR0 += dt;
+      if (now - this.g7PauseAt < G7_EXPLAIN_MS) return true;
+      this.g7DuelMsg?.destroy();
+      this.g7DuelMsg = undefined;
+      this.g7DuelMsg2?.destroy();
+      this.g7DuelMsg2 = undefined;
+      this.g7DuelDim?.destroy();
+      this.g7DuelDim = undefined;
+      d.score.focus(1, 0);
+      this.g7Clock?.destroy();
+      this.g7Clock = undefined;
+      this.g7DuelPh = 'rounds'; // las 3 rondas siguen
+      return true;
+    }
+    if (d.stage === 'aim' && d.winner === 'player' && (this.g7DuelPh === 'rounds' || this.g7DuelPh === 'none')) {
+      // ganaste: el marcador de las 3 pelotas se acerca y ¡GANASTE EL DUELO EN LA RED!
+      this.g7DuelPh = 'won';
+      this.g7PauseAt = now;
+      // (27-11-2026, usuario) todo OSCURO: solo el marcador (al medio, más grande, sus pelotas girando) y ¡GANASTE EL DUELO EN LA RED! debajo
+      this.g7DuelDim?.destroy();
+      this.g7DuelDim = this.add.rectangle(0, 0, this.scale.width, this.scale.height, 0x02060f, 0.92).setOrigin(0).setScrollFactor(0).setDepth(7590);
+      d.score.focus(G7_SCORE_K, this.scale.height * G7_SCORE_Y - DUEL_SCORE_Y);
+      d.score.spin(true);
+      d.score.glow('player'); // (27-11-2026, usuario) tus pelotas azules brillan
+      this.g7DuelMsg?.destroy();
+      this.g7DuelMsg = this.g7DuelText(G7_TEXT.won, G7_SCORE_Y + 0.11, 42);
+    }
+    if (this.g7DuelPh === 'won') {
+      d.t0 += dt;
+      d.aimAt = now;
+      if (now - this.g7PauseAt < G7_WON_MS) return true;
+      d.score.focus(1, 0);
+      d.score.spin(false);
+      d.score.glow(null);
+      this.g7DuelDim?.destroy();
+      this.g7DuelDim = undefined;
+      this.g7DuelMsg?.destroy();
+      this.g7DuelMsg = this.g7DuelText(G7_TEXT.aim, G7_EXPLAIN_Y, 36); // (27-11-2026, usuario) bajo el jugador: no tapa las zonas donde apuntas
+      this.g7DuelPh = 'pick';
+      this.g7PauseAt = now;
+    }
+    if (this.g7DuelPh === 'pick') {
+      // elige el lado con el joystick (sigue la pose del duelo); al elegir, golpea
+      d.t0 += dt;
+      d.aimAt = now;
+      if (Math.floor((now - this.g7PauseAt) / 1100) !== Math.floor((now - this.g7PauseAt - dt) / 1100)) this.joy.pulse(Math.floor((now - this.g7PauseAt) / 1100) % 2 ? 1 : -1);
+      if (Math.abs(this.inputVector().x) > 0.5) {
+        this.g7DuelMsg?.destroy();
+        this.g7DuelMsg = undefined;
+        this.g7DuelPh = 'go';
+        d.aimAt = now - NET_DUEL.aimMs + 350; // un instante con el lado elegido y golpea
+      }
+      return false;
+    }
+    return false;
+  }
+
+  /** punto del nivel 7 que termina antes de tiempo: OTRA VEZ, o sigue (el rival va a tu pelota) */
+  private g7Retry() {
+    const pt = this.g7Point();
+    if (pt === null || this.g7St === 'pfin' || this.g7St === 'end2') return false;
+    if (this.g7St === 'fly') {
+      this.spLate = true;
+      return true;
+    }
+    if (this.g7St === 'dash' || this.g7St === 'duel' || this.g7St === 'blob' || this.g7St === 'bsm') return true;
+    this.phase = 'pointover';
+    this.faults = 0;
+    const h0 = this.headPos(this.player);
+    this.popText(h0.x, h0.y - 10, 'REPITAMOS EL PUNTO', '#ffc42e', 34);
+    this.time.delayedCall(1300, () => this.startPoint(false));
     return true;
   }
 
@@ -10441,7 +11571,7 @@ export class MatchScene extends Phaser.Scene {
     this.phase = 'pointover';
     this.faults = 0;
     const h0 = this.headPos(this.player);
-    this.popText(h0.x, h0.y - 10, 'OTRA VEZ', '#ffc42e', 36);
+    this.popText(h0.x, h0.y - 10, 'REPITAMOS EL PUNTO', '#ffc42e', 36);
     this.time.delayedCall(1100, () => this.startPoint(false));
     return true;
   }
@@ -10468,7 +11598,7 @@ export class MatchScene extends Phaser.Scene {
       this.phase = 'pointover';
       this.faults = 0;
       const h0 = this.headPos(this.player);
-      this.popText(h0.x, h0.y - 10, 'OTRA VEZ', '#ffc42e', 36);
+      this.popText(h0.x, h0.y - 10, 'REPITAMOS EL PUNTO', '#ffc42e', 36);
       this.time.delayedCall(1100, () => this.startPoint(false));
       return true;
     }
@@ -10776,13 +11906,18 @@ export class MatchScene extends Phaser.Scene {
   /** (25-11-2026, usuario) pelota quieta del tutorial: aros que laten a su alrededor (para que se vea a dónde ir) */
   private ballPulse?: Phaser.GameObjects.Graphics;
   private ballPulseAt = 0;
-  private tickBallPulse(on: boolean) {
+  /** `maxMs` > 0: late solo ese tiempo (p. ej. 2 latidos) y se queda quieto */
+  private tickBallPulse(on: boolean, maxMs = 0) {
     if (!on) {
       this.ballPulse?.setVisible(false);
       this.ballPulseAt = 0;
       return;
     }
     if (!this.ballPulseAt) this.ballPulseAt = this.time.now;
+    if (maxMs > 0 && this.time.now - this.ballPulseAt >= maxMs) {
+      this.ballPulse?.setVisible(false);
+      return;
+    }
     this.ballPulse ??= this.add.graphics();
     const s = this.ball.s;
     const b = project(s.x, s.y, s.z);
@@ -10813,6 +11948,11 @@ export class MatchScene extends Phaser.Scene {
     if (this.tutMissions && !this.tutMissions.includes(id)) return;
     this.missions.done.push(id);
     const mission = missionDef(id);
+    // (27-11-2026, usuario) nivel 6, P2: el aviso no salta durante la ULTI ni el zoom al rival: espera al siguiente punto
+    if ((this.g6Point() === 1 && ['ucine', 'ufly', 'stunp', 'smash'].includes(this.g6St)) || (this.g7Point() === 1 && (this.g7St === 'duel' || this.g7St === 'end2'))) { // (27-11-2026) nivel 7: Gana un Duelo, tras el punto
+      this.g6AlertQ.push(() => showMissionAlert(this, alertTitle ?? mission.title, missionReward(mission)));
+      return;
+    }
     showMissionAlert(this, alertTitle ?? mission.title, missionReward(mission));
   }
 
@@ -10880,7 +12020,7 @@ export class MatchScene extends Phaser.Scene {
     if (!this.guide) return;
     this.keepCheckBehind();
     // (26-11-2026, usuario) nivel 5, P3: con el reloj del ESPECIAL, joystick bloqueado
-    this.joy.setLocked((this.guide === 'spin' && this.l2Lock) || this.spSpecialLock() || (this.g5Point() === 3 && (this.g5St === 'spwait' || this.g5St === 'spcine')));
+    this.joy.setLocked((this.guide === 'spin' && this.l2Lock) || this.spSpecialLock() || (this.g5Point() === 3 && (this.g5St === 'spwait' || this.g5St === 'spcine')) || (this.g6Point() === 1 && this.g6St === 'uwait') || (this.g6Point() === 2 && this.g6St === 'rpause')); // (27-11-2026) nivel 6, P3: quieto con el reloj de la raqueta
     // (26-11-2026, usuario) nivel 4, P2: sin DEFENSIVO ni ESPECIAL a la vista (solo se ve cómo funciona el CARGANDO)
     if (this.g4Point() === 1) {
       this.dashBtn.setVisible(false);
@@ -11009,6 +12149,10 @@ export class MatchScene extends Phaser.Scene {
       text = this.tickG4();
     } else if (this.g5Point() !== null) {
       text = this.tickG5();
+    } else if (this.g6Point() !== null) {
+      text = this.tickG6(); // (27-11-2026, usuario) nivel 6 guiado
+    } else if (this.g7Point() !== null) {
+      text = this.tickG7(); // (27-11-2026, usuario) nivel 7 guiado
     } else if (this.spKind()) {
       text = this.tickScripted();
     } else if (this.guide === 'spin' && this.practicingReturns()) {
@@ -11016,7 +12160,7 @@ export class MatchScene extends Phaser.Scene {
       // (25-11-2026, usuario) P2: saca el bot; su saque se queda quieto en lo alto del bote hasta que le pegas; tu devolución va al bot y él te
       // tira FUERTE al lado contrario (quieto: solo queda el DEFENSIVO)
       const bs0 = this.ball.s;
-      if (this.meServes && (this.phase === 'serve' || this.phase === 'toss')) text = 'TE TOCA SACAR'; // (25-11-2026, usuario) P1: saque normal o directo
+      if (this.meServes && (this.phase === 'serve' || this.phase === 'toss')) text = 'TU TURNO'; // (25-11-2026, usuario) P1: saque normal o directo
       if (this.l2Stage === 'serve' && this.server === 'bot' && this.phase === 'serve' && this.serveCtl.state === 'POSITIONING' && this.time.now >= this.l2ServeAt) this.beginToss('normal');
       if (this.l2Stage === 'serve' && this.phase === 'rally' && !this.serving && this.bounces > 0 && this.lastHitter === 'bot' && bs0.vz <= 0) {
         this.l2Stage = 'held';
@@ -11066,17 +12210,17 @@ export class MatchScene extends Phaser.Scene {
       else if (lesson === 'direct') text = 'USA SAQUE DIRECTO'; // (25-11-2026, usuario) corto
       else if (lesson === 'spin') text = 'USA SAQUE CON EFECTO'; // (25-11-2026, usuario) corto; la mano sigue en el botón morado
     }
-    this.tickBallPulse(text === 'MUEVE EL JOYSTICK HACIA LA PELOTA');
-    this.dashBtn.setHint(!!this.l2Freeze || this.spDefWait());
-    this.dashBtn.setDepth(this.l2Freeze || this.spDefWait() ? 5610 : 5000);
-    this.smashBtn.setDepth((this.g4Point() === 0 && this.g4St === 'wait') || (this.g5Point() === 3 && this.g5St === 'spwait') ? 5610 : 5000); // (26-11-2026) nivel 4, P1: ESPECIAL sobre el oscuro // nivel 2: por encima del oscurecido mientras esperas pulsarlo
+    this.tickBallPulse(text === 'MUEVE EL JOYSTICK HACIA LA PELOTA' || text === G7_TEXT.net, text === G7_TEXT.net ? 1800 : 0); // (27-11-2026, usuario) SUBE A LA RED: la pelota late 2 veces
+    this.dashBtn.setHint(!!this.l2Freeze || this.spDefWait() || this.g7DashReady());
+    this.dashBtn.setDepth(this.l2Freeze || this.spDefWait() || (this.g7Point() !== null && this.g7St === 'dwait') ? 5610 : 5000);
+    this.smashBtn.setDepth((this.g4Point() === 0 && this.g4St === 'wait') || (this.g5Point() === 3 && this.g5St === 'spwait') || (this.g6Point() === 1 && this.g6St === 'uwait') ? 5610 : 5000); // (26-11-2026) nivel 4, P1: ESPECIAL sobre el oscuro // nivel 2: por encima del oscurecido mientras esperas pulsarlo
     this.tickGuideDim(text);
     // (25-11-2026, usuario) pausas del tutorial: el ambiente también se detiene
     // (26-11-2026, usuario) en TODA pausa del tutorial (con el oscurecido) el ambiente también se para: paseantes, espectadores, pájaro…
     const g4Pause = this.g4Point() !== null && ['pre', 'approach', 'wait', 'cine', 'aim', 'charge3', 'lob3'].includes(this.g4St);
     this.setAmbientPaused((this.guide === 'spin' && !!this.l2Freeze) || (!!this.spKind() && (this.spSt === 'approach' || this.spSt === 'hold' || this.spSt === 'defwait' || this.spSt === 'approach2')) || g4Pause || this.l2AimPause === 'on' || this.l2AimPause === 'wait' || (!!this.guide && !!this.guideDim?.visible));
     // (25-11-2026, usuario) el marcador se ve siempre, salvo con el oscurecido de una instrucción
-    const hudA = this.guideDim?.visible ? 0.3 : 1;
+    const hudA = this.g6Zoom() ? 0 : this.guideDim?.visible ? 0.3 : 1; // (27-11-2026, usuario) nivel 6: en el zoom al rival, sin marcador
     if (this.hud.alpha !== hudA) this.hud.setAlpha(hudA);
     if (text === this.guideNotice) return;
     this.guideNotice = text;
@@ -11094,15 +12238,17 @@ export class MatchScene extends Phaser.Scene {
     // nivel 1: el aviso, grande y a media pantalla (sobre el oscurecido); los demás, arriba como siempre
     // (25-11-2026, usuario) nivel 1, saque del bot: "HACIA LA PELOTA" más arriba (no tapa la pelota)
     const upper = (this.guide === 'first' && this.score.played === 0 && this.guideRally.k === 0 && text === 'MUEVE EL JOYSTICK HACIA LA PELOTA') || text === G5_TEXT.drop; // (26-11-2026) también el DROP SHOT 0 del nivel 5
-    const g5y = this.guide === 'l5' && this.g5Point() !== null; // (26-11-2026, usuario) nivel 5: todos sus textos a la misma altura
-    if (this.guide) this.guideText.setPosition(this.scale.width / 2, this.scale.height * (g5y ? (text === G5_TEXT.ring ? 0.45 : 0.4) : upper ? 0.34 : 0.46)).setFontSize(36);
+    const g5y = (this.guide === 'l5' && this.g5Point() !== null) || (this.guide === 'l6' && this.g6Point() !== null) || (this.guide === 'l7' && this.g7Point() !== null); // (27-11-2026) niveles 6 y 7 igual // (26-11-2026, usuario) nivel 5: todos sus textos a la misma altura
+    if (this.guide) this.guideText.setPosition(this.scale.width / 2, this.scale.height * (g5y ? (text === G5_TEXT.ring || text === G6_TEXT.ring ? 0.45 : text === G6_TEXT.racket ? G6_RACKET_Y : text === G6_TEXT.use ? G6_USE_Y : text === G6_TEXT.info ? G6_INFO_Y : text === G6_TEXT.stun ? G6_STUN_Y : text === G5_TEXT.circle ? G5_CIRCLE_Y : 0.4) : upper ? 0.34 : 0.46)).setFontSize(text === G6_TEXT.p1 || text === G6_TEXT.use || text === G6_TEXT.racket ? 46 : text === SP_TEXT.serve || text === G5_TEXT.circle || text === SP_TEXT.returnServe || text === G7_TEXT.net ? 44 : 36); // (27-11-2026, usuario) TU TURNO y CORRE AL CÍRCULO más grandes
     else this.guideText.setPosition(this.scale.width / 2, 320).setFontSize(27);
+    this.guideText.setColor(text === G6_TEXT.use ? '#ffffff' : '#fff3bb'); // (27-11-2026, usuario) USA LA ULTI en blanco
     this.guideZone?.clear();
     this.guideZonePts = [];
     // nivel 1, saque tocando: la mano toca el lado derecho de la pantalla
     this.guideHand?.destroy();
     this.guideHand = undefined;
-    if (text === G4_TEXT.special) this.guideHand = tapHint(this, this.smashBtn.x, this.smashBtn.y, 6060); // (26-11-2026) nivel 4
+    if (this.g7Point() !== null && text === SP_TEXT.defensive) this.guideHand = tapHint(this, this.dashBtn.x, this.dashBtn.y, 6060); // (27-11-2026) nivel 7, P3
+    else if (text === G4_TEXT.special || text === G6_TEXT.use) this.guideHand = tapHint(this, this.smashBtn.x, this.smashBtn.y, 6060); // (26-11-2026) nivel 4
     else if (text === G4_TEXT.charge || text === G5_TEXT.tapRight) this.guideHand = tapHint(this, this.scale.width * 0.72, this.scale.height * 0.62, 6060);
     else if (this.guide === 'spin' && this.l2Freeze && text) this.guideHand = tapHint(this, this.dashBtn.x, this.dashBtn.y, 6060); // la mano, en el botón DEFENSIVO
     // (25-11-2026, usuario) nivel 2, P1 (TE TOCA SACAR): sin mano al sacar (solo la del DEFENSIVO, más adelante)
@@ -11149,8 +12295,10 @@ export class MatchScene extends Phaser.Scene {
     // (25-11-2026, usuario) nivel 2: oscuro en los 3 saques guiados (directo, el del DEFENSIVO, con efecto) y en la pelota quieta del DEFENSIVO
     const l2 = this.guide === 'spin' && (!!this.l2Freeze || (this.l2Stage === 'held' && this.practicingReturns()) || (this.meServes && this.score.played <= 2 && (this.phase === 'serve' || this.phase === 'toss')));
     const sp = !!this.spKind() && !!text && (this.spSt === 'hold' || this.spSt === 'approach' || this.spSt === 'defwait' || this.spSt === 'approach2' || (this.spSt === 'serve' && this.meServes)); // (25-11-2026, usuario) puntos guiados: al sacar y en la pelota quieta (también mientras vas a ella)
-    const g4 = (this.g4Point() !== null || (this.g5Point() !== null && this.g5St !== 'ret' && !(this.g5St === 'go' && this.remateCine && !this.g5RemAt))) && !!text && text !== SP_TEXT.returnServe; // (26-11-2026, usuario) niveles 4 y 5
-    const on = (this.guide === 'first' && !!text) || l2 || sp || g4;
+    const g4 = (this.g4Point() !== null || (this.g5Sm() && this.g5St !== 'ret' && !(this.g5St === 'go' && this.remateCine && !this.g5RemAt))) && !!text && text !== SP_TEXT.returnServe; // (26-11-2026, usuario) niveles 4 y 5
+    const g6 = this.g6Point() !== null && this.g6Point() !== 0 && !this.g6Smash && !!text && text !== SP_TEXT.returnServe; // (27-11-2026, usuario) nivel 6: pausas
+    const g7 = this.g7Point() !== null && !!text && text !== SP_TEXT.serve; // (27-11-2026, usuario) nivel 7: pausas
+    const on = (this.guide === 'first' && !!text) || l2 || sp || g4 || g6 || g7;
     if (!on) {
       if (this.guideDim?.visible) {
         this.guideDim.setVisible(false);
@@ -11191,6 +12339,27 @@ export class MatchScene extends Phaser.Scene {
     const serving = this.server === 'player' && (this.phase === 'serve' || this.phase === 'toss');
     // (25-11-2026, usuario) nivel 2: el rival queda OSCURECIDO (opaco); en el nivel 1 se ve cuando sacas
     this.bot.depthBoost = serving && this.guide === 'first' ? 6000 : 0;
+    if (this.g6Point() === 2 && (this.g6St === 'rpause' || this.g6St === 'rget') && this.player.racket) {
+      // (27-11-2026, usuario) P3: tu raqueta en el suelo, sobre el oscuro
+      const r = this.player.racket;
+      r.img.setDepth(6010);
+      r.mark.setDepth(6008);
+      r.shadow.setDepth(6007);
+      this.racketArrow?.setDepth(6012);
+      // (27-11-2026, usuario) el círculo donde cayó PALPITA
+      if (!this.tweens.isTweening(r.mark)) this.tweens.add({ targets: r.mark, scale: { from: 1, to: 1.35 }, alpha: { from: 1, to: 0.55 }, duration: 420, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
+    }
+    if (this.g6Zoom()) {
+      // (27-11-2026, usuario) nivel 6: el rival aturdido y su raqueta en el suelo, por encima del oscuro; la pelota, bajo el oscuro
+      this.bot.depthBoost = 6000;
+      this.ball.depthBoost = 0;
+      const r = this.bot.racket;
+      if (r) {
+        r.img.setDepth(6010);
+        r.mark.setDepth(6008);
+        r.shadow.setDepth(6007);
+      }
+    }
     // (25-11-2026) sin máscara: el oscurecido se dibuja en 4 piezas ALREDEDOR del cuadro al que tienes que ir (en coordenadas del mundo,
     // las mismas del cuadro): arriba, abajo y los dos costados en diagonal. Sin cuadro, la pantalla entera.
     const v = this.cameras.main.worldView;
@@ -11322,7 +12491,7 @@ export class MatchScene extends Phaser.Scene {
       (this.spSt === 'hold' && !!this.spKind()) || // (25-11-2026, usuario) en la pelota del globo / la cortita: quieto en su pose de carga
       (this.g4Point() === 0 && (this.g4St === 'wait' || this.g4St === 'cine')) ||
       (this.g4Point() === 1 && this.g4St === 'pre') ||
-      (this.g5Point() !== null && (this.g5St === 'charge' || this.g5St === 'drop' || this.g5St === 'circle' || this.g5St === 'spwait' || this.g5St === 'spcine' || this.g5St === 'botsp')) || // (26-11-2026) nivel 5: quieto en las pausas
+      (this.g5Sm() && (this.g5St === 'charge' || this.g5St === 'drop' || this.g5St === 'circle' || this.g5St === 'spwait' || this.g5St === 'spcine' || this.g5St === 'botsp')) || (this.g6Point() !== null && (this.g6St === 'uwait' || this.g6St === 'bulti' || this.g6St === 'rpause')) || (this.g7Point() !== null && (this.g7St === 'charge' || this.g7St === 'lmsg' || this.g7St === 'dwait' || this.g7St === 'duel3' || this.g7St === 'bsm')) || // (26-11-2026) nivel 5: quieto en las pausas
       (this.spKind() === 'defspecial' && (this.spSt === 'fed' || (this.spSt === 'defwait' && !this.spDefRunning))) || // (26-11-2026, usuario) desde su ESPECIAL hasta el DEFENSIVO: quieto // (26-11-2026, usuario) nivel 3, P4: quieto hasta el DEFENSIVO // (26-11-2026, usuario) nivel 4, P2: quieto hasta tocar a la derecha para cargar // (26-11-2026, usuario) nivel 4, P1: quieto en pose de carga hasta el ESPECIAL
       this.remateRecover > 0 || // cae tras el golpe al aire del remate
       pl.stun > 0 ||
@@ -11429,14 +12598,14 @@ export class MatchScene extends Phaser.Scene {
     const aiSpeed = this.ai.speed;
     if (this.zone.active('bot')) this.ai.speed = aiSpeed * ZONE.speedMult * this.zoneStatMultiplier('bot', 'speed');
     // sin raqueta (ULTI recibida): pasado el aturdido corre a buscarla en vez de ir a por la pelota
-    const fetch = bt.racket && bt.stun <= 0 && !bt.vanished ? this.botFetchRacket(dt) : null;
+    const fetch = bt.racket && bt.stun <= 0 && !bt.vanished && !(this.g6Point() === 1 && this.phase === 'rally') ? this.botFetchRacket(dt) : null; // (27-11-2026, usuario) nivel 6, P2: en el punto no la recoge (al perderlo, sí)
     // REMATE del BOT: salta y se coloca bajo la pelota (sin el cerebro)
     const rem = this.botRemate ? this.botRemateMove(dt) : null;
     // entrada al empezar el partido: el rival llega caminando (entranceWalk), sin el cerebro
     // REMATE planeado: va a pararse en el círculo del globo (botRemateSteer)
     const steer = !this.entering && !rem && !fetch ? this.botRemateSteer(dt) : null;
     // (18-11-2026) tras el punto ('pointover') el rival se queda quieto: su reacción (ganado / perdido) no se corta con la carrera
-    const mv = this.entering || (this.phase === 'pointover' && !fetch) || this.guideBotFrozen() || (this.guide === 'spin' && (this.score.played === 0 || this.practicingReturns() || this.l2Won)) || (!!this.spKind() && !this.spBotFree()) || this.g4Point() !== null || (this.g5Point() !== null && !(this.g5Point() === 4 && this.g5St === 'botlob')) ? { moving: this.botRun.on, dirX: this.botRun.dirX, sprint: null, readyToToss: false } : rem ?? fetch ?? steer ?? this.brain.tick(bt, {
+    const mv = this.entering || (this.phase === 'pointover' && !fetch) || this.guideBotFrozen() || (this.guide === 'spin' && (this.score.played === 0 || this.practicingReturns() || this.l2Won)) || (!!this.spKind() && !this.spBotFree()) || this.g4Point() !== null || (this.g5Point() !== null && !(this.g5Point() === 4 && this.g5St === 'botlob')) || this.g6BotScripted() || this.g7BotScripted() ? { moving: this.botRun.on, dirX: this.botRun.dirX, sprint: null, readyToToss: false } : rem ?? fetch ?? steer ?? this.brain.tick(bt, {
       dt,
       phase: this.phase,
       botServes: this.server === 'bot',
@@ -11617,8 +12786,8 @@ export class MatchScene extends Phaser.Scene {
     if (this.duel) { this.renderActors(); return; }
     // globo: caída prevista, círculo en el suelo y aviso del SMASH potenciado (solo presentación + reglas)
     // (26-11-2026, usuario) tus globos en el tutorial (antes de que el rival sepa rematar) no tienen CÍRCULO del smash ni el rival va a él
-    const noCircle = this.lastHitter === 'player' && this.tutorial && getPlayer().level < BOT_REMATE_LEVEL && this.g5Point() !== 4; // (26-11-2026) nivel 5, P4: sí (su SMASH)
-    const g5Hold = this.g5Point() !== null && (this.g5St === 'circle' || this.g5St === 'run'); // (26-11-2026) globo en pausa: el círculo se queda
+    const noCircle = this.lastHitter === 'player' && this.tutorial && getPlayer().level < BOT_REMATE_LEVEL && this.g5Point() !== 4 && this.g7Point() !== 0; // (26-11-2026) nivel 5, P4: sí (su SMASH)
+    const g5Hold = (this.g5Sm() && (this.g5St === 'circle' || this.g5St === 'run')) || (this.g6Point() === 1 && this.g6St === 'stunp' && !!this.g6Hold); // (27-11-2026) nivel 6: también en la pausa del rival aturdido // (26-11-2026) globo en pausa: el círculo se queda
     const lob = g5Hold ? this.lob.state : this.lob.update(dt, this.ball.s, this.lastHitter, noCircle ? 'normal' : this.ball.shotKind, this.phase, this.bounces);
     if (!lob.active) this.remateWhiffed = false; // otro globo: el remate vuelve a estar disponible
     const insideLob = lob.receiver === 'player' && this.lob.contains(pl.x, pl.y);
@@ -11703,6 +12872,18 @@ export class MatchScene extends Phaser.Scene {
       cam.scrollY = (pp.sy - LOB_SMASH.focusLift - this.scale.height / 2) * ease + (this.duelCamMid.sy - NET_DUEL.camLift - this.scale.height / 2) * de + (pp.sy - SLOWMO.focusLift - this.scale.height / 2) * se;
       cam.scrollX += (pp.sx - VIEW.W / 2) * (1 - VIEW.FOLLOW) * 0.5 * (ease + se) * Math.min(1, dt * 5);
       this.lobVignette.setAlpha(LOB_SMASH.vignette * Math.max(ease, se)).setVisible(Math.max(ease, se) > 0.01);
+      // (27-11-2026, usuario) nivel 6, P2: la cámara se acerca al rival aturdido con la raqueta en el suelo (pausa de 3 s)
+      const gw = this.g6Zoom() ? 1 : 0; // (27-11-2026, usuario) se acerca desde que la ULTI va hacia él
+      this.g6CamK += (gw - this.g6CamK) * Math.min(1, dt * (gw ? 3 : 2.5));
+      if (this.g6CamK < 0.002) this.g6CamK = 0;
+      if (this.g6CamK > 0) {
+        const gk = this.g6CamK * this.g6CamK * (3 - 2 * this.g6CamK);
+        const r6 = this.bot.racket;
+        const bp = project(r6 ? (this.bot.x + r6.x) / 2 : this.bot.x, r6 ? (this.bot.y + r6.y) / 2 : this.bot.y); // (27-11-2026, usuario) el rival y su raqueta
+        cam.setZoom(cam.zoom * (1 + G6_ZOOM * gk));
+        cam.scrollX += (this.baseScrollX + (bp.sx - VIEW.W / 2) - cam.scrollX) * gk;
+        cam.scrollY += (bp.sy - G6_FOCUS_LIFT - this.scale.height / 2 - cam.scrollY) * gk;
+      }
     }
     // reloj de simulación de Perfect Timing (mismo dt que la física)
     this.simClock += dt;
@@ -11805,13 +12986,13 @@ export class MatchScene extends Phaser.Scene {
     const p = r.t / r.T;
     const pl = this.player;
     // (26-11-2026, usuario) nivel 5 guiado: salta más alto (G5_JUMP_K)
-    pl.lift = REMATE.jump * (this.g5Point() !== null ? G5_JUMP_K : 1) * Math.sin((Math.min(1, p) * Math.PI) / 2);
+    pl.lift = REMATE.jump * (this.g5Sm() ? G5_JUMP_K : 1) * Math.sin((Math.min(1, p) * Math.PI) / 2);
     // salta en el sitio y cae donde saltó (antes se iba hacia la pelota y aterrizaba en otro lado): solo una deriva
     // mínima hacia donde apunta el joystick (en pantalla, derecha = +y y arriba = +x de la cancha)
     const d = this.inputVector();
     const D = REMATE.drift;
     // (26-11-2026, usuario) nivel 5 guiado: en el salto del SMASH no se mueve (el joystick solo apunta)
-    const drift = this.g5Point() !== null ? 0 : D.speed;
+    const drift = this.g5Sm() ? 0 : D.speed;
     r.ox -= d.y * drift * dt;
     r.oy += d.x * drift * dt;
     const m = Math.hypot(r.ox, r.oy);
@@ -11826,7 +13007,7 @@ export class MatchScene extends Phaser.Scene {
     if (Math.abs(d.y) > 0.35) r.aim.row = d.y > 0 ? 'short' : 'deep';
     // (26-11-2026, usuario) nivel 5 guiado: con el aro CERRADO se para todo (reloj e instrucción); luego tocas = SMASH
     // (26-11-2026, usuario) desde el 60 % del aro: todo en pausa y el aro se sigue cerrando DESPACIO (2 s, el reloj) hasta cerrarse
-    if (this.g5Point() !== null && this.g5St === 'go' && (p >= G5_RING_FROM || this.g5RemAt)) {
+    if (this.g5Sm() && this.g5St === 'go' && (p >= G5_RING_FROM || this.g5RemAt)) {
       const slowP = this.g5RemAt ? Math.min(1, G5_RING_FROM + (1 - G5_RING_FROM) * ((performance.now() - this.g5RemAt) / 2000)) : G5_RING_FROM;
       r.t = r.T * slowP;
       if (!this.g5RemAt) {
@@ -11836,7 +13017,7 @@ export class MatchScene extends Phaser.Scene {
         r.ring.setDepth(5606);
         r.g.setDepth(5604); // (26-11-2026, usuario) los 4 cuadros donde apuntar, también sobre el oscuro
         this.g5Clock?.destroy();
-        this.g5Clock = this.guideClock(2000);
+        this.g5Clock = this.guideClock(2000, this.scale.height * 0.46 + 106); // (27-11-2026, usuario) un poco más arriba
       }
       this.drawRemateAim(r);
       this.drawRemateRing(r.ring, slowP);
@@ -11942,7 +13123,7 @@ export class MatchScene extends Phaser.Scene {
     this.tweens.add({ targets: this.player, lift: 0, duration: 320, ease: 'Quad.easeIn' });
     if (grade === 'perfect') {
       const h = this.aboveHeadPos(this.player);
-      this.popText(h.x, h.y, this.g5Point() !== null ? 'SUPER SMASH!' : 'SMASH!', '#ffd23f', 44); // (26-11-2026, usuario) nivel 5: un solo texto
+      this.popText(h.x, h.y, 'SUPER SMASH!', '#ffd23f', 44); // (26-11-2026, usuario) nivel 5: un solo texto
       navigator.vibrate?.([30, 30, 80]);
     } else {
       // no acertó el cierre: el aro se abre y se apaga (no hubo SMASH!)
@@ -11973,7 +13154,7 @@ export class MatchScene extends Phaser.Scene {
    */
   /** (26-11-2026, usuario) tutorial: el rival no hace el REMATE con salto (el del círculo) hasta después de enseñarlo (nivel 7) */
   private tutLowLevel() {
-    return this.tutorial && getPlayer().level < BOT_REMATE_LEVEL && this.g5Point() !== 4; // (26-11-2026, usuario) nivel 5, P4: el rival muestra su SMASH
+    return this.tutorial && getPlayer().level < BOT_REMATE_LEVEL && this.g5Point() !== 4 && this.g7Point() !== 0; // (26-11-2026, usuario) nivel 5, P4: el rival muestra su SMASH
   }
   private canBotStartRemate(s: BallState) {
     const st = this.lob.state;
@@ -12035,7 +13216,7 @@ export class MatchScene extends Phaser.Scene {
     // a dónde: lejos de ti (lado contrario) y casi siempre al fondo
     const col: -1 | 1 = this.player.y > LAT_C ? -1 : 1;
     const row: 'short' | 'deep' = Math.random() < 0.7 ? 'deep' : 'short';
-    this.botRemate = { t: 0, T, hitAt: this.g5Point() === 4 ? 1 : hitAt, col, row }; // (26-11-2026) nivel 5, P4: SMASH justo
+    this.botRemate = { t: 0, T, hitAt: this.g5Point() === 4 || this.g7Point() === 0 ? 1 : hitAt, col, row }; // (26-11-2026) nivel 5, P4: SMASH justo
     this.botRemateGame = this.score.gameIndex; // uno por juego
     this.setSlowMo(clamp(T / REMATE.realS, REMATE.minSlow, 1));
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.setSlowMo(1));
@@ -12094,6 +13275,8 @@ export class MatchScene extends Phaser.Scene {
     if (!r.swung && r.t >= r.hitAt * r.T - BOT_REMATE_LEAD_S) {
       r.swung = true;
       this.bot.ch.swing(true, true, true); // remate con salto (smash-power), desde la pose congelada
+      // (27-11-2026, usuario) golpea (cuadro 5) y se QUEDA en el aire en el cuadro del impacto (6); al caer, los cuadros 7 y 8
+      this.bot.ch.holdFollowThrough(BOT_REMATE_HOLD_FRAME, BOT_REMATE_HOLD_MS);
     }
     if (r.t / r.T >= r.hitAt) this.botRemateHit();
   }
@@ -12111,6 +13294,7 @@ export class MatchScene extends Phaser.Scene {
     const ty = r.col < 0 ? (COURT.top + LAT_C) / 2 : (LAT_C + COURT.bottom) / 2;
     // (18-11-2026) el golpe ya empezó en tickBotRemate: la raqueta llega ahora (sin él, el de siempre)
     const fxDelay = r.swung ? 0 : this.bot.ch.swing(true, true, true);
+    if (!r.swung) this.bot.ch.holdFollowThrough(BOT_REMATE_HOLD_FRAME, BOT_REMATE_HOLD_MS); // (27-11-2026, usuario) queda en el impacto
     s.z = Math.max(s.z, 22);
     let speed = SHOT_SPEED * REMATE.speed[grade];
     if (this.zone.active('bot')) speed *= ZONE.shotMult * this.zoneStatMultiplier('bot', 'strength');
@@ -12122,7 +13306,8 @@ export class MatchScene extends Phaser.Scene {
     this.bounces = 0;
     this.ai.onBotHit();
     this.hitFxAt(fxDelay, s.x, s.y, s.z, false, 1, false, undefined, 'ball-saque-2'); // REMATE del bot
-    this.tweens.add({ targets: this.bot, lift: 0, duration: 320, ease: 'Quad.easeIn' });
+    // (27-11-2026, usuario) se queda arriba con el cuadro del impacto y recién después cae (cuadros 7 y 8)
+    this.tweens.add({ targets: this.bot, lift: 0, delay: fxDelay + BOT_REMATE_HOLD_MS, duration: 320, ease: 'Quad.easeIn' });
     const p = project(s.x, s.y, s.z);
     const [ix, iy, iz] = [s.x, s.y, s.z];
     this.time.delayedCall(fxDelay, () => {
@@ -12145,7 +13330,7 @@ export class MatchScene extends Phaser.Scene {
     if (grade === 'perfect') {
       const h = this.aboveHeadPos(this.bot);
       if (this.g5Point() === 4) this.popText(h.x, h.y, 'SUPER SMASH!', '#ff3b4a', 44); // (26-11-2026, usuario) nivel 5, P4: en rojo
-      else this.popText(h.x, h.y, 'SMASH!', '#ff9aa3', 44);
+      else this.popText(h.x, h.y, 'SUPER SMASH!', '#ff9aa3', 44);
     }
   }
 
@@ -12178,10 +13363,12 @@ export class MatchScene extends Phaser.Scene {
       const half = a === this.player || a === this.ally ? P_X : B_X; // (23-11-2026) la del aliado cae en su campo, no en el rival
       const room = (sd: number) => (sd > 0 ? COURT.bottom - 12 - a.y : a.y - COURT.top - 12);
       let side = Math.random() < 0.5 ? -1 : 1;
-      if (room(side) < R.side[0]) side = -side; // pegado a una banda: cae hacia el otro lado
+      // (27-11-2026, usuario) tutorial nivel 6, P2: la raqueta del rival sale más alta y cae más lejos
+      const far = (a === this.bot && this.g6Point() === 1) || (a === this.player && this.g6Point() === 2) ? 1.4 : 1; // (27-11-2026, usuario) también la tuya en el P3
+      if (room(side) < R.side[0] * far) side = -side; // pegado a una banda: cae hacia el otro lado
       pos = {
-        x: clamp(a.x + rand(-R.depth, R.depth), half[0], half[1]),
-        y: clamp(a.y + side * rand(R.side[0], R.side[1]), COURT.top + 12, COURT.bottom - 12),
+        x: clamp(a.x + rand(-R.depth, R.depth) * far, half[0], half[1]),
+        y: clamp(a.y + side * rand(R.side[0], R.side[1]) * far, COURT.top + 12, COURT.bottom - 12),
       };
     }
     const to = pos;
@@ -12200,7 +13387,7 @@ export class MatchScene extends Phaser.Scene {
     const y0 = feet.sy - charH * 0.62;
     const x1 = p.sx;
     const y1 = p.sy - hPx * 0.18;
-    const peak = charH * R.arcK;
+    const peak = charH * R.arcK * ((a === this.bot && this.g6Point() === 1) || (a === this.player && this.g6Point() === 2) ? 1.8 : 1); // (27-11-2026) nivel 6, P2: más alta
     const img = this.add.image(x0, y0, racketTexture).setDepth(Math.max(feet.sy, p.sy) + 0.5).setAlpha(0).setAngle(-dir * 30);
     // mismo ESTILO DE COLOR que el personaje (una raqueta morada no sale volando roja)
     const style = this.colorStyle[a === this.player ? 'player' : 'bot'];
@@ -12223,7 +13410,7 @@ export class MatchScene extends Phaser.Scene {
     const alive = () => a.racket === rec;
     // 2 vueltas girando hacia su lado y queda tumbada
     const a0 = -dir * 30;
-    const a1 = dir * (720 + 100);
+    const a1 = dir * ((a === this.player || a === this.ally ? 720 : 360) + 100); // (27-11-2026, usuario) la del rival: una sola vuelta (con 2 se veía raro)
     const t = { k: 0 };
     let trailAt = 0;
     this.tweens.add({
@@ -12325,6 +13512,15 @@ export class MatchScene extends Phaser.Scene {
         a.ch.setNoRacket(false); // recogida cortada: ya la tiene (MatchScene le devolvió los golpes); sin pose "sin raqueta"
       });
       if (!(a === this.bot && this.net && !this.net2host)) a.stun = Math.max(a.stun, pickMs / 1000);
+      if (a === this.bot && this.g6Smash && this.phase !== 'rally') {
+        // (27-11-2026, usuario) nivel 6, P2 perdido: al recogerla, su reacción de punto perdido (no el aturdido)
+        this.time.delayedCall(pickMs + 30, () => {
+          if (!this.sys.isActive()) return;
+          this.bot.stun = 0;
+          this.bot.ch.pointEnd(false, false, true);
+        });
+      }
+      a.softUntil = Math.max(a.softUntil ?? 0, this.time.now + pickMs + 250); // (27-11-2026, usuario) ese 'stun' es solo de la recogida: sin estrellas de aturdido al terminarla
       if (a === this.player) stopMotion(this.motion);
     }
     // mano de la raqueta: a la derecha de la pantalla de espaldas (jugador), a la izquierda de frente (rival)
@@ -12340,7 +13536,9 @@ export class MatchScene extends Phaser.Scene {
       ease: 'Quad.easeIn',
       onComplete: () => img.destroy(),
     });
-    this.popText(h.x, h.y - 10, '¡RAQUETA!', a === this.player ? '#7ff0ff' : '#ff9aa3', 26);
+    // (27-11-2026, usuario) ¡RECUPERADA!, del color de su raqueta
+    if (a === this.player) this.tutMission('tPickRacket'); // (27-11-2026, usuario) misión: recoger tu raqueta (nivel 6, P3)
+    this.popText(h.x, h.y - 10, '¡RECUPERADA!', '#' + looseRacketColor(a.ch.skinId).toString(16).padStart(6, '0'), 36);
     if (a === this.player) navigator.vibrate?.(30);
     const tag = this.net2Tag(a);
     if (tag) this.net?.sendAction('racket', { lost: false, ...tag });
@@ -12356,7 +13554,8 @@ export class MatchScene extends Phaser.Scene {
       const r = a.racket;
       if (a === this.ally && this.allyRemote) continue; // el compañero humano recoge la suya en su teléfono
       const rival = a !== this.player && a !== this.ally;
-      if (!r || a.stun > 0 || a.vanished || (rival && this.net && !this.net2host)) continue; // (el rival online recoge la suya y lo avisa; en el 2v2 los bots del host los simula el host)
+      if (!r || a.stun > 0 || a.vanished || (rival && this.net && !this.net2host)) continue;
+      if (a === this.bot && (this.g6Point() === 1 || this.g6Smash) && this.phase === 'rally') continue; // (27-11-2026, usuario) nivel 6, P2: en el punto no la recoge; al perderlo, sí // (el rival online recoge la suya y lo avisa; en el 2v2 los bots del host los simula el host)
       if (Math.hypot(a.x - r.x, a.y - r.y) <= RACKET_LOSS.pickR) this.recoverRacket(a);
     }
     this.drawRacketArrow();
@@ -12386,7 +13585,7 @@ export class MatchScene extends Phaser.Scene {
     const tip = pt(s, 0);
     const l = pt(-s * 0.7, -s * 0.8);
     const rr = pt(-s * 0.7, s * 0.8);
-    g.clear().setVisible(true).setDepth(feet.sy + 1);
+    g.clear().setVisible(true).setDepth(this.g6Point() === 2 && (this.g6St === 'rpause' || this.g6St === 'rget') ? 6012 : feet.sy + 1); // (27-11-2026) nivel 6, P3: sobre el oscuro
     g.fillStyle(0xffd23f, 0.75 + 0.25 * beat).lineStyle(3, 0x0a1638, 0.9);
     g.fillTriangle(tip.x, tip.y, l.x, l.y, rr.x, rr.y).strokeTriangle(tip.x, tip.y, l.x, l.y, rr.x, rr.y);
   }
@@ -14030,7 +15229,7 @@ export class MatchScene extends Phaser.Scene {
         if (rg === 'perfect') {
           superSmashFx(this, pr.sx, pr.sy);
           const hd = this.aboveHeadPos(bt);
-          this.popText(hd.x, hd.y, 'SMASH!', '#ffd23f', 44);
+          this.popText(hd.x, hd.y, 'SUPER SMASH!', '#ffd23f', 44);
         } else this.smashHitImpact(contactX, contactY, contactZ); // remate flojo: impacto contra la pelota
 
       });

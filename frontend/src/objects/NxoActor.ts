@@ -473,6 +473,17 @@ export function queueNxoSpriteLoads(load: Phaser.Loader.LoaderPlugin, ids: Sheet
   }
 }
 
+/**
+ * (26-11-2026) Tu personaje DE ESPALDAS, en segundo plano (llamar en el create): lo usan las demos EN ACCIÓN de PERSONALIZAR y la Tienda.
+ * Antes se cargaba junto con el de frente antes de mostrar la pantalla y frenaba el cambio de personaje (~2-4 s).
+ */
+export function loadBackViewLater(scene: Phaser.Scene, skin: string) {
+  queueNxoSpriteLoads(scene.load, sheetsOf([[skin, 'back']]));
+  if (!scene.load.list.size) return;
+  scene.load.once(Phaser.Loader.Events.COMPLETE, () => scene.sys.isActive() && registerNxoAnims(scene));
+  scene.load.start();
+}
+
 /** (25-11-2026) Libera de la memoria las hojas que NO estén en `keep` (texturas y sus animaciones). Llamar sin ningún partido abierto. */
 export function releaseCharacterSprites(scene: Phaser.Scene, keep: SheetId[]) {
   for (const id of IDS) {
@@ -482,6 +493,12 @@ export function releaseCharacterSprites(scene: Phaser.Scene, keep: SheetId[]) {
       if (scene.textures.exists(e.key)) scene.textures.remove(e.key);
     }
   }
+}
+
+/** (27-11-2026) color del aro de la raqueta del personaje (texto ¡RECUPERADA! al recogerla) */
+export function looseRacketColor(skin?: string): number {
+  const id = skin && Object.prototype.hasOwnProperty.call(LOOSE_RACKET_PALETTES, skin) ? (skin as keyof typeof LOOSE_RACKET_PALETTES) : 'nxo';
+  return LOOSE_RACKET_PALETTES[id].rim;
 }
 
 /** Raqueta suelta con la paleta del personaje, cordaje claro y mango negro. */
@@ -1299,6 +1316,17 @@ export class NxoActor {
   }
 
   /**
+   * (27-11-2026, usuario) La estirada en curso llega a su cuadro de CONTACTO (DIVE_REACH) justo en `sec` segundos: ajusta la velocidad del clip
+   * (así el desplazamiento del cuerpo termina con el impacto del sprite).
+   */
+  lungeSync(sec: number) {
+    if (this.state !== 'dive' || !(sec > 0)) return;
+    const a = this.P.extra.animations[this.diveSide > 0 ? 'dive-right' : 'dive-left'];
+    const fps = a?.fps ?? 18;
+    this.sprite.anims.timeScale = Phaser.Math.Clamp(DIVE_REACH / fps / sec, 0.5, 3);
+  }
+
+  /**
    * Golpe de un ataque especial recibido: aturdido (`stunned`) o, con el INFERNO, recibir el impacto con la
    * raqueta saliendo volando (vuelve a la mano al acabar). Dura `ms`. false = sin hoja.
    */
@@ -1380,8 +1408,14 @@ export class NxoActor {
   }
 
   /** ReacciÃ³n al acabar un punto (ganado / perdido). Se corta sola al empezar el siguiente. */
-  pointEnd(won: boolean, epic = false) {
+  pointEnd(won: boolean, epic = false, force = false) {
     if (!this.v2 || this.state === 'victory') return;
+    // (27-11-2026, usuario) tutorial nivel 6: el rival sin raqueta igual hace su reacción de punto perdido
+    if (force) {
+      if (this.state === 'stun') this.endBusy('stun');
+      this.emote(this.pointAnim(won, epic));
+      return;
+    }
     // (18-11-2026, usuario: "tras el smash el rival no hizo el punto perdido") ATURDIDO por el golpe: la reacción queda pendiente y sale al
     // terminar el aturdimiento (endBusy); antes se perdía
     if (this.state === 'stun') {
@@ -1488,6 +1522,11 @@ export class NxoActor {
     this.state = 'emote';
     this.sprite.anims.timeScale = 1;
     this.playClip(this.xk(a));
+  }
+
+  /** (27-11-2026) termina ya el aturdido (tutorial nivel 6: sale a correr tras la pelota) */
+  endStun() {
+    this.endBusy('stun');
   }
 
   private endBusy(s: State) {

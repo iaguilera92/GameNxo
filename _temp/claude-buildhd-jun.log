@@ -1,0 +1,5 @@
+(sin JSON, se ignoran: run-left, recover-right, recover-left, wait, serve-bounce, serve-toss, dropshot, intro, greet, victory-big, point-sad)
+stand 150  ·  memoria de las tiras ≈ 19.0 MB  ·  HD: idle, run, runstop, victory, brake-turn, dash, defeat, forehand, backhand, forehand-power, backhand-power, serve, serve-spin, smash, smash-power, dive-right, dive-left, stunned, point-won, point-lost, walk, inferno-hit, volley, walk-intro, point-doubt, point-cheer
+OJO: cambió serve, serve-spin: volver a medir serveRacket (hits.json) y/o BOUNCE en NxoActor.ts (docs/COMO-TRABAJAR-SPRITES-MOVIMIENTOS.md §5).
+listo: 26 tiras en C:\Users\IAGUILERA\Documents\00 Trabajos\GameNxo\frontend\public\assets\characters\jun-front-v2
+exit 0 

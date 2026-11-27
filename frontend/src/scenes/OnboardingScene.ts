@@ -13,6 +13,7 @@ import { sfx } from '../fx/sfx';
 import { uiSound } from '../fx/uiSound';
 import { drawPassiveIcon } from '../ui/passiveInfo';
 import type { SkinId } from '../characters/skins';
+import { queueNxoSpriteLoads, sheetsOf } from '../objects/NxoActor';
 
 const NAVY = 0x0b1a3d;
 const NEON = 0x3a7bff;
@@ -334,6 +335,9 @@ export class OnboardingScene extends Phaser.Scene {
           selected = r.id;
           draw();
           info();
+          // (26-11-2026) se empieza a cargar ya su sprite de frente (el del menú): al confirmar, el menú entra sin esperar
+          queueNxoSpriteLoads(this.load, sheetsOf([[r.id, 'front']]));
+          if (this.load.list.size && !this.load.isLoading()) this.load.start();
         });
         c.add(hit);
       }),

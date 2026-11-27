@@ -36,7 +36,9 @@ export type TutorialMissionId =
   | 'tDrop0'
   | 'tSpinServe'
   | 'tZone'
-  | 't05Smash';
+  | 't05Smash'
+  | 'tPickRacket'
+  | 'tLobBack';
 
 /** regla del usuario: como mucho 4 misiones por partido */
 export const TUTORIAL_MISSIONS_MAX = 4;
@@ -54,7 +56,7 @@ export const TUTORIAL_MISSION_DEFS: Record<TutorialMissionId, { title: string; c
   tGood: { title: 'Golpe BIEN', coins: 10 },
   tPerfect: { title: 'Golpe PERFECTO', coins: 10 },
   tStreak2: { title: '2 PERFECTOS seguidos', coins: 15 },
-  tUlti: { title: 'Lanza la ULTI', coins: 10 },
+  tUlti: { title: 'Usar Ulti', coins: 10 }, // (27-11-2026, usuario)
   tRacket: { title: 'Rival sin raqueta', coins: 15 },
   tRemate: { title: 'Remata un globo', coins: 15 },
   tSpecial: { title: 'Usar especial', coins: 10 }, // (26-11-2026, usuario)
@@ -62,13 +64,15 @@ export const TUTORIAL_MISSION_DEFS: Record<TutorialMissionId, { title: string; c
   tDive: { title: 'Haz una estirada', coins: 15 },
   tTeamPoint: { title: 'Punto de tu compañero', coins: 10 },
   tPoints3: { title: 'Gana 3 puntos', coins: 10 },
-  tDuel: { title: 'Gana un Duelo', coins: 15 },
+  tDuel: { title: 'Ganar Duelo red', coins: 15 },
   tCharge: { title: 'Golpe cargado', coins: 10 },
   tChargedLob: { title: 'Globo disparado', coins: 15 },
   tDrop0: { title: 'DROP SHOT 0', coins: 15 },
   tSpinServe: { title: 'Saca con efecto', coins: 10 },
   tZone: { title: 'Entra en ZONA', coins: 15 },
-  t05Smash: { title: 'SMASH cargado', coins: 15 }, // (26-11-2026, usuario) nivel 5: smash en el círculo
+  t05Smash: { title: 'SMASH cargado', coins: 15 },
+  tPickRacket: { title: 'Recoge tu raqueta', coins: 10 },
+  tLobBack: { title: 'Devuelve globo', coins: 10 }, // (27-11-2026, usuario) nivel 7, P3: devolver su SUPER GLOBO con el DEFENSIVO // (27-11-2026, usuario) nivel 6, P3 // (26-11-2026, usuario) nivel 5: smash en el círculo
 };
 
 /** Misiones del partido del tutorial de cada nivel (orden de las cards). 16 a 19: las normales (partidos completos). */
@@ -78,8 +82,8 @@ const BY_LEVEL: Record<number, string[]> = {
   3: ['t03Drop', 'tRemate', 'tWin'], // (25-11-2026, usuario) cortita, remate en la red (el ESPECIAL del rival no es misión)
   4: ['tSpecial', 'tCharge', 'tChargedLob', 'tWin'], // (26-11-2026, usuario) ESPECIAL, CARGANDO y GLOBO cargado (partido guiado)
   5: ['tDrop0', 't05Smash', 'tWin'], // (26-11-2026, usuario) DROP SHOT 0 y SMASH con el círculo (partido guiado)
-  6: ['tUlti', 'tRacket', 'tWin'], // ULTI
-  7: ['tRemate', 'tSpecial', 'tWin'], // globo del rival y remate
+  6: ['tUlti', 'tPickRacket', 'tWin'], // ULTI (27-11-2026, usuario: sin Rival sin raqueta; solo Usar Ulti)
+  7: ['tDive', 'tDuel', 'tLobBack', 'tWin'], // (27-11-2026, usuario) ESTIRADA y DUELO RED (partido guiado)
   8: ['tCharge', 'tChargedLob', 'tDrop0'], // CARGANDO GOLPE (25-11-2026: antes en el 12)
   9: ['tDive', 'tUlti', 'tWin'], // estirada
   10: ['tTeamPoint', 'tPoints3', 'tSpecial'], // 2v2

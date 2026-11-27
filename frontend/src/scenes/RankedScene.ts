@@ -137,7 +137,24 @@ export class RankedScene extends Phaser.Scene {
 
   private rebuild() {
     this.children.list.filter((o) => !this.overlay.includes(o)).forEach((o) => o.destroy());
+    this.pruneDeadTweens();
     this.build();
+  }
+
+  /**
+   * (26-11-2026, usuario: "el cofre semanal pegó toda la app") Quita las animaciones cuyos objetos ya se destruyeron. Antes, cada
+   * reconstrucción de la pantalla (abrir / cerrar un aviso, cambiar de pestaña) dejaba vivas las animaciones en bucle (brillos, latidos, el
+   * cofre que vibra) de los objetos borrados: se acumulaban y cada vez costaba más dibujar un cuadro.
+   */
+  private pruneDeadTweens() {
+    const dead = (x: unknown) => !!x && typeof x === 'object' && 'type' in (x as object) && !(x as { scene?: unknown }).scene;
+    for (const t of this.tweens.getTweens()) {
+      // las cadenas (tweens.chain) no tienen `targets` propios: los de sus pasos
+      const any = t as unknown as { targets?: unknown[]; data?: { targets?: unknown[] }[] };
+      const tg = any.targets?.length ? any.targets : (any.data ?? []).flatMap((d) => d.targets ?? []);
+      // por el gestor: TweenChain.remove(paso) es otra cosa (quita un paso de la cadena)
+      if (tg.length && tg.every(dead)) this.tweens.remove(t);
+    }
   }
 
   /**
@@ -1204,6 +1221,9 @@ export class RankedScene extends Phaser.Scene {
     const objs = this.openOverlay(1);
     const shade = objs[0];
     const alive = () => this.overlay[0] === shade;
+    // (26-11-2026) la pantalla de la liga queda tapada por el fondo opaco: no se dibuja mientras tanto (se rehace al cerrar)
+    this.hiddenUnder = this.children.list.filter((o) => !objs.includes(o) && (o as unknown as { visible?: boolean }).visible === true);
+    for (const o of this.hiddenUnder) (o as unknown as { setVisible: (v: boolean) => void }).setVisible(false);
     const add = <T extends Phaser.GameObjects.GameObject>(o: T): T => {
       objs.push(o);
       return o;
@@ -1234,11 +1254,18 @@ export class RankedScene extends Phaser.Scene {
     }
     // fondo: rayos que giran y destellos que suben (los de la ruleta)
     const len = Math.max(W, H);
-    const rays = add(this.add.graphics({ x: cx, y: cy }).setDepth(D).setBlendMode(Phaser.BlendModes.ADD));
-    for (let i = 0; i < 18; i++) {
-      const a0 = (i / 18) * Math.PI * 2;
-      rays.fillStyle(i % 2 ? st.color : GOLD, 0.12).slice(0, 0, len, a0, a0 + Math.PI / 18, false).fillPath();
+    // (26-11-2026) los rayos se dibujan UNA vez en una textura de 512 px (antes, 18 arcos de pantalla completa rehechos en cada cuadro)
+    const raysKey = `season-rays-${w.league}`;
+    if (!this.textures.exists(raysKey)) {
+      const rg = this.make.graphics({}, false);
+      for (let i = 0; i < 18; i++) {
+        const a0 = (i / 18) * Math.PI * 2;
+        rg.fillStyle(i % 2 ? st.color : GOLD, 0.12).slice(256, 256, 256, a0, a0 + Math.PI / 18, false).fillPath();
+      }
+      rg.generateTexture(raysKey, 512, 512);
+      rg.destroy();
     }
+    const rays = add(this.add.image(cx, cy, raysKey).setDisplaySize(len * 2, len * 2).setDepth(D).setBlendMode(Phaser.BlendModes.ADD));
     rays.setAlpha(0);
     this.tweens.add({ targets: rays, alpha: 1, duration: 500 });
     this.tweens.add({ targets: rays, angle: 360, duration: 40000, repeat: -1 });
@@ -1370,7 +1397,9 @@ export class RankedScene extends Phaser.Scene {
       amt.setShadow(0, 8, '#0a1638', 0, true, true);
       this.tweens.add({ targets: amt, alpha: 1, scale: 1, delay: 260, duration: 380, ease: 'Back.easeOut' });
       const c = { v: 0 };
-      this.tweens.add({ targets: c, v: p.amount, delay: 320, duration: p.amount > 20 ? 800 : 400, ease: 'Cubic.easeOut', onUpdate: () => amt.setText(`+${fmtCoins(Math.round(c.v))}`), onComplete: () => amt.setText(`+${fmtCoins(p.amount)}`) });
+      // (26-11-2026) el texto grande (96 px con borde) solo se redibuja cuando cambia la cifra
+      let shown = -1;
+      this.tweens.add({ targets: c, v: p.amount, delay: 320, duration: p.amount > 20 ? 800 : 400, ease: 'Cubic.easeOut', onUpdate: () => { const n = Math.round(c.v); if (n !== shown) { shown = n; amt.setText(`+${fmtCoins(n)}`); } }, onComplete: () => amt.setText(`+${fmtCoins(p.amount)}`) });
       const lb = add(this.add.text(cx, amt.y + 76, p.label, { fontFamily: FONT, fontSize: '40px', color: p.color, stroke: '#0a1638', strokeThickness: 9 }).setOrigin(0.5).setDepth(D + 5).setAlpha(0).setLetterSpacing(3));
       this.tweens.add({ targets: lb, alpha: 1, delay: 560, duration: 300 });
       current = [halo, amt, lb];
@@ -1448,7 +1477,8 @@ export class RankedScene extends Phaser.Scene {
 
   // ================================================================ utilidades
   private openOverlay(alpha = 0.75) {
-    this.closeOverlay();
+    // (26-11-2026) al pasar de un aviso a otro NO se reconstruye la pantalla de debajo (antes se rehacía entera justo al abrir el cofre)
+    this.closeOverlay(false);
     this.overlayReturnScroll = this.scrollY;
     this.scrollY = 0;
     this.cameras.main.setScroll(0, 0);
@@ -1459,17 +1489,22 @@ export class RankedScene extends Phaser.Scene {
     return this.overlay;
   }
 
-  private closeOverlay() {
+  private closeOverlay(rebuild = true) {
     if (!this.overlay.length) return;
     this.overlay.forEach((o) => {
       this.tweens.killTweensOf(o);
       o.destroy();
     });
     this.overlay = [];
+    this.pruneDeadTweens(); // las de los hijos de los paneles (p. ej. el cofre que vibra dentro del panel semanal)
     this.events.emit('overlay-closed');
     this.scrollY = this.overlayReturnScroll;
-    this.rebuild();
+    if (rebuild) this.rebuild();
+    else for (const o of this.hiddenUnder) if (o.active) (o as unknown as { setVisible: (v: boolean) => void }).setVisible(true);
+    this.hiddenUnder = [];
   }
+  /** (26-11-2026) objetos de la pantalla ocultados bajo un aviso opaco (el cofre), para volver a mostrarlos si no se reconstruye */
+  private hiddenUnder: Phaser.GameObjects.GameObject[] = [];
 
   private confetti(objs: Phaser.GameObjects.GameObject[], colors: number[]) {
     const W = this.scale.width;

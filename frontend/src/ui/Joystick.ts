@@ -25,6 +25,12 @@ export class Joystick {
   /** respuesta nueva del joystick (JOY.enabled y sin localStorage 'dev.joyCurve' = '0') */
   private readonly curve = JOY.enabled && devFlag('dev.joyCurve') !== '0';
 
+  /** (27-11-2026) oculto (p. ej. el zoom del tutorial al rival aturdido) */
+  setHidden(on: boolean) {
+    this.base.setVisible(!on);
+    this.knob.setVisible(!on);
+  }
+
   constructor(private scene: Phaser.Scene) {
     this.base = scene.add.container(0, 0).setScrollFactor(0).setDepth(5000);
     const g = scene.add.graphics();

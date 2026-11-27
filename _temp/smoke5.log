@@ -1,0 +1,14 @@
+Customize    TypeError: Cannot read properties of undefined (reading 'textures')
+    at <anonymous>:1:47
+    at <anonymous>:1:609
+reinicio sin cambiar ms hasta create: undefined | pedidos: 131 {"otro":131} | tareas largas (ms): undefined
+cambio a MAT        ms hasta create: undefined | pedidos: 681 {"otro":563,"ruleta-frame.webp":1,"ruleta-frame-gold.webp":1,"ruleta-frame-epic.webp":1,"mat_portrait.webp":1,"isa_portrait.webp":1,"jun_portrait.webp":1,"net_portrait.webp":1,"nxo-logo.webp":2,"zac_portrait.webp":1,"mai_portrait.webp":1,"mat-v2":31,"mat-inferno":6,"mat-front-v2":30,"mat-front-inferno":6,"loading-bg.webp":1,"menu-bg.webp":1,"moneda-1.webp":1,"ulti-legendaria-tornado.webp":1,"dinero-virtual-1.webp":1,"dinero-fardo-chico.webp":1,"cofre-normal.webp":1,"cofre-oro.webp":1,"cofre-epico.webp":1,"bronce.webp":1,"ui":1,"marcos":6,"marcos2v2":6,"monedas.webp":1,"billetes.webp":1,"premio-diario.webp":1,"barra-inicio.webp":1,"insignia-pase-batalla.webp":1,"liga.webp":1,"moneda-2v2.webp":1,"bronce-2v2.webp":1,"menu":3} | tareas largas (ms): undefined
+cambio a NXO        ms hasta create: undefined | pedidos: 716 {"otro":585,"ruleta-frame.webp":1,"ruleta-frame-gold.webp":1,"ruleta-frame-epic.webp":1,"mat_portrait.webp":1,"isa_portrait.webp":1,"jun_portrait.webp":1,"net_portrait.webp":1,"zac_portrait.webp":1,"mai_portrait.webp":1,"nxo-v2":37,"nxo-logo.webp":2,"nxo-inferno":6,"nxo-front-v2":37,"nxo-front-inferno":6,"loading-bg.webp":1,"menu-bg.webp":1,"moneda-1.webp":1,"ulti-legendaria-tornado.webp":1,"dinero-virtual-1.webp":1,"dinero-fardo-chico.webp":1,"cofre-normal.webp":1,"cofre-oro.webp":1,"cofre-epico.webp":1,"bronce.webp":1,"ui":1,"marcos":6,"marcos2v2":6,"monedas.webp":1,"billetes.webp":1,"premio-diario.webp":1,"barra-inicio.webp":1,"insignia-pase-batalla.webp":1,"liga.webp":1,"moneda-2v2.webp":1,"bronce-2v2.webp":1,"menu":3} | tareas largas (ms): undefined
+EXC TypeError: Cannot read properties of undefined (reading 'scene')
+    at <anonymous>:1:56
+    at new Promise (<anonymous>)
+    at <anonymous>:1:1
+EXC TypeError: Cannot read properties of undefined (reading 'scene')
+    at <anonymous>:1:122
+EXC TypeError: Cannot read properties of undefined (reading 'scene')
+    at <anonymous>:1:122

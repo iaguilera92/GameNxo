@@ -1035,6 +1035,8 @@ export class InfernoFire {
       hist: [],
     };
     const D = this.def;
+    // (26-11-2026, usuario) un poco más grande (+15 %): tiene que verse más que la bola del ESPECIAL
+    R *= 1.15;
     const pulse = 1 + 0.06 * Math.sin(this.t * 22);
     D.hist.unshift({ x: air.sx, y: air.sy });
     if (D.hist.length > 24) D.hist.length = 24;

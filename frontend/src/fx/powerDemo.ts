@@ -1441,7 +1441,8 @@ class DefensiveDemo implements PowerDemo {
         // impacto); quedan quietas hasta el golpe y se desvanecen. La 1.ª, la más tenue.
         // DELANTE del cuerpo, como GhostTrail cuando la sombra queda más cerca de la cámara (el personaje avanza hacia la red): DashFx las pone
         // detrás (depth − 0,3) y con un avance corto quedaban tapadas por el personaje; por eso no se veían en la demostración
-        if (ghosts < D.ghosts && u >= ghosts / D.ghosts) {
+        // (26-11-2026, usuario) la ULTI DEFAULT avanza sin sombras, como en el partido
+        if (el !== 'default' && ghosts < D.ghosts && u >= ghosts / D.ghosts) {
           placeActor(pl, this.pa);
           dash.ghost(pl, ghosts++, pl.depth + 0.4, this.stage);
         }

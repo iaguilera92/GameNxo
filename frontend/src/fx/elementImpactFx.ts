@@ -372,8 +372,14 @@ export function ultiStunFx(scene: Phaser.Scene, el: InfernoElement, at: () => Fx
   // (17-11-2026) piezas fijas del efecto sobre el cuerpo de HIELO / FUEGO / SOMBRA / LUZ / TULIPÁN (se sortean una vez; cada fotograma solo se mueven)
   const bits = Array.from({ length: 10 }, (_, i) => ({ u: Math.random(), x: FB(-0.38, 0.38), ph: Math.random() * 6.28, sp: FB(0.35, 0.75), sz: FB(0.8, 1.5), i }));
   const crystals = Array.from({ length: 8 }, (_, i) => ({ x: (i / 7 - 0.5) * 0.8 + FB(-0.05, 0.05), h: FB(0.08, 0.92), L: FB(0.16, 0.3), tilt: FB(-0.6, 0.6) + (i % 2 ? 0.5 : -0.5), col: pick([ICE.white, ICE.pale, ICE.mid]) }));
+  // (27-11-2026, usuario) reloj propio que respeta la cámara lenta (time.timeScale): en el zoom del tutorial el efecto va más lento
+  let virt = t0;
+  let last = t0;
   const tick = () => {
-    const now = scene.time.now;
+    const real = scene.time.now;
+    virt += (real - last) * scene.time.timeScale;
+    last = real;
+    const now = virt;
     const p = (now - t0) / ms;
     const a = at();
     if (p >= 1 || !a || !g.active) {

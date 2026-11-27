@@ -494,7 +494,7 @@ export class MatchEndScene extends Phaser.Scene {
       // el MENÚ, al volver, muestra "+N EXP" y llena las barras de nivel y del pase (después de la ruleta, si se abre)
       this.registry.set('menu.xpGain', gained);
       if (!d.surrendered && d.guide && d.win) {
-        commit((s) => markTutorialSeen(s, d.guide === 'first' ? GUIDE.firstMatch : d.guide === 'l3' ? GUIDE.l3 : d.guide === 'l5' ? GUIDE.l5 : GUIDE.spin));
+        commit((s) => markTutorialSeen(s, d.guide === 'first' ? GUIDE.firstMatch : d.guide === 'l3' ? GUIDE.l3 : d.guide === 'l5' ? GUIDE.l5 : d.guide === 'l6' ? GUIDE.l6 : d.guide === 'l7' ? GUIDE.l7 : GUIDE.spin));
       }
     }
     // 2v2 (21-11-2026, usuario): no se ganan monedas de 1v1, solo las MONEDAS 2v2

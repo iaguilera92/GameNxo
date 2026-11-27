@@ -160,13 +160,19 @@ export interface DuelScore {
   set(i: number, who: DuelRoundColor): void;
   /** la pelota de la ronda `i` tiembla un instante (toque fallado) */
   shake(i: number): void;
+  /** (27-11-2026) acerca el marcador: escala `k` alrededor de su centro y lo baja `dy` px (tutorial: ¡GANASTE EL DUELO!) */
+  focus(k: number, dy: number): void;
+  /** (27-11-2026) las 3 pelotas giran (true) o se quedan (false) */
+  spin(on: boolean): void;
+  /** (27-11-2026) las pelotas ganadas por `who` brillan (latido de luz de su color); null = apaga */
+  glow(who: 'player' | 'bot' | null): void;
   destroy(): void;
 }
 
 export function createDuelScore(scene: Phaser.Scene, y: number): DuelScore {
   const W = scene.scale.width;
-  const R = 27;
-  const gap = 22;
+  const R = 32; // (27-11-2026, usuario) un poco más grande (antes 27 / 22)
+  const gap = 24;
   const n = NET_DUEL.rounds;
   const x0 = W / 2 - ((n - 1) * (2 * R + gap)) / 2;
   // (14-11-2026) CUADRO más cuidado: sombra, fondo con reflejo arriba, borde dorado doble y BRILLO que recorre el borde
@@ -261,6 +267,8 @@ export function createDuelScore(scene: Phaser.Scene, y: number): DuelScore {
   }
   let act = -1;
   let pulse: Phaser.Tweens.Tween | null = null;
+  const results: (DuelRoundColor | null)[] = balls.map(() => null);
+  let glows: Phaser.GameObjects.Arc[] = [];
   return {
     active(i: number) {
       if (i === act || !balls[i]?.active) return;
@@ -274,6 +282,7 @@ export function createDuelScore(scene: Phaser.Scene, y: number): DuelScore {
     set(i: number, who: DuelRoundColor) {
       const b = bodies[i];
       if (!b?.active) return;
+      results[i] = who;
       paint(b, who);
       halos[i].setVisible(false);
       if (act === i) {
@@ -282,6 +291,41 @@ export function createDuelScore(scene: Phaser.Scene, y: number): DuelScore {
       }
       balls[i].setScale(1);
       scene.tweens.add({ targets: balls[i], scale: { from: 1.5, to: 1 }, duration: 320, ease: 'Back.easeOut' });
+    },
+    focus(k: number, dy: number) {
+      // (27-11-2026, usuario) las 3 del MISMO tamaño: se cortan el latido y el rebote de la última (pisaban la escala)
+      pulse?.remove();
+      pulse = null;
+      for (const b of balls) scene.tweens.killTweensOf(b);
+      const cx = W / 2;
+      const cy = y;
+      for (const g of [panel, shine]) if (g.active) g.setPosition(cx * (1 - k), cy * (1 - k) + dy).setScale(k);
+      balls.forEach((b, i) => {
+        if (!b.active) return;
+        const bx = x0 + i * (2 * R + gap);
+        b.setPosition(cx + (bx - cx) * k, cy + dy).setScale(k);
+      });
+    },
+    glow(who: 'player' | 'bot' | null) {
+      for (const g of glows) if (g.active) g.destroy();
+      glows = [];
+      if (!who) return;
+      const col = who === 'player' ? 0x3a8bff : 0xff4f5e;
+      balls.forEach((b, i) => {
+        if (results[i] !== who || !b.active) return;
+        const g = scene.add.circle(0, 0, R * 1.25, col, 0.55).setBlendMode(Phaser.BlendModes.ADD);
+        b.addAt(g, 0); // detrás de la pelota
+        glows.push(g);
+        scene.tweens.add({ targets: g, scale: { from: 0.9, to: 1.45 }, alpha: { from: 0.7, to: 0.15 }, duration: 520, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
+      });
+    },
+    spin(on: boolean) {
+      for (const g of bodies) {
+        if (!g.active) continue;
+        scene.tweens.killTweensOf(g);
+        if (on) scene.tweens.add({ targets: g, angle: 360, duration: 900, repeat: -1 });
+        else g.setAngle(0);
+      }
     },
     shake(i: number) {
       const b = balls[i];
@@ -365,7 +409,7 @@ export function createDuelPressure(scene: Phaser.Scene): DuelPressure {
  */
 export function showDuelDecisive(scene: Phaser.Scene, scoreY: number, ms: number = NET_DUEL.decisiveMs) {
   const W = scene.scale.width;
-  const y = scoreY - 27 - 12 - 28; // borde de arriba del marcador (radio 27 + 12) y medio texto
+  const y = scoreY - 32 - 12 - 28 - 14; // borde de arriba del marcador (radio 32 + 12) y medio texto (27-11-2026, usuario: un poco más de espacio)
   const t = scene.add.text(W / 2, y, '¡ÚLTIMA RONDA!', { fontFamily: '"Lilita One", "Arial Black", sans-serif', fontSize: '40px', color: '#ffd23f', stroke: '#2a0a00', strokeThickness: 8 }).setOrigin(0.5).setScrollFactor(0).setDepth(7800).setScale(0.2).setAlpha(0);
   if (t.width > W - 30) t.setFontSize(Math.floor(40 * (W - 30) / t.width));
   scene.tweens.add({ targets: t, scale: 1, alpha: 1, duration: 220, ease: 'Back.easeOut' });

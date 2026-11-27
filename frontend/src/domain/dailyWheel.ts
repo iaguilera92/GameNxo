@@ -247,7 +247,7 @@ export function spin(s: PlayerState, index: number, now: number, rng: Rng = secu
   // forceSlot: solo la RULETA TEST (desarrollo) elige el sector para probar cada premio
   // (26-11-2026, usuario) RULETAS DEL TUTORIAL hasta el nivel 5: monedas y dinero alternados (para llegar al 5 con ~20 de dinero y comprar
   // un defensivo): 1.er partido 100 monedas, nivel 2 = 5 de dinero, nivel 3 = 150 monedas, nivel 4 = 5 de dinero
-  const TUT_SLOT: Record<string, string> = { [GUIDE_FIRST_WHEEL]: 'c100', 'tutorial-level:2': 'd5', 'tutorial-level:3': 'c150', 'tutorial-level:4': 'd5' };
+  const TUT_SLOT: Record<string, string> = { [GUIDE_FIRST_WHEEL]: 'c100', 'tutorial-level:2': 'd5', 'tutorial-level:3': 'c150', 'tutorial-level:4': 'd5', 'tutorial-level:7': 'chest' }; // (27-11-2026, usuario) la del partido del nivel 7: COFRE
   const fixedId = sp.matchId ? TUT_SLOT[sp.matchId] : undefined;
   const slot = (fixedId ? slotById(fixedId) : forceSlot && slotById(forceSlot)) || pickWeighted(WHEEL.slots, rng);
   const base = resolvePrize(slot, n, rng);

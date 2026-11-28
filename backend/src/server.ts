@@ -25,10 +25,13 @@ app.disable('x-powered-by');
 if (CONFIG.trustProxy) app.set('trust proxy', true);
 // CORS para la API REST (Socket.IO tiene su propia opción abajo). Con lista de orígenes se responde SOLO el del
 // pedido si está permitido (un header con varios orígenes no es válido).
+/** (28-11-2026) el juego en desarrollo en el propio PC (Vite: http://localhost:5173): ver CONFIG.corsAllowDev */
+const DEV_ORIGIN = /^http:\/\/(localhost|127\.0\.0\.1)(:\d{1,5})?$/;
+const originAllowed = (origin: string | undefined) => !!origin && (CONFIG.corsOrigins === '*' || CONFIG.corsOrigins.includes(origin) || (CONFIG.corsAllowDev && DEV_ORIGIN.test(origin)));
 app.use((req, res, next) => {
   const origin = req.headers.origin;
   if (CONFIG.corsOrigins === '*') res.setHeader('Access-Control-Allow-Origin', '*');
-  else if (origin && CONFIG.corsOrigins.includes(origin)) {
+  else if (origin && originAllowed(origin)) {
     res.setHeader('Access-Control-Allow-Origin', origin);
     res.setHeader('Vary', 'Origin');
   }
@@ -44,7 +47,7 @@ app.get('/', (_req, res) => res.send('NxoGames backend OK'));
 
 const http = createServer(app);
 const io = new Server(http, {
-  cors: { origin: CONFIG.corsOrigins === '*' ? true : CONFIG.corsOrigins, methods: ['GET', 'POST'] },
+  cors: { origin: CONFIG.corsOrigins === '*' ? true : (origin, cb) => cb(null, !origin || originAllowed(origin)), methods: ['GET', 'POST'] },
   // pings frecuentes: una desconexión (WiFi caída, app cerrada) se detecta en pocos segundos
   pingInterval: 5000,
   pingTimeout: 5000,

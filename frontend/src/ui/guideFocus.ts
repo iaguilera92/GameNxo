@@ -75,7 +75,7 @@ function tapHand(scene: Phaser.Scene, root: Phaser.GameObjects.Container, x: num
 }
 
 /** Mantiene visible y accesible solo el siguiente control del tutorial. */
-export function guideFocus(scene: Phaser.Scene, target: { x: number; y: number; w: number; h: number }, message: string, opts: { textDy?: number; hand?: boolean; centerText?: boolean; textUp?: number; dim?: number; fadeMs?: number } = {}) {
+export function guideFocus(scene: Phaser.Scene, target: { x: number; y: number; w: number; h: number }, message: string, opts: { textDy?: number; hand?: boolean; centerText?: boolean; textUp?: number; dim?: number; fadeMs?: number; sub?: string } = {}) {
   const { width, height } = scene.scale;
   const left = Math.max(0, target.x - target.w / 2 - 6);
   const right = Math.min(width, target.x + target.w / 2 + 6);
@@ -99,6 +99,18 @@ export function guideFocus(scene: Phaser.Scene, target: { x: number; y: number; 
   }).setOrigin(0.5);
   label.x = opts.centerText ? width / 2 : Math.max(20 + label.width / 2, Math.min(width - 20 - label.width / 2, target.x));
   root.add(label);
+  // (27-11-2026, usuario) explicación corta bajo el título (p. ej. qué hace la ZONA); con el texto arriba del control, el título sube
+  if (opts.sub) {
+    const sub = scene.add.text(label.x, 0, opts.sub, {
+      fontFamily: FONT, fontSize: '24px', color: '#ffffff', stroke: '#071332', strokeThickness: 6,
+      align: 'center', wordWrap: { width: width - 60 },
+    }).setOrigin(0.5);
+    if (top > 95) {
+      sub.y = top - 20 - sub.height / 2;
+      label.y = sub.y - sub.height / 2 - 6 - label.height / 2;
+    } else sub.y = label.y + label.height / 2 + 6 + sub.height / 2;
+    root.add(sub);
+  }
   // la punta del dedo, sobre la esquina de abajo a la derecha del control (un poco adentro)
   const hx = Math.min(width - 110, right - Math.min(40, (right - left) * 0.2));
   const hy = bottom - Math.min(26, (bottom - top) * 0.25);

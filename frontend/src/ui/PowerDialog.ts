@@ -5,6 +5,7 @@ import { sfx } from '../fx/sfx';
 import { RARITY_LABEL, type ItemRarity } from '../domain/shopCatalog';
 import { RARITY_STYLE, drawRarityFrame } from './rarity';
 import { swipeHint, tapHint } from './guideFocus';
+import { clockTimer } from './TutorialDialog';
 
 /** Cuántos huecos muestra el diálogo: 2 filas × 5. */
 export const POWER_SLOTS = 10;
@@ -102,6 +103,8 @@ export interface PowerDialogOpts {
   demo?: { create: (parent: Phaser.GameObjects.Container, outer: DemoRect, inner: DemoRect, id: string | undefined) => PowerDemo };
   /** En el tutorial hay que ver la demostración antes de equipar el poder. */
   requireDemoBeforeEquip?: boolean;
+  /** (27-11-2026, usuario) tutorial: explicación que se lee ANTES de deslizar (todo oscuro, sin tocar nada, reloj de 4 s) */
+  guideIntro?: string;
 }
 
 const NAVY = 0x0b1733;
@@ -1020,7 +1023,24 @@ export function openPowerDialog(scene: Phaser.Scene, opts: PowerDialogOpts) {
     }
     guideLayer.add(scene.add.graphics().lineStyle(4, 0xffd23f, 1).strokeRoundedRect(R.x - 3, R.y - 3, R.w + 6, R.h + 6, 14));
     root.add(guideLayer);
-    swipeHand = swipeHint(scene, R.x + R.w * 0.78, R.x + R.w * 0.22, R.y + R.h * 0.55, 8100);
+    const startSwipe = () => {
+      if (closed || released) return;
+      swipeHand = swipeHint(scene, R.x + R.w * 0.78, R.x + R.w * 0.22, R.y + R.h * 0.55, 8100);
+    };
+    if (opts.guideIntro) {
+      // (27-11-2026, usuario) primero se LEE qué es (reloj de 4 s, sin poder tocar nada); después, la mano que desliza
+      const INTRO_MS = 4000;
+      const intro = scene.add.container(0, 0);
+      const veil = scene.add.rectangle(0, 0, W, H, 0x02060f, 0.88).setOrigin(0).setInteractive();
+      const t = scene.add.text(W / 2, H * 0.4, opts.guideIntro, { fontFamily: FONT, fontSize: '34px', color: '#ffffff', stroke: '#071332', strokeThickness: 7, align: 'center', wordWrap: { width: W - 80 }, lineSpacing: 6 }).setOrigin(0.5).setAlpha(0);
+      const clock = clockTimer(scene, W / 2, t.y + t.height / 2 + 90, INTRO_MS).setAlpha(0);
+      intro.add([veil, t, clock]);
+      root.add(intro);
+      scene.tweens.add({ targets: [t, clock], alpha: 1, duration: 300 });
+      timers.push(scene.time.delayedCall(INTRO_MS, () => {
+        scene.tweens.add({ targets: intro, alpha: 0, duration: 300, onComplete: () => { intro.destroy(); startSwipe(); } });
+      }));
+    } else startSwipe();
     releaseGuide = () => {
       if (closed || released) return;
       released = true;

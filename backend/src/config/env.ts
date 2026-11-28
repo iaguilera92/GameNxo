@@ -24,6 +24,11 @@ export const CONFIG = {
    * En producción poner los del juego, p. ej. "https://localhost,capacitor://localhost,https://juego.midominio.com".
    */
   corsOrigins: origins(process.env.CORS_ORIGIN),
+  /**
+   * (28-11-2026) además de la lista, acepta el juego en DESARROLLO desde el propio PC (http://localhost:<puerto> y http://127.0.0.1:<puerto>,
+   * p. ej. Vite en 5173). Solo lo abre quien tiene el juego corriendo en su máquina. CORS_ALLOW_DEV=0 lo apaga.
+   */
+  corsAllowDev: process.env.CORS_ALLOW_DEV !== '0',
   /** detrás de nginx / ALB: confía en X-Forwarded-For para la IP real del jugador (TRUST_PROXY=1) */
   trustProxy: process.env.TRUST_PROXY === '1',
   /** tiempo máximo de búsqueda de rival (lo controla el servidor) */

@@ -21,9 +21,9 @@ export const UNLOCK_LEVEL = {
   special: 4,
   ulti: 6,
   // (25-11-2026, usuario) CARGANDO GOLPE pasa al 8 (antes 12), ZONA al 10 (antes 15) y ESTILOS al 15 (antes 8)
-  styles: 15,
+  styles: 14, // (27-11-2026, usuario) antes 15
   trail: 12, // (25-11-2026, usuario) antes 10
-  charge: 8,
+  charge: 10, // (27-11-2026, usuario) la tarjeta CARGANDO GOLPE de PERSONALIZAR (antes 8); cargar en el partido sigue desde el 4
   zone: 8, // (27-11-2026, usuario) la ZONA pasa al nivel 8 (antes 10)
   spin: 15,
 } as const;

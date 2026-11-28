@@ -8,7 +8,6 @@
  * Los ids (`agility`, `precision`, los de personaje) no se cambian nunca. Se guardan los PUNTOS (`PlayerState.mastery[skin]`), no el nivel:
  * así cambiar la curva de abajo no rompe lo guardado.
  */
-import { MAX_LEVEL } from '../config';
 
 export type PassiveId = 'agility' | 'precision' | 'strength' | 'spin' | 'resistance';
 
@@ -60,8 +59,8 @@ export const PASSIVES: Record<string, PassiveDef> = {
 export const passiveOf = (skin: string): PassiveDef | undefined => PASSIVES[skin];
 
 export const MASTERY = {
-  /** nivel de CUENTA desde el que se suman puntos (antes, nada) */
-  unlockLevel: MAX_LEVEL,
+  /** nivel de CUENTA desde el que se suman puntos. (27-11-2026, usuario) desde el principio: la pasiva sube con el personaje, no con la cuenta */
+  unlockLevel: 1,
   /** nivel máximo de maestría */
   maxLevel: 10,
   /** lo que vale cada nivel (0,01 = 1 %) */

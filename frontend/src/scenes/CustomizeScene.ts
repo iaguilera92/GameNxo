@@ -4,8 +4,7 @@ import Phaser from 'phaser';
 import { FONT, restartOnResize, textStyle } from '../ui/theme';
 import { stadiumBg } from '../ui/ui';
 import { Character, playerLook } from '../objects/Character';
-import { MAX_LEVEL } from '../config';
-import { getProfile, levelProgress, setCharColor, setCharge, setDefensive, setInferno, setSkin, setSmash } from '../logic/Profile';
+import { getProfile, setCharColor, setCharge, setDefensive, setInferno, setSkin, setSmash } from '../logic/Profile';
 import { CHAR_COLOR_LIST, type CharColorId, charColorFor, charColorInfo, charColorOwned } from '../domain/charColors';
 import { applyCharColor } from '../fx/CharColorFx';
 import { type UnlockKey, isUnlocked, unlockLabel } from '../domain/unlocks';
@@ -46,7 +45,7 @@ import { INFERNO } from '../logic/InfernoDrive';
 import { ZONE } from '../logic/Zone';
 import { ZONE_SKINS, ZONE_SKIN_IDS, type ZoneSkinDef, type ZoneSkinId, equipZoneSkin, zoneSkinOf, zoneSkinOwned } from '../domain/zoneSkins';
 import { createZoneDemo } from '../fx/zoneDemo';
-import { MASTERY, masteryProgress, passiveOf } from '../domain/characterPassives';
+import { masteryProgress, passiveOf } from '../domain/characterPassives';
 import { drawPassiveIcon, openPassiveDialog, skinName } from '../ui/passiveInfo';
 
 /** Arte de los botones de habilidad. `box` = círculo visible en px de la imagen (sin margen transparente). */
@@ -267,11 +266,11 @@ export class CustomizeScene extends Phaser.Scene {
     // fila 2 las dos habilidades equipadas (DASH | SMASH), fila 3 INFERNO | ZONA
     // (11-11-2026) arriba una fila de 4 cosméticos (ESTILOS · EFECTO PELOTA · CARGANDO GOLPE · MASCOTAS) y debajo el título
     // HABILIDADES con DEFENSIVO | ESPECIAL y ULTI | ZONA
-    const L = { gapHero: 14, level: 78, gapA: 22, passive: 70, gapP: 22, cosmetic: 136, cosToTitle: 40, titleToCard: 28, ability: 104, abilityGap: GRID_GAP, gapFeatures: GRID_GAP, features: 270, gapC: 18, play: 0, bottom: 52 };
+    const L = { gapHero: 14, level: 78, gapA: 22, passive: 84, gapP: 22, cosmetic: 136, cosToTitle: 40, titleToCard: 28, ability: 104, abilityGap: GRID_GAP, gapFeatures: GRID_GAP, features: 270, gapC: 18, play: 0, bottom: 52 };
     // NIVEL MÁXIMO: sin tarjeta de nivel en la lista (sale como pastilla pequeña sobre el nombre, en la vitrina) y todo su
     // alto se reparte entre las dos filas de tarjetas de habilidades (el resto del reparto no cambia)
-    const maxed = p.level >= MAX_LEVEL;
-    if (maxed) {
+    // (27-11-2026, usuario) el NIVEL DE LA CUENTA ya no sale en PERSONALIZAR (la pasiva sube con el personaje): sin tarjeta de nivel, siempre
+    {
       const freed = L.level + (L.gapA - 8);
       L.level = 0;
       L.gapA = 8;
@@ -297,11 +296,9 @@ export class CustomizeScene extends Phaser.Scene {
     // el personaje y su pedestal van SHOWCASE_LIFT px más arriba: la elipse del pedestal (70 px de alto, centrada en los
     // pies) ya no pisa la tarjeta de NIVEL; el personaje se achica un poco para no acercarse al título
     const SHOWCASE_LIFT = 38;
-    this.showcase(W, TOP, feetY - SHOWCASE_LIFT, heroH - SHOWCASE_LIFT * 0.5, p.skin as SkinId, maxed);
+    this.showcase(W, TOP, feetY - SHOWCASE_LIFT, heroH - SHOWCASE_LIFT * 0.5, p.skin as SkinId);
 
-    // ---------------------------------------------------------------- nivel + XP (en nivel máximo va en la vitrina)
     let y = feetY + L.gapHero;
-    if (!maxed) this.levelCard(W, y, p.level, levelProgress(p));
     y += L.level + L.gapA;
 
     // ---------------------------------------------------------------- PASIVA del personaje (barra de maestría, docs/MAESTRIAS.md)
@@ -472,7 +469,7 @@ ${unlockLabel(key)}`, { fontFamily: FONT, fontSize: '16px', color: '#ffd23f', st
   }
 
   /** Personaje grande sobre un pedestal de luz, con su nombre. */
-  private showcase(W: number, top: number, feetY: number, heroH: number, skin: SkinId, maxed = false) {
+  private showcase(W: number, top: number, feetY: number, heroH: number, skin: SkinId) {
     const cx = W / 2;
     // haz de luz detrás
     const beam = this.add.graphics().setBlendMode(Phaser.BlendModes.ADD);
@@ -560,8 +557,6 @@ ${unlockLabel(key)}`, { fontFamily: FONT, fontSize: '16px', color: '#ffd23f', st
     // botón CAMBIAR PERSONAJE (21-11-2026; antes el interruptor HOMBRE | MUJER), a la derecha de la vitrina
     this.changeCharButton(W - 40, py + ph / 2, skin);
 
-    // NIVEL MÁXIMO: pastilla pequeña justo encima del nombre (la tarjeta de nivel ya no sale en la lista)
-    if (maxed) this.maxLevelPill(px + 6, py - 8);
     // (el color del personaje se elige en la tarjeta ESTILOS, debajo)
   }
 
@@ -578,8 +573,8 @@ ${unlockLabel(key)}`, { fontFamily: FONT, fontSize: '16px', color: '#ffd23f', st
    * abre su selector.
    */
   private cosmeticRow(W: number, y: number, h: number, skin: SkinId) {
-    // ESTILOS y EFECTO PELOTA (bloqueadas hasta su nivel, como las habilidades)
-    const sc = this.cosCol(W, 0);
+    // (27-11-2026, usuario) orden por nivel de desbloqueo: CARGANDO GOLPE (10) · EFECTO PELOTA (12) · ESTILOS (14) · MASCOTAS
+    const sc = this.cosCol(W, 2);
     // su dibujo es más alto y estrecho que el de las otras: se achica para que se vea del mismo tamaño
     this.miniCard(sc, y, h, 0xff8fc4, 'personalizar-estilos', () => this.openColorDialog(skin), 0.72, 'color');
     this.lockCard(sc.x, y, sc.w, h, 'styles', 16);
@@ -587,7 +582,7 @@ ${unlockLabel(key)}`, { fontFamily: FONT, fontSize: '16px', color: '#ffd23f', st
     this.miniCard(ec, y, h, styleLook((getPlayer().equipped.style ?? 'classic') as StyleId).color, 'personalizar-efecto', () => this.openStyleDialog(), 1, 'style');
     this.lockCard(ec.x, y, ec.w, h, 'trail', 16);
     // CARGANDO GOLPE (bloqueada hasta su nivel, como la habilidad)
-    const cc = this.cosCol(W, 2);
+    const cc = this.cosCol(W, 0);
     this.miniCard(cc, y, h, PASSIVES.charge.color, 'personalizar-cargando', () => this.openChargeDialog(), 1, 'charge');
     this.lockCard(cc.x, y, cc.w, h, 'charge', 16);
     // MASCOTAS: aún no existen; se abrirán al llegar a la LIGA ORO
@@ -607,7 +602,7 @@ ${unlockLabel(key)}`, { fontFamily: FONT, fontSize: '16px', color: '#ffd23f', st
     if (!def) return; // personaje sin pasiva: no hay barra
     const pl = getProfile();
     const pr = masteryProgress(pl.masteryPoints);
-    const locked = pl.level < MASTERY.unlockLevel;
+    const locked = false; // (27-11-2026, usuario) la pasiva sube con el PERSONAJE (victorias), no con el nivel de la cuenta
     const x = 30;
     const w = W - 60;
     this.cardRects.passive = { x, y, w, h };
@@ -631,18 +626,18 @@ ${unlockLabel(key)}`, { fontFamily: FONT, fontSize: '16px', color: '#ffd23f', st
     if (name.width > cw - lvl.width - 14) name.setScale((cw - lvl.width - 14) / name.width);
     // barra de progreso al siguiente nivel
     // (16-11-2026, usuario) barra más alta (15 -> 22) y la tarjeta 60 -> 70 para que se vea
-    const bh = 22;
-    const bary = y + h - 21;
+    const bh = 32; // (27-11-2026, usuario) más alta (antes 22; la tarjeta 70 -> 84)
+    const bary = y + h - 26;
     const bar = this.add.graphics();
     bar.fillStyle(0x04132e, 1).fillRoundedRect(cx0, bary - bh / 2, cw, bh, bh / 2);
     bar.lineStyle(1.5, 0x2c3d66, 1).strokeRoundedRect(cx0, bary - bh / 2, cw, bh, bh / 2);
     const fw = locked ? 0 : pr.max ? cw : pr.into > 0 ? Math.max(bh, cw * pr.frac) : 0;
     if (fw > 0) {
       bar.fillStyle(pr.max ? 0xffc42e : def.color, 1).fillRoundedRect(cx0, bary - bh / 2, fw, bh, bh / 2);
-      bar.fillStyle(0xffffff, 0.4).fillRoundedRect(cx0 + 4, bary - bh / 2 + 3, Math.max(0, fw - 8), 5, 2.5);
+      bar.fillStyle(0xffffff, 0.4).fillRoundedRect(cx0 + 4, bary - bh / 2 + 3, Math.max(0, fw - 8), 7, 3.5);
     }
-    const label = locked ? `SE DESBLOQUEA EN EL NIVEL ${MASTERY.unlockLevel}` /* (26-11-2026, usuario) */ : pr.max ? 'NIVEL MÁXIMO' : `${pr.into} / ${pr.need}  MAESTRÍAS`;
-    const lab = this.add.text(cx0 + cw / 2, bary, label, { fontFamily: FONT, fontSize: '14px', color: locked ? '#b9c6e6' : '#ffffff', stroke: '#061431', strokeThickness: 3 }).setOrigin(0.5);
+    const label = pr.max ? 'NIVEL MÁXIMO' : `${pr.into} / ${pr.need}  MAESTRÍAS`;
+    const lab = this.add.text(cx0 + cw / 2, bary, label, { fontFamily: FONT, fontSize: '17px', color: locked ? '#b9c6e6' : '#ffffff', stroke: '#061431', strokeThickness: 3 }).setOrigin(0.5);
     if (lab.width > cw - 16) lab.setScale((cw - 16) / lab.width);
     if (locked) {
       // sin maestrías hasta el nivel 20: todo algo apagado
@@ -733,24 +728,6 @@ ${unlockLabel(key)}`, { fontFamily: FONT, fontSize: '16px', color: '#ffd23f', st
         if (changed) this.restartEquipped('style'); // al instante: la pantalla ya muestra lo que se equipó
       },
     });
-  }
-
-  /** "MÁX · 20" con medalla dorada: poco ancho, abajo-izquierda en (x, bottom). */
-  private maxLevelPill(x: number, bottom: number) {
-    const h = 30;
-    const y = bottom - h;
-    const t = this.add.text(0, 0, `NIVEL MÁX. ${MAX_LEVEL}`, { fontFamily: FONT, fontSize: '15px', color: '#ffd23f' }).setOrigin(0, 0.5).setLetterSpacing(1);
-    const w = 34 + t.width + 14;
-    const g = this.add.graphics();
-    g.fillStyle(0x000000, 0.35).fillRoundedRect(x + 2, y + 4, w, h, h / 2);
-    g.fillStyle(NAVY, 0.94).fillRoundedRect(x, y, w, h, h / 2);
-    g.lineStyle(2, 0xffc42e, 1).strokeRoundedRect(x, y, w, h, h / 2);
-    // medalla dorada con corona
-    const mx = x + 16;
-    const my = y + h / 2;
-    g.fillStyle(0xffc42e, 1).fillCircle(mx, my, 10);
-    g.fillStyle(0x0a1638, 1).fillPoints([{ x: mx - 6, y: my + 4 }, { x: mx - 7, y: my - 3 }, { x: mx - 3, y: my }, { x: mx, y: my - 5 }, { x: mx + 3, y: my }, { x: mx + 7, y: my - 3 }, { x: mx + 6, y: my + 4 }], true);
-    t.setPosition(x + 32, my).setDepth(1);
   }
 
   /** ESTILOS DE COLOR: televisión con el personaje pintado; los que faltan se ganan en el PASE DE BATALLA. */
@@ -907,44 +884,6 @@ ${unlockLabel(key)}`, { fontFamily: FONT, fontSize: '16px', color: '#ffd23f', st
     this.scene.restart(); // al instante: la pantalla ya muestra el personaje elegido
       },
     });
-  }
-
-  /** Nivel actual + barra de XP (sin números). */
-  private levelCard(W: number, y: number, level: number, prog: number) {
-    const x = 30;
-    const w = W - 60;
-    const h = 78;
-    this.card(x, y, w, h);
-    // medalla de nivel
-    const mx = x + 58;
-    const my = y + h / 2;
-    const m = this.add.graphics();
-    m.fillStyle(0x0a1638, 1).fillCircle(mx, my, 31);
-    m.fillStyle(NEON, 1).fillCircle(mx, my, 28);
-    m.fillStyle(0x6fb2ff, 1).fillCircle(mx, my - 5, 21);
-    m.fillStyle(0x1f5fd6, 1).fillCircle(mx, my + 2, 21);
-    this.add.text(mx, my, String(level), { fontFamily: FONT, fontSize: '28px', color: '#ffffff', stroke: '#0a1638', strokeThickness: 4 }).setOrigin(0.5);
-
-    const tx = mx + 48;
-    const bw = x + w - 24 - tx;
-    this.add.text(tx, y + 14, level >= MAX_LEVEL ? 'NIVEL MÁXIMO' : `NIVEL ${level}`, textStyle(22)).setOrigin(0, 0);
-    this.add.text(x + w - 24, y + 18, `MÁX. ${MAX_LEVEL}`, textStyle(16, '#7f93bf')).setOrigin(1, 0);
-    const by = y + 49;
-    const bh = 14;
-    const g = this.add.graphics();
-    g.fillStyle(0x05112c, 1).fillRoundedRect(tx, by, bw, bh, bh / 2);
-    g.lineStyle(1, 0x2a4a8a, 1).strokeRoundedRect(tx, by, bw, bh, bh / 2);
-    const fill = this.add.graphics();
-    const state = { v: 0 };
-    const draw = () => {
-      fill.clear();
-      if (state.v <= 0) return;
-      const fw = Math.max(bh, bw * state.v);
-      fill.fillStyle(0x1f7bff, 1).fillRoundedRect(tx, by, fw, bh, bh / 2);
-      fill.fillStyle(0x5fd0ff, 1).fillRoundedRect(tx, by, fw, bh * 0.5, { tl: bh / 2, tr: bh / 2, bl: 0, br: 0 });
-      fill.fillStyle(0xffffff, 0.6).fillRoundedRect(tx + 4, by + 2, Math.max(0, fw - 8), 2, 1);
-    };
-    this.tweens.add({ targets: state, v: Phaser.Math.Clamp(prog, 0, 1), delay: 250, duration: 700, ease: 'Cubic.easeOut', onUpdate: draw });
   }
 
   /**
@@ -1552,6 +1491,8 @@ ${unlockLabel(key)}`, { fontFamily: FONT, fontSize: '16px', color: '#ffd23f', st
       // televisión grande; deslizando se ve tu personaje entrando en Zona con ese estilo (fx/zoneDemo.ts, el mismo de la Tienda)
       bigTv: true,
       requireDemoBeforeEquip: guided,
+      // (27-11-2026, usuario) nivel 8: antes de deslizar, qué es la ZONA (reloj de 4 s para leer)
+      ...(guided ? { guideIntro: 'Cuando vas perdiendo, aumentarás todas tus estadísticas para remontar' } : {}),
       demo: { create: (parent, outer, inner, id) => createZoneDemo(this, parent, outer, inner, getProfile().skin, ZONE_SKINS[(id as ZoneSkinId | undefined) ?? cur]) },
       onShop: () => {
         this.cameras.main.fadeOut(180, 0, 0, 0);

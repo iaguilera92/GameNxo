@@ -49,7 +49,7 @@ export function drawPassiveIcon(g: Phaser.GameObjects.Graphics, id: PassiveId, r
 
 /** Texto de "cómo se sube" (el mismo en PERSONALIZAR y en el Pase). */
 export function masteryHowTo(skin: string): string {
-  return `Gana partidos con ${skinName(skin)}: cada victoria suma 1 maestría. Se suman desde el nivel ${MASTERY.unlockLevel} de tu cuenta. Cada nivel de maestría da un 1 % más, hasta un ${MASTERY.maxLevel} % en el nivel ${MASTERY.maxLevel}.`;
+  return `Gana partidos con ${skinName(skin)}: cada victoria suma 1 maestría. Cada nivel de maestría da un 1 % más, hasta un ${MASTERY.maxLevel} % en el nivel ${MASTERY.maxLevel}.`;
 }
 
 /**
